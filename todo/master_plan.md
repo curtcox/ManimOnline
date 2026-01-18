@@ -22,28 +22,43 @@ Create a web-based editor similar to [GraphvizOnline](https://dreampuf.github.io
 
 ## Architecture Overview
 
+### Key Architectural Decisions
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Worker Architecture | **Single worker** | Simpler communication, unified message handling |
+| Animation Output | **Frame-by-frame** | More control, seekable, no video encoding needed |
+| Detection Timing | **Debounced** | Better performance, acceptable UI delay |
+| Rendering Trigger | **Automatic** | Better UX for quick iteration |
+| Offline Support | **Service workers (required)** | Core requirement for offline editing |
+| Backend | **Pure static site** | Simpler deployment, no server costs |
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Browser Main Thread                       │
 ├─────────────────────────────────────────────────────────────────┤
 │  ┌──────────────┐  ┌──────────────┐  ┌────────────────────────┐ │
 │  │  ACE Editor  │  │   Detector   │  │    Output Display      │ │
-│  │  (Code Input)│  │  (DOT/Manim) │  │  (SVG/Video/Canvas)    │ │
+│  │  (Code Input)│  │  (Debounced) │  │  (SVG/Canvas/Frames)   │ │
 │  └──────┬───────┘  └──────┬───────┘  └────────────┬───────────┘ │
 │         │                 │                       │             │
 │         └────────────────┬┴───────────────────────┘             │
 │                          │                                       │
+│  ┌───────────────────────┴───────────────────────────────────┐  │
+│  │                    Service Worker                          │  │
+│  │              (Caching for offline support)                 │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│                          │                                       │
 ├──────────────────────────┼───────────────────────────────────────┤
-│                    Web Workers                                   │
-│  ┌─────────────────────┐   ┌─────────────────────────────────┐  │
-│  │  Graphviz Worker    │   │       Manim/Pyodide Worker      │  │
-│  │  ┌───────────────┐  │   │  ┌─────────────────────────────┐│  │
-│  │  │   viz.js      │  │   │  │   Pyodide (Python WASM)     ││  │
-│  │  │  (Emscripten) │  │   │  │  ┌───────────────────────┐  ││  │
-│  │  └───────────────┘  │   │  │  │  Manim-lite / Subset  │  ││  │
-│  └─────────────────────┘   │  │  └───────────────────────┘  ││  │
-│                            │  └─────────────────────────────┘│  │
-│                            └─────────────────────────────────┘  │
+│                   Single Unified Worker                          │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │  ┌───────────────┐  ┌─────────────────────────────────────┐ ││
+│  │  │   viz.js      │  │   Pyodide (Python WASM)             │ ││
+│  │  │  (Graphviz)   │  │  ┌───────────────────────────────┐  │ ││
+│  │  └───────────────┘  │  │  Manim-lite (Basic Shapes)    │  │ ││
+│  │                     │  └───────────────────────────────┘  │ ││
+│  │                     └─────────────────────────────────────┘ ││
+│  └─────────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -168,45 +183,51 @@ Manim has heavy dependencies that are difficult to run in browser:
 - **FFmpeg** - Video encoding
 - **LaTeX** - Mathematical typesetting (optional)
 
-### Approach Options
+### Decided Approach: Hybrid (Manim-lite with SVG/Canvas backend)
 
-#### Option A: Manim-lite (Subset Implementation)
-Create a simplified Manim-compatible API that outputs SVG/Canvas directly.
+Use Manim's scene graph concepts but replace rendering backend with browser-native SVG/Canvas.
 
-**Pros:**
-- Smaller bundle size
-- Faster initialization
-- More control over browser compatibility
+**Rationale:**
+- Moderate compatibility with reasonable bundle size
+- Leverages browser's native rendering capabilities
+- Avoids dependency on unavailable WASM ports (Cairo/Pango)
 
-**Cons:**
-- Limited feature set
-- Must maintain compatibility layer
-- May not support all Manim scripts
+### MVP Feature Scope (Basic Shapes Only)
 
-#### Option B: Full Pyodide + WASM Libraries
-Attempt to run full Manim with WASM-compiled dependencies.
+| Feature | Included in MVP | Notes |
+|---------|-----------------|-------|
+| Circle | Yes | Core shape |
+| Square | Yes | Core shape |
+| Rectangle | Yes | Core shape |
+| Line | Yes | Core shape |
+| Arrow | Yes | Core shape |
+| Triangle | Yes | Core shape |
+| Polygon | Yes | Core shape |
+| Text | Yes | Browser-native text rendering |
+| MathTex | TBD | Requires LaTeX investigation |
+| Axes/Graphs | No | Future version |
+| 3D Scenes | No | Future version |
+| VGroup | Yes | Basic grouping |
+| Positioning (shift, move_to) | Yes | Essential |
+| Coloring (color, fill_opacity) | Yes | Essential |
+| Create animation | Future v1.0 | Not MVP |
+| FadeIn/FadeOut | Future v1.0 | Not MVP |
+| Transform | Future v1.0 | Not MVP |
 
-**Pros:**
-- Full Manim compatibility
-- No API subset limitations
+### Output Format: Frame-by-Frame
 
-**Cons:**
-- Very large bundle size (100MB+)
-- Cairo/Pango WASM ports may not exist or be unstable
-- FFmpeg WASM is experimental
-- Slow initialization
+Animations will be rendered as individual frames sent to the main thread:
+- Each frame is an SVG or Canvas snapshot
+- Main thread handles frame sequencing and playback
+- Enables seeking, pausing, and frame-by-frame stepping
+- No video encoding required in browser
 
-#### Option C: Hybrid Approach (Recommended)
-Use Manim's scene graph but replace rendering backend with browser-native SVG/Canvas.
+### Error Handling: Explicit Unsupported Feature Errors
 
-**Pros:**
-- Moderate compatibility
-- Reasonable bundle size
-- Leverages browser's native rendering
-
-**Cons:**
-- Requires understanding Manim internals
-- Some features may not translate
+When users try unsupported Manim features:
+- Display clear error message listing the unsupported feature
+- Provide link to supported features documentation
+- Example: "Error: `ThreeDScene` is not supported in ManimOnline. Supported scene types: Scene"
 
 ### Tasks
 
@@ -215,31 +236,41 @@ Use Manim's scene graph but replace rendering backend with browser-native SVG/Ca
    - Evaluate Pyodide-compatible Manim forks
    - Assess Cairo/Pango WASM status
 
-4.2. **Choose implementation approach**
-   - Document decision and rationale
-   - Define feature scope (which Manim features to support)
+4.2. **Investigate LaTeX rendering options** (TBD)
+   - Option A: MathJax integration
+   - Option B: KaTeX integration
+   - Option C: Support only Text, defer MathTex
+   - Evaluate: rendering quality, bundle size, performance
 
-4.3. **Implement Manim worker**
-   - `workers/manim-worker.js`
-   - Load required dependencies
+4.3. **Implement Manim worker (integrated into single worker)**
+   - Add Manim rendering to unified worker
+   - Load Pyodide with minimal bundle
    - Parse Manim Python code
-   - Generate visual output
+   - Generate SVG/Canvas output
 
-4.4. **Define output format**
-   - SVG for static/simple animations
-   - Canvas/WebGL for complex animations
-   - Video blob for full animations (if possible)
+4.4. **Implement frame-by-frame pipeline**
+   - Scene construction from Python AST
+   - Frame generation at target FPS
+   - Transfer frames to main thread via postMessage
+   - Implement frame player in main thread
 
-4.5. **Implement render pipeline**
-   - Scene construction
-   - Animation frame generation
-   - Output encoding/display
+4.5. **Implement unsupported feature detection**
+   - Parse code for unsupported imports/classes
+   - Generate helpful error messages
+   - Link to documentation
+
+4.6. **Implement hard timeout for long renders**
+   - Terminate worker if render exceeds timeout
+   - Display timeout error with suggestion to simplify
+   - Allow user to retry
 
 ### Deliverables
 - [ ] Implementation approach documented
 - [ ] Manim worker processes valid Manim code
 - [ ] Visual output renders in browser
-- [ ] Basic Manim examples work (Circle, Square, Text)
+- [ ] Basic Manim shapes work (Circle, Square, Line, Text)
+- [ ] Unsupported features show clear errors
+- [ ] Hard timeout prevents runaway renders
 
 ---
 
@@ -305,26 +336,27 @@ function detectContentType(code) {
    - Multiple detection strategies
    - Confidence scoring system
 
-5.2. **Add fallback/disambiguation UI**
-   - Show detected type to user
-   - Allow manual override
-   - Remember user preference
+5.2. **Implement automatic type indicator**
+   - Show detected type in UI (no tabs/dropdowns)
+   - Small indicator showing "Graphviz" or "Manim"
+   - Manual override via URL parameter only (`?type=dot` or `?type=manim`)
 
 5.3. **Handle edge cases**
-   - Empty input
-   - Invalid syntax for both
-   - Ambiguous input
-   - Mixed content (comments in wrong language)
+   - Empty input → Show default sample (Manim)
+   - Invalid syntax for both → Attempt render, show error
+   - Ambiguous input → Use confidence scoring, show indicator
+   - Mixed content → Use highest confidence match
 
-5.4. **Integrate with editor**
-   - Real-time detection as user types
-   - Debounce detection (avoid excessive computation)
-   - Update UI indicator
+5.4. **Integrate with editor (debounced)**
+   - Debounce detection to avoid excessive computation
+   - Detection runs after user stops typing
+   - Update UI indicator when detection completes
+   - Trigger auto-render after detection
 
 ### Deliverables
 - [ ] Detection module correctly identifies DOT vs Manim
-- [ ] UI shows detected type
-- [ ] Manual override works
+- [ ] UI shows detected type (automatic indicator)
+- [ ] Debouncing works correctly
 - [ ] Edge cases handled gracefully
 
 ---
@@ -334,47 +366,83 @@ function detectContentType(code) {
 ### Goal
 Create a seamless experience that routes code to the appropriate renderer.
 
+### Default Content: Sample Manim Scene
+
+When the page loads with no URL parameters, display a sample Manim scene:
+
+```python
+from manim import *
+
+class HelloWorld(Scene):
+    def construct(self):
+        circle = Circle(color=BLUE)
+        square = Square(color=RED).shift(RIGHT * 2)
+        self.add(circle, square)
+```
+
+This showcases Manim capabilities and encourages exploration of the primary new feature.
+
+### Rendering: Automatic with Debounce
+
+- Rendering triggers automatically after debounce period
+- No manual "Render" button required for normal use
+- Stop/cancel button available for long-running renders
+- Hard timeout terminates runaway renders
+
 ### Tasks
 
-6.1. **Create unified worker manager**
-   - `src/worker-manager.js`
-   - Manages both Graphviz and Manim workers
-   - Routes code based on detection
+6.1. **Create unified worker (single worker architecture)**
+   - `src/unified-worker.js`
+   - Contains both viz.js and Pyodide
+   - Routes code based on detection result
+   - Lazy-loads Pyodide only when Manim detected
 
-6.2. **Implement output display**
+6.2. **Implement service worker for offline support** (Core Requirement)
+   - `sw.js` - Service worker file
+   - Cache all static assets on first load
+   - Cache Pyodide files after first use
+   - Enable full offline functionality after initial load
+   - Handle cache invalidation on updates
+
+6.3. **Implement output display**
    - Common output area for both renderers
-   - SVG display with pan-zoom
-   - Canvas/video display for animations
-   - Error display panel
+   - SVG display with pan-zoom (for Graphviz and static Manim)
+   - Frame player for Manim animations (play/pause/seek)
+   - Error display panel with helpful messages
 
-6.3. **Add render controls**
-   - Render button (or auto-render on change)
-   - Stop/cancel rendering
-   - Quality/speed settings (for Manim)
+6.4. **Implement automatic rendering**
+   - Debounced trigger after typing stops
+   - Cancel previous render if new input received
+   - Show rendering indicator during processing
+   - Display result when complete
 
-6.4. **Implement URL sharing**
+6.5. **Implement URL sharing**
    - Encode code in URL (gzip + base64)
    - Support loading from GitHub Gist
    - Support `?url=` parameter for remote files
-   - Add `?type=` parameter for explicit type
+   - Add `?type=` parameter for explicit type override
 
-6.5. **Add export options**
+6.6. **Add export options**
    - Download SVG
    - Download PNG
-   - Download video (for Manim animations)
+   - Download GIF (for Manim animations)
    - Copy embed code
 
-6.6. **Implement examples gallery**
+6.7. **Implement examples gallery**
    - Pre-built Graphviz examples
    - Pre-built Manim examples
    - Easy loading into editor
+   - Clear indication of which type each example is
 
 ### Deliverables
-- [ ] Both renderers accessible through unified UI
+- [ ] Both renderers accessible through unified worker
+- [ ] Service worker enables offline use
 - [ ] Auto-detection routes to correct renderer
+- [ ] Automatic rendering with debounce works
 - [ ] URL sharing works for both types
 - [ ] Export options available
 - [ ] Examples gallery implemented
+- [ ] Default Manim sample loads on empty page
 
 ---
 
@@ -496,87 +564,99 @@ Create a seamless experience that routes code to the appropriate renderer.
 | SEC-006 | Memory exhaustion | `[0] * 10**9` | Blocked/error |
 | SEC-007 | URL injection | `?url=javascript:alert(1)` | Blocked |
 
+#### Service Worker / Offline Tests
+
+| Test ID | Description | Steps | Expected |
+|---------|-------------|-------|----------|
+| SW-001 | Service worker registers | Load page first time | SW registered in browser |
+| SW-002 | Static assets cached | Load page, check cache | HTML, JS, CSS cached |
+| SW-003 | Graphviz works offline | Load, go offline, render DOT | SVG renders |
+| SW-004 | Pyodide cached after use | Render Manim, check cache | Pyodide files cached |
+| SW-005 | Manim works offline | Load, render Manim, go offline, re-render | Still works |
+| SW-006 | Cache invalidation | Deploy update, reload | New version loads |
+| SW-007 | First load offline | Clear cache, go offline, load | Appropriate error/fallback |
+| SW-008 | Partial cache offline | Only HTML cached, go offline | Graceful degradation |
+
+#### Timeout Tests
+
+| Test ID | Description | Input | Expected |
+|---------|-------------|-------|----------|
+| TO-001 | Render completes before timeout | Simple scene | Success |
+| TO-002 | Render exceeds timeout | `while True: pass` | Timeout error displayed |
+| TO-003 | Complex scene near timeout | Many objects | Completes or clear timeout |
+| TO-004 | Timeout shows helpful message | Long render | "Render timed out. Try simplifying your scene." |
+| TO-005 | Cancel stops render | Click cancel during render | Render stops, no output |
+
+#### Debounce Tests
+
+| Test ID | Description | Steps | Expected |
+|---------|-------------|-------|----------|
+| DB-001 | Single character no render | Type one char, wait | No render triggered immediately |
+| DB-002 | Pause triggers render | Type, pause for debounce period | Render triggers |
+| DB-003 | Continuous typing delays | Type continuously | No render until pause |
+| DB-004 | Rapid edits single render | Make 10 quick edits | Only one render after pause |
+| DB-005 | Detection updates on pause | Type DOT, pause, check indicator | Shows "Graphviz" |
+
+---
+
+## Resolved Decisions
+
+The following questions have been resolved:
+
+| # | Question | Decision | Rationale |
+|---|----------|----------|-----------|
+| 1 | Single or separate workers? | **Single worker** | Simpler communication, unified message handling |
+| 2 | Frame-by-frame or video blob? | **Frame-by-frame** | More control, seekable, no video encoding needed |
+| 3 | Detection timing? | **Debounced** | Better performance, acceptable UI delay |
+| 4 | Manim feature scope for MVP? | **Basic shapes only** | Circle, Square, Line, Text, etc. (see Phase 4) |
+| 5 | LaTeX rendering? | **TBD - investigate separately** | Need to evaluate MathJax vs KaTeX vs defer |
+| 6 | Unsupported feature handling? | **Show error listing feature** | Clear feedback helps users understand limitations |
+| 7 | Default content? | **Sample Manim scene** | Showcases primary new feature |
+| 8 | Type indicator UI? | **Automatic indicator only** | No tabs/dropdowns, just show detected type |
+| 9 | Rendering trigger? | **Automatic** | Better UX for quick iteration |
+| 10 | Pyodide bundle size? | **Minimal (~10-15MB)** | numpy inclusion TBD |
+| 11 | Offline support? | **Yes - core requirement** | Service workers required |
+| 12 | Long render handling? | **Hard timeout** | Specific value TBD |
+| 13 | Backend needed? | **No - pure static site** | Simpler deployment |
+| 14 | Custom packages? | **Not now, maybe later** | Keep initial scope minimal |
+
 ---
 
 ## Open Questions
 
-### Architecture Questions
+### Followup Questions Requiring Resolution
 
-1. **Q: Should we use a single web worker for both Pyodide/Manim or separate workers?**
-   - Single worker: Simpler communication, but larger memory footprint always loaded
-   - Separate workers: Load Pyodide only when needed, but more complex management
+1. **Q: What should the hard timeout value be for Manim renders?**
+   - Options: 30 seconds, 60 seconds, 120 seconds
+   - Consideration: Balance between allowing complex scenes and preventing runaway processes
+   - Recommendation needed
 
-2. **Q: How do we handle Manim animations - frame-by-frame or video blob?**
-   - Frame-by-frame: More control, seekable, but larger transfer overhead
-   - Video blob: Native playback, but requires video encoding in browser
+2. **Q: What debounce interval should we use for detection/rendering?**
+   - Options: 300ms, 500ms, 1000ms
+   - Consideration: Balance between responsiveness and avoiding excessive re-renders
+   - Recommendation needed
 
-3. **Q: Should detection happen on every keystroke or with debouncing?**
-   - Every keystroke: Immediate feedback, but CPU intensive
-   - Debounced: Better performance, but slight delay in UI update
+3. **Q: Does Manim's basic shapes implementation require numpy?**
+   - If yes: Include numpy in minimal Pyodide bundle (~adds 5-10MB)
+   - If no: Keep bundle smaller without numpy
+   - Investigation needed: Check Manim source for numpy dependencies in basic shapes
 
-### Manim Compatibility Questions
+4. **Q: Which LaTeX rendering approach should we use for MathTex?**
+   - Option A: **MathJax** - More complete LaTeX support, larger bundle (~1MB)
+   - Option B: **KaTeX** - Faster, smaller (~300KB), but less LaTeX coverage
+   - Option C: **Defer to v1.0** - Support only Text in MVP, add MathTex later
+   - Investigation needed: Evaluate quality, size, performance
 
-4. **Q: Which subset of Manim features should we support in v1?**
-   - Basic shapes (Circle, Square, Line, etc.)?
-   - Text and MathTex?
-   - Animations (Create, FadeIn, Transform)?
-   - 3D scenes?
-   - Graphing/Axes?
+5. **Q: What should happen when the page is loaded offline without cached data?**
+   - Option A: Show error "Please connect to internet for first load"
+   - Option B: Show degraded UI with Graphviz only (smaller, can be bundled)
+   - Option C: Bundle minimal examples that work offline
+   - Decision needed
 
-5. **Q: How do we handle LaTeX rendering without a LaTeX installation?**
-   - Use MathJax/KaTeX for browser-based math rendering?
-   - Support only Text, not MathTex?
-   - Pre-render common LaTeX expressions?
-
-6. **Q: What happens when users try unsupported Manim features?**
-   - Show error listing unsupported feature?
-   - Silently skip unsupported features?
-   - Provide alternative implementation suggestion?
-
-### User Experience Questions
-
-7. **Q: What should the default content be when the page loads?**
-   - Empty editor?
-   - Sample Graphviz diagram?
-   - Sample Manim scene?
-   - Both as selectable templates?
-
-8. **Q: How should we indicate which renderer is active?**
-   - Tab interface (Graphviz | Manim)?
-   - Dropdown selector?
-   - Automatic indicator only?
-
-9. **Q: Should rendering be automatic or require a button press?**
-   - Automatic: Better UX for quick iteration, but resource intensive
-   - Manual: User-controlled, but more clicks
-   - Hybrid: Auto for small inputs, manual for large?
-
-### Technical Questions
-
-10. **Q: How large can we allow the Pyodide bundle to be?**
-    - Full Pyodide + numpy/scipy: ~50-100MB
-    - Minimal Pyodide: ~10-15MB
-    - What's acceptable for users?
-
-11. **Q: Should we support service workers for offline use?**
-    - Would enable offline editing after first load
-    - Adds complexity to caching strategy
-
-12. **Q: How do we handle very long-running Manim renders?**
-    - Hard timeout (30s, 60s)?
-    - User-configurable timeout?
-    - Progress indicator with cancel option?
-
-### Deployment Questions
-
-13. **Q: Do we need a backend for any features?**
-    - Pure static site?
-    - Backend for Gist proxying (CORS)?
-    - Backend for pre-compilation?
-
-14. **Q: Should we support custom Pyodide packages?**
-    - User could import numpy, matplotlib, etc.
-    - Increases bundle size and complexity
+6. **Q: Should we support both `?presentation` mode for Graphviz AND Manim?**
+   - Original GraphvizOnline has presentation mode (hides editor)
+   - Should this work for Manim animations too?
+   - If yes, should Manim auto-play in presentation mode?
 
 ---
 
@@ -623,15 +703,23 @@ Create a seamless experience that routes code to the appropriate renderer.
 
 ### Manim Dependencies (to evaluate)
 
-| Dependency | Required For | WASM Status | Notes |
-|------------|--------------|-------------|-------|
-| numpy | Array operations | Available in Pyodide | Required |
-| scipy | Some animations | Available in Pyodide | Optional |
-| Pillow | Image handling | Available in Pyodide | May be needed |
-| cairo | Rendering | Not available | Need alternative |
-| pango | Text rendering | Not available | Need alternative |
-| ffmpeg | Video encoding | Experimental WASM | Alternative needed |
-| LaTeX | Math typesetting | Not available | Use KaTeX/MathJax |
+| Dependency | Required For | WASM Status | Decision |
+|------------|--------------|-------------|----------|
+| numpy | Array operations | Available in Pyodide | **TBD** - investigate if basic shapes need it |
+| scipy | Some animations | Available in Pyodide | Not for MVP |
+| Pillow | Image handling | Available in Pyodide | Not for MVP |
+| cairo | Rendering | Not available | Replace with SVG/Canvas |
+| pango | Text rendering | Not available | Replace with browser text |
+| ffmpeg | Video encoding | Experimental WASM | Not needed (frame-by-frame) |
+| LaTeX | Math typesetting | Not available | **TBD** - KaTeX vs MathJax vs defer |
+
+### LaTeX Rendering Options (To Be Investigated)
+
+| Option | Bundle Size | LaTeX Coverage | Performance | Notes |
+|--------|-------------|----------------|-------------|-------|
+| MathJax 3 | ~1MB | Excellent | Slower | Full LaTeX, async rendering |
+| KaTeX | ~300KB | Good | Fast | Limited macros, sync rendering |
+| Defer | 0 | N/A | N/A | MVP has Text only, no MathTex |
 
 ---
 
@@ -691,3 +779,4 @@ Create a seamless experience that routes code to the appropriate renderer.
 | Version | Date | Changes |
 |---------|------|---------|
 | 0.1 | 2026-01-18 | Initial draft |
+| 0.2 | 2026-01-18 | Resolved 14 architectural decisions; added service worker, timeout, and debounce tests; refined open questions to 6 followup items requiring investigation |
