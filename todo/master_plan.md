@@ -28,10 +28,12 @@ Create a web-based editor similar to [GraphvizOnline](https://dreampuf.github.io
 |----------|--------|-----------|
 | Worker Architecture | **Single worker** | Simpler communication, unified message handling |
 | Animation Output | **Frame-by-frame** | More control, seekable, no video encoding needed |
-| Detection Timing | **Debounced** | Better performance, acceptable UI delay |
+| Detection Timing | **Debounced (1 second)** | Better performance, acceptable UI delay |
 | Rendering Trigger | **Automatic** | Better UX for quick iteration |
 | Offline Support | **Service workers (required)** | Core requirement for offline editing |
 | Backend | **Pure static site** | Simpler deployment, no server costs |
+| Hard Timeout | **90 seconds** | Balance between complex scenes and runaway prevention |
+| First Load Offline | **Show error message** | Clear communication, requires internet for first load |
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -607,56 +609,35 @@ The following questions have been resolved:
 |---|----------|----------|-----------|
 | 1 | Single or separate workers? | **Single worker** | Simpler communication, unified message handling |
 | 2 | Frame-by-frame or video blob? | **Frame-by-frame** | More control, seekable, no video encoding needed |
-| 3 | Detection timing? | **Debounced** | Better performance, acceptable UI delay |
+| 3 | Detection timing? | **Debounced (1 second)** | Better performance, acceptable UI delay |
 | 4 | Manim feature scope for MVP? | **Basic shapes only** | Circle, Square, Line, Text, etc. (see Phase 4) |
-| 5 | LaTeX rendering? | **TBD - investigate separately** | Need to evaluate MathJax vs KaTeX vs defer |
+| 5 | LaTeX rendering? | **Separate investigation** | See [manim_latex_questions.md](./manim_latex_questions.md) |
 | 6 | Unsupported feature handling? | **Show error listing feature** | Clear feedback helps users understand limitations |
 | 7 | Default content? | **Sample Manim scene** | Showcases primary new feature |
 | 8 | Type indicator UI? | **Automatic indicator only** | No tabs/dropdowns, just show detected type |
 | 9 | Rendering trigger? | **Automatic** | Better UX for quick iteration |
-| 10 | Pyodide bundle size? | **Minimal (~10-15MB)** | numpy inclusion TBD |
+| 10 | Pyodide bundle size? | **Minimal (~10-15MB)** | numpy - see [manim_numpy_questions.md](./manim_numpy_questions.md) |
 | 11 | Offline support? | **Yes - core requirement** | Service workers required |
-| 12 | Long render handling? | **Hard timeout** | Specific value TBD |
+| 12 | Long render handling? | **Hard timeout (90 seconds)** | Balance between complex scenes and runaway prevention |
 | 13 | Backend needed? | **No - pure static site** | Simpler deployment |
 | 14 | Custom packages? | **Not now, maybe later** | Keep initial scope minimal |
+| 15 | First load offline behavior? | **Show error message** | "Please connect to internet for first load" |
+| 16 | Presentation mode for Manim? | **Not now, maybe later** | Keep initial scope minimal |
 
 ---
 
 ## Open Questions
 
-### Followup Questions Requiring Resolution
+**All architectural questions have been resolved.** Two items require separate investigation:
 
-1. **Q: What should the hard timeout value be for Manim renders?**
-   - Options: 30 seconds, 60 seconds, 120 seconds
-   - Consideration: Balance between allowing complex scenes and preventing runaway processes
-   - Recommendation needed
+### Separate Investigation Files
 
-2. **Q: What debounce interval should we use for detection/rendering?**
-   - Options: 300ms, 500ms, 1000ms
-   - Consideration: Balance between responsiveness and avoiding excessive re-renders
-   - Recommendation needed
+| Topic | File | Status |
+|-------|------|--------|
+| numpy dependency for basic shapes | [manim_numpy_questions.md](./manim_numpy_questions.md) | To be investigated |
+| LaTeX rendering approach | [manim_latex_questions.md](./manim_latex_questions.md) | To be investigated |
 
-3. **Q: Does Manim's basic shapes implementation require numpy?**
-   - If yes: Include numpy in minimal Pyodide bundle (~adds 5-10MB)
-   - If no: Keep bundle smaller without numpy
-   - Investigation needed: Check Manim source for numpy dependencies in basic shapes
-
-4. **Q: Which LaTeX rendering approach should we use for MathTex?**
-   - Option A: **MathJax** - More complete LaTeX support, larger bundle (~1MB)
-   - Option B: **KaTeX** - Faster, smaller (~300KB), but less LaTeX coverage
-   - Option C: **Defer to v1.0** - Support only Text in MVP, add MathTex later
-   - Investigation needed: Evaluate quality, size, performance
-
-5. **Q: What should happen when the page is loaded offline without cached data?**
-   - Option A: Show error "Please connect to internet for first load"
-   - Option B: Show degraded UI with Graphviz only (smaller, can be bundled)
-   - Option C: Bundle minimal examples that work offline
-   - Decision needed
-
-6. **Q: Should we support both `?presentation` mode for Graphviz AND Manim?**
-   - Original GraphvizOnline has presentation mode (hides editor)
-   - Should this work for Manim animations too?
-   - If yes, should Manim auto-play in presentation mode?
+These investigations should be completed before Phase 4 implementation begins.
 
 ---
 
@@ -779,4 +760,5 @@ The following questions have been resolved:
 | Version | Date | Changes |
 |---------|------|---------|
 | 0.1 | 2026-01-18 | Initial draft |
-| 0.2 | 2026-01-18 | Resolved 14 architectural decisions; added service worker, timeout, and debounce tests; refined open questions to 6 followup items requiring investigation |
+| 0.2 | 2026-01-18 | Resolved 14 architectural decisions; added service worker, timeout, and debounce tests; refined open questions to 6 followup items |
+| 0.3 | 2026-01-18 | Resolved all remaining questions: timeout=90s, debounce=1s, offline first-load=error, presentation mode=deferred; created separate investigation files for numpy and LaTeX |
