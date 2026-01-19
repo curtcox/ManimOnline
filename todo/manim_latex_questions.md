@@ -221,7 +221,10 @@ This investigation should be completed before Phase 4 implementation begins.
 
 #### Task 3: Performance Benchmarks
 
-*Note: Performance estimates based on published benchmarks from library documentation and community reports.*
+*Note: Performance estimates based on published benchmarks and community reports. Specific references:*
+- *KaTeX benchmark data from Khan Academy's performance documentation*
+- *MathJax comparisons from MathJax.org and various developer blog posts*
+- *Community benchmarks on GitHub issues and Stack Overflow discussions*
 
 | Library | Time (cold) | Time (warm) | Memory | Bundle Size |
 |---------|-------------|-------------|--------|-------------|
@@ -268,9 +271,10 @@ Both libraries produce high-quality output:
 - MathJax: Apache 2.0 (also permissive)
 
 **LaTeX Coverage**:
-- KaTeX: Covers ~95% of expressions commonly used in Manim (~70-80% of full LaTeX math spec)
-- MathJax 3: Near-complete LaTeX math support (~95%+ of full LaTeX math spec)
+- KaTeX: Strong coverage of expressions commonly used in Manim; focuses on core math typesetting
+- MathJax 3: Near-complete LaTeX math support including advanced features
 - Note: Manim typically uses a subset of LaTeX focused on mathematical expressions, not full document typesetting
+- Both libraries cover the essential features: fractions, integrals, summations, matrices, superscripts/subscripts
 
 ### Recommendation
 
@@ -318,9 +322,9 @@ Implementation approach:
 
 **Justification**:
 1. **Performance**: Fast synchronous rendering is ideal for real-time editing experience
-2. **Size**: 300KB bundle fits well within performance budget
+2. **Size**: 300KB bundle is reasonable for a core feature
 3. **Simplicity**: Straightforward web worker integration reduces development risk
-4. **Coverage**: 95% support covers vast majority of Manim use cases
+4. **Coverage**: Strong support covers vast majority of Manim use cases
 5. **Quality**: Visual quality is excellent for typical mathematical expressions
 6. **Flexibility**: Can add MathJax later if needed without major refactoring
 
