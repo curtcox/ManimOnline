@@ -204,7 +204,7 @@ This investigation should be completed before Phase 4 implementation begins.
 | `\int_0^1 x dx` | ✅ Yes | Integrals and limits fully supported |
 | `\sum_{i=1}^n` | ✅ Yes | Summations with subscripts/superscripts work |
 | `\sqrt{x}` | ✅ Yes | Square roots and nth roots supported |
-| `\matrix` | ⚠️ Partial | `\begin{matrix}` works, but some matrix environments limited |
+| `\matrix` | ⚠️ Partial | Basic matrices work (`matrix`, `pmatrix`, `bmatrix`); some advanced features limited |
 | `\begin{align}` | ❌ No | Alignment environments not supported (use `aligned` instead) |
 | Custom macros | ⚠️ Limited | Basic `\newcommand` supported via JS config, not in LaTeX |
 
@@ -221,7 +221,7 @@ This investigation should be completed before Phase 4 implementation begins.
 
 #### Task 3: Performance Benchmarks
 
-Based on published benchmarks and library characteristics:
+*Note: Performance estimates based on published benchmarks from library documentation and community reports.*
 
 | Library | Time (cold) | Time (warm) | Memory | Bundle Size |
 |---------|-------------|-------------|--------|-------------|
@@ -268,8 +268,9 @@ Both libraries produce high-quality output:
 - MathJax: Apache 2.0 (also permissive)
 
 **LaTeX Coverage**:
-- KaTeX: Focuses on most commonly used LaTeX commands (~70-80% of full LaTeX math)
-- MathJax 3: Near-complete LaTeX math support (~95%+ of LaTeX math)
+- KaTeX: Covers ~95% of expressions commonly used in Manim (~70-80% of full LaTeX math spec)
+- MathJax 3: Near-complete LaTeX math support (~95%+ of full LaTeX math spec)
+- Note: Manim typically uses a subset of LaTeX focused on mathematical expressions, not full document typesetting
 
 ### Recommendation
 
