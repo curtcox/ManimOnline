@@ -205,7 +205,7 @@ This investigation should be completed before Phase 4 implementation begins.
 | `\sum_{i=1}^n` | ✅ Yes | Summations with subscripts/superscripts work |
 | `\sqrt{x}` | ✅ Yes | Square roots and nth roots supported |
 | `\matrix` | ⚠️ Partial | Basic matrices work (`matrix`, `pmatrix`, `bmatrix`); some advanced features limited |
-| `\begin{align}` | ❌ No | Alignment environments not supported (use `aligned` instead) |
+| `\begin{align}` | ❌ No | Alignment environments not supported (workaround: use `\begin{aligned}...\end{aligned}` inside `$$`) |
 | Custom macros | ⚠️ Limited | Basic `\newcommand` supported via JS config, not in LaTeX |
 
 **Summary**: KaTeX covers ~95% of common Manim math expressions. Main limitation is alignment environments (`align`, `align*`), which require workarounds using `aligned` within equation environments.
@@ -221,15 +221,19 @@ This investigation should be completed before Phase 4 implementation begins.
 
 #### Task 3: Performance Benchmarks
 
-*Note: Performance estimates based on published benchmarks and community reports. Specific references:*
-- *KaTeX benchmark data from Khan Academy's performance documentation*
-- *MathJax comparisons from MathJax.org and various developer blog posts*
-- *Community benchmarks on GitHub issues and Stack Overflow discussions*
+*Note: Performance estimates based on publicly available sources:*
+- *KaTeX GitHub repository performance documentation and issues*
+- *MathJax.org documentation and performance guides*
+- *Stack Overflow community benchmarks comparing both libraries*
+- *Independent developer blog posts comparing LaTeX rendering libraries*
+- *Note: Actual performance varies by expression complexity and browser*
 
 | Library | Time (cold) | Time (warm) | Memory | Bundle Size |
 |---------|-------------|-------------|--------|-------------|
-| MathJax 3 | ~200-500ms | ~50-100ms | ~3-5MB | ~1MB (full) |
+| MathJax 3 | ~200-500ms* | ~50-100ms | ~3-5MB | ~1MB (full) |
 | KaTeX | ~10-20ms | ~5-10ms | ~500KB | ~300KB |
+
+*\*Range varies based on expression complexity and browser; simple expressions closer to lower bound, complex multi-line expressions closer to upper bound*
 
 **Summary**: KaTeX is approximately 10-20x faster than MathJax for typical expressions. For ManimOnline's use case with potentially many math expressions per scene, this performance difference is significant.
 
