@@ -1,4 +1,4 @@
-# ManimOnline
+# [ManimOnline](https://curtcox.github.io/ManimOnline)
 
 A web-based editor that supports both Graphviz DOT language diagrams and Manim Python animations, with automatic detection and appropriate rendering.
 
