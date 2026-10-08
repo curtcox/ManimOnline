@@ -24,8 +24,9 @@ has been asked of the user; do not silently equate the current subset with eithe
 Sequential and repeated-object animation now has Succession frame tests covering
 stage starts, relative operations, replacement, removal, nested groups, checkpoints,
 and terminal holds. Browser gallery playback verified accumulated rotation and
-final removal, plus Graphviz after switching. Broader layering/family cases remain
-acceptance work.
+final removal, plus Graphviz after switching. Global numeric depth ordering now has Python/SVG tests and real Pyodide browser
+checks across transformed groups, including animated crossings and restoration.
+Foreground APIs and broader family composition remain implementation work.
 
 Full Community parity additionally requires geometry/path morphing, full scene-family
 composition and layering, camera configuration, glyph-level text/TeX

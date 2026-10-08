@@ -141,3 +141,38 @@ test('groups preserve scalable creation dashes on their children', () => {
   assert.equal(group.children[0].getAttribute('vector-effect'), 'none');
   assert.equal(group.children[1].getAttribute('vector-effect'), 'non-scaling-stroke');
 });
+
+
+test('z_index orders leaves across nested groups and keeps ancestor geometry and opacity', () => {
+  const circle = { type: 'circle', color: '#0000FF', z_index: -2, position: [1, 0, 0] };
+  const square = { type: 'square', color: '#FF0000', z_index: 2 };
+  const group = { type: 'vgroup', position: [2, 1, 0], angle: Math.PI / 2, geometry_scale: 2,
+    opacity: 0.5, children: [{ type: 'vgroup', position: [0, 3, 0], children: [square, circle] }] };
+  const external = { type: 'triangle', color: '#00FF00', z_index: 0 };
+  const scene = { mobjects: [group, external] };
+  const before = JSON.stringify(scene);
+  const layers = renderer.render(scene).children[0].children;
+  assert.equal(layers.length, 3);
+  assert.equal(layers[0].children[0].children[0].tag, 'circle');
+  assert.equal(layers[1].tag, 'polygon');
+  assert.equal(layers[2].children[0].children[0].tag, 'rect');
+  for (const index of [0, 2]) {
+    assert.match(layers[index].getAttribute('transform'), /translate\(100, 50\).*rotate\(90\) scale\(2\)/);
+    assert.equal(layers[index].getAttribute('opacity'), '0.5');
+    assert.match(layers[index].children[0].getAttribute('transform'), /translate\(0, 150\)/);
+  }
+  assert.equal(JSON.stringify(scene), before);
+});
+
+test('equal depth keeps scene/family order and changing depth changes paint order', () => {
+  const a = { type: 'circle', color: '#0000FF' };
+  const b = { type: 'square', color: '#FF0000', z_index: 0 };
+  const c = { type: 'triangle', color: '#00FF00', z_index: 0 };
+  const scene = { mobjects: [{ type: 'vgroup', children: [a, b] }, c] };
+  const tags = () => renderer.render(scene).children[0].children.map(el => el.tag === 'g' ? el.children[0].tag : el.tag);
+  assert.deepEqual(tags(), ['circle', 'rect', 'polygon']);
+  a.z_index = 1;
+  assert.deepEqual(tags(), ['rect', 'polygon', 'circle']);
+  a.z_index = -1;
+  assert.deepEqual(tags(), ['circle', 'rect', 'polygon']);
+});

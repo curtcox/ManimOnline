@@ -29,14 +29,26 @@ const ManimRenderer = {
     mainGroup.setAttribute('transform', `translate(${this.CANVAS_WIDTH / 2}, ${this.CANVAS_HEIGHT / 2}) scale(1, -1)`);
     svg.appendChild(mainGroup);
 
-    // Render all mobjects
-    if (sceneData.mobjects) {
-      for (const mobject of sceneData.mobjects) {
-        const element = this.renderMobject(mobject, mathGlyphs);
-        if (element) {
-          mainGroup.appendChild(element);
+    // Sort drawable leaves globally, keeping each leaf's ancestor transforms.
+    // A child can sit behind or in front of a shape outside its VGroup.
+    const layers = [];
+    const collect = (mobject, ancestors = []) => {
+      if (mobject.type === 'vgroup') {
+        for (const child of mobject.children || []) collect(child, [...ancestors, mobject]);
+      } else {
+        let branch = mobject;
+        for (let i = ancestors.length - 1; i >= 0; i--) {
+          branch = { ...ancestors[i], children: [branch] };
         }
+        layers.push({ branch, z: mobject.z_index ?? 0 });
       }
+    };
+    for (const mobject of sceneData.mobjects || []) collect(mobject);
+    // Stable sorting preserves scene/family order for equal z_index values.
+    layers.sort((a, b) => a.z - b.z);
+    for (const { branch } of layers) {
+      const element = this.renderMobject(branch, mathGlyphs);
+      if (element) mainGroup.appendChild(element);
     }
 
     return svg;

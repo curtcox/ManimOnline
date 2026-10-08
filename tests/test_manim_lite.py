@@ -16,6 +16,42 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_layer_gallery_preserves_geometry_and_restores_individual_depths(self):
+        result = json.loads(lite.render_scene((ROOT / 'examples/layer_scene.py').read_text()))
+        self.assertEqual(result['duration'], 7)
+        for index, depths in ((0, [-2, 2]), (45, [-3, -3]), (105, [-2, 2])):
+            group = result['frames'][index]['mobjects'][0]
+            self.assertEqual([c['z_index'] for c in group['children']], depths)
+            self.assertEqual(group['geometry_scale'], 1.2)
+            self.assertEqual(group['position'], [0, 0.2, 0])
+
+    def test_z_index_constructor_family_and_validation(self):
+        child = lite.Circle(z_index=-2)
+        inner = lite.VGroup(child)
+        group = lite.VGroup(inner, lite.Square())
+        self.assertIs(group.set_z_index(3), group)
+        self.assertEqual([group.z_index, inner.z_index, child.z_index, group.children[1].z_index], [3]*4)
+        group.set_z_index(-1, family=False)
+        self.assertEqual(group.z_index, -1)
+        self.assertEqual(child.z_index, 3)
+        for value in (float('nan'), float('inf'), 'front', None):
+            with self.assertRaisesRegex(ValueError, 'finite number'):
+                child.set_z_index(value)
+        self.assertEqual(child.z_index, 3)
+
+    def test_animated_z_index_crosses_other_objects_and_restores_checkpoint(self):
+        result = render('a = Circle(z_index=-2).save_state()\nb = Square()\nself.add(a, b)\nself.play(a.animate.set_z_index(2), run_time=2, rate_func=linear)\nself.play(Restore(a), run_time=2, rate_func=linear)')
+        for index, z in ((0, -2), (15, 0), (30, 2), (45, 0), (60, -2)):
+            self.assertEqual(result['frames'][index]['mobjects'][0]['z_index'], z)
+            self.assertEqual(result['frames'][index]['mobjects'][1]['z_index'], 0)
+
+    def test_z_index_group_animation_and_copy_keep_independent_depth(self):
+        result = render('g = VGroup(Circle(z_index=-3), Square(z_index=4))\nc = g.copy().set_z_index(7)\nself.add(g, c)\nself.play(g.animate.set_z_index(1), rate_func=linear)')
+        self.assertEqual([c['z_index'] for c in result['frames'][0]['mobjects'][0]['children']], [-3, 4])
+        self.assertEqual([c['z_index'] for c in result['frames'][7]['mobjects'][0]['children']], [-3 + 4*7/15, 4 - 3*7/15])
+        self.assertEqual([c['z_index'] for c in result['frames'][-1]['mobjects'][0]['children']], [1, 1])
+        self.assertEqual([c['z_index'] for c in result['frames'][-1]['mobjects'][1]['children']], [7, 7])
+
     def test_succession_repeated_rotations_start_from_prior_terminal_geometry(self):
         result = render('s = Square()\nself.play(Succession(Rotate(s, PI / 2, run_time=2, rate_func=linear), Rotate(s, PI / 2, run_time=2, rate_func=linear)))')
         self.assertEqual(result['duration'], 4)

@@ -72,6 +72,7 @@ Then open `http://localhost:8000` in your browser.
 - [Path scene](examples/path_scene.py): motion along transformed circles, polygon outlines, and lines.
 - [Arc scene](examples/arc_scene.py): open circular paths and clockwise/counterclockwise motion.
 - [Growth scene](examples/growth_scene.py): growth from a point, group growth, and staggered shrinking.
+- [Layer scene](examples/layer_scene.py): animated depth changes across transformed groups.
 - [Style scene](examples/style_scene.py): independent fill/outline colors and group opacity changes.
 - [Restore scene](examples/restore_scene.py): saved geometry/styles, animated restoration, and recovery from zero size.
 - [Indicate scene](examples/indicate_scene.py): temporary highlights and staggered emphasis.
@@ -283,6 +284,17 @@ PNG includes those paths and the browser's rendered text.
 Full LaTeX documents, 3D, updaters, full NumPy integration, and MP4 export
 are not implemented. The broader examples directory includes APIs
 outside this subset. Unsupported operations report Python errors.
+
+Objects accept a finite numeric `z_index` (default 0). `set_z_index(value,
+family=True)` applies it to the object and its descendants; `family=False`
+changes only the object's own value. Drawable shapes are sorted across all group
+boundaries by increasing depth, so higher values appear in front. Equal depths
+keep scene/family insertion order. Group containers have no drawable geometry;
+changing only a container's depth does not change its children. Animated depth
+changes, copies, transforms, and Restore preserve these values. SVG/PNG snapshots
+use the same paint order as the displayed frame. This follows the
+[Manim depth-setting API](https://docs.manim.community/en/stable/reference/manim.mobject.mobject.Mobject.html#manim.mobject.mobject.Mobject.set_z_index).
+Foreground-object APIs and scene-family restructuring remain unsupported.
 
 ## Offline use
 

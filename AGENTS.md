@@ -37,7 +37,8 @@ compatibility layer, not a server running full Manim Community.
 18. `examples/connector_scene.py` for transformed endpoint queries and animated connectors.
 19. `examples/math_scene.py` for formula rendering and changed-formula crossfades.
 20. `examples/succession_scene.py` for consecutive repeated-object animations and cleanup.
-21. `todo/master_plan.md` and the other `todo/` documents for background plans.
+21. `examples/layer_scene.py` for global depth ordering across transformed groups.
+22. `todo/master_plan.md` and the other `todo/` documents for background plans.
     `docs/completion.md` tracks the remaining acceptance gates.
 
 `ace/`, `viz-global.js`, and `svg-pan-zoom.min.js` are vendored dependencies.

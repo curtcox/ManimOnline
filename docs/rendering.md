@@ -24,6 +24,24 @@ The established direction in `todo/master_plan.md` is in-browser execution and
 frame playback. Full native Manim in WebAssembly has not been demonstrated.
 Manim-lite is a compatibility subset, not the Manim Community engine.
 
+## Depth ordering
+
+Mobjects accept `z_index` and `set_z_index(value, family=True)`, including animated
+changes. Values must be finite numbers; higher depths draw later. Family setters
+recurse, while family=False affects only the selected object. Copy/checkpoint and
+transform sampling retain depth. Renderer collection sorts drawable leaves
+stably across group boundaries, reconstructing each leaf's ancestor transforms,
+opacity, and creation progress. Equal depth keeps source scene/family order.
+Group containers have no geometry and do not override their children's depth.
+Foreground-object APIs and family restructuring remain unsupported.
+
+Tests cover defaults/validation, recursive setters, animated crossings, copies,
+checkpoints, global nested-group order, transforms/opacity, and stable ties.
+Local Pyodide browser playback verified blue/yellow/red initial order,
+blue/red/yellow order at three seconds, restored order at the end, and unchanged
+group scale/translation. MathTex still produced vector paths, and DOT rendered
+when switching afterward. See `examples/layer_scene.py`.
+
 ## Implemented milestone and next work
 
 The first animation slice implements creation/fades, timed transforms, animate
@@ -113,7 +131,7 @@ hidden; replacement targets and removals are visible at the appropriate stage.
 Live geometry/checkpoints remain untouched during preparation and final changes
 commit in order. Nested groups/sequences and duration rescaling are tested.
 Relative animate chains resolve at stage start; explicit Transform targets stay
-construction-time snapshots. Root layering remains fixed during sampled frames
+construction-time snapshots. Root insertion order remains fixed during sampled frames; animated z_index values determine paint order
 within a play call, and external read-only references do not follow simultaneous
 animations. Only lag_ratio=1 is supported; family restructuring remains open.
 

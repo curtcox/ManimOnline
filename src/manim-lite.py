@@ -40,7 +40,7 @@ PI, TAU, DEGREES = math.pi, math.tau, math.pi / 180
 
 class Mobject:
     def __init__(self, color=WHITE, fill_opacity=0, stroke_width=2,
-                 fill_color=None, stroke_color=None, stroke_opacity=1, **kwargs):
+                 fill_color=None, stroke_color=None, stroke_opacity=1, z_index=0, **kwargs):
         if kwargs:
             raise NotImplementedError('Unsupported options: ' + ', '.join(kwargs))
         self.position = list(ORIGIN)
@@ -57,6 +57,7 @@ class Mobject:
         self.geometry_scale = 1
         self.angle = 0
         self.children = []
+        self.set_z_index(z_index)
         self._type = 'mobject'
 
     def shift(self, direction):
@@ -280,6 +281,15 @@ class Mobject:
         self._validate_opacity(opacity)
         self.set_fill(opacity=opacity, family=family)
         self.set_stroke(opacity=opacity, family=family)
+        return self
+
+    def set_z_index(self, z_index_value, family=True):
+        if not isinstance(z_index_value, (int, float)) or not math.isfinite(z_index_value):
+            raise ValueError('z_index must be a finite number')
+        self.z_index = z_index_value
+        if family:
+            for child in self.children:
+                child.set_z_index(z_index_value, family=True)
         return self
 
     def copy(self):
@@ -804,7 +814,7 @@ class Animate(Transform):
     def __getattr__(self, name):
         if name.startswith('__'):
             raise AttributeError(name)
-        if name not in ('shift', 'move_to', 'move_arc_center_to', 'put_start_and_end_on', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'restore', 'scale', 'rotate'):
+        if name not in ('shift', 'move_to', 'move_arc_center_to', 'put_start_and_end_on', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'restore', 'scale', 'rotate'):
             raise NotImplementedError(f'animate.{name} is not supported yet')
         def apply(*args, **kwargs):
             getattr(self.target, name)(*args, **kwargs)
