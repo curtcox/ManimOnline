@@ -151,7 +151,7 @@ const ContentDetector = {
     }
 
     // Scene class
-    if (/class\s+\w+\s*\(\s*Scene\s*\)/.test(code)) {
+    if (/class\s+\w+\s*\(\s*(?:Scene|MovingCameraScene)\s*\)/.test(code)) {
       score += 10;
       reasons.push('Scene class');
     }

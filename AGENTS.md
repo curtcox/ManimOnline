@@ -65,6 +65,10 @@ Read `examples/camera_scene.py` for isolated config, square preview resolution,
 per-frame backgrounds, and configured SVG/PNG export. Camera metadata is captured
 with each frame; preserve default 800 × 450 behavior and per-source reset.
 
+Read `examples/moving_camera_scene.py` for animated pan/zoom and saved-view
+restoration. Camera frame roots participate in animation scheduling but are omitted
+from display geometry; capture must use their sampled state, including held stages.
+
 ## Implementation guidance
 
 - Keep the edit → render → preview loop central. Preserve DOT rendering, sharing,

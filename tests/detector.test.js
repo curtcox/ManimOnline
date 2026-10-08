@@ -39,3 +39,8 @@ test('URL overrides accept established aliases and ignore invalid values', () =>
   for (const type of ['manim', 'python']) assert.equal(Detector.getTypeFromURL(`?scene=Demo&type=${type}`), 'manim');
   for (const type of ['auto', 'unknown', 'MANIM', '']) assert.equal(Detector.getTypeFromURL(`?type=${type}`), null);
 });
+
+
+test('moving-camera scene subclasses are recognized without an import line', () => {
+  assert.equal(Detector.detect('class Zoom(MovingCameraScene):\n    def construct(self): pass').type,'manim');
+});

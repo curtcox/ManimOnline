@@ -232,3 +232,14 @@ test('camera dimensions, frame extent and explicit background survive SVG render
   for(const camera of [{pixel_width:Infinity},{pixel_height:4097},{frame_height:0},{background_color:'url(bad)'}])
     assert.throws(()=>renderer.render({camera}),/Invalid preview camera/);
 });
+
+
+test('moving camera centers the focus after zoom without moving scene geometry', () => {
+  const circle={type:'circle',position:[2,1,0]};
+  const scene={camera:{frame_width:8,frame_height:4.5,frame_center:[2,1,0]},mobjects:[circle]};
+  const svg=renderer.render(scene);
+  assert.equal(svg.children[1].getAttribute('transform'),'translate(400, 225) scale(2, -2) translate(-100, -50)');
+  assert.match(svg.children[1].children[0].getAttribute('transform'),/translate\(100, 50\)/);
+  assert.deepEqual(circle.position,[2,1,0]);
+  assert.throws(()=>renderer.render({camera:{frame_center:[0,0,1]}}),/Invalid preview camera center/);
+});

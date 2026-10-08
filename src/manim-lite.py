@@ -546,6 +546,70 @@ class Rectangle(Mobject):
         self._type, self.width, self.height = 'rectangle', width, height
 
 
+class CameraFrame(Rectangle):
+    """Invisible, axis-aligned view rectangle used by MovingCameraScene."""
+    def scale(self, scale_factor, *, about_point=None):
+        if not math.isfinite(scale_factor) or scale_factor <= 0:
+            raise ValueError('Camera scale must be positive and finite')
+        return super().scale(scale_factor, about_point=about_point)
+
+    def shift(self, direction):
+        direction = Vector(direction)
+        if not all(math.isfinite(v) for v in direction) or direction[2]:
+            raise ValueError('Camera position must be finite and in the XY plane')
+        return super().shift(direction)
+
+    def rotate(self, *args, **kwargs):
+        raise NotImplementedError('Moving camera frames support pan and zoom, not rotation')
+
+    def get_width(self):
+        return self.width * self.geometry_scale
+
+    def get_height(self):
+        return self.height * self.geometry_scale
+
+    def set_width(self, width):
+        return self.scale(width / self.get_width())
+
+    def set_height(self, height):
+        return self.scale(height / self.get_height())
+
+
+class MovingCamera(PreviewConfig):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        object.__setattr__(self, '_frame', CameraFrame(width=self.frame_width, height=self.frame_height))
+
+    @property
+    def frame(self):
+        return self._frame
+
+    def __getattribute__(self, name):
+        if name in ('frame_width','frame_height') and '_frame' in object.__getattribute__(self,'__dict__'):
+            frame = object.__getattribute__(self,'_frame')
+            return frame.get_width() if name == 'frame_width' else frame.get_height()
+        return super().__getattribute__(name)
+
+    def __setattr__(self, name, value):
+        if '_frame' in self.__dict__ and name in ('frame_width','frame_height'):
+            getattr(self.frame, 'set_width' if name == 'frame_width' else 'set_height')(value)
+            return
+        super().__setattr__(name, value)
+        if '_frame' in self.__dict__ and name in ('pixel_width','pixel_height'):
+            self.frame.width = self.frame.height * self.pixel_width / self.pixel_height
+
+    def to_dict(self, frame_snapshot=None):
+        result = super().to_dict()
+        frame = frame_snapshot if frame_snapshot is not None else self.frame.to_dict()
+        width, height = frame['width'] * frame['geometry_scale'], frame['height'] * frame['geometry_scale']
+        center = list(Vector(frame['position']) + Vector(frame['geometry_center']))
+        if (frame['type'] != 'rectangle' or frame['angle'] != 0 or center[2] or
+                not all(math.isfinite(v) for v in (*center,width,height)) or width <= 0 or height <= 0):
+            raise ValueError('Camera frames must remain positive, finite, axis-aligned XY rectangles')
+        result.update(frame_width=width, frame_height=height, frame_center=center)
+        return result
+
+
 class Line(Mobject):
     def __init__(self, start=LEFT, end=RIGHT, **kwargs):
         super().__init__(**kwargs)
@@ -653,6 +717,8 @@ class Group(Mobject):
     def _validate_children(self, mobjects):
         if any(not isinstance(m, Mobject) for m in mobjects):
             raise TypeError('Group children must be Mobjects')
+        if any(isinstance(member, CameraFrame) for m in mobjects for member in m.get_family()):
+            raise ValueError('Camera frames cannot be children of a display group')
         if any(self in m.get_family() for m in mobjects):
             raise ValueError('A group cannot contain itself or create a family cycle')
 
@@ -1189,7 +1255,7 @@ class Animate(Transform):
     def __getattr__(self, name):
         if name.startswith('__'):
             raise AttributeError(name)
-        if name not in ('shift', 'move_to', 'move_arc_center_to', 'put_start_and_end_on', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'set_points_as_corners', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
+        if name not in ('shift', 'move_to', 'set_width', 'set_height', 'move_arc_center_to', 'put_start_and_end_on', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'set_points_as_corners', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
             raise NotImplementedError(f'animate.{name} is not supported yet')
         def apply(*args, **kwargs):
             getattr(self.target, name)(*args, **kwargs)
@@ -1302,8 +1368,10 @@ class Succession(AnimationGroup):
 
 
 class Scene:
+    camera_class = PreviewConfig
+
     def __init__(self, camera_config=None):
-        self.camera = copy.deepcopy(config)
+        self.camera = self.camera_class(**config.to_dict())
         for name, value in (camera_config or {}).items():
             setattr(self.camera, name, value)
         self.mobjects, self.frames = [], []
@@ -1378,8 +1446,17 @@ class Scene:
             raise ValueError('Preview exceeds 60 seconds / 900 frames. Shorten the scene.')
         objects = []
         for mobject in self.mobjects:
+            if isinstance(mobject, CameraFrame):
+                continue
             objects.extend(overrides[mobject] if overrides and mobject in overrides else [mobject.to_dict()])
-        self.frames.append({'mobjects': objects, 'camera': self.camera.to_dict()})
+        if isinstance(self.camera, MovingCamera):
+            states = overrides.get(self.camera.frame) if overrides else None
+            if states is not None and len(states) != 1:
+                raise ValueError('Camera animation must produce one frame rectangle')
+            camera = self.camera.to_dict(states[0] if states else None)
+        else:
+            camera = self.camera.to_dict()
+        self.frames.append({'mobjects': objects, 'camera': camera})
         if advance_time:
             self._elapsed_frames += 1
 
@@ -1447,7 +1524,11 @@ class Scene:
         return {'frames': self.frames, 'fps': FPS, 'duration': (len(self.frames)-1)/FPS}
 
 
-EXPORTS = ['config', 'Scene', 'Mobject', 'VMobject', 'CubicBezier', 'Circle', 'Arc', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
+class MovingCameraScene(Scene):
+    camera_class = MovingCamera
+
+
+EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'VMobject', 'CubicBezier', 'Circle', 'Arc', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'MathTex', 'Group', 'VGroup', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'TransformFromCopy',

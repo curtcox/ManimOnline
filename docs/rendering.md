@@ -509,3 +509,29 @@ Local Pyodide checks confirmed 600 × 600 SVG dimensions and a 1.5 camera scale,
 with the terminal pale background. A real PNG download was decoded as 600 × 600
 RGBA with corner pixel (232, 238, 247, 255), matching #E8EEF7. Loading the baseline
 scene restored 800 × 450 black output, and DOT rendered after switching.
+
+
+## Moving camera frames
+
+MovingCameraScene adds self.camera.frame, a positive axis-aligned rectangle with
+Mobject pan/zoom and checkpoints. Move/shift/scale and width/height setters work
+in animate chains, using the existing timeline, easing, parallel holds and
+Succession preparation. Camera frames may enter the internal scene root list for
+animation preparation but are omitted from drawable snapshots. Capture reads
+the camera frame override directly, preserving immutable earlier frames. Clearing
+drawable objects does not reset the camera view. The renderer applies inverse
+center translation after view scaling; scene geometry/queries keep world positions.
+Background and configured export dimensions remain independent of focus.
+
+The API follows the basic frame usage in the
+[MovingCameraScene documentation](https://docs.manim.community/en/stable/reference/manim.scene.moving_camera_scene.MovingCameraScene.html).
+Rotation, 3D, auto_zoom, moving camera updaters, frame replacement/removal effects
+and full camera APIs remain unsupported. Camera frames cannot belong to display
+groups. Python tests cover intermediate pan/zoom, checkpoints, consecutive
+relative stages, parallel completion holds, clear persistence, camera overrides,
+setters and invalid state. SVG tests cover focus inversion without object mutation.
+
+Local Pyodide playback verified a 2× view focused on x=2 at four seconds, a 2×
+view focused on x=-2 at six seconds, and the exact default view at the end. The
+scene showed only its original square/circle/title, with no camera rectangle.
+DOT rendered after switching.

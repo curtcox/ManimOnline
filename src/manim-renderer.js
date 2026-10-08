@@ -23,6 +23,8 @@ const ManimRenderer = {
     const height = camera.pixel_height ?? this.CANVAS_HEIGHT;
     const frameHeight = camera.frame_height ?? 9;
     const frameWidth = camera.frame_width ?? frameHeight * width / height;
+    const center = camera.frame_center ?? [0, 0, 0];
+    if (!Array.isArray(center) || center.length !== 3 || !center.every(Number.isFinite) || center[2] !== 0) throw new Error('Invalid preview camera center');
     const background = camera.background_color ?? '#000000';
     if (![width, height].every(n => Number.isInteger(n) && n > 0 && n <= 4096) ||
         ![frameWidth, frameHeight].every(n => Number.isFinite(n) && n > 0) ||
@@ -42,6 +44,7 @@ const ManimRenderer = {
     svg.appendChild(backdrop);
     const mainGroup = document.createElementNS(this.SVG_NS, 'g');
     mainGroup.setAttribute('transform', `translate(${width / 2}, ${height / 2}) scale(${width / frameWidth / this.UNIT_SCALE}, ${-height / frameHeight / this.UNIT_SCALE})`);
+    if (center[0] || center[1]) mainGroup.setAttribute('transform', mainGroup.getAttribute('transform') + ` translate(${-center[0] * this.UNIT_SCALE}, ${-center[1] * this.UNIT_SCALE})`);
     svg.appendChild(mainGroup);
 
     // Sort drawable leaves globally, keeping each leaf's ancestor transforms.

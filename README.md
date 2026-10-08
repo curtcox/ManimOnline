@@ -517,3 +517,14 @@ Camera backgrounds are captured per frame. SVG/PNG exports retain the background
 and configured resolution. Config resets for every source, including after errors.
 See **Configure the canvas**. Frame rate remains 15 fps; moving cameras, 3D, config
 files, quality presets, and full ManimConfig/color semantics remain unsupported.
+
+
+MovingCameraScene exposes `self.camera.frame`, an invisible rectangular Mobject.
+Use `.animate.move_to(...)`, `.shift(...)`, `.scale(...)`, `.set_width(...)`, or
+`.set_height(...)` to pan/zoom, and save_state/Restore to return to a prior view.
+Frame samples become camera metadata, never visible geometry; scene objects keep
+their own coordinates. Sequential and parallel animation timelines can include
+the camera. Zoom factors/extents must stay positive and finite, with XY positions.
+Setting width/height preserves aspect ratio. Rotation, 3D views, camera frame
+replacement/removal effects, auto_zoom and updaters remain unsupported. The **Pan
+and zoom the view** gallery demonstrates focus changes and view restoration.

@@ -16,6 +16,59 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_moving_camera_samples_pan_zoom_and_exact_restoration(self):
+        source = "from manim import *\nclass Demo(MovingCameraScene):\n    def construct(self):\n        frame=self.camera.frame.save_state()\n        self.add(Circle())\n        self.play(frame.animate.move_to(RIGHT*2).scale(.5),run_time=2,rate_func=linear)\n        self.play(Restore(frame),run_time=2,rate_func=linear)"
+        result=json.loads(lite.render_scene(source))
+        camera=result['frames'][15]['camera']
+        self.assertEqual(camera['frame_center'],[1,0,0])
+        self.assertEqual(camera['frame_width'],12)
+        self.assertEqual(camera['frame_height'],6.75)
+        self.assertEqual(result['frames'][30]['camera']['frame_center'],[2,0,0])
+        self.assertEqual(result['frames'][-1]['camera']['frame_center'],[0,0,0])
+        self.assertEqual(result['frames'][-1]['camera']['frame_width'],16)
+        self.assertTrue(all(len(frame['mobjects'])==1 for frame in result['frames']))
+
+    def test_camera_sequential_relative_motion_and_completed_group_hold(self):
+        scene=lite.MovingCameraScene()
+        frame=scene.camera.frame
+        scene.play(lite.Succession(frame.animate.shift(lite.RIGHT), frame.animate.shift(lite.RIGHT)),rate_func=lite.linear)
+        self.assertEqual(scene.frames[15]['camera']['frame_center'],[1,0,0])
+        self.assertEqual(frame.get_center(),lite.RIGHT*2)
+        scene.play(frame.animate.scale(.5),lite.Create(lite.Circle(),run_time=2),rate_func=lite.linear)
+        self.assertEqual(scene.frames[45]['camera']['frame_width'],8)
+        self.assertEqual(len(scene.frames[45]['mobjects']),1)
+        scene.clear().wait(1)
+        self.assertEqual(scene.frames[-1]['camera']['frame_center'],[2,0,0])
+
+    def test_camera_frame_validation_and_dimension_setters(self):
+        scene=lite.MovingCameraScene(camera_config={'pixel_width':600,'pixel_height':600,'frame_height':8})
+        frame=scene.camera.frame
+        self.assertEqual(lite.MovingCameraScene(camera_config={'frame_width':8}).camera.frame_width,8)
+        with self.assertRaises(ValueError):
+            lite.VGroup(frame)
+        frame.set_width(4)
+        self.assertEqual(frame.get_height(),4)
+        scene.camera.frame_height=6
+        self.assertEqual(frame.get_width(),6)
+        scene.play(frame.animate.set_height(3))
+        self.assertEqual(scene.camera.frame_height,3)
+        before=frame.to_dict()
+        for operation in (lambda:frame.scale(0),lambda:frame.set_width(-1),lambda:frame.shift((0,0,1)),lambda:frame.rotate(1)):
+            with self.assertRaises((ValueError,NotImplementedError)):
+                operation()
+            self.assertEqual(frame.to_dict(),before)
+        with self.assertRaises(ValueError):
+            scene.play(lite.Transform(frame,lite.Circle()))
+
+    def test_moving_camera_gallery_reaches_focus_and_restores(self):
+        result=json.loads(lite.render_scene((ROOT/'examples/moving_camera_scene.py').read_text()))
+        self.assertEqual(result['duration'],9)
+        camera=result['frames'][60]['camera']
+        self.assertEqual(camera['frame_width'],8)
+        self.assertEqual(camera['frame_center'],[2,0,0])
+        self.assertEqual(result['frames'][-1]['camera']['frame_width'],16)
+        self.assertEqual(result['frames'][-1]['camera']['frame_center'],[0,0,0])
+
     def test_configuration_is_isolated_between_successful_and_failed_sources(self):
         source = "from manim import *\nconfig.pixel_width=600\nconfig.pixel_height=600\nconfig.frame_width=8\nconfig['background_color']=WHITE\nclass Demo(Scene):\n    def construct(self): self.add(Circle())"
         result = json.loads(lite.render_scene(source))

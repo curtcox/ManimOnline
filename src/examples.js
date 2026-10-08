@@ -7,6 +7,7 @@ const ExampleCatalog = Object.freeze([
   { id: 'layout', label: 'Position and arrange', path: 'examples/layout_scene.py' },
   { id: 'stagger', label: 'Staggered animations', path: 'examples/staggered_scene.py' },
   { id: 'succession', label: 'Animate in sequence', path: 'examples/succession_scene.py' },
+  { id: 'movingcamera', label: 'Pan and zoom the view', path: 'examples/moving_camera_scene.py' },
   { id: 'camera', label: 'Configure the canvas', path: 'examples/camera_scene.py' },
   { id: 'family', label: 'Build and edit a group', path: 'examples/group_family_scene.py' },
   { id: 'groupmorph', label: 'Morph nested groups', path: 'examples/group_morph_scene.py' },
