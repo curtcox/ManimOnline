@@ -364,3 +364,23 @@ test('a point-free base mobject renders its descendants with its transform', () 
   assert.equal(svg.querySelectorAll().filter(node=>node.tag==='circle').length,1);
   assert.ok(svg.querySelectorAll().some(node=>node.getAttribute('transform')?.startsWith('translate(50, 100) ')));
 });
+
+
+test('explicit arrow tips paint as children with a trimmed shaft and no implicit head', () => {
+  const arrow = {type:'arrow',explicit_tips:true,start:[-2,0,0],end:[2,0,0],
+    shaft_start:[-1.7,0,0],shaft_end:[1.7,0,0],stroke_color:'#123456',children:[
+      {type:'bezierpath',curves:[[[2,0,0],[1.7,.2,0],[1.7,-.2,0],[2,0,0]]],fill_opacity:1}
+    ]};
+  const svg = renderer.render({mobjects:[arrow]});
+  const leaves = svg.querySelectorAll();
+  assert.equal(leaves.filter(node => node.tag === 'polyline').length,0);
+  assert.equal(leaves.filter(node => node.tag === 'path').length,1);
+  const shaft = leaves.find(node => node.tag === 'line');
+  assert.equal(shaft.getAttribute('x1'),'-85');
+  assert.equal(shaft.getAttribute('x2'),'85');
+  assert.equal(shaft.getAttribute('stroke'),'#123456');
+  const popped = renderer.render({mobjects:[{...arrow,children:[],shaft_start:undefined,shaft_end:undefined}]});
+  const shapes = popped.querySelectorAll();
+  assert.equal(shapes.filter(node => node.tag === 'path' || node.tag === 'polyline').length,0);
+  assert.equal(shapes.find(node => node.tag === 'line').getAttribute('x2'),'100');
+});

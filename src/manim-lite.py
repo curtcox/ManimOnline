@@ -510,7 +510,7 @@ class Mobject:
     def get_points(self):
         """Independent world-space anchors/handles for supported XY outlines."""
         if self._type not in ('polyline', 'polygon', 'bezierpath', 'circle', 'arc', 'ellipse',
-                              'square', 'rectangle', 'triangle', 'line', 'annulus'):
+                              'square', 'rectangle', 'triangle', 'line', 'arrow', 'annulus'):
             return []
         if self._type == 'polyline' and len(self.vertices) == 1:
             points = self.vertices
@@ -887,7 +887,7 @@ class Mobject:
         result['type'] = result.pop('_type')
         result['geometry_center'] = list(center)
         result['children'] = [child.to_dict() for child in self.children]
-        return result
+        return _refresh_tip_shafts(result)
 
 
 class ValueTracker(Mobject):
@@ -1675,10 +1675,91 @@ class MovingCamera(PreviewConfig):
 
 
 class Line(Mobject):
-    def __init__(self, start=LEFT, end=RIGHT, **kwargs):
+    def __init__(self, start=LEFT, end=RIGHT, buff=0, **kwargs):
+        start,end = self._endpoints(start,end)
+        if isinstance(buff,bool) or not isinstance(buff,(int,float)) or not math.isfinite(buff) or buff < 0:
+            raise ValueError('Line buffer must be nonnegative and finite')
+        span = math.dist(start,end)
+        if not math.isfinite(span):
+            raise ValueError('Line length must be finite')
+        if span > 2*buff and buff:
+            offset = (end-start)*(buff/span)
+            start,end = start+offset,end-offset
         super().__init__(**kwargs)
         self._type = 'line'
-        self.start, self.end = list(Vector(start)), list(Vector(end))
+        self.start, self.end = list(start),list(end)
+        self.buff = buff
+
+    def _tip(self, at_start=False):
+        role = 'start' if at_start else 'end'
+        return next((child for child in self.children if child.__dict__.get('_tip_role') == role),None)
+
+    @property
+    def tip(self):
+        return self.get_tip()
+
+    @property
+    def start_tip(self):
+        tip = self._tip(True)
+        if tip is None:
+            raise ValueError('The line has no start tip')
+        return tip
+
+    def has_tip(self):
+        return self._tip() is not None
+
+    def has_start_tip(self):
+        return self._tip(True) is not None
+
+    def get_tip(self):
+        tip = self._tip()
+        if tip is None:
+            raise ValueError('The line has no end tip')
+        return tip
+
+    def get_tips(self):
+        return VGroup(*(tip for tip in (self._tip(),self._tip(True)) if tip is not None))
+
+    def get_default_tip_length(self):
+        return getattr(self,'tip_length',.35)
+
+    def _orient_tip(self, tip, at_start):
+        vector = Vector(self.start)-Vector(self.end) if at_start else Vector(self.end)-Vector(self.start)
+        angle = math.atan2(vector[1],vector[0]) if any(vector) else 0
+        tip.rotate(angle-tip.tip_angle)
+        tip.shift(Vector(self.start if at_start else self.end)-tip.tip_point)
+
+    def add_tip(self, tip=None, tip_shape=None, tip_length=None, at_start=False):
+        if not isinstance(at_start,bool):
+            raise ValueError('at_start must be a boolean')
+        if self.geometry_scale == 0:
+            raise ValueError('Cannot add a tip to collapsed geometry')
+        if tip is None:
+            shape = ArrowTriangleFilledTip if tip_shape is None else tip_shape
+            if not isinstance(shape,type) or not issubclass(shape,ArrowTip) or shape is ArrowTip:
+                raise TypeError('tip_shape must be a concrete ArrowTip class')
+            length = self.get_default_tip_length() if tip_length is None else tip_length
+            ArrowTip._tip_dimension(length,'length')
+            tip = shape(length=length,color=self.stroke_color)
+            tip.scale(1/abs(self.geometry_scale))
+        elif not isinstance(tip,ArrowTip):
+            raise TypeError('tip must be an ArrowTip')
+        self._validate_children([tip])
+        self._geometry_center()
+        # Tip coordinates, like other children, are local to this parent.
+        self._orient_tip(tip,at_start)
+        role = 'start' if at_start else 'end'
+        old = self._tip(at_start)
+        tip._tip_role = role
+        self._replace_children([child for child in self.children if child is not old and child is not tip]+[tip])
+        self.explicit_tips = True
+        return self
+
+    def pop_tips(self):
+        tips = self.get_tips()
+        self.remove(*tips.children)
+        self.explicit_tips = True
+        return tips
 
     @staticmethod
     def _endpoints(start, end):
@@ -1764,8 +1845,16 @@ class Line(Mobject):
                     (-dx * math.sin(self.angle) + dy * math.cos(self.angle)) / scale, 0]
         local_start, local_end = self._endpoints(local(start), local(end))
         self.start, self.end = list(local_start), list(local_end)
-        self.position = list(center)
         self.geometry_scale = scale
+        for at_start in (False,True):
+            tip = self._tip(at_start)
+            if tip is not None:
+                self._orient_tip(tip,at_start)
+        self.__dict__.pop('_family_pivot_cache',None)
+        pivot = self._geometry_center()
+        rotated = Vector((pivot[0]*math.cos(self.angle)-pivot[1]*math.sin(self.angle),
+                          pivot[0]*math.sin(self.angle)+pivot[1]*math.cos(self.angle),0))*scale
+        self.position = list(center-pivot+rotated)
         return self
 
 
@@ -1880,9 +1969,42 @@ class StealthTip(ArrowTip):
 
 
 class Arrow(Line):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, start=LEFT, end=RIGHT, buff=.25, stroke_width=6, tip_length=.35,
+                 tip_shape=None, max_tip_length_to_length_ratio=.25,
+                 max_stroke_width_to_length_ratio=5, **kwargs):
+        for value,name in ((tip_length,'length'),(max_tip_length_to_length_ratio,'length ratio'),
+                           (max_stroke_width_to_length_ratio,'stroke ratio')):
+            ArrowTip._tip_dimension(value,name)
+        super().__init__(start,end,buff=buff,stroke_width=stroke_width,**kwargs)
         self._type = 'arrow'
+        self.tip_length = tip_length
+        self.max_tip_length_to_length_ratio = max_tip_length_to_length_ratio
+        self.max_stroke_width_to_length_ratio = max_stroke_width_to_length_ratio
+        self.initial_stroke_width = stroke_width
+        self.add_tip(tip_shape=tip_shape)
+        self._set_stroke_width_from_length()
+
+    def get_default_tip_length(self):
+        return min(self.tip_length,self.max_tip_length_to_length_ratio*self.get_length())
+
+    def _set_stroke_width_from_length(self):
+        self.stroke_width = min(self.initial_stroke_width,self.max_stroke_width_to_length_ratio*self.get_length())
+
+    def scale(self, factor, scale_tips=False, **kwargs):
+        if not isinstance(scale_tips,bool):
+            raise ValueError('scale_tips must be a boolean')
+        super().scale(factor,**kwargs)
+        if factor and not scale_tips:
+            for tip in self.get_tips().children:
+                tip.scale(1/abs(factor),about_point=tip.tip_point)
+            self._geometry_center()
+        self._set_stroke_width_from_length()
+        return self
+
+    def put_start_and_end_on(self, start, end):
+        super().put_start_and_end_on(start,end)
+        self._set_stroke_width_from_length()
+        return self
 
 
 class Triangle(Mobject):
@@ -3165,7 +3287,7 @@ class NumberPlane(Axes):
     def get_vector(self, coords, **kwargs):
         kwargs.pop('buff',None)  # Manim always makes these vectors touch the origin.
         start,end = Line._endpoints(self.c2p(0,0),self.c2p(coords))
-        return Arrow(start,end,**kwargs)
+        return Arrow(start,end,buff=0,**kwargs)
 
 
 class ComplexPlane(NumberPlane):
@@ -3265,6 +3387,9 @@ def interpolate(start, end, alpha):
     if isinstance(start, dict) and isinstance(end, dict):
         result = {key: interpolate(value, end.get(key, value), alpha)
                   for key, value in start.items()}
+        # Tip roles identify aligned child slots, rather than animated values.
+        if '_tip_role' in end:
+            result['_tip_role'] = end['_tip_role']
         if 'subpath_lengths' in start:
             result['subpath_lengths'] = copy.deepcopy(end.get('subpath_lengths', start['subpath_lengths'])
                                                       if alpha >= 1 else start['subpath_lengths'])
@@ -3280,6 +3405,31 @@ def interpolate(start, end, alpha):
         except ValueError:
             pass
     return copy.deepcopy(end if alpha >= 1 else start)
+
+
+def _refresh_tip_shafts(snapshot):
+    for child in snapshot.get('children',[]):
+        _refresh_tip_shafts(child)
+    if snapshot['type'] not in ('line','arrow'):
+        return snapshot
+    snapshot.pop('shaft_start',None)
+    snapshot.pop('shaft_end',None)
+    for child in snapshot.get('children',[]):
+        role = child.get('_tip_role')
+        if role not in ('start','end'):
+            continue
+        curves = _path_curves(child)
+        if not curves:
+            continue
+        index = len(curves)/2
+        point = VMobject._bezier_point(curves[min(int(index),len(curves)-1)],index-int(index))
+        tip = Mobject()
+        tip.__dict__.update(child)
+        tip._type = child['type']
+        tip._sampled_geometry_center = Vector(child['geometry_center'])
+        tip.children = []
+        snapshot['shaft_'+role] = list(tip._point_to_world(point))
+    return snapshot
 
 
 def _path_curves(snapshot):
@@ -3320,8 +3470,8 @@ def _path_curves(snapshot):
     elif kind == 'triangle':
         height = math.sqrt(3) / 2
         vertices = [(0,height*2/3), (-0.5,-height/3), (0.5,-height/3)]
-    elif kind == 'line':
-        vertices = [snapshot['start'], snapshot['end']]
+    elif kind in ('line','arrow'):
+        vertices = [snapshot.get('shaft_start',snapshot['start']), snapshot.get('shaft_end',snapshot['end'])]
     else:
         vertices = snapshot['vertices']
     if not vertices:
@@ -4071,7 +4221,7 @@ class Scene:
         for mobject in self.mobjects:
             if isinstance(mobject, (CameraFrame, ValueTracker)):
                 continue
-            objects.extend(overrides[mobject] if overrides and mobject in overrides else [mobject.to_dict()])
+            objects.extend(_refresh_tip_shafts(state) for state in (overrides[mobject] if overrides and mobject in overrides else [mobject.to_dict()]))
         if isinstance(self.camera, MovingCamera):
             states = overrides.get(self.camera.frame) if overrides else None
             if states is not None and len(states) != 1:

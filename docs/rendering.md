@@ -270,9 +270,10 @@ Ordinary endpoint animations interpolate both endpoints linearly with linear
 easing. Recovery from zero scale follows the existing geometry interpolation.
 Zero-length connectors have zero unit vector and angle. Coordinates must be
 finite and in the XY plane. Queries refer to a child's coordinates within its
-parent group; they do not accumulate parent transforms. Arrow queries use the
-shaft endpoints, with the renderer's existing fixed local arrowhead. Buffers,
-curved connectors, and attachment to object boundaries remain unsupported.
+parent group; they do not accumulate parent transforms. Arrow logical endpoint
+queries include tip points; own points describe the trimmed shaft. Buffers and
+straight tip attachment are supported. Curved connectors and attachment to
+object boundaries remain unsupported.
 
 The editor's example picker loads supported Python scenes and a DOT diagram
 from a fixed local catalog in `src/examples.js`. It resets scene selection and
@@ -1447,8 +1448,8 @@ self first and then direct children. Slices share those references in a fresh
 neutral Group/VGroup. Empty paths and base Mobject containers index children only;
 Group/VGroup retain their existing child-only behavior. `family_members_with_points`
 filters the deduplicated recursive family by supported own-path geometry. Text,
-MathTex and Arrow point extraction is still incomplete, so these queries do not
-claim native glyph/tip families. Empty base Mobject containers have no SVG shape
+MathTex point extraction is still incomplete, so these queries do not claim
+native glyph families. Arrow own points now expose its shaft and tips are children. Empty base Mobject containers have no SVG shape
 but their descendants inherit their pose and opacity.
 
 The gallery creates a rectangle and attached dots, rotates/translates it, adds a
@@ -1662,9 +1663,8 @@ enclosing-triangle factor; its start_angle is stored metadata.
 
 These objects support positive/negative/zero scaling, rotation, own-point APIs,
 partial curves, family filtering, layout, callbacks, copying and checkpoints.
-They are standalone geometry. Arrow still renders an implicit head and does not
-yet attach a real tip child or implement native shaft trimming, tip management,
-fixed-size tip scaling, or circle/square tip variants.
+They also attach to Line/Arrow as real children; see the integration notes below.
+Circle/square variants and curved tip-bearing paths remain open.
 
 Reference: [official Manim arrow-tip implementation](https://docs.manim.community/en/stable/_modules/manim/mobject/geometry/tips.html).
 
@@ -1675,3 +1675,40 @@ Pyodide playback showed a red stealth morph with white tip and purple base marke
 at six seconds, restored green triangular geometry and its original anchors at
 seven seconds, and no paths/dots at nine seconds. Switching to DOT rendered the
 editor flow graph. All 332 Python and 76 Node tests passed.
+
+
+## Real tips on straight connectors
+
+Line/Arrow implement add_tip (supplied ArrowTip or concrete tip_shape), pop_tips,
+has_tip/has_start_tip, get_tip/get_tips and tip/start_tip accessors. Role tags identify
+end/start children. Replacement keeps unrelated children; pop_tips returns the
+removed objects and restores the full shaft. Logical endpoint queries include the
+tip point, while own get_points exposes the trimmed shaft. Tip queries use parent-
+local coordinates; compose the parent transform to get scene coordinates.
+
+Arrow defaults to buff=.25, stroke_width=6, tip_length=.35, a filled triangular
+head, max_tip_length_to_length_ratio=.25 and max_stroke_width_to_length_ratio=5.
+Line defaults to buff=0. Long segments are buffered on both ends; segments no
+longer than twice the buffer remain untrimmed. Endpoints/buff reject nonfinite or
+non-XY inputs. NumberPlane.get_vector explicitly uses buff=0.
+
+Arrow.scale compensates tip scale about its point by default; scale_tips=True
+retains uniform family scaling. Parent-group scaling follows ordinary family
+semantics. Endpoint edits reorient live tips and retain the parent's rotation/scale.
+Collapsed parents cannot add tips. Snapshot serialization and capture recompute
+shaft bases from the actual sampled child geometry. Tip roles follow aligned
+target slots during morphing. The SVG renderer paints the shaft and real child
+outlines without adding an implicit head; older packets still use the legacy head.
+
+The gallery exercises two heads, fixed-size scaling, endpoint edits, replacing the
+heads with a stealth tip, restoration and cleanup. General curved-tip APIs,
+DoubleArrow, circle/square tips, Arrow partial curves and cross-type path morphs,
+and native world-coordinate child semantics remain open.
+
+Reference: [Manim TipableVMobject API](https://docs.manim.community/en/stable/reference/manim.mobject.geometry.arc.TipableVMobject.html).
+
+
+Verification: all 335 Python and 77 Node tests passed. Local Pyodide playback
+showed the replaced stealth tip at six seconds, the original two tips and white
+endpoint marker at eight seconds, and no lines/paths/dots at ten seconds.
+Switching to DOT rendered the Editor → Render → Preview graph.

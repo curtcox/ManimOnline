@@ -322,8 +322,8 @@ const ManimRenderer = {
    */
   renderLine(mobject) {
     const line = document.createElementNS(this.SVG_NS, 'line');
-    const start = mobject.start || [-1, 0, 0];
-    const end = mobject.end || [1, 0, 0];
+    const start = mobject.shaft_start || mobject.start || [-1, 0, 0];
+    const end = mobject.shaft_end || mobject.end || [1, 0, 0];
     line.setAttribute('x1', start[0] * this.UNIT_SCALE);
     line.setAttribute('y1', start[1] * this.UNIT_SCALE);
     line.setAttribute('x2', end[0] * this.UNIT_SCALE);
@@ -337,6 +337,7 @@ const ManimRenderer = {
    * Render an arrow
    */
   renderArrow(mobject) {
+    if (mobject.explicit_tips) return this.renderLine(mobject);
     const group = document.createElementNS(this.SVG_NS, 'g');
     const start = mobject.start || [-1, 0, 0];
     const end = mobject.end || [1, 0, 0];

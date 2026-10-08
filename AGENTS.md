@@ -368,5 +368,14 @@ ArrowTriangleTip/ArrowTriangleFilledTip and StealthTip supply closed corner path
 Tip base queries use the midpoint of the ordered cubic array, not distance-based
 path sampling, and tip_point uses the first path point. Stealth length is 1.6
 times its base-to-tip span. Triangle angles are reduced to a stable trig phase
-before constructing distinct vertices. Arrow attachment remains a separate
-milestone: renderer-drawn Arrow heads are not yet Python child objects.
+before constructing distinct vertices. Arrow attachment is now implemented for straight Line/Arrow families.
+
+
+Read `examples/arrow_tips_scene.py` for real tip children, fixed-size scaling,
+endpoint edits, replacement and restoration. _refresh_tip_shafts runs on ordinary
+serialization and sampled Scene.capture overrides; always derive shaft endpoints
+from the current tip geometry, not interpolated stale metadata. _tip_role marks
+structural target child slots during interpolation. explicit_tips suppresses the
+legacy renderer head even after pop_tips. Logical endpoints include tip points;
+own Arrow points describe the shaft. Native world-coordinate child semantics and
+curved tip-bearing paths remain unfinished. NumberPlane vectors force buff=0.

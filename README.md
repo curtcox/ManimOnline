@@ -1143,6 +1143,14 @@ bounds are centered locally. Stealth tips use the concave outline and an
 enclosing-triangle length; their start_angle is metadata, as in the referenced
 constructor.
 
-These are standalone tip objects. Arrow still uses its existing renderer-drawn
-head; native tip attachment, shaft trimming, Arrow tip APIs and fixed-size tip
-scaling remain unfinished. Circle/square tip classes are also unfinished.
+Try **Manage arrow tips and shafts** (`examples/arrow_tips_scene.py`). Arrow now
+attaches real editable tip children. Line/Arrow support `add_tip`, `pop_tips`,
+`has_tip`, `has_start_tip`, `get_tip`, `get_tips`, `tip`, and `start_tip`.
+Shaft endpoints track tip bases, including during endpoint animations and
+restoration. Arrow defaults to a .25 endpoint buffer, a filled triangular tip,
+and length-based caps for tip size and stroke width. `buff=0` touches the given
+endpoints; coordinate-plane vectors retain this behavior automatically.
+Arrow.scale keeps world tip size by default; `scale_tips=True` scales the whole
+family. Tip coordinates follow the runtime's parent-local child convention.
+Circle/square tips, curved arrows, full native tip-family behavior and Arrow
+partial-path/morph support remain unfinished.

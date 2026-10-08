@@ -16,6 +16,94 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_arrow_real_tips_trim_shaft_and_manage_children(self):
+        arrow = lite.Arrow(lite.LEFT*2,lite.RIGHT*2,buff=.25,color=lite.BLUE)
+        self.assertPointAlmostEqual(arrow.get_start(),(-1.75,0,0))
+        self.assertPointAlmostEqual(arrow.get_end(),(1.75,0,0))
+        self.assertIs(arrow.tip,arrow.children[0])
+        self.assertEqual(arrow.tip.fill_opacity,1)
+        self.assertEqual(arrow.family_members_with_points(),[arrow,arrow.tip])
+        self.assertPointAlmostEqual(arrow._point_to_world(arrow.tip.tip_point),arrow.get_end())
+        self.assertPointAlmostEqual(arrow.get_points()[-1],arrow._point_to_world(arrow.tip.base))
+        start,end = arrow.get_start_and_end()
+        old = arrow.tip
+        arrow.add_tip(tip_shape=lite.StealthTip)
+        self.assertNotIn(old,arrow.children)
+        arrow.add_tip(at_start=True,tip_shape=lite.ArrowTriangleTip)
+        self.assertEqual(len(arrow.get_tips()),2)
+        self.assertPointAlmostEqual(arrow.get_points()[0],arrow._point_to_world(arrow.start_tip.base))
+        self.assertPointAlmostEqual(arrow.get_start(),start)
+        self.assertPointAlmostEqual(arrow.get_end(),end)
+        tips = arrow.pop_tips()
+        self.assertEqual(len(tips),2)
+        self.assertFalse(arrow.has_tip())
+        self.assertFalse(arrow.has_start_tip())
+        self.assertPointAlmostEqual(arrow.get_points()[0],start)
+        self.assertPointAlmostEqual(arrow.get_points()[-1],end)
+        self.assertNotIn('shaft_end',arrow.to_dict())
+        with self.assertRaises(ValueError):
+            arrow.get_tip()
+        arrow.add_tip(tip=tips[0])
+        arrow.add_tip(tip=arrow.tip,at_start=True)
+        self.assertFalse(arrow.has_tip())
+        self.assertEqual(len(arrow.children),1)
+
+    def test_arrow_transforms_endpoint_edits_and_fixed_tip_scaling(self):
+        for factor in (2,-2,.5):
+            arrow = lite.Arrow(lite.LEFT*2,lite.RIGHT*2,buff=0).rotate(.4).shift(lite.UP)
+            tip = arrow.tip
+            length = tip.length
+            arrow.scale(factor)
+            self.assertIs(arrow.tip,tip)
+            self.assertAlmostEqual(tip.length*abs(arrow.geometry_scale),length)
+            arrow.put_start_and_end_on((-3,2,0),(2,-1,0))
+            self.assertPointAlmostEqual(arrow.get_start(),(-3,2,0))
+            self.assertPointAlmostEqual(arrow.get_end(),(2,-1,0))
+            self.assertPointAlmostEqual(arrow._point_to_world(tip.tip_point),arrow.get_end())
+            self.assertPointAlmostEqual(arrow.get_points()[-1],arrow._point_to_world(tip.base))
+            before=arrow.to_dict()
+            arrow.save_state().scale(.7,scale_tips=True).rotate(.2)
+            arrow.restore()
+            self.assertEqual(arrow.to_dict(),before)
+            self.assertIsNot(arrow.copy().tip,tip)
+        short=lite.Arrow((0,0,0),(.1,0,0),buff=0)
+        self.assertAlmostEqual(short.tip.length,.025)
+        self.assertAlmostEqual(short.stroke_width,.5)
+        line=lite.Line().add_tip(at_start=True)
+        self.assertTrue(line.has_start_tip())
+        before=line.to_dict()
+        for kwargs in ({'tip_shape':lite.Dot},{'tip_length':-1},{'at_start':1},{'tip':lite.Dot()}):
+            with self.assertRaises((ValueError,TypeError)):
+                line.add_tip(**kwargs)
+            self.assertEqual(line.to_dict(),before)
+
+    def test_arrow_tip_gallery_tracks_animated_bases_and_restores(self):
+        result=json.loads(lite.render_scene((ROOT/'examples/arrow_tips_scene.py').read_text()))
+        self.assertEqual(result['duration'],10)
+        for frame in result['frames'][30:121]:
+            arrow=frame['mobjects'][0]
+            restored=lite.Arrow(buff=0)
+            restored.__dict__.update(arrow)
+            restored._type=arrow['type']
+            restored.children=[]
+            restored._sampled_geometry_center=lite.Vector(arrow['geometry_center'])
+            for child in arrow['children']:
+                role=child['_tip_role']
+                tip=lite.ArrowTriangleFilledTip()
+                tip.__dict__.update(child)
+                tip._type=child['type']
+                tip.children=[]
+                tip._sampled_geometry_center=lite.Vector(child['geometry_center'])
+                self.assertPointAlmostEqual(arrow['shaft_'+role],tip.base)
+            self.assertPointAlmostEqual(frame['mobjects'][1]['position'],restored.get_end())
+        first,last=result['frames'][30]['mobjects'][0],result['frames'][120]['mobjects'][0]
+        for key in ('start','end','position','geometry_scale','angle'):
+            self.assertEqual(first[key],last[key])
+        for a,b in zip(first['children'],last['children']):
+            for key in ('vertices','position','geometry_scale','angle','_tip_role'):
+                self.assertEqual(a[key],b[key])
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+
     def test_group_child_motion_and_mutation_preserve_nested_siblings(self):
         for group_class in (lite.Group,lite.VGroup):
             for scale in (0,.7,-1.2):
@@ -3718,7 +3806,7 @@ self.wait(1)""")
 
     def test_line_endpoint_queries_follow_geometry_transforms(self):
         for cls in (lite.Line, lite.Arrow):
-            line = cls((1, 1), (3, 1)).scale(-2).rotate(lite.PI / 2).shift(lite.RIGHT)
+            line = cls((1, 1), (3, 1),buff=0).scale(-2).rotate(lite.PI / 2).shift(lite.RIGHT)
             self.assertPointAlmostEqual(line.get_start(), (3, 3, 0))
             self.assertPointAlmostEqual(line.get_end(), (3, -1, 0))
             self.assertPointAlmostEqual(line.get_vector(), (0, -4, 0))
@@ -4265,12 +4353,15 @@ self.wait(1)""")
         for alpha in (-0.1, 1.1, float('nan'), float('inf')):
             with self.assertRaises(ValueError):
                 lite.Circle().point_from_proportion(alpha)
-        for path in (lite.Polygon(), lite.Polygon((0, 0)), lite.Circle(radius=-1),
-                     lite.Line((float('nan'), 0), (1, 0))):
+        with self.assertRaises(ValueError):
+            lite.Line((float('nan'),0),(1,0))
+        with self.assertRaises(NotImplementedError):
+            lite.Line((0,0,1),(1,0,1))
+        for path in (lite.Polygon(), lite.Polygon((0, 0)), lite.Circle(radius=-1)):
             with self.assertRaises(ValueError):
                 path.point_from_proportion(0.5)
         for path in (lite.Text('x'), lite.VGroup(lite.Circle()), lite.Arrow(),
-                     lite.Line((0, 0, 1), (1, 0, 1)), lite.Circle().shift(lite.OUT)):
+                     lite.Circle().shift(lite.OUT)):
             with self.assertRaises(NotImplementedError):
                 path.point_from_proportion(0.5)
         with self.assertRaises(TypeError):
