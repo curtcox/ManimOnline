@@ -429,3 +429,27 @@ and full group-family outline matching remain gaps.
 Local Pyodide playback verified a single opaque, closed eight-segment outline
 at the circle/square midpoint, the triangle transition, restored circle scaling,
 and the terminal open cubic. DOT rendered after switching.
+
+
+## Recursive group transforms
+
+VGroup Transform/Restore/copy/replacement sampling aligns nested child snapshots
+recursively. Children match by order. Smaller nonempty families expand with evenly
+distributed transparent duplicates, following the ordered-repeat strategy in the
+[Manim alignment source](https://docs.manim.community/en/stable/_modules/manim/mobject/mobject.html).
+Empty families use transparent, zero-scale copies of their counterpart children.
+Leaf-to-group transitions wrap the leaf in a neutral container. Each matched leaf
+uses the existing outline interpolation or unsupported-type crossfade. Parent
+position/rotation/scale, opacity, depth and original pivots interpolate separately.
+Alignment caches are rebuilt at each animation start, including Succession stages;
+original source/target objects remain untouched until normal completion.
+
+This extends geometry alignment, not scene-family restructuring or child identity
+preservation. Unsupported glyph/arrow pairs still crossfade at their leaf level;
+automatic matching and disconnected subpaths remain open. The group-morph gallery
+covers nested unequal families, checkpoints, and group erasure.
+
+Local Pyodide browser checks showed four continuously morphed paths at three
+seconds, with full opacity on original children and half opacity on the two
+inserted duplicates. At eight seconds the blue circle and yellow square were
+restored; the terminal frame retained only the title. DOT rendered after switching.

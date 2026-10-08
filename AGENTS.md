@@ -52,6 +52,10 @@ compatibility layer, not a server running full Manim Community.
 Avoid editing these to implement Manim features. The Markdown files under
 `examples/` illustrate the broader Manim API; they do not imply browser support.
 
+Read `examples/group_morph_scene.py` for recursive family morphing, unequal child
+counts, restoration, and removal. Alignment is snapshot-only; live children keep
+existing completion/copy semantics.
+
 ## Implementation guidance
 
 - Keep the edit → render → preview loop central. Preserve DOT rendering, sharing,

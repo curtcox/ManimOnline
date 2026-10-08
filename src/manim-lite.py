@@ -737,6 +737,67 @@ def _align_path_snapshots(start, target):
     return tuple(result)
 
 
+def _transform_plan(start, target):
+    """Align immutable family snapshots once, before sampling their timeline."""
+    if start['type'] == 'vgroup' or target['type'] == 'vgroup':
+        def as_group(snapshot):
+            if snapshot['type'] == 'vgroup':
+                return copy.deepcopy(snapshot)
+            group = VGroup().to_dict()
+            group['children'] = [copy.deepcopy(snapshot)]
+            return group
+        start, target = as_group(start), as_group(target)
+        count = max(len(start['children']), len(target['children']))
+        def expand(children, other):
+            if not children:
+                # An empty family grows/shrinks at each corresponding child's
+                # own center, without moving the containing group's pivot.
+                result = copy.deepcopy(other)
+                for child in result:
+                    child['opacity'] = 0
+                    child['geometry_scale'] = 0
+                return result
+            result, seen = [], set()
+            for index in range(count):
+                source_index = index * len(children) // count
+                child = copy.deepcopy(children[source_index])
+                if source_index in seen:
+                    child['opacity'] = 0
+                seen.add(source_index)
+                result.append(child)
+            return result
+        first, last = start['children'], target['children']
+        children = [_transform_plan(a, b) for a, b in
+                    zip(expand(first, last), expand(last, first))]
+        start.pop('children')
+        target.pop('children')
+        return ('group', start, target, children)
+    aligned = _align_path_snapshots(start, target)
+    if aligned:
+        return ('interpolate', *aligned, [])
+    matching = (start['type'] == target['type'] and
+                (target['type'] != 'mathtex' or start['text'] == target['text']) and
+                (target['type'] not in ('polygon', 'polyline') or
+                 len(start['vertices']) == len(target['vertices'])) and
+                (target['type'] != 'bezierpath' or
+                 len(start['curves']) == len(target['curves'])))
+    return ('interpolate' if matching else 'fade', start, target, [])
+
+
+def _sample_transform(plan, alpha):
+    kind, start, target, children = plan
+    if kind == 'fade':
+        first, last = copy.deepcopy(start), copy.deepcopy(target)
+        first['opacity'] *= 1 - alpha
+        last['opacity'] *= alpha
+        return [first, last]
+    result = interpolate(start, target, alpha)
+    if kind == 'group':
+        result['children'] = [snapshot for child in children
+                              for snapshot in _sample_transform(child, alpha)]
+    return [result]
+
+
 class Animation:
     def __init__(self, mobject, run_time=1, rate_func=smooth):
         self.mobject, self.run_time, self.rate_func = mobject, run_time, rate_func
@@ -873,28 +934,12 @@ class Transform(Animation):
 
     def begin(self, scene):
         super().begin(scene)
-        self._aligned_paths = None
-        self._alignment_checked = False
+        self._transform_plan = None
 
     def sample(self, alpha):
-        target = self.target.to_dict()
-        if not self._alignment_checked:
-            self._aligned_paths = _align_path_snapshots(self.start, target)
-            self._alignment_checked = True
-        if self._aligned_paths:
-            return [interpolate(*self._aligned_paths, alpha)]
-        if (self.start['type'] == target['type'] and
-                (target['type'] != 'mathtex' or self.start['text'] == target['text']) and
-                (target['type'] not in ('polygon', 'polyline') or
-                 len(self.start['vertices']) == len(target['vertices'])) and
-                (target['type'] != 'bezierpath' or
-                 len(self.start['curves']) == len(target['curves']))):
-            return [interpolate(self.start, target, alpha)]
-        # Different geometry is crossfaded rather than claiming path morphing.
-        source = copy.deepcopy(self.start)
-        source['opacity'] *= 1 - alpha
-        target['opacity'] *= alpha
-        return [source, target]
+        if self._transform_plan is None:
+            self._transform_plan = _transform_plan(self.start, self.target.to_dict())
+        return _sample_transform(self._transform_plan, alpha)
 
     def finish(self, scene):
         saved = self.mobject.__dict__.get('_saved_state')

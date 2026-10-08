@@ -39,7 +39,9 @@ checks for continuous morphing, restored pivots, and the final polygon; connecte
 and equal-count control-point interpolation, with Python/SVG tests and local
 Pyodide gallery checks. Primitive circle/arc/straight outlines now convert into
 this morph pipeline, with Python tests and local Pyodide checks for primitive
-transitions, restoration, and the terminal curve. General family/subpath alignment remains open.
+transitions, restoration, and the terminal curve. Recursive ordered VGroup alignment now has frame tests for nested/unequal/empty
+families, leaf wrapping, copy and sequential restoration. General Mobject family
+restructuring and disconnected subpath alignment remain open.
 
 Full Community parity additionally requires general geometry/path morphing, full scene-family
 composition and layering, camera configuration, glyph-level text/TeX

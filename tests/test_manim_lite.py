@@ -16,6 +16,87 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_group_transform_recursively_morphs_children_and_retains_pivots(self):
+        source = lite.VGroup(lite.Circle().shift(lite.LEFT),
+                            lite.VGroup(lite.Square().shift(lite.RIGHT))).scale(1.4).rotate(.3)
+        target = lite.VGroup(lite.Triangle().shift(lite.DOWN),
+                            lite.VGroup(lite.Circle().shift(lite.UP))).shift(lite.RIGHT)
+        before, after = source.to_dict(), target.to_dict()
+        effect = lite.Transform(source, target)
+        effect.prepare(lite.Scene())
+        midpoint = effect.sample(.5)[0]
+        self.assertEqual(midpoint['children'][0]['type'], 'bezierpath')
+        self.assertEqual(midpoint['children'][1]['children'][0]['type'], 'bezierpath')
+        self.assertEqual(midpoint['children'][0]['opacity'], 1)
+        self.assertEqual(midpoint['geometry_center'], lite.interpolate(before['geometry_center'], after['geometry_center'], .5))
+        self.assertEqual(source.to_dict(), before)
+        self.assertEqual(target.to_dict(), after)
+        effect.finish(lite.Scene())
+        self.assertEqual(source.to_dict(), after)
+
+    def test_unequal_group_transform_distributes_transparent_duplicates(self):
+        source = lite.VGroup(lite.Circle(), lite.Square())
+        target = lite.VGroup(lite.Square(), lite.Triangle(), lite.Circle(), lite.Line(), lite.Rectangle())
+        effect = lite.Transform(source, target)
+        effect.prepare(lite.Scene())
+        start = effect.sample(0)[0]['children']
+        self.assertEqual([c['opacity'] for c in start], [1,0,0,1,0])
+        midpoint = effect.sample(.5)[0]['children']
+        self.assertEqual([c['opacity'] for c in midpoint], [1,.5,.5,1,.5])
+        self.assertEqual(len(source.children), 2)
+        self.assertEqual(len(target.children), 5)
+        reverse = lite.Transform(target, source)
+        reverse.prepare(lite.Scene())
+        self.assertEqual([c['opacity'] for c in reverse.sample(1)[0]['children']], [1,0,0,1,0])
+        reverse.finish(lite.Scene())
+        self.assertEqual(len(target.children), 2)
+
+    def test_empty_group_transforms_and_leaf_to_nested_family(self):
+        for source, target in ((lite.VGroup(), lite.VGroup(lite.Circle(),lite.Square())),
+                               (lite.VGroup(lite.Circle()), lite.VGroup())):
+            effect = lite.Transform(source,target)
+            effect.prepare(lite.Scene())
+            midpoint = effect.sample(.5)[0]['children']
+            self.assertTrue(midpoint)
+            self.assertTrue(all(c['opacity'] == .5 and c['geometry_scale'] == .5 for c in midpoint))
+        source = lite.Circle().shift(lite.LEFT).scale(2)
+        target = lite.VGroup(lite.VGroup(lite.Square(),lite.Triangle())).shift(lite.RIGHT).rotate(.5)
+        effect = lite.Transform(source,target)
+        effect.prepare(lite.Scene())
+        frame = effect.sample(0)[0]
+        self.assertEqual(frame['position'], [0,0,0])
+        nested = frame['children'][0]['children']
+        self.assertEqual(nested[0]['position'], [-1,0,0])
+        self.assertEqual(nested[0]['geometry_scale'], 2)
+        self.assertEqual(nested[1]['opacity'], 0)
+
+    def test_group_copy_restore_sequence_and_unsupported_leaf_fades(self):
+        source = lite.VGroup(lite.Circle(),lite.Text('old')).save_state()
+        target = lite.VGroup(lite.Square(),lite.MathTex('x'),lite.Triangle())
+        effect = lite.TransformFromCopy(source,target)
+        original, destination = source.to_dict(), target.to_dict()
+        effect.prepare(lite.Scene())
+        self.assertEqual(len(effect.sample(.5)[0]['children']), 5)
+        effect.finish(lite.Scene())
+        self.assertEqual(source.to_dict(),original)
+        self.assertEqual(target.to_dict(),destination)
+        scene = lite.Scene().add(source)
+        scene.play(lite.Succession(lite.Transform(source,target),lite.Restore(source)))
+        self.assertEqual(source.to_dict(),original)
+        self.assertEqual(scene.frames[15]['mobjects'][0]['children'][0]['type'], 'bezierpath')
+
+    def test_group_morph_gallery_restores_original_family_and_clears(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/group_morph_scene.py').read_text()))
+        self.assertEqual(result['duration'], 11)
+        midpoint = result['frames'][45]['mobjects'][1]
+        self.assertEqual(len(midpoint['children']),3)
+        self.assertEqual([c['opacity'] for c in midpoint['children']], [1,.5,1])
+        self.assertEqual(midpoint['children'][0]['type'],'bezierpath')
+        restored = result['frames'][120]['mobjects'][1]
+        self.assertEqual(len(restored['children']),2)
+        self.assertEqual(restored['children'][0]['type'],'circle')
+        self.assertEqual(len(result['frames'][-1]['mobjects']),1)
+
     def test_circle_conversion_is_closed_tangent_matched_and_accurate(self):
         circle = lite.Circle(radius=2)
         curves = lite._path_curves(circle.to_dict())

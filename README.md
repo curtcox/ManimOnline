@@ -482,3 +482,14 @@ completion. Arrowheads, text/glyph outlines, and general group-family matching
 remain unsupported and continue to use the existing crossfade behavior.
 Circular control handles follow the tangent construction in
 [Manim Arc](https://docs.manim.community/en/stable/_modules/manim/mobject/geometry/arc.html).
+
+
+Nested VGroup transforms recursively match children in their existing order and
+morph supported outlines. Unequal child counts repeat evenly distributed source
+children, fading additional copies in or out. Empty groups use zero-size,
+transparent counterparts. A shape transforming to a group is wrapped in a neutral
+container so its original transform is retained. Group transforms and pivots are
+interpolated, and completion/restoration keeps the native target representation.
+Child identities are copied at completion as before; scene-added child animation,
+arbitrary Mobject families, automatic correspondence, and disconnected paths
+remain open. See **Morph nested groups** in the gallery.

@@ -7,6 +7,7 @@ const ExampleCatalog = Object.freeze([
   { id: 'layout', label: 'Position and arrange', path: 'examples/layout_scene.py' },
   { id: 'stagger', label: 'Staggered animations', path: 'examples/staggered_scene.py' },
   { id: 'succession', label: 'Animate in sequence', path: 'examples/succession_scene.py' },
+  { id: 'groupmorph', label: 'Morph nested groups', path: 'examples/group_morph_scene.py' },
   { id: 'shapemorph', label: 'Morph built-in shapes', path: 'examples/shape_morph_scene.py' },
   { id: 'morph', label: 'Morph aligned paths', path: 'examples/morph_scene.py' },
   { id: 'bezier', label: 'Cubic Bezier paths', path: 'examples/bezier_scene.py' },
