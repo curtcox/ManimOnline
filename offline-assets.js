@@ -1,6 +1,6 @@
 /** Exact offline dependencies. Bump VERSION whenever any listed local file changes. */
 const OfflineAssets = {
-  VERSION: 'manimonline-offline-v29',
+  VERSION: 'manimonline-offline-v30',
   local: [
     'index.html', 'ace/ace.js', 'ace/theme-twilight.js', 'ace/mode-python.js', 'ace/mode-dot.js',
     'viz-global.js', 'svg-pan-zoom.min.js', 'src/detector.js', 'src/render-scheduler.js', 'src/unified-worker.js',

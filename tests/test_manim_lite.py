@@ -75,6 +75,20 @@ self.wait(1)""")
         for invalid in [-1, float('nan'), float('inf'), '1']:
             with self.assertRaises(ValueError): lite.TracedPath(lambda:lite.ORIGIN, dissipating_time=invalid)
 
+    def test_trace_become_keeps_provider_clock_and_callback(self):
+        point = [1, 0, 0]
+        trace = lite.TracedPath(lambda:point, dissipating_time=1)
+        trace.update(.1)
+        callback = trace.get_updaters()[0]
+        trace.become(lite.VMobject().set_points_as_corners([lite.ORIGIN, lite.UP]))
+        self.assertAlmostEqual(trace.time, 1.1)
+        self.assertEqual(trace.dissipating_time, 1)
+        self.assertIs(trace.get_updaters()[0], callback)
+        point[0] = 3
+        trace.update(.1)
+        self.assertEqual(trace.get_end(), lite.Vector(point))
+        self.assertAlmostEqual(trace.time, 1.2)
+
     def test_trace_gallery_tail_disappears_and_full_trail_freezes(self):
         result = json.loads(lite.render_scene((ROOT/'examples/trace_scene.py').read_text()))
         self.assertEqual(result['duration'], 7)

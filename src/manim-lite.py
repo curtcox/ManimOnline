@@ -472,7 +472,10 @@ class Mobject:
             retained = {key:source.__dict__[key] for key in ('updaters','updating_suspended','_saved_state')
                         if key in source.__dict__}
             state = copy.deepcopy({key:value for key,value in replacement.__dict__.items()
-                                   if key not in ('children','updaters','updating_suspended','_saved_state','_sampled_geometry_center', 'traced_point_func')})
+                                   if key not in ('children','updaters','updating_suspended','_saved_state','_sampled_geometry_center')})
+            if 'traced_point_func' in source.__dict__:
+                retained.update({key:source.__dict__[key] for key in
+                                 ('traced_point_func', 'dissipating_time', 'time')})
             state.update(retained, children=children)
             source.__dict__ = state
         replace(self, target)
