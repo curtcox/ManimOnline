@@ -16,6 +16,74 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_group_child_motion_and_mutation_preserve_nested_siblings(self):
+        for group_class in (lite.Group,lite.VGroup):
+            for scale in (0,.7,-1.2):
+                moving = lite.Dot(lite.LEFT*3)
+                sibling = lite.Circle(radius=.4)
+                inner = group_class(moving,sibling).rotate(.4).scale(.8)
+                fixed = lite.Square().shift(lite.RIGHT*3)
+                host = group_class(inner,fixed).rotate(-.3).scale(scale).shift(lite.UP)
+                def points(child):
+                    return [host._point_to_world(lite.Vector(point)) for point in child.get_points()]
+                fixed_points = points(fixed)
+                sibling_world = host._point_to_world(inner._point_to_world(sibling.get_center()))
+                for x in (-5,0,6):
+                    moving.move_to((x,2,0))
+                    self.assertPointAlmostEqual(host._point_to_world(inner._point_to_world(sibling.get_center())),sibling_world)
+                    for a,b in zip(points(fixed),fixed_points):
+                        self.assertPointAlmostEqual(a,b)
+                extra = lite.Dot(lite.RIGHT*10)
+                for mutate in (lambda:host.add(extra),lambda:host.add_to_back(extra),
+                               lambda:host.remove(extra),lambda:setattr(host,'submobjects',[fixed,inner]),
+                               lambda:setattr(host,'submobjects',[]),lambda:host.add(inner,fixed)):
+                    mutate()
+                    for a,b in zip(points(fixed),fixed_points):
+                        self.assertPointAlmostEqual(a,b)
+                saved = host.to_dict()
+                host.save_state()
+                copied = host.copy()
+                copied.children[0].shift(lite.UP*20)
+                copied.to_dict()
+                self.assertEqual(host.to_dict(),saved)
+                host.children[0].shift(lite.RIGHT*20)
+                host.to_dict()
+                host.restore()
+                self.assertEqual(host.to_dict(),saved)
+                self.assertNotIn('_family_pivot_cache',saved)
+
+    def test_group_motion_gallery_preserves_reference_and_fixed_shape(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/group_motion_scene.py').read_text()))
+        self.assertEqual(result['duration'],10)
+        def from_snapshot(data):
+            m = lite.Mobject()
+            m.__dict__.update(data)
+            m._type = data['type']
+            m._sampled_geometry_center = lite.Vector(data['geometry_center'])
+            m.children = []
+            return m
+        fixed_points = None
+        positions = []
+        for index in (30,60,75,90,120):
+            frame = result['frames'][index]
+            data = frame['mobjects'][0]
+            host = from_snapshot(data)
+            inner = from_snapshot(data['children'][0])
+            sibling = from_snapshot(data['children'][0]['children'][1])
+            self.assertPointAlmostEqual(host._point_to_world(inner._point_to_world(sibling.get_center())),frame['mobjects'][1]['position'])
+            fixed = from_snapshot(data['children'][1])
+            points = [host._point_to_world(lite.Vector(point)) for point in fixed.get_points()]
+            if fixed_points is None:
+                fixed_points = points
+            for a,b in zip(points,fixed_points):
+                self.assertPointAlmostEqual(a,b)
+            positions.append(data['children'][0]['children'][0]['position'])
+        self.assertNotEqual(positions[0],positions[-1])
+        self.assertEqual(len(result['frames'][75]['mobjects'][0]['children']),3)
+        self.assertEqual(len(result['frames'][90]['mobjects'][0]['children']),2)
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+        json.dumps(result,allow_nan=False)
+
     def test_direct_child_motion_keeps_transformed_parent_path_and_sibling_fixed(self):
         for scale in (0,.7,-1.2):
             host = lite.Rectangle(width=2,height=1)

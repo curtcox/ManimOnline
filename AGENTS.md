@@ -321,14 +321,15 @@ parent animations. has_no_points and get_group_class accompany family slicing.
 Read `examples/family_bounds_scene.py` for own-plus-child bounds, public boundary
 queries, camera fitting and distant child insertion/removal. `_own_local_bounds`
 contains primitive geometry; `_local_bounds` unions it with child bounds.
-`_replace_children` compensates changed pivots on ordinary shapes by shifting
-A(delta)-delta. Group mutations retain their established behavior; numeric-axis
-helpers already apply their own compensation. Group/VGroup child motion and exact text/rotated curve bounds remain open.
+`_replace_children` compensates changed pivots on all families by shifting
+A(delta)-delta. Exact text/rotated curve bounds remain open.
 
 Read `examples/child_motion_scene.py` for moving children inside rotated/scaled
-ordinary shapes. `_family_pivot_cache` tracks own/child bounds and the previous
+ordinary shapes. Also read `examples/group_motion_scene.py` for nested Group and
+VGroup motion, insertion and removal. `_family_pivot_cache` tracks own/child bounds and the previous
 local pivot; changed child bounds with unchanged own geometry compensate position
 by A(delta)-delta. Synchronize before pose changes and frame serialization; exclude
 the cache from JSON. Explicit child replacement resets the cache to avoid double
-compensation. Preserve sampled-frame pinned pivots and coordinate-helper behavior.
-Native world-space child coordinates and Group/VGroup dynamic pivots remain open.
+compensation. Preserve sampled-frame pinned pivots. Coordinate helpers now use the common
+compensation; do not reintroduce their former manual pivot shifts.
+Native world-space child coordinates remain open.

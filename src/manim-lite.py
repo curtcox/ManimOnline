@@ -147,8 +147,8 @@ class Mobject:
         return self
 
     def _replace_children(self, children):
-        # Keep the affine mapping fixed when a geometry-bearing family's bounds change.
-        previous = self._geometry_center() if self._type != 'vgroup' else None
+        # Keep the affine mapping fixed when any family's bounds change.
+        previous = self._geometry_center()
         self.children = children
         self.__dict__.pop('_family_pivot_cache',None)
         if previous is not None:
@@ -371,7 +371,7 @@ class Mobject:
             return Vector(self._sampled_geometry_center)
         left, bottom, right, top = self._local_bounds()
         center = Vector(((left + right) / 2, (bottom + top) / 2, 0))
-        if self.children and self._type != 'vgroup':
+        if self.children:
             own = self._own_local_bounds()
             child_bounds = tuple(child._bounds() for child in self.children)
             previous = self.__dict__.get('_family_pivot_cache')
@@ -2350,7 +2350,7 @@ class NumberLine(VGroup):
 
     def _add_world_decoration(self, decoration, role):
         # New geometry is positioned in world coordinates. Invert this parent,
-        # then compensate for its changed bounding-box pivot after insertion.
+        # then let common family insertion preserve its bounding-box pivot.
         if self.geometry_scale == 0:
             raise ValueError('Cannot add decorations to a collapsed NumberLine')
         center = self._geometry_center()
@@ -2367,10 +2367,6 @@ class NumberLine(VGroup):
                 child.geometry_scale /= self.geometry_scale
         decoration._number_line_role = role
         self.add(decoration)
-        delta = center-self._geometry_center()
-        rotated = Vector((delta[0]*math.cos(self.angle)-delta[1]*math.sin(self.angle),
-                          delta[0]*math.sin(self.angle)+delta[1]*math.cos(self.angle),0))*self.geometry_scale
-        self.shift(delta-rotated)
         return self
 
     def add_ticks(self):
@@ -2559,10 +2555,8 @@ class Axes(VGroup):
         # Validate both additions before mutating either live axis.
         for axis,target in zip((self.x_axis,self.y_axis),targets):
             axis.become(target)
-        delta = center-self._geometry_center()
-        rotated = Vector((delta[0]*math.cos(self.angle)-delta[1]*math.sin(self.angle),
-                          delta[0]*math.sin(self.angle)+delta[1]*math.cos(self.angle),0))*self.geometry_scale
-        return self.shift(delta-rotated)
+        self._geometry_center()
+        return self
 
     def get_x_axis_label(self, label, direction=UR, buff=.1, **kwargs):
         label = label if isinstance(label,Mobject) else MathTex(str(label))
@@ -3060,10 +3054,8 @@ class ComplexPlane(NumberPlane):
             label.geometry_scale /= self.geometry_scale
         self.add(labels)
         del self._coordinate_labels
-        delta = center-self._geometry_center()
-        rotated = Vector((delta[0]*math.cos(self.angle)-delta[1]*math.sin(self.angle),
-                          delta[0]*math.sin(self.angle)+delta[1]*math.cos(self.angle),0))*self.geometry_scale
-        return self.shift(delta-rotated)
+        self._geometry_center()
+        return self
 
 
 def linear(t):

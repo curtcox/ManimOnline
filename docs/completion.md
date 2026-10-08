@@ -117,8 +117,9 @@ point-free container rendering. Glyph/tip point families, general scene restruct
 
 
 Own-plus-child union bounds now support boundary queries, relative layout and
-camera fitting. Child attachment/removal/replacement preserves ordinary shapes'
+camera fitting. Child attachment/removal/replacement preserves every family's
 affine geometry. Conservative rotated/control-point bounds, glyph metrics and
-Group/VGroup child motion and native world-space child coordinates remain open.
-Direct child motion inside transformed ordinary shapes now preserves the parent
-outline and stationary siblings, including nested families and frame snapshots.
+native world-space child coordinates remain open.
+Direct child motion inside transformed ordinary shapes, Group and VGroup now
+preserves parent outlines and stationary siblings, including nested families,
+coordinate helper decorations and frame snapshots.

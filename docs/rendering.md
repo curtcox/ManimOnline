@@ -1487,11 +1487,10 @@ the XY bounds. next_to and camera.auto_zoom use those same bounds.
 On ordinary geometry-bearing objects, add/add_to_back/remove/submobjects
 replacement preserve the existing affine mapping when child insertion changes
 the bounding-center pivot: position shifts by A(delta)-delta. This covers rotation,
-uniform scaling and collapsed parents. Group mutations retain their established
-behavior, since coordinate helpers already explicitly compensate their changes.
+uniform scaling and collapsed parents. Group mutations now share this behavior, as described in the nested-group
+section below. Coordinate helpers use the common compensation.
 Native world-space child mutation semantics remain incomplete. Direct child
-motion now preserves ordinary shape parents, as described below; Group/VGroup
-dynamic pivots remain unfinished.
+motion now preserves ordinary shape and Group/VGroup parents, as described below.
 Bounds also remain conservative for rotated composite boxes/cubic handles, and
 text/glyph metrics remain incomplete.
 
@@ -1525,7 +1524,8 @@ The gallery moves a tracked yellow dot inside a rotated/scaled rectangle while
 a green sibling and red corner reference remain fixed. Tests cover negative/zero
 scales, nested motion, child resizing, copy/restore isolation, serialization and
 final cleanup. This retains browser local-to-parent coordinates; native recursive
-world-point mutation semantics and Group/VGroup dynamic pivots remain unfinished.
+world-point mutation semantics remain unfinished. Group/VGroup use the same
+compensation, as described below.
 
 Reference: [official Manim Mobject implementation](https://docs.manim.community/en/stable/_modules/manim/mobject/mobject.html).
 
@@ -1533,3 +1533,29 @@ Local Pyodide playback verified unchanged parent/sibling world transforms at two
 and seven seconds while the yellow dot moved, and no circles remained at nine
 seconds. Switching to DOT rendered the editor flow graph. All 314 Python and
 76 Node tests passed.
+
+
+## Stable nested Group and VGroup children
+
+The shared family-pivot cache and explicit child replacement compensation now
+also apply to Group, VGroup, NumberLine, Axes and plane families. Moving or
+resizing a child, attaching/reordering/removing children and replacing the child
+list preserve stationary siblings through nested rotated/scaled ancestors.
+Empty-to-populated transitions preserve the same affine mapping. Coordinate
+helpers no longer add separate manual shifts after shared compensation, avoiding
+double adjustment when labels or ticks change family bounds.
+
+The nested-group gallery moves a yellow dot while a green circle remains centered
+on a red reference, adds/removes a distant purple dot, and keeps a blue square
+fixed. Tests cover Group and VGroup, nested rotation, positive/negative/zero scale,
+mutation ordering, empty replacement, copy/restore isolation and frame cleanup.
+Existing coordinate-helper tests verify transformed tick/label insertion and
+coordinate round trips. Native world-space child coordinates and recursive
+point-array transformations still remain incomplete.
+
+Reference: [official Manim family transformation implementation](https://docs.manim.community/en/stable/_modules/manim/mobject/mobject.html).
+
+Local Pyodide playback showed four circles at five seconds with the purple child
+present, three at six seconds after removal, and zero at ten seconds. The green
+circle remained centered on its red reference. Switching to DOT rendered the
+editor flow graph. All 316 Python and 76 Node tests passed.

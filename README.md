@@ -1083,5 +1083,9 @@ preserves its existing geometry's world position. Bounds are conservative for
 rotated families and cubic controls; browser text metrics remain incomplete.
 Direct child motion on ordinary shapes also preserves the parent and siblings.
 Try **Move children inside transformed shapes** (`examples/child_motion_scene.py`)
-for a tracked dot inside a rotated/scaled rectangle. Group/VGroup child motion
-still has pivot limitations; native world-space child coordinates remain incomplete.
+for a tracked dot inside a rotated/scaled rectangle. Group/VGroup now share this compensation. Native world-space child coordinates
+remain incomplete.
+
+Try **Move children inside nested groups** (`examples/group_motion_scene.py`).
+Moving and adding/removing distant children preserves stationary siblings in
+rotated/scaled nested Group and VGroup families, including coordinate helpers.
