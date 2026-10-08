@@ -16,6 +16,81 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_uniform_fitting_transformed_families_and_replace(self):
+        shape=lite.Rectangle(width=4,height=2).rotate(.3).scale(-.8).shift(lite.UP)
+        child=lite.Dot(lite.RIGHT)
+        shape.add(child)
+        center=shape.get_center()
+        ratio=shape.get_height()/shape.get_width()
+        shape.scale_to_fit_width(6)
+        self.assertPointAlmostEqual(shape.get_center(),center)
+        self.assertAlmostEqual(shape.get_width(),6)
+        self.assertAlmostEqual(shape.get_height()/shape.get_width(),ratio)
+        self.assertIs(shape.children[0],child)
+        shape.scale_to_fit_height(3)
+        self.assertAlmostEqual(shape.get_height(),3)
+        target=lite.Circle(radius=2).shift(lite.RIGHT*3)
+        target_before=target.to_dict()
+        self.assertIs(shape.replace(target,dim_to_match=1),shape)
+        self.assertAlmostEqual(shape.get_height(),target.get_height())
+        self.assertPointAlmostEqual(shape.get_center(),target.get_center())
+        self.assertEqual(target.to_dict(),target_before)
+        self.assertEqual(shape.length_over_dim(0),shape.get_width())
+        before=shape.to_dict()
+        for kwargs in ({'length':-1,'dim':0},{'length':2,'dim':2},
+                       {'length':2,'dim':True},{'length':float('inf'),'dim':0}):
+            with self.assertRaises(ValueError): shape.rescale_to_fit(**kwargs)
+            self.assertEqual(shape.to_dict(),before)
+        with self.assertRaises(NotImplementedError): shape.replace(target,stretch=True)
+        self.assertEqual(shape.to_dict(),before)
+        collapsed=lite.Line(lite.ORIGIN,lite.ORIGIN)
+        self.assertIs(collapsed.scale_to_fit_width(4),collapsed)
+        with self.assertRaises(ValueError): shape.replace(lite.Group())
+        result=render("shape = Rectangle(width=4,height=2)\nself.play(shape.animate.scale_to_fit_width(2),run_time=1)\nself.play(shape.animate.scale_to_fit_height(3),run_time=1)")
+        self.assertAlmostEqual(result['frames'][15]['mobjects'][0]['geometry_scale'],.5)
+        self.assertAlmostEqual(result['frames'][30]['mobjects'][0]['geometry_scale'],1.5)
+
+    def test_circle_surround_geometry_style_identity_and_validation(self):
+        import math
+        for target in (lite.Rectangle(width=4,height=2).rotate(.3).shift(lite.RIGHT),
+                       lite.Line(lite.DOWN*2,lite.UP*2),
+                       lite.VGroup(lite.Dot(lite.LEFT*2),lite.Dot(lite.RIGHT*2+lite.UP))):
+            circle=lite.Circle(color=lite.BLUE).rotate(.4).scale(-.7)
+            marker=lite.Dot(lite.ORIGIN,color=lite.YELLOW)
+            circle.add(marker)
+            before=target.to_dict()
+            circle.surround(target,dim_to_match=1,buffer_factor=1.3)
+            self.assertPointAlmostEqual(circle.get_center(),target.get_center())
+            self.assertAlmostEqual(circle.get_width(),math.hypot(target.get_width(),target.get_height())*1.3)
+            self.assertEqual(circle.stroke_color,lite.BLUE)
+            self.assertIs(circle.children[0],marker)
+            self.assertEqual(target.to_dict(),before)
+            circle.save_state()
+            saved=circle.to_dict()
+            circle.surround(lite.Square(),buffer_factor=.5).restore()
+            self.assertEqual(circle.to_dict(),saved)
+        before=circle.to_dict()
+        for factor in (-1,float('inf'),True):
+            with self.assertRaises(ValueError): circle.surround(lite.Square(),buffer_factor=factor)
+            self.assertEqual(circle.to_dict(),before)
+        with self.assertRaises(NotImplementedError): circle.surround(lite.Square(),stretch=True)
+        self.assertEqual(circle.to_dict(),before)
+
+    def test_circle_surround_gallery_follows_bounds_and_cleans_up(self):
+        import math
+        result=json.loads(lite.render_scene((ROOT/'examples/surround_scene.py').read_text()))
+        self.assertEqual(result['duration'],9)
+        for index in (30,45,60,75,90,105):
+            target,ring=result['frames'][index]['mobjects'][:2]
+            obj=lite.Rectangle()
+            obj.__dict__.update(target)
+            obj._type=target['type']
+            obj.children=[]
+            self.assertPointAlmostEqual(ring['position'],obj.get_center())
+            self.assertAlmostEqual(2*ring['radius']*abs(ring['geometry_scale']),
+                                   math.hypot(obj.get_width(),obj.get_height())*1.1)
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+
     def test_circle_three_points_geometry_and_validation(self):
         import math
         for extent in (1,1e-100,1e100):

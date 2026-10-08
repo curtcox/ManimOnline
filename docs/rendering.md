@@ -1903,3 +1903,31 @@ Verification: all 353 Python and 78 Node tests passed. Local Pyodide playback
 showed the red boundary marker following the rotated/scaled translated circle
 at six seconds, five circles after restoration at seven seconds and no remaining
 geometry at nine seconds. Switching to DOT rendered Editor → Render → Preview.
+
+
+Try **Surround moving shapes** (`examples/surround_scene.py`). Mobject now provides
+`length_over_dim`, `rescale_to_fit`, `scale_to_fit_width`, `scale_to_fit_height`
+and `replace` for uniform XY fitting. The chosen dimension uses current family
+bounds, including rotation and children; uniform fitting preserves aspect ratio,
+style and child identities. `replace` fits the chosen dimension and centers the
+existing object on its target without changing that target. These operations also
+work in animate chains. Fitting an already zero-size dimension is a no-op, following
+Manim's rescale behavior. Lengths must be finite and nonnegative.
+
+`Circle.surround(target, buffer_factor=1.2)` centers the existing circle on the
+target and sets its width to the target's bounding-box diagonal times the factor.
+This handles both horizontal and vertical lines without collapsing the circle
+before the final fit. A factor below one makes a smaller outline. An updater can
+repeat surround as the target moves, rotates or scales. Bounds remain conservative
+for rotated families and cubic handles. Nonuniform stretch=True and dimensions
+outside XY remain explicitly unsupported; full stretching is still implementation
+work. Empty targets and invalid values fail before mutation.
+
+Reference: [Manim size fitting and replacement](https://docs.manim.community/en/stable/reference/manim.mobject.mobject.Mobject.html),
+[Circle surround](https://docs.manim.community/en/stable/reference/manim.mobject.geometry.arc.Circle.html).
+
+
+Verification: all 356 Python and 78 Node tests passed. Local Pyodide playback
+showed the yellow circle following the rotated, resized and translated rectangle
+at six seconds, restored them at seven seconds and left only the black canvas
+background at nine seconds. Switching to DOT rendered Editor → Render → Preview.

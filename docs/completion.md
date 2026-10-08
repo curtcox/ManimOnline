@@ -188,3 +188,10 @@ wrapped angle-based path queries and center motion. Numerical and animation
 regressions cover boundary markers during transformed playback and restoration.
 Circle surround/stretch, 3D circumcircles and native world-coordinate children
 remain open.
+
+
+Uniform XY dimension fitting/replacement and Circle.surround now provide
+geometry-preserving size controls and dynamic surrounding outlines. Regression
+coverage includes family bounds, signed transforms, child identities, atomic
+validation, animated fitting and updater playback. Nonuniform stretching, full
+3D dimensions and native world-coordinate children remain open.

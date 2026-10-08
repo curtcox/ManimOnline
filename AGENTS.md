@@ -432,3 +432,12 @@ and signed transforms behave consistently. Three-point construction normalizes
 chords before solving the XY circumcenter; do not square raw large coordinates.
 Reject duplicate/collinear/3D or nonfinite geometry explicitly. Circle validation
 now occurs at construction through Arc, including radius=None's unit fallback.
+
+
+Read `examples/surround_scene.py` for uniform XY fitting and Circle.surround.
+Mobject.rescale_to_fit uses current family dimensions and scale; zero dimensions
+remain a no-op. replace captures target center/length before mutating the source.
+Circle.surround computes the diagonal directly rather than first fitting the
+chosen dimension: vertical/horizontal line targets must not cause premature
+collapse. Preserve child identities, signed pose and target geometry. Nonuniform
+stretch flags fail explicitly until the runtime can represent family stretching.

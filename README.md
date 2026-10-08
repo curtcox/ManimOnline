@@ -1230,3 +1230,22 @@ with get_arc_center/move_arc_center_to available to Circle and Ellipse. Radius
 None selects the existing unit default; invalid radii now fail at construction.
 The gallery retains the three original points while a boundary marker follows
 the moving circle, then restores the circle and removes the scene.
+
+
+Try **Surround moving shapes** (`examples/surround_scene.py`). Mobject now provides
+`length_over_dim`, `rescale_to_fit`, `scale_to_fit_width`, `scale_to_fit_height`
+and `replace` for uniform XY fitting. The chosen dimension uses current family
+bounds, including rotation and children; uniform fitting preserves aspect ratio,
+style and child identities. `replace` fits the chosen dimension and centers the
+existing object on its target without changing that target. These operations also
+work in animate chains. Fitting an already zero-size dimension is a no-op, following
+Manim's rescale behavior. Lengths must be finite and nonnegative.
+
+`Circle.surround(target, buffer_factor=1.2)` centers the existing circle on the
+target and sets its width to the target's bounding-box diagonal times the factor.
+This handles both horizontal and vertical lines without collapsing the circle
+before the final fit. A factor below one makes a smaller outline. An updater can
+repeat surround as the target moves, rotates or scales. Bounds remain conservative
+for rotated families and cubic handles. Nonuniform stretch=True and dimensions
+outside XY remain explicitly unsupported; full stretching is still implementation
+work. Empty targets and invalid values fail before mutation.

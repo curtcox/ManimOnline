@@ -417,6 +417,50 @@ class Mobject:
         _,bottom,_,top = self._bounds()
         return top-bottom
 
+    @staticmethod
+    def _fit_dimension(dim):
+        if isinstance(dim,bool) or not isinstance(dim,int) or dim not in (0,1):
+            raise ValueError('Size fitting dimension must be 0 (width) or 1 (height)')
+        return dim
+
+    def length_over_dim(self, dim):
+        self._fit_dimension(dim)
+        return self.get_width() if dim == 0 else self.get_height()
+
+    def rescale_to_fit(self, length, dim, stretch=False, **kwargs):
+        NumberLine._real(length,'Fitted length',nonnegative=True)
+        self._fit_dimension(dim)
+        if not isinstance(stretch,bool):
+            raise ValueError('stretch must be a boolean')
+        if stretch:
+            raise NotImplementedError('Nonuniform family stretching is not implemented')
+        old_length = self.length_over_dim(dim)
+        if not math.isfinite(old_length):
+            raise ValueError('Existing length must be finite')
+        if old_length == 0:
+            return self
+        factor = length/old_length
+        if not math.isfinite(factor):
+            raise ValueError('Fitted scale must be finite')
+        return self.scale(factor,**kwargs)
+
+    def scale_to_fit_width(self, width, **kwargs):
+        return self.rescale_to_fit(width,0,**kwargs)
+
+    def scale_to_fit_height(self, height, **kwargs):
+        return self.rescale_to_fit(height,1,**kwargs)
+
+    def replace(self, mobject, dim_to_match=0, stretch=False):
+        if not isinstance(mobject,Mobject):
+            raise TypeError('replace expects a Mobject')
+        if not mobject.get_num_points() and not mobject.children:
+            raise ValueError('Cannot fit to a mobject with no points or children')
+        length = mobject.length_over_dim(dim_to_match)
+        center = mobject.get_center()
+        if not all(math.isfinite(value) for value in center):
+            raise ValueError('Fit center must be finite')
+        return self.rescale_to_fit(length,dim_to_match,stretch=stretch).move_to(center)
+
     def next_to(self, mobject_or_point, direction=RIGHT, buff=0.25, aligned_edge=ORIGIN):
         direction, aligned_edge = Vector(direction), Vector(aligned_edge)
         if not all(math.isfinite(v) for v in (*direction, *aligned_edge, buff)):
@@ -1601,6 +1645,23 @@ class Circle(Arc):
     def __init__(self, radius=1, **kwargs):
         super().__init__(radius=1 if radius is None else radius, start_angle=0, angle=TAU, **kwargs)
         self._type = 'circle'
+
+    def surround(self, mobject, dim_to_match=0, stretch=False, buffer_factor=1.2):
+        if not isinstance(mobject,Mobject):
+            raise TypeError('surround expects a Mobject')
+        self._fit_dimension(dim_to_match)
+        if not isinstance(stretch,bool):
+            raise ValueError('stretch must be a boolean')
+        if stretch:
+            raise NotImplementedError('Nonuniform surrounding is not implemented')
+        NumberLine._real(buffer_factor,'Circle buffer factor',nonnegative=True)
+        if not mobject.get_num_points() and not mobject.children:
+            raise ValueError('Cannot surround a mobject with no points or children')
+        diameter = math.hypot(mobject.get_width(),mobject.get_height())*buffer_factor
+        center = mobject.get_center()
+        if not all(math.isfinite(value) for value in (*center,diameter)):
+            raise ValueError('Surround geometry must be finite')
+        return self.scale_to_fit_width(diameter).move_to(center)
 
     def point_at_angle(self, angle):
         NumberLine._real(angle,'Circle point angle')
@@ -4259,7 +4320,7 @@ class Animate(Transform):
     def __getattr__(self, name):
         if name.startswith('__'):
             raise AttributeError(name)
-        if name not in ('become', 'set_value', 'increment_value', 'shift', 'move_to', 'set_width', 'set_height', 'set_length', 'move_arc_center_to', 'put_start_and_end_on', 'set_angle', 'next_to', 'arrange', 'arrange_submobjects', 'arrange_in_grid', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'pointwise_become_partial', 'set_points', 'append_points', 'clear_points', 'add_subpath', 'append_vectorized_mobject', 'start_new_path', 'close_path', 'set_points_as_corners', 'set_points_smoothly', 'make_smooth', 'make_jagged', 'change_anchor_mode', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
+        if name not in ('become', 'set_value', 'increment_value', 'shift', 'move_to', 'set_width', 'set_height', 'rescale_to_fit', 'scale_to_fit_width', 'scale_to_fit_height', 'replace', 'surround', 'set_length', 'move_arc_center_to', 'put_start_and_end_on', 'set_angle', 'next_to', 'arrange', 'arrange_submobjects', 'arrange_in_grid', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'pointwise_become_partial', 'set_points', 'append_points', 'clear_points', 'add_subpath', 'append_vectorized_mobject', 'start_new_path', 'close_path', 'set_points_as_corners', 'set_points_smoothly', 'make_smooth', 'make_jagged', 'change_anchor_mode', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
             raise NotImplementedError(f'animate.{name} is not supported yet')
         def apply(*args, **kwargs):
             getattr(self.target, name)(*args, **kwargs)
