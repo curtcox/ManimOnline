@@ -123,3 +123,10 @@ native world-space child coordinates remain open.
 Direct child motion inside transformed ordinary shapes, Group and VGroup now
 preserves parent outlines and stationary siblings, including nested families,
 coordinate helper decorations and frame snapshots.
+
+
+Group/VGroup arrangement now supports transformed families with nonzero signed
+scale, screen-space direction/buffer/aligned edges, fixed first-child placement
+without centering and animated position interpolation while retaining parent
+pose. Zero-scale arrangements and native world-space child coordinates remain
+unimplemented. Conservative bounds and general family restructuring remain open.

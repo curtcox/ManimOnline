@@ -4401,6 +4401,81 @@ self.wait(1)""")
         self.assertAlmostEqual(square._bounds()[0], 0.5)
         self.assertAlmostEqual(square._bounds()[1], 0.5)
 
+    def test_transformed_layout_gallery_restores_orientation_and_cleans_up(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/transformed_layout_scene.py').read_text()))
+        self.assertEqual(result['duration'],9)
+        for index in (30,45,60,75,90,105):
+            group = result['frames'][index]['mobjects'][0]
+            self.assertAlmostEqual(group['angle'],lite.PI/6)
+            self.assertAlmostEqual(group['geometry_scale'],.8)
+        initial = result['frames'][30]['mobjects'][0]
+        restored = result['frames'][105]['mobjects'][0]
+        for a,b in zip([initial]+initial['children'],[restored]+restored['children']):
+            for key in ('type','position','angle','geometry_scale','geometry_center','width','height','radius'):
+                self.assertEqual(a.get(key),b.get(key))
+        self.assertNotEqual(initial['children'][1]['position'],result['frames'][60]['mobjects'][0]['children'][1]['position'])
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+
+    def test_arrange_transformed_groups_uses_world_direction_and_buffer(self):
+        for group_class in (lite.Group,lite.VGroup):
+            for scale in (.7,-1.3):
+                first = lite.Rectangle(width=2,height=1).rotate(.2)
+                second = lite.Circle(radius=.4)
+                third = lite.VGroup(lite.Dot(lite.LEFT),lite.Square(side_length=.5)).rotate(-.3)
+                group = group_class(first,second,third).rotate(.6).scale(scale).shift(lite.RIGHT*2)
+                initial = group._point_to_world(first.get_center())
+                pose = (group.angle,group.geometry_scale)
+                group.arrange(lite.DOWN,buff=.6,center=False,aligned_edge=lite.LEFT)
+                self.assertPointAlmostEqual(group._point_to_world(first.get_center()),initial)
+                self.assertEqual((group.angle,group.geometry_scale),pose)
+                bounds = []
+                for child in group:
+                    target = child.copy()
+                    target.position = list(group._point_to_world(child.get_center())-target._geometry_center())
+                    target.angle += group.angle
+                    target.geometry_scale *= group.geometry_scale
+                    bounds.append(target._bounds())
+                for a,b in zip(bounds,bounds[1:]):
+                    self.assertAlmostEqual(a[1]-b[3],.6)
+                    self.assertAlmostEqual(a[0],b[0])
+                group.arrange(lite.RIGHT,buff=.3)
+                self.assertPointAlmostEqual(group.get_center(),lite.ORIGIN)
+                self.assertIs(group.children[0],first)
+                first.add_updater(lambda m:None)
+                group.save_state()
+                saved = group.to_dict()
+                group.arrange(lite.UP)
+                group.restore()
+                self.assertEqual(group.to_dict(),saved)
+                self.assertEqual(len(first.updaters),1)
+
+    def test_arrange_invalid_arguments_do_not_mutate_transformed_group(self):
+        group = lite.VGroup(lite.Square(),lite.Circle()).rotate(.5).scale(2)
+        saved = group.to_dict()
+        for options in ({'direction':lite.ORIGIN},{'buff':float('inf')},
+                        {'aligned_edge':(float('nan'),0,0)}):
+            with self.assertRaises(ValueError):
+                group.arrange(**options)
+            self.assertEqual(group.to_dict(),saved)
+        with self.assertRaises(NotImplementedError):
+            group.arrange(lite.OUT)
+        self.assertEqual(group.to_dict(),saved)
+        tiny = lite.VGroup(lite.Square(),lite.Circle()).scale(1e-320)
+        saved = tiny.to_dict()
+        with self.assertRaisesRegex(ValueError,'translations'):
+            tiny.arrange(buff=1)
+        self.assertEqual(tiny.to_dict(),saved)
+
+    def test_animated_transformed_layout_preserves_pose_and_interpolates_positions(self):
+        result = render('g = VGroup(Rectangle(width=2,height=1),Circle(radius=.4),Square(side_length=.6)).arrange(RIGHT,buff=.4).rotate(.6).scale(.8)\nself.add(g)\nself.play(g.animate.arrange(DOWN,buff=.5),run_time=2,rate_func=linear)')
+        first,middle,last = [result['frames'][i]['mobjects'][0] for i in (0,15,30)]
+        for data in (first,middle,last):
+            self.assertAlmostEqual(data['angle'],.6)
+            self.assertAlmostEqual(data['geometry_scale'],.8)
+        for a,b,c in zip(first['children'],middle['children'],last['children']):
+            self.assertPointAlmostEqual(b['position'],[(x+y)/2 for x,y in zip(a['position'],c['position'])])
+        self.assertNotEqual(first['children'][1]['position'],last['children'][1]['position'])
+
     def test_arrange_centers_row_and_preserves_first_child_when_requested(self):
         shapes = [lite.Square(), lite.Circle(radius=0.5), lite.Dot()]
         group = lite.VGroup(*shapes).arrange(buff=0.8)
@@ -4438,8 +4513,8 @@ self.wait(1)""")
             lite.Dot().move_to((float('nan'), 0))
         with self.assertRaises(TypeError):
             lite.Dot().next_to(lite.ORIGIN, coor_mask=(1, 0, 0))
-        with self.assertRaisesRegex(NotImplementedError, 'before scaling'):
-            lite.VGroup(lite.Dot()).scale(2).arrange()
+        with self.assertRaisesRegex(NotImplementedError, 'collapsed'):
+            lite.VGroup(lite.Dot()).scale(0).arrange()
 
     def test_baseline_animation(self):
         result = json.loads(lite.render_scene((ROOT / 'examples/minimal_scene.py').read_text()))

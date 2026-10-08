@@ -1805,12 +1805,39 @@ class Group(Mobject):
         return list(self.children)
 
     def arrange(self, direction=RIGHT, buff=0.25, center=True, aligned_edge=ORIGIN):
-        if self.geometry_scale != 1 or self.angle != 0:
-            raise NotImplementedError('Arrange the group before scaling or rotating it')
-        # Child positions are local to this group; its translation is preserved
-        # when center=False, and centering moves the whole arranged group.
-        for previous, current in zip(self.children, self.children[1:]):
-            current.next_to(previous, direction, buff, aligned_edge)
+        direction, aligned_edge = Vector(direction), Vector(aligned_edge)
+        if not all(math.isfinite(v) for v in (*direction,*aligned_edge,buff)):
+            raise ValueError('Layout coordinates and buffer must be finite')
+        if direction[2] or aligned_edge[2]:
+            raise NotImplementedError('Layout supports only the XY plane')
+        if direction == ORIGIN:
+            raise ValueError('Layout direction must be nonzero')
+        if self.geometry_scale == 0:
+            raise NotImplementedError('Cannot arrange a collapsed group')
+        # Layout in world coordinates, then invert only the resulting translations.
+        # Retaining the parent pose avoids scale/rotation artifacts during .animate.
+        self._geometry_center()
+        targets = []
+        for child in self.children:
+            target = child.copy()
+            pivot = target._geometry_center()
+            center_point = self._point_to_world(child.get_center())
+            target.position = list(center_point-pivot)
+            target.angle += self.angle
+            target.geometry_scale *= self.geometry_scale
+            targets.append(target)
+        shifts = []
+        for previous,current in zip(targets,targets[1:]):
+            before = current.get_center()
+            current.next_to(previous,direction,buff,aligned_edge)
+            delta = current.get_center()-before
+            shifts.append(Vector((delta[0]*math.cos(self.angle)+delta[1]*math.sin(self.angle),
+                                  -delta[0]*math.sin(self.angle)+delta[1]*math.cos(self.angle),0))*(1/self.geometry_scale))
+        if any(not math.isfinite(value) for delta in shifts for value in delta):
+            raise ValueError('Layout translations must be finite')
+        for child,delta in zip(self.children[1:],shifts):
+            child.shift(delta)
+        self._geometry_center()
         if center:
             self.move_to(ORIGIN)
         return self

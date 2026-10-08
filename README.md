@@ -176,8 +176,9 @@ attachments, and line buffers remain unsupported; arrows use shaft endpoints.
 uses bounding boxes in the XY plane and a default gap of 0.25 units. Text
 bounds use only its center anchor, so layout does not account for text width
 or height. Rotated polygon/line bounds are conservative; arrowheads and stroke
-thickness do not contribute to spacing. Arrange groups before scaling or
-rotating them, then apply the group transform. Group children use local
+thickness do not contribute to spacing. Groups can be arranged after rotation
+and nonzero scaling; direction and buffer use screen coordinates while the
+group pose is preserved. Zero-scale groups cannot be arranged. Group children use local
 coordinates; placing a child independently does not resolve its parent's
 transforms. Animated layouts interpolate child positions between arrangements.
 
@@ -1089,3 +1090,14 @@ remain incomplete.
 Try **Move children inside nested groups** (`examples/group_motion_scene.py`).
 Moving and adding/removing distant children preserves stationary siblings in
 rotated/scaled nested Group and VGroup families, including coordinate helpers.
+
+
+### Layout after rotation and scaling
+
+Try **Arrange rotated and scaled groups** (`examples/transformed_layout_scene.py`).
+Group/VGroup `arrange` now supports rotated, positively or negatively scaled
+families, screen-space gaps and aligned edges, centering, and `.animate` chains.
+Stationary first children stay fixed with `center=False`; child references and
+shape orientations survive rearrangement and restoration. Collapsed zero-scale
+groups remain unsupported. Bounds retain the conservative curve/text limits
+described above.

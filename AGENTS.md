@@ -333,3 +333,12 @@ the cache from JSON. Explicit child replacement resets the cache to avoid double
 compensation. Preserve sampled-frame pinned pivots. Coordinate helpers now use the common
 compensation; do not reintroduce their former manual pivot shifts.
 Native world-space child coordinates remain open.
+
+
+Read `examples/transformed_layout_scene.py` for arrangement after rotation and
+nonzero scaling. Group.arrange composes temporary world-space child poses, uses
+next_to on those copies, and inverts only the resulting translation vectors.
+Retain the live parent pose and child identities so animated layout does not
+introduce additional rotation or scale interpolation. Validate all translations
+before editing live children, synchronize pivot compensation, then optionally
+center. Zero-scale groups cannot invert their transform and remain unsupported.

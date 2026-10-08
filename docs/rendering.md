@@ -161,8 +161,8 @@ Layout supports `next_to` with a bounding-box gap and aligned edge, and
 `VGroup.arrange` with direction, buffer, and optional centering. `move_to` uses
 the geometry center and accepts a point or another object. `Dot` uses a filled
 circle with radius 0.08 and no outline. Layout and arrangement also work in
-animate chains. Arrange groups before applying group scale/rotation; rearranging
-an already scaled or rotated group is explicitly unsupported. Child coordinates
+animate chains. Rearranging scaled/rotated groups now supports nonzero signed
+scales, as described in the transformed-layout section below. Child coordinates
 are local to their group. Bounds do not include text metrics, arrowheads, or
 stroke thickness; rotated polygon/line bounds are conservative.
 
@@ -1559,3 +1559,28 @@ Local Pyodide playback showed four circles at five seconds with the purple child
 present, three at six seconds after removal, and zero at ten seconds. The green
 circle remained centered on its red reference. Switching to DOT rendered the
 editor flow graph. All 316 Python and 76 Node tests passed.
+
+
+## Arrangement after rotation and scaling
+
+Group/VGroup arrange now composes each child's uniform scale, angle and center
+with the parent's pose on temporary copies. next_to arranges these world-space
+copies using the requested direction, buffer and aligned edge. Only the resulting
+translations are inverted into parent-local coordinates and applied to live
+children, followed by shared pivot compensation and optional centering. The
+live parent angle/scale, child identities, callbacks and orientations remain
+unchanged, including during .animate position interpolation. All translations
+are validated before changing live geometry.
+
+Positive and negative nonzero scales, nested children, screen-space gaps, aligned
+edges, center=False first-child preservation, checkpoints and animation samples
+have Python coverage. Zero-scale groups remain unsupported because the transform
+cannot be inverted. Bounding-box conservatism, text metrics and independent
+world-space child-coordinate semantics remain unfinished.
+
+Reference: [official Manim arrange implementation](https://docs.manim.community/en/stable/_modules/manim/mobject/mobject.html).
+
+The local Pyodide gallery rearranged 30-degree shapes into a column with aligned
+left edges at four seconds, retained the 0.8 parent scale, restored the diagonal
+row at seven seconds, and removed all geometry at nine seconds. Switching to DOT
+rendered the editor flow graph. All 320 Python and 76 Node tests passed.
