@@ -153,6 +153,7 @@ Standalone triangular/filled triangular/stealth arrow-tip objects now have edita
 closed paths, styles, point/base/vector/angle/length properties, family layout,
 transforms, morphing and restoration. Python tests and Pyodide playback verify
 queries and marker tracking. Arrow now attaches real tip children with start/end tip management, sampled shaft
-trimming, fixed-size standalone scaling and endpoint editing. Circle/square tips,
-curved arrows, native world-coordinate child semantics and full tip-family
+trimming, fixed-size standalone scaling and endpoint editing. Circular/square
+outline and filled tips now have editable geometry and both-end attachment.
+Curved arrows, native world-coordinate child semantics and full tip-family
 compatibility remain open.

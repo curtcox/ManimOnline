@@ -1951,6 +1951,43 @@ class ArrowTriangleFilledTip(ArrowTriangleTip):
         super().__init__(fill_opacity=fill_opacity,stroke_width=stroke_width,**kwargs)
 
 
+class ArrowCircleTip(ArrowTip):
+    def __init__(self, length=.35, start_angle=PI, fill_opacity=0,
+                 stroke_width=3, **kwargs):
+        self._tip_dimension(length,'length')
+        if isinstance(start_angle,bool) or not isinstance(start_angle,(int,float)) or not math.isfinite(start_angle):
+            raise ValueError('Tip start_angle must be finite')
+        super().__init__(fill_opacity=fill_opacity,stroke_width=stroke_width,**kwargs)
+        phase = math.atan2(math.sin(start_angle),math.cos(start_angle))
+        curves = _path_curves({'type':'circle','radius':length/2,'start_angle':phase})
+        self.set_points([point for curve in curves for point in curve])
+        self.start_angle = start_angle
+
+
+class ArrowCircleFilledTip(ArrowCircleTip):
+    def __init__(self, fill_opacity=1, stroke_width=0, **kwargs):
+        super().__init__(fill_opacity=fill_opacity,stroke_width=stroke_width,**kwargs)
+
+
+class ArrowSquareTip(ArrowTip):
+    def __init__(self, length=.35, start_angle=PI, fill_opacity=0,
+                 stroke_width=3, **kwargs):
+        self._tip_dimension(length,'length')
+        if isinstance(start_angle,bool) or not isinstance(start_angle,(int,float)) or not math.isfinite(start_angle):
+            raise ValueError('Tip start_angle must be finite')
+        super().__init__(fill_opacity=fill_opacity,stroke_width=stroke_width,**kwargs)
+        half = length/2
+        self.set_points_as_corners([(half,half,0),(-half,half,0),
+                                   (-half,-half,0),(half,-half,0),(half,half,0)])
+        # Native Square uses its default corner ordering; this is metadata.
+        self.start_angle = start_angle
+
+
+class ArrowSquareFilledTip(ArrowSquareTip):
+    def __init__(self, fill_opacity=1, stroke_width=0, **kwargs):
+        super().__init__(fill_opacity=fill_opacity,stroke_width=stroke_width,**kwargs)
+
+
 class StealthTip(ArrowTip):
     def __init__(self, length=.175, start_angle=PI, fill_opacity=1,
                  stroke_width=3, **kwargs):
@@ -4307,7 +4344,7 @@ class MovingCameraScene(Scene):
     camera_class = MovingCamera
 
 
-EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'StealthTip', 'Arrow',
+EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'NumberPlane', 'ComplexPlane', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',

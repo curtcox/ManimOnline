@@ -1664,7 +1664,7 @@ enclosing-triangle factor; its start_angle is stored metadata.
 These objects support positive/negative/zero scaling, rotation, own-point APIs,
 partial curves, family filtering, layout, callbacks, copying and checkpoints.
 They also attach to Line/Arrow as real children; see the integration notes below.
-Circle/square variants and curved tip-bearing paths remain open.
+Curved tip-bearing paths remain open.
 
 Reference: [official Manim arrow-tip implementation](https://docs.manim.community/en/stable/_modules/manim/mobject/geometry/tips.html).
 
@@ -1702,7 +1702,7 @@ outlines without adding an implicit head; older packets still use the legacy hea
 
 The gallery exercises two heads, fixed-size scaling, endpoint edits, replacing the
 heads with a stealth tip, restoration and cleanup. General curved-tip APIs,
-DoubleArrow, circle/square tips, Arrow partial curves and cross-type path morphs,
+DoubleArrow, Arrow partial curves and cross-type path morphs,
 and native world-coordinate child semantics remain open.
 
 Reference: [Manim TipableVMobject API](https://docs.manim.community/en/stable/reference/manim.mobject.geometry.arc.TipableVMobject.html).
@@ -1712,3 +1712,37 @@ Verification: all 335 Python and 77 Node tests passed. Local Pyodide playback
 showed the replaced stealth tip at six seconds, the original two tips and white
 endpoint marker at eight seconds, and no lines/paths/dots at ten seconds.
 Switching to DOT rendered the Editor → Render → Preview graph.
+
+
+## Circular and square arrow tips
+
+ArrowCircleTip/ArrowCircleFilledTip and ArrowSquareTip/ArrowSquareFilledTip extend
+ArrowTip with editable closed outlines. Circle tips use the existing eight-cubic
+circle approximation; square tips use four corner segments. Both shapes center
+their bounds locally. Circle length is its diameter; square length input is its
+side, while the inherited length property measures its diagonal anchor span.
+Circle start_angle sets the first anchor and is normalized before curve generation
+so huge finite angles still produce distinct points. Square start_angle is stored
+metadata and leaves the native default corner order unchanged.
+
+Outline defaults are fill_opacity=0/stroke_width=3; filled defaults are 1/0 and
+remain overridable. Constructors reject negative/nonfinite dimensions and invalid
+angles; zero dimensions produce collapsed editable paths. The tip attachment,
+sampled shaft derivation and ordinary VMobject morph pipeline require no special
+renderer branches for these shapes. Native Circle/Square class inheritance and
+the broader native API remain unfinished.
+
+Reference: [Manim circle and square tip constructors](https://docs.manim.community/en/stable/_modules/manim/mobject/geometry/tips.html).
+
+`examples/round_square_tips_scene.py` uses four different tips on two arrows,
+tracks their endpoint markers through rotation/scaling and endpoint edits,
+restores original geometry and removes the whole family. Tests cover shape and
+style defaults, anchor queries, closed paths, transformed lengths, editing,
+partial curves, copy/restore, validation, both-end attachment and per-frame shaft
+alignment.
+
+
+Verification: all 338 Python and 77 Node tests passed. Local Pyodide playback
+showed two buffered shafts, four styled tip outlines and two endpoint markers
+at six seconds, restored geometry at seven seconds, and no geometry at nine
+seconds. Switching to DOT rendered the Editor → Render → Preview graph.

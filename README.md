@@ -1152,5 +1152,16 @@ and length-based caps for tip size and stroke width. `buff=0` touches the given
 endpoints; coordinate-plane vectors retain this behavior automatically.
 Arrow.scale keeps world tip size by default; `scale_tips=True` scales the whole
 family. Tip coordinates follow the runtime's parent-local child convention.
-Circle/square tips, curved arrows, full native tip-family behavior and Arrow
-partial-path/morph support remain unfinished.
+Curved arrows, full native tip-family behavior and Arrow partial-path/morph
+support remain unfinished.
+
+
+Try **Render circular and square arrow tips** (`examples/round_square_tips_scene.py`).
+`ArrowCircleTip`, `ArrowCircleFilledTip`, `ArrowSquareTip`, and
+`ArrowSquareFilledTip` supply editable closed paths and attach to either end of
+Line/Arrow. Outline tips default to no fill and a 3-unit stroke; filled tips have
+full fill and no stroke. `length` sets the circle diameter or square side.
+Circle `start_angle` selects its first anchor; square `start_angle` is metadata,
+as in the native constructor. Square tip length queries measure the corner-to-
+opposite-corner diagonal. These classes support the existing path editing,
+transforms, partial curves, tip queries, copying and restoration.

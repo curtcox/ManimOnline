@@ -379,3 +379,12 @@ structural target child slots during interpolation. explicit_tips suppresses the
 legacy renderer head even after pop_tips. Logical endpoints include tip points;
 own Arrow points describe the shaft. Native world-coordinate child semantics and
 curved tip-bearing paths remain unfinished. NumberPlane vectors force buff=0.
+
+
+Read `examples/round_square_tips_scene.py` for circular and square tip attachment
+on animated arrows. Circle tips hold eight editable cubic segments; square tips
+hold four corner segments. Circle length sets diameter and start_angle sets its
+first anchor. Square length sets side length, inherited tip length measures the
+diagonal, and start_angle is metadata (native constructor does not pass it to
+Square). Preserve the anchor order: shaft bases use the ordered curve midpoint.
+Both filled/outline variants flow through existing family/path rendering.

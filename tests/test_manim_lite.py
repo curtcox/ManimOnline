@@ -16,6 +16,90 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_circle_square_tip_anchors_styles_and_editable_geometry(self):
+        import math
+        for cls,filled,count,point,base,length in (
+            (lite.ArrowCircleTip,False,8,(-1,0,0),(1,0,0),2),
+            (lite.ArrowCircleFilledTip,True,8,(-1,0,0),(1,0,0),2),
+            (lite.ArrowSquareTip,False,4,(1,1,0),(-1,-1,0),math.sqrt(8)),
+            (lite.ArrowSquareFilledTip,True,4,(1,1,0),(-1,-1,0),math.sqrt(8))):
+            tip=cls(length=2)
+            self.assertIsInstance(tip,lite.ArrowTip)
+            self.assertIsInstance(tip,lite.VMobject)
+            self.assertEqual(tip.fill_opacity,int(filled))
+            self.assertEqual(tip.stroke_width,0 if filled else 3)
+            self.assertEqual(len(lite._path_curves(tip.to_dict())),count)
+            self.assertPointAlmostEqual(tip.tip_point,point)
+            self.assertPointAlmostEqual(tip.base,base)
+            self.assertAlmostEqual(tip.length,length)
+            self.assertEqual(tip.get_points()[0],tip.get_points()[-1])
+            tip.save_state().rotate(.4).scale(-2).shift(lite.UP)
+            self.assertAlmostEqual(tip.length,2*length)
+            self.assertPointAlmostEqual(tip.vector,tip.tip_point-tip.base)
+            self.assertIsNot(tip.copy(),tip)
+            tip.restore()
+            self.assertPointAlmostEqual(tip.tip_point,point)
+            self.assertPointAlmostEqual(tip.base,base)
+            partial=tip.get_subcurve(0,.5)
+            self.assertPointAlmostEqual(partial.get_end(),base)
+            edited=tip.copy().set_points_as_corners([(0,0,0),(2,0,0),(2,2,0),(0,0,0)])
+            self.assertPointAlmostEqual(edited.tip_point,(0,0,0))
+        tip=lite.ArrowCircleTip(length=2,start_angle=0)
+        self.assertPointAlmostEqual(tip.tip_point,(1,0,0))
+        self.assertPointAlmostEqual(tip.base,(-1,0,0))
+        a,b=lite.ArrowSquareTip(start_angle=0),lite.ArrowSquareTip(start_angle=2)
+        self.assertEqual(a.get_points(),b.get_points())
+
+    def test_circle_square_tip_validation_and_arrow_attachment(self):
+        import math
+        for cls in (lite.ArrowCircleTip,lite.ArrowCircleFilledTip,lite.ArrowSquareTip,lite.ArrowSquareFilledTip):
+            for key in ('length','start_angle'):
+                for value in (True,float('nan'),float('inf'),'large'):
+                    with self.assertRaises(ValueError):
+                        cls(**{key:value})
+            with self.assertRaises(ValueError):
+                cls(length=-1)
+            self.assertEqual(cls(length=0).length,0)
+            self.assertTrue(all(math.isfinite(v) for point in cls(start_angle=1e308).get_points() for v in point))
+            arrow=lite.Arrow((-2,-1,0),(3,2,0),buff=0,tip_shape=cls,tip_length=.6)
+            arrow.add_tip(at_start=True,tip_shape=cls,tip_length=.6)
+            endtip,starttip=arrow.tip,arrow.start_tip
+            for scale in (1.5,-.8):
+                arrow.scale(scale).rotate(.3)
+                self.assertPointAlmostEqual(arrow._point_to_world(endtip.tip_point),arrow.get_end())
+                self.assertPointAlmostEqual(arrow._point_to_world(starttip.tip_point),arrow.get_start())
+                self.assertPointAlmostEqual(arrow.get_points()[-1],arrow._point_to_world(endtip.base))
+                self.assertPointAlmostEqual(arrow.get_points()[0],arrow._point_to_world(starttip.base))
+            self.assertEqual(len(arrow.pop_tips()),2)
+            self.assertPointAlmostEqual(arrow.get_points()[-1],arrow.get_end())
+
+    def test_round_square_tip_gallery_sampled_shafts_and_checkpoint(self):
+        result=json.loads(lite.render_scene((ROOT/'examples/round_square_tips_scene.py').read_text()))
+        self.assertEqual(result['duration'],9)
+        for frame in result['frames'][30:106]:
+            for index,arrow in enumerate(frame['mobjects'][:2]):
+                host=lite.Arrow(buff=0)
+                host.__dict__.update(arrow)
+                host._type=arrow['type']
+                host.children=[]
+                host._sampled_geometry_center=lite.Vector(arrow['geometry_center'])
+                self.assertPointAlmostEqual(host.get_end(),frame['mobjects'][index+2]['position'])
+                for child in arrow['children']:
+                    tip=lite.ArrowCircleTip()
+                    tip.__dict__.update(child)
+                    tip._type=child['type']
+                    tip.children=[]
+                    tip._sampled_geometry_center=lite.Vector(child['geometry_center'])
+                    self.assertPointAlmostEqual(arrow['shaft_'+child['_tip_role']],tip.base)
+        for a,b in zip(result['frames'][30]['mobjects'][:2],result['frames'][105]['mobjects'][:2]):
+            for key in ('position','angle','geometry_scale','start','end'):
+                self.assertEqual(a[key],b[key])
+            for c,d in zip(a['children'],b['children']):
+                for key in ('position','angle','geometry_scale'):
+                    self.assertEqual(c[key],d[key])
+                self.assertEqual(lite._path_curves(c),lite._path_curves(d))
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+
     def test_arrow_real_tips_trim_shaft_and_manage_children(self):
         arrow = lite.Arrow(lite.LEFT*2,lite.RIGHT*2,buff=.25,color=lite.BLUE)
         self.assertPointAlmostEqual(arrow.get_start(),(-1.75,0,0))
