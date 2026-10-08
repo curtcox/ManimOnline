@@ -43,6 +43,14 @@ one second of quiet. Explicit rendering cancels both timers, and revision guards
 discard callbacks already queued for superseded edits. Browser checks covered
 manual selection/reload, forced-renderer errors, Auto recovery, literal filtering,
 and gallery reset. Sharing-service responses remain a separate acceptance gate.
+
+At viewport widths up to 760 pixels, panels stack and code wraps; the toolbar
+scrolls when needed and playback controls have larger touch targets. The code
+toggle has labels and expanded state. Resize observers keep the editor and DOT
+preview sized when the layout or editor visibility changes. Browser checks at
+390 × 844 and 320 × 568 covered Manim playback/seek, hiding/restoring code,
+DOT gallery switching, no horizontal page overflow, and desktop restoration.
+This is viewport testing, not proof of native mobile keyboard/device behavior.
 Creation traces normalized SVG outlines and fades in their fill. Uncreate
 reverses drawing and removes the object. Group children and arrow components
 reveal simultaneously; text creation and writing use fades. Transforms between

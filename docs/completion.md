@@ -18,7 +18,7 @@ has been asked of the user; do not silently equate the current subset with eithe
 | MathTex | Python/backend/renderer tests, real formula SVG paths and export | Glyph bounds, substring APIs, tracing, broader formula coverage |
 | SVG/PNG export for both renderers | Graphviz supports both; Manim exports current SVG or 800 × 450 PNG snapshot, with rasterization failure/cleanup tests | Browser export checks across supported browsers |
 | Offline editing/rendering | Versioned complete asset cache, explicit update/retry UI, offline/partial-cache service worker tests | Real browser disconnected rendering and update/eviction behavior across browsers |
-| Mobile-friendly UI | Wrapped toolbar and dynamic preview placement | Responsive editor/preview and mobile browser tests |
+| Mobile-friendly UI | Stacked layout, wrapped code, larger controls, accessible toggle; browser checks at 390 × 844, 320 × 568, and desktop resizing | Native mobile keyboard/device coverage |
 | Deployed site | Existing test and GitHub Pages workflows | Check every new commit's CI/deployment and deployed behavior |
 
 Sequential and repeated-object animation now has Succession frame tests covering

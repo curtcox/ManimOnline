@@ -1,8 +1,9 @@
 <!DOCTYPE html>
-<html lang="utf-8">
+<html lang="en">
 
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
   <title>ManimOnline</title>
   <style type="text/css" media="screen">
@@ -403,12 +404,37 @@
     .manim-controls input { flex: 1; min-width: 40px; }
     .manim-controls button { padding: 5px 10px; cursor: pointer; }
     .manim-controls span { white-space: nowrap; }
+    @media (max-width: 760px) {
+      body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: auto; }
+      #options { position: relative; left: 0 !important; right: auto; order: 0; box-sizing: border-box;
+        width: 100%; max-height: 35vh; max-height: 35dvh; overflow: auto; padding: 8px; gap: 8px; transition: none; }
+      #options label { flex-wrap: wrap; }
+      #options select, #options input[type="button"], #options button, #download { min-height: 44px; box-sizing: border-box; }
+      #options .graphviz-options { flex-wrap: wrap; gap: 8px; }
+      #options input[type="text"] { min-height: 36px; font-size: 16px; max-width: 100%; box-sizing: border-box; }
+      #shareurl { max-width: 100%; box-sizing: border-box; }
+      #editor-toggle { position: relative; top: auto; transform: none; order: 1; flex: 0 0 auto; background: #252525; }
+      #toggle-btn { width: auto; min-width: 100px; height: 44px; font-size: 14px; border-radius: 0; }
+      #editor { position: relative; order: 2; top: auto; bottom: auto; left: 0;
+        width: 100% !important; height: 32vh; height: 32dvh; min-height: 160px; flex: 0 0 auto; transition: none; }
+      #editor.collapsed { display: none; }
+      #splitter, .github-fork-ribbon-wrapper { display: none !important; }
+      #review { position: relative; order: 3; top: auto !important; bottom: auto; left: 0 !important;
+        right: auto; width: 100%; min-height: 220px; flex: 1 0 220px; overflow: auto; transition: none; }
+      #review img { max-width: 100%; height: auto; }
+      .manim-controls { flex-wrap: wrap; padding: 8px; gap: 8px; }
+      .manim-controls button { min-height: 44px; }
+      .manim-controls input { min-height: 44px; }
+      .manim-controls span { margin-left: auto; }
+      #status { pointer-events: none; }
+      body.presentation #editor-toggle { display: none; }
+    }
   </style>
 </head>
 
 <body>
   <div id="editor-toggle">
-    <button id="toggle-btn">&#9664;</button>
+    <button id="toggle-btn" type="button" aria-controls="editor" aria-expanded="true" aria-label="Hide code editor">&#9664;</button>
   </div>
   <pre id="editor">from manim import *
 
@@ -552,6 +578,20 @@ class HelloWorld(Scene):
     let isCollapsed = false;
     let isDragging = false;
     let currentSplitPercentage = 50;
+    const mobileLayout = window.matchMedia('(max-width: 760px)');
+    function updateToggleLabel() {
+      toggleBtn.textContent = mobileLayout.matches ? (isCollapsed ? 'Show code' : 'Hide code') : (isCollapsed ? '▶' : '◀');
+      toggleBtn.setAttribute('aria-expanded', String(!isCollapsed));
+      toggleBtn.setAttribute('aria-label', isCollapsed ? 'Show code editor' : 'Hide code editor');
+      ace.edit('editor').getSession().setUseWrapMode(mobileLayout.matches);
+    }
+    mobileLayout.addEventListener('change', updateToggleLabel);
+    updateToggleLabel();
+    new ResizeObserver(() => {
+      ace.edit('editor').resize();
+      resizeSVG();
+    }).observe(editorElement);
+    new ResizeObserver(resizeSVG).observe(reviewElement);
 
     // Current content type
     let currentType = 'unknown';
@@ -619,7 +659,7 @@ class HelloWorld(Scene):
         toggleBtn.classList.add('collapsed');
         splitter.style.opacity = '0';
         splitter.style.left = '0';
-        toggleBtn.innerHTML = '&#9654;';
+        updateToggleLabel();
 
         setTimeout(() => {
           splitter.style.display = 'none';
@@ -639,7 +679,7 @@ class HelloWorld(Scene):
           reviewElement.classList.remove('expanded');
           optionsElement.classList.remove('expanded');
           toggleBtn.classList.remove('collapsed');
-          toggleBtn.innerHTML = '&#9664;';
+          updateToggleLabel();
           updatePanelSizes(currentSplitPercentage);
           splitter.style.opacity = '1';
         }, 10);

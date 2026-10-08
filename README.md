@@ -33,6 +33,14 @@ also restores Auto. Detection updates after 300 ms of quiet; rendering starts
 after one second. Changing the renderer or pressing Enter in the scene field
 renders immediately and cancels scheduled work for earlier edits.
 
+On screens up to 760 pixels wide, the toolbar, code editor, and preview stack
+vertically. Code wraps to fit the editor; **Hide code** gives the preview more
+space, and **Show code** restores editing. Controls wrap and scroll on short
+screens, and playback controls use larger touch targets. Desktop retains the
+resizable split view. Narrow-screen browser checks cover playback, seeking,
+editor visibility, and switching to DOT; native mobile keyboard/device testing
+is still needed.
+
 ## Development
 
 This is a static site that can be served directly. To run locally:
