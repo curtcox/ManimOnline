@@ -16,6 +16,77 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_family_bounds_include_own_path_nested_children_and_public_queries(self):
+        host = lite.Rectangle(width=2,height=1)
+        child = lite.Circle(radius=.5).shift(lite.RIGHT*4).add(lite.Dot((0,2,0),radius=.2))
+        host.add(child)
+        self.assertEqual(host._local_bounds(),(-1,-.5,4.5,2.2))
+        self.assertAlmostEqual(host.get_width(),5.5)
+        self.assertAlmostEqual(host.get_height(),2.7)
+        self.assertPointAlmostEqual(host.get_right(),(4.5,.85,0))
+        self.assertPointAlmostEqual(host.get_left(),(-1,.85,0))
+        self.assertPointAlmostEqual(host.get_top(),(1.75,2.2,0))
+        self.assertPointAlmostEqual(host.get_bottom(),(1.75,-.5,0))
+        self.assertPointAlmostEqual(host.get_corner(lite.UR),(4.5,2.2,0))
+        self.assertPointAlmostEqual(host.get_edge_center(lite.RIGHT),host.get_right())
+        with self.assertRaises(ValueError): host.get_critical_point((float('nan'),0))
+        with self.assertRaises(NotImplementedError): host.get_critical_point(lite.OUT)
+
+    def test_family_mutations_preserve_affine_mapping_for_own_and_existing_child(self):
+        for cls in (lite.Circle,lite.Ellipse,lite.Rectangle,lite.VMobject):
+            host = cls()
+            if cls is lite.VMobject:
+                host.set_points_as_corners([lite.LEFT,lite.UR])
+            existing = lite.Dot(lite.UP)
+            host.add(existing).rotate(.6).scale(1.4).shift(lite.LEFT)
+            points = host.get_points()
+            old_child = host._point_to_world(existing.get_center())
+            extra = lite.Circle(radius=.5).shift(lite.RIGHT*5)
+            host.add(extra)
+            for before,after in zip(points,host.get_points()):
+                self.assertPointAlmostEqual(before,after)
+            self.assertPointAlmostEqual(host._point_to_world(existing.get_center()),old_child)
+            host.add_to_back(extra).remove(extra)
+            for before,after in zip(points,host.get_points()):
+                self.assertPointAlmostEqual(before,after)
+            host.submobjects = [existing,extra]
+            self.assertPointAlmostEqual(host._point_to_world(existing.get_center()),old_child)
+            host.submobjects = [existing]
+            self.assertPointAlmostEqual(host._point_to_world(existing.get_center()),old_child)
+
+    def test_family_layout_camera_and_collapsed_parent_mutations(self):
+        host = lite.Circle().add(lite.Dot(lite.RIGHT*5,radius=.2))
+        label = lite.Square(side_length=1).next_to(host,lite.RIGHT,buff=.3)
+        self.assertAlmostEqual(label.get_left()[0],host.get_right()[0]+.3)
+        camera = lite.MovingCamera()
+        camera.auto_zoom(host,margin=1,animate=False)
+        self.assertPointAlmostEqual(camera.frame_center,host.get_center())
+        self.assertGreaterEqual(camera.frame_width,host.get_width())
+        self.assertGreaterEqual(camera.frame_height,host.get_height())
+        host.scale(0)
+        anchor = host.get_start()
+        host.add(lite.Circle().shift(lite.LEFT*10))
+        self.assertPointAlmostEqual(host.get_start(),anchor)
+        self.assertEqual(host.get_width(),0)
+
+    def test_family_bounds_gallery_camera_expansion_anchor_and_cleanup(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/family_bounds_scene.py').read_text()))
+        self.assertEqual(result['duration'],10)
+        before,added = result['frames'][59],result['frames'][60]
+        self.assertEqual(len(before['mobjects'][0]['children']),1)
+        self.assertEqual(len(added['mobjects'][0]['children']),2)
+        self.assertGreater(result['frames'][105]['camera']['frame_width'],before['camera']['frame_width'])
+        for frame in (before,added,result['frames'][105],result['frames'][120]):
+            host = lite.Mobject()
+            host.__dict__.update(frame['mobjects'][0])
+            host._type = frame['mobjects'][0]['type']
+            # Frame snapshots supply the exact parent pivot used by the renderer.
+            host._sampled_geometry_center = lite.Vector(frame['mobjects'][0]['geometry_center'])
+            host.children = []
+            self.assertPointAlmostEqual(host.get_start(),frame['mobjects'][2]['position'])
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+        json.dumps(result,allow_nan=False)
+
     def test_shape_family_mutation_order_duplicates_and_atomic_validation(self):
         parent = lite.Circle()
         a,b = lite.Dot(),lite.Square()

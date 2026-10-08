@@ -1393,7 +1393,7 @@ children are converted to parent-local cubic snapshots before alignment so their
 interpolation follows the copied outline rather than separate analytical circle
 parameters. Their
 independent curve subdivision can differ for unrelated shapes; automatic edge
-correspondence, child-union geometry bounds and arbitrary scene restructuring
+correspondence, arbitrary scene restructuring
 remain open. Child queries retain the runtime's local-to-parent convention.
 
 Python checks cover closure, straight gap bridges, transformed input snapshots,
@@ -1456,8 +1456,8 @@ nested circle/dot, removes one dot, restores the checkpoint and removes the
 family. Python checks cover mutation ordering, duplicates, atomic rejection,
 cycle/camera exclusion, self inclusion, reverse slices, identity sharing, family
 filters, copy/restore, callbacks, serialization and gallery timing. Renderer
-checks cover point-free containers and inherited translation. Own-plus-child
-union bounds and general scene restructuring remain open.
+checks cover point-free containers and inherited translation. Own-plus-child union bounds now support layout/framing; general scene
+restructuring remains open.
 
 Reference: [official Manim Mobject implementation](https://docs.manim.community/en/stable/_modules/manim/mobject/mobject.html).
 
@@ -1473,3 +1473,36 @@ dot reference left three circles at five seconds; restoration returned exactly
 the original yellow/green dots at eight seconds. No child circles remained at
 ten seconds. Switching to DOT rendered the editor flow graph. All 306 Python
 and 76 Node tests passed.
+
+
+## Own-plus-child bounds and stable attachment
+
+Family local bounds now union the parent's supported own geometry with nested
+child bounds. Empty path/container parents do not add an origin box. Circle and
+ellipse analytical shortcuts apply only without children; families use a
+conservative enclosing box so distant children are included. Public width/height,
+left/right/top/bottom, critical-point, edge-center and corner queries now expose
+the XY bounds. next_to and camera.auto_zoom use those same bounds.
+
+On ordinary geometry-bearing objects, add/add_to_back/remove/submobjects
+replacement preserve the existing affine mapping when child insertion changes
+the bounding-center pivot: position shifts by A(delta)-delta. This covers rotation,
+uniform scaling and collapsed parents. Group mutations retain their established
+behavior, since coordinate helpers already explicitly compensate their changes.
+Native world-space child mutation semantics are not yet complete: directly
+moving an attached child inside a transformed parent can still alter its pivot.
+Bounds also remain conservative for rotated composite boxes/cubic handles, and
+text/glyph metrics remain incomplete.
+
+The gallery keeps a red reference on a rotated rectangle corner, adds distant
+children, displays the enclosing boundary, fits the camera twice and removes the
+family. Python checks cover nested union, public queries, finite XY validation,
+attachment/reordering/removal/replacement pose preservation, next_to, camera
+containment, collapsed geometry, reference-anchor invariance and gallery cleanup.
+
+Reference: [official Manim boundary queries](https://docs.manim.community/en/stable/_modules/manim/mobject/mobject.html).
+
+Local Pyodide playback verified green/purple distant children and a red corner
+reference, with camera scale changing from about 2.43 to 1.83 as the fitted
+selection expanded. All family circles disappeared at ten seconds. Switching to
+DOT rendered the editor flow graph. All 310 Python and 76 Node tests passed.

@@ -316,3 +316,12 @@ render descendants. Preserve cycle/camera-frame checks and snapshot isolation.
 Transform completion now uses become to preserve ordered source-child identities
 and callbacks. Keep that behavior: later remove(original_child) must work after
 parent animations. has_no_points and get_group_class accompany family slicing.
+
+
+Read `examples/family_bounds_scene.py` for own-plus-child bounds, public boundary
+queries, camera fitting and distant child insertion/removal. `_own_local_bounds`
+contains primitive geometry; `_local_bounds` unions it with child bounds.
+`_replace_children` compensates changed pivots on ordinary shapes by shifting
+A(delta)-delta. Group mutations retain their established behavior; numeric-axis
+helpers already apply their own compensation. Direct child motion in transformed
+families and exact text/rotated curve bounds remain open.

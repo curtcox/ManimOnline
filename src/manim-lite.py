@@ -126,25 +126,35 @@ class Mobject:
     def submobjects(self, mobjects):
         mobjects = list(mobjects)
         self._validate_children(mobjects)
-        self.children = list(dict.fromkeys(mobjects))
+        self._replace_children(list(dict.fromkeys(mobjects)))
 
     def add(self, *mobjects):
         self._validate_children(mobjects)
         unique = list(dict.fromkeys(mobjects))
-        self.children = [m for m in self.children if m not in unique] + unique
+        self._replace_children([m for m in self.children if m not in unique] + unique)
         return self
 
     def add_to_back(self, *mobjects):
         self._validate_children(mobjects)
         unique = list(dict.fromkeys(mobjects))
-        self.children = unique + [m for m in self.children if m not in unique]
+        self._replace_children(unique + [m for m in self.children if m not in unique])
         return self
 
     def remove(self, *mobjects):
         if any(not isinstance(m, Mobject) for m in mobjects):
             raise TypeError('Mobject removal expects Mobjects')
-        self.children = [m for m in self.children if m not in mobjects]
+        self._replace_children([m for m in self.children if m not in mobjects])
         return self
+
+    def _replace_children(self, children):
+        # Keep the affine mapping fixed when a geometry-bearing family's bounds change.
+        previous = self._geometry_center() if self._type != 'vgroup' else None
+        self.children = children
+        if previous is not None:
+            delta = self._geometry_center()-previous
+            transformed = Vector((delta[0]*math.cos(self.angle)-delta[1]*math.sin(self.angle),
+                                  delta[0]*math.sin(self.angle)+delta[1]*math.cos(self.angle),0))*self.geometry_scale
+            self.shift(transformed-delta)
 
     def split(self):
         return ([self] if self.has_points() else []) + list(self.children)
@@ -257,6 +267,37 @@ class Mobject:
                        top if y > 0 else bottom if y < 0 else (bottom + top) / 2,
                        self.get_center()[2]))
 
+    def get_critical_point(self, direction):
+        direction = Vector(direction)
+        if not all(math.isfinite(value) for value in direction):
+            raise ValueError('Boundary direction must be finite')
+        if direction[2]:
+            raise NotImplementedError('Boundary queries support only the XY plane')
+        return self._critical_point(direction)
+
+    get_edge_center = get_critical_point
+    get_corner = get_critical_point
+
+    def get_left(self):
+        return self.get_critical_point(LEFT)
+
+    def get_right(self):
+        return self.get_critical_point(RIGHT)
+
+    def get_top(self):
+        return self.get_critical_point(UP)
+
+    def get_bottom(self):
+        return self.get_critical_point(DOWN)
+
+    def get_width(self):
+        left,_,right,_ = self._bounds()
+        return right-left
+
+    def get_height(self):
+        _,bottom,_,top = self._bounds()
+        return top-bottom
+
     def next_to(self, mobject_or_point, direction=RIGHT, buff=0.25, aligned_edge=ORIGIN):
         direction, aligned_edge = Vector(direction), Vector(aligned_edge)
         if not all(math.isfinite(v) for v in (*direction, *aligned_edge, buff)):
@@ -272,7 +313,7 @@ class Mobject:
         anchor = self._critical_point(aligned_edge - direction)
         return self.shift(target - anchor + direction * buff)
 
-    def _local_bounds(self):
+    def _own_local_bounds(self):
         if self._type == 'annulus':
             r = max(self.inner_radius, self.outer_radius)
             return (-r, -r, r, r)
@@ -302,10 +343,6 @@ class Mobject:
         elif self._type == 'triangle':
             height = math.sqrt(3) / 2
             points = [(0, height * 2 / 3), (-0.5, -height / 3), (0.5, -height / 3)]
-        elif self.children:
-            bounds = [child._bounds() for child in self.children]
-            return (min(b[0] for b in bounds), min(b[1] for b in bounds),
-                    max(b[2] for b in bounds), max(b[3] for b in bounds))
         else:
             # Text is anchored at its visual center; font metrics are browser-owned.
             return (0, 0, 0, 0)
@@ -313,6 +350,20 @@ class Mobject:
             return (0, 0, 0, 0)
         return (min(p[0] for p in points), min(p[1] for p in points),
                 max(p[0] for p in points), max(p[1] for p in points))
+
+    def _local_bounds(self):
+        if not self.children:
+            return self._own_local_bounds()
+        bounds = [child._bounds() for child in self.children]
+        has_outline = self._type not in ('mobject','vgroup','valuetracker')
+        if self._type in ('polyline','polygon') and not self.vertices:
+            has_outline = False
+        if self._type == 'bezierpath' and not self.curves and not self.vertices:
+            has_outline = False
+        if has_outline:
+            bounds.append(self._own_local_bounds())
+        return (min(b[0] for b in bounds),min(b[1] for b in bounds),
+                max(b[2] for b in bounds),max(b[3] for b in bounds))
 
     def _geometry_center(self):
         if '_sampled_geometry_center' in self.__dict__:
@@ -536,13 +587,13 @@ class Mobject:
             dx, dy = (x - center[0]) * self.geometry_scale, (y - center[1]) * self.geometry_scale
             points.append((self.position[0] + center[0] + dx * math.cos(self.angle) - dy * math.sin(self.angle),
                            self.position[1] + center[1] + dx * math.sin(self.angle) + dy * math.cos(self.angle)))
-        if self._type == 'ellipse':
+        if self._type == 'ellipse' and not self.children:
             rx, ry = self.width / 2, self.height / 2
             dx = abs(self.geometry_scale) * math.hypot(rx * math.cos(self.angle), ry * math.sin(self.angle))
             dy = abs(self.geometry_scale) * math.hypot(rx * math.sin(self.angle), ry * math.cos(self.angle))
             return (self.position[0] - dx, self.position[1] - dy,
                     self.position[0] + dx, self.position[1] + dy)
-        if self._type in ('circle', 'annulus'):
+        if self._type in ('circle', 'annulus') and not self.children:
             radius = max(self.inner_radius, self.outer_radius) if self._type == 'annulus' else self.radius
             r = abs(radius * self.geometry_scale)
             return (self.position[0] - r, self.position[1] - r, self.position[0] + r, self.position[1] + r)

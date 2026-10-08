@@ -108,11 +108,15 @@ curved-arrow families remain open.
 
 ArcPolygon and ArcPolygonFromArcs now compose closed cubic outlines and retained
 arc children, with gap bridges, per-edge styles and filled morphing. Rendering,
-Create and Transform now include own geometry and descendants. Child-union bounds,
-automatic edge correspondence and general scene restructuring remain open.
+Create and Transform now include own geometry and descendants. Automatic edge correspondence and general scene restructuring remain open.
 
 
 Common Mobject child mutation and self-inclusive split/index/slice APIs now support
 ordinary geometry-bearing shapes, with recursive point-family filtering and
-point-free container rendering. Glyph/tip point families, own-plus-child union
-bounds and general scene restructuring remain open.
+point-free container rendering. Glyph/tip point families, general scene restructuring remain open.
+
+
+Own-plus-child union bounds now support boundary queries, relative layout and
+camera fitting. Child attachment/removal/replacement preserves ordinary shapes'
+affine geometry. Conservative rotated/control-point bounds, glyph metrics and
+direct child motion inside transformed families remain open.

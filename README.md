@@ -1068,6 +1068,17 @@ Mobject and ordinary shapes now support `add`, `add_to_back`, `remove` and
 children when it has an extractable path. `family_members_with_points` filters
 recursive families by actual supported geometry. Shapes still render their own
 outline while hosting children; empty base Mobject containers render descendants.
-Children use local-to-parent coordinates. Bounds that combine a shape's own
-outline with externally placed children, glyph-level families and general scene
-restructuring remain unfinished.
+Children use local-to-parent coordinates. Bounds now combine own outlines and externally placed children. Glyph-level
+families and general scene restructuring remain unfinished.
+
+
+### Bounds and camera framing for families
+
+Try **Frame shapes and distant children** (`examples/family_bounds_scene.py`).
+Size and edge queries now include both the parent's outline and nested children.
+`get_width`, `get_height`, `get_left/right/top/bottom`, `get_corner` and
+`get_edge_center` expose the XY boundary used by positioning and camera fitting.
+Adding/removing/replacing children on an already transformed ordinary shape
+preserves its existing geometry's world position. Bounds are conservative for
+rotated families and cubic controls; browser text metrics remain incomplete.
+Moving a child directly inside a rotated/scaled parent still has pivot limitations.
