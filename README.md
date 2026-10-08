@@ -42,6 +42,7 @@ Then open `http://localhost:8000` in your browser.
 - [Path scene](examples/path_scene.py): motion along transformed circles, polygon outlines, and lines.
 - [Arc scene](examples/arc_scene.py): open circular paths and clockwise/counterclockwise motion.
 - [Growth scene](examples/growth_scene.py): growth from a point, group growth, and staggered shrinking.
+- [Style scene](examples/style_scene.py): independent fill/outline colors and group opacity changes.
 
 ## Supported browser animation subset
 
@@ -56,7 +57,7 @@ Manim-like runtime, **not the full Manim Community engine**.
   `GrowFromPoint`, `ShrinkToCenter`, `Rotate`,
   `Rotating`, `MoveAlongPath`, `AnimationGroup`, `LaggedStart`, `Transform`, and
   `ReplacementTransform`; chained `.animate.shift()`, `.move_to()`,
-  `.set_color()`, `.set_fill()`, `.set_stroke()`, `.scale()`, `.rotate()`,
+  `.set_color()`, `.set_fill()`, `.set_stroke()`, `.set_opacity()`, `.scale()`, `.rotate()`,
   `.next_to()`, and `.arrange()`.
 - Layout: `move_to` centers geometry on a point or another object; `next_to`
   positions shapes with `direction`, `buff`, and `aligned_edge`; `VGroup.arrange`
@@ -149,6 +150,20 @@ whole groups and accept `run_time` and `rate_func`, defaulting to one second
 with smooth easing. Growth centers are resolved when playback begins. Point
 colors, curved growth trajectories, and 3D growth are unsupported. Text uses
 its anchor as its center; normal preview stroke-width behavior still applies.
+
+Shapes accept `fill_color`, `stroke_color`, and `stroke_opacity` in addition to
+`color`, `fill_opacity`, and `stroke_width`. `set_fill(color, opacity)` changes
+only the fill; `set_stroke(color, width, opacity)` changes only the outline.
+`set_color(color)` sets both colors without changing their opacity.
+`set_opacity(value)` sets both fill and stroke opacity, making an unfilled
+shape filled as well. Setters recurse into group children by default;
+`family=False` changes only that object's style. Group container styles do not
+override children when rendering. All four setters work in animate chains.
+Opacity must be between zero and one; stroke widths must be nonnegative and
+finite. Fades multiply existing style opacity. Text has no outline by default
+but supports `set_stroke`; arrows use stroke styling for shaft and open head.
+Color interpolation supports six-digit hex strings; other CSS colors switch
+at the animation endpoint. Gradients and background strokes are unsupported.
 
 Animation previews run at
 15 frames per second and are limited to 60 seconds, with a 90-second deadline

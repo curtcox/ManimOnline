@@ -39,12 +39,19 @@ PI, TAU, DEGREES = math.pi, math.tau, math.pi / 180
 
 
 class Mobject:
-    def __init__(self, color=WHITE, fill_opacity=0, stroke_width=2, **kwargs):
+    def __init__(self, color=WHITE, fill_opacity=0, stroke_width=2,
+                 fill_color=None, stroke_color=None, stroke_opacity=1, **kwargs):
         if kwargs:
             raise NotImplementedError('Unsupported options: ' + ', '.join(kwargs))
         self.position = list(ORIGIN)
         self.color = color
+        self.fill_color = color if fill_color is None else fill_color
+        self.stroke_color = color if stroke_color is None else stroke_color
+        self._validate_opacity(fill_opacity)
+        self._validate_opacity(stroke_opacity)
+        self._validate_width(stroke_width)
         self.fill_opacity = fill_opacity
+        self.stroke_opacity = stroke_opacity
         self.stroke_width = stroke_width
         self.opacity = 1
         self.geometry_scale = 1
@@ -223,22 +230,56 @@ class Mobject:
         self.angle += angle
         return self
 
-    def set_color(self, color):
+    @staticmethod
+    def _validate_opacity(opacity):
+        if not math.isfinite(opacity) or not 0 <= opacity <= 1:
+            raise ValueError('Opacity must be finite and between 0 and 1')
+
+    @staticmethod
+    def _validate_width(width):
+        if not math.isfinite(width) or width < 0:
+            raise ValueError('Stroke width must be nonnegative and finite')
+
+    def set_color(self, color, family=True):
         self.color = color
+        self.fill_color = self.stroke_color = color
+        if family:
+            for child in self.children:
+                child.set_color(color)
         return self
 
-    def set_fill(self, color=None, opacity=None):
+    def set_fill(self, color=None, opacity=None, family=True):
+        if opacity is not None:
+            self._validate_opacity(opacity)
         if color is not None:
-            self.color = color
+            self.fill_color = color
         if opacity is not None:
             self.fill_opacity = opacity
+        if family:
+            for child in self.children:
+                child.set_fill(color, opacity)
         return self
 
-    def set_stroke(self, color=None, width=None):
+    def set_stroke(self, color=None, width=None, opacity=None, family=True):
+        if width is not None:
+            self._validate_width(width)
+        if opacity is not None:
+            self._validate_opacity(opacity)
         if color is not None:
-            self.color = color
+            self.stroke_color = color
         if width is not None:
             self.stroke_width = width
+        if opacity is not None:
+            self.stroke_opacity = opacity
+        if family:
+            for child in self.children:
+                child.set_stroke(color, width, opacity)
+        return self
+
+    def set_opacity(self, opacity, family=True):
+        self._validate_opacity(opacity)
+        self.set_fill(opacity=opacity, family=family)
+        self.set_stroke(opacity=opacity, family=family)
         return self
 
     def copy(self):
@@ -337,6 +378,7 @@ class Polygon(Mobject):
 class Text(Mobject):
     def __init__(self, text, font_size=48, **kwargs):
         kwargs.setdefault('fill_opacity', 1)
+        kwargs.setdefault('stroke_width', 0)
         super().__init__(**kwargs)
         self._type, self.text, self.font_size = 'text', str(text), font_size
 
@@ -615,7 +657,7 @@ class Animate(Transform):
     def __getattr__(self, name):
         if name.startswith('__'):
             raise AttributeError(name)
-        if name not in ('shift', 'move_to', 'move_arc_center_to', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'scale', 'rotate'):
+        if name not in ('shift', 'move_to', 'move_arc_center_to', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'scale', 'rotate'):
             raise NotImplementedError(f'animate.{name} is not supported yet')
         def apply(*args, **kwargs):
             getattr(self.target, name)(*args, **kwargs)

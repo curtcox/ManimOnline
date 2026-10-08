@@ -11,6 +11,38 @@ class Element {
 }
 global.document = { createElementNS: (_namespace, tag) => new Element(tag) };
 
+test('primitive fill and stroke channels render independently, including zero opacity', () => {
+  for (const type of ['circle', 'arc', 'square', 'rectangle', 'triangle', 'polygon', 'text']) {
+    const shape = renderer.renderMobject({ type, fill_color: '#FF0000', stroke_color: '#00FF00',
+      fill_opacity: 0.4, stroke_opacity: 0, stroke_width: 3 });
+    assert.equal(shape.getAttribute('fill'), '#FF0000');
+    assert.equal(shape.getAttribute('stroke'), '#00FF00');
+    assert.equal(shape.getAttribute('stroke-opacity'), '0');
+    assert.equal(shape.getAttribute('stroke-width'), '3');
+    assert.equal(shape.getAttribute('fill-opacity'), '0.4');
+  }
+});
+
+test('line and arrow outlines use stroke channels and keep open heads unfilled', () => {
+  const line = renderer.renderMobject({ type: 'line', color: '#FFFFFF', stroke_color: '#FF0000', stroke_opacity: 0.3 });
+  assert.equal(line.getAttribute('stroke'), '#FF0000');
+  const arrow = renderer.renderMobject({ type: 'arrow', fill_color: '#00FF00', stroke_color: '#FF0000', stroke_opacity: 0.3 });
+  for (const leaf of arrow.children) {
+    assert.equal(leaf.getAttribute('stroke'), '#FF0000');
+    assert.equal(leaf.getAttribute('stroke-opacity'), '0.3');
+  }
+  assert.equal(arrow.children[1].getAttribute('fill'), 'none');
+});
+
+test('group container does not overwrite child styles or compound channel opacity', () => {
+  const group = renderer.renderMobject({ type: 'vgroup', fill_color: '#FFFFFF', stroke_opacity: 0.5,
+    children: [{type: 'circle', fill_color: '#FF0000', fill_opacity: 0.5, stroke_opacity: 0.5}] });
+  assert.equal(group.getAttribute('opacity'), '1');
+  assert.equal(group.getAttribute('stroke-opacity'), null);
+  assert.equal(group.children[0].getAttribute('fill'), '#FF0000');
+  assert.equal(group.children[0].getAttribute('stroke-opacity'), '0.5');
+});
+
 test('arc SVG traces the counterclockwise quarter and preserves creation styles', () => {
   const arc = renderer.renderMobject({ type: 'arc', radius: 2, start_angle: 0,
     arc_angle: Math.PI / 2, color: '#58C4DD', draw_progress: 0.5 });

@@ -89,6 +89,18 @@ const ManimRenderer = {
 
     if (element) {
       element.setAttribute('opacity', mobject.opacity ?? 1);
+      // Group styles live on each child, avoiding compounded group opacity.
+      if (type !== 'vgroup') {
+        for (const leaf of [element, ...element.querySelectorAll('*')]) {
+          if (leaf.getAttribute('fill') && leaf.getAttribute('fill') !== 'none') {
+            leaf.setAttribute('fill', mobject.fill_color ?? mobject.color ?? '#FFFFFF');
+          }
+          if (leaf.getAttribute('stroke')) {
+            leaf.setAttribute('stroke', mobject.stroke_color ?? mobject.color ?? '#FFFFFF');
+            leaf.setAttribute('stroke-opacity', mobject.stroke_opacity ?? 1);
+          }
+        }
+      }
       for (const leaf of [element, ...element.querySelectorAll('*')]) {
         leaf.setAttribute('vector-effect', leaf.getAttribute('stroke-dasharray') ? 'none' : 'non-scaling-stroke');
       }
@@ -301,6 +313,8 @@ const ManimRenderer = {
     text.setAttribute('x', 0);
     text.setAttribute('y', 0);
     text.setAttribute('fill', mobject.color || '#FFFFFF');
+    text.setAttribute('stroke', mobject.stroke_color ?? mobject.color ?? '#FFFFFF');
+    text.setAttribute('stroke-width', mobject.stroke_width ?? 0);
     text.setAttribute('font-size', mobject.font_size || 24);
     text.setAttribute('font-family', 'Arial, sans-serif');
     text.setAttribute('text-anchor', 'middle');

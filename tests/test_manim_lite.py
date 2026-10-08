@@ -16,6 +16,71 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_fill_and_stroke_styles_are_independent_and_color_sets_both(self):
+        shape = lite.Square(color=lite.BLUE, fill_color=lite.RED, stroke_color=lite.GREEN,
+                            fill_opacity=0.4, stroke_opacity=0.7)
+        shape.set_fill(lite.YELLOW, 0.5)
+        self.assertEqual((shape.stroke_color, shape.stroke_opacity), (lite.GREEN, 0.7))
+        shape.set_stroke(lite.PURPLE, 5, opacity=0.3)
+        self.assertEqual((shape.fill_color, shape.fill_opacity), (lite.YELLOW, 0.5))
+        self.assertEqual(shape.stroke_width, 5)
+        shape.set_color(lite.ORANGE)
+        self.assertEqual((shape.fill_color, shape.stroke_color), (lite.ORANGE, lite.ORANGE))
+        self.assertEqual((shape.fill_opacity, shape.stroke_opacity), (0.5, 0.3))
+
+    def test_nested_group_styles_recurse_and_family_false_preserves_children(self):
+        shape = lite.Circle(color=lite.RED)
+        group = lite.VGroup(lite.VGroup(shape), lite.Square(color=lite.BLUE))
+        group.set_color(lite.YELLOW, family=False)
+        self.assertEqual(shape.color, lite.RED)
+        group.set_fill(lite.GREEN, 0.6).set_stroke(lite.PURPLE, 4, opacity=0.2)
+        self.assertEqual((shape.fill_color, shape.stroke_color), (lite.GREEN, lite.PURPLE))
+        group.set_color(lite.ORANGE)
+        self.assertEqual(shape.color, lite.ORANGE)
+        group.set_opacity(0.5)
+        for obj in (group, group.children[0], shape, group.children[1]):
+            self.assertEqual((obj.fill_opacity, obj.stroke_opacity, obj.opacity), (0.5, 0.5, 1))
+
+    def test_animated_style_channels_interpolate_and_fades_preserve_them(self):
+        result = render('s = Square(fill_color=BLACK, stroke_color=WHITE, fill_opacity=1)\nself.play(s.animate.set_fill(WHITE, 0.5).set_stroke(BLACK, 6, opacity=0.2), run_time=2, rate_func=linear)\nself.play(FadeOut(s), run_time=2, rate_func=linear)')
+        middle = result['frames'][15]['mobjects'][0]
+        self.assertEqual((middle['fill_color'], middle['stroke_color']), ('#808080', '#808080'))
+        self.assertAlmostEqual(middle['fill_opacity'], 0.75)
+        self.assertAlmostEqual(middle['stroke_opacity'], 0.6)
+        faded = result['frames'][45]['mobjects'][0]
+        self.assertEqual((faded['fill_color'], faded['stroke_color']), (lite.WHITE, lite.BLACK))
+        self.assertEqual(faded['opacity'], 0.5)
+        result = render('g = VGroup(Circle(), Square())\nself.play(g.animate.set_opacity(0), run_time=2, rate_func=linear)')
+        state = result['frames'][15]['mobjects'][0]
+        self.assertEqual(state['opacity'], 1)
+        self.assertEqual(state['children'][0]['stroke_opacity'], 0.5)
+        self.assertEqual(state['children'][1]['stroke_opacity'], 0.5)
+
+    def test_style_validation_rejects_invalid_values_before_changes(self):
+        shape = lite.Square()
+        for value in (-0.1, 1.1, float('nan'), float('inf')):
+            for setter in (shape.set_opacity, lambda v: shape.set_fill(lite.RED, v),
+                           lambda v: shape.set_stroke(lite.RED, opacity=v)):
+                with self.assertRaises(ValueError):
+                    setter(value)
+            with self.assertRaises(ValueError):
+                lite.Circle(stroke_opacity=value)
+        self.assertEqual(shape.fill_color, lite.WHITE)
+        self.assertEqual(shape.stroke_color, lite.WHITE)
+        for width in (-1, float('inf')):
+            with self.assertRaises(ValueError):
+                shape.set_stroke(width=width)
+        self.assertEqual(lite.Text('Hello').stroke_width, 0)
+
+    def test_style_example_restores_opacity_and_keeps_distinct_colors(self):
+        result = json.loads(lite.render_scene((ROOT / 'examples/style_scene.py').read_text()))
+        self.assertEqual(result['duration'], 9)
+        shapes = result['frames'][-1]['mobjects'][0]['children']
+        self.assertEqual(len(shapes), 3)
+        for shape in shapes:
+            self.assertEqual((shape['fill_color'], shape['stroke_color']), (lite.RED, lite.GREEN))
+            self.assertEqual((shape['fill_opacity'], shape['stroke_opacity']), (1, 1))
+
     def test_growth_from_point_preserves_rotation_style_and_terminal_identity(self):
         shape = lite.Line((1, 0), (3, 0), color=lite.BLUE).scale(2).rotate(lite.PI / 2)
         shape.shift(lite.RIGHT * 2)

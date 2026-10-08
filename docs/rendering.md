@@ -94,6 +94,18 @@ omits completed shrink removers without mutating live objects early. Only XY
 point coordinates are supported; point_color, path_arc, and 3D growth are not.
 Text centers remain anchors without browser font metrics.
 
+Fill and stroke have separate color and opacity channels, including constructor
+options and animated setters. `set_color` updates both colors; `set_fill` and
+`set_stroke` affect only their channel. `set_opacity` sets both channel opacities
+and can fill previously unfilled geometry. Setters recurse through children,
+with `family=False` opting out. SVG group containers do not apply style-channel
+opacity, avoiding repeated opacity multiplication in nested groups. Animation
+fades still use container opacity as an independent multiplier. Arrow shaft
+and head share stroke styling, and text supports outlines with default width
+zero. Opacity is validated in [0, 1]; stroke width is finite/nonnegative.
+Six-digit hex colors interpolate; other CSS color strings switch at completion.
+Gradients, background strokes, and full Manim color parsing are unsupported.
+
 Next work can add additional verified compatibility APIs, geometry-aware path
 transforms, glyph outline rendering, sequential animation composition, and an offline
 asset strategy. Keep DOT
@@ -112,6 +124,7 @@ Use `examples/staggered_scene.py` for delayed reveals and overlapping movement.
 Use `examples/path_scene.py` for transformed circular/polygon paths and line motion.
 Use `examples/arc_scene.py` for open paths, opposite sweeps, and transformed arc motion.
 Use `examples/growth_scene.py` for point/center growth and staggered shrink cleanup.
+Use `examples/style_scene.py` for distinct fill/stroke colors and animated group opacity.
 
 ## Verification
 
@@ -136,6 +149,7 @@ independently of browser integration; report both categories separately.
 - [Manim circular arcs](https://docs.manim.community/en/stable/reference/manim.mobject.geometry.arc.Arc.html)
 - [Manim growth from a point](https://docs.manim.community/en/stable/reference/manim.animation.growing.GrowFromPoint.html)
 - [Manim shrinking](https://docs.manim.community/en/stable/reference/manim.animation.transform.ShrinkToCenter.html)
+- [Manim vector styles](https://docs.manim.community/en/stable/reference/manim.mobject.types.vectorized_mobject.VMobject.html)
 - [Manim configuration](https://docs.manim.community/en/stable/guides/configuration.html)
 - [Pyodide worker guidance](https://pyodide.org/en/stable/usage/webworker.html)
 

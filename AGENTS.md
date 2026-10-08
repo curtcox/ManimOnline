@@ -22,7 +22,8 @@ compatibility layer, not a server running full Manim Community.
 11. `examples/path_scene.py` for transformed paths and center-following motion.
 12. `examples/arc_scene.py` for open circular paths and signed sweeps.
 13. `examples/growth_scene.py` for geometry growth and staggered shrink removal.
-14. `todo/master_plan.md` and the other `todo/` documents for background plans.
+14. `examples/style_scene.py` for independent style channels and group opacity.
+15. `todo/master_plan.md` and the other `todo/` documents for background plans.
 
 `ace/`, `viz-global.js`, and `svg-pan-zoom.min.js` are vendored dependencies.
 Avoid editing these to implement Manim features. The Markdown files under
