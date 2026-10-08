@@ -1589,6 +1589,22 @@ class VGroup(Group):
     pass
 
 
+class _SecantSlopeGroup(VGroup):
+    def _component(self, role):
+        for child in self.children:
+            if child.__dict__.get('_secant_role') == role:
+                return child
+        raise AttributeError('Secant group has no ' + role)
+
+    dx_line = property(lambda self:self._component('dx_line'))
+    df_line = property(lambda self:self._component('df_line'))
+    dy_line = property(lambda self:self.df_line)
+    dx_label = property(lambda self:self._component('dx_label'))
+    df_label = property(lambda self:self._component('df_label'))
+    dy_label = property(lambda self:self.df_label)
+    secant_line = property(lambda self:self._component('secant_line'))
+
+
 class NumberLine(VGroup):
     """Linear XY coordinates, composed from a shaft, ticks and numeric labels."""
     def __init__(self, x_range=None, length=None, unit_size=1, include_ticks=True,
@@ -2166,6 +2182,93 @@ class Axes(VGroup):
                               stroke_color=fill if blend else stroke_color,stroke_width=stroke_width)
             rectangles.add(Rectangle().become(outline))
         return rectangles
+
+    def get_secant_slope_group(self, x, graph, dx=None, dx_line_color=YELLOW,
+                                dy_line_color=None, dx_label=None, dy_label=None,
+                                include_secant_line=True, secant_line_color=GREEN,
+                                secant_line_length=10):
+        self._scalar_graph_function(graph)
+        NumberLine._real(x,'Secant input')
+        if dx is not None:
+            NumberLine._real(dx,'Secant dx')
+        dx = (self.x_range[1]-self.x_range[0])/10 if dx is None or dx == 0 else dx
+        NumberLine._real(dx,'Secant dx')
+        if x+dx == x:
+            raise ValueError('Secant dx is too small to change this input')
+        NumberLine._real(secant_line_length,'Secant length',positive=True)
+        if not isinstance(include_secant_line,bool):
+            raise ValueError('Secant inclusion flag must be a boolean')
+        def make_label(value):
+            if value is None:
+                return None
+            if isinstance(value,Mobject):
+                return value.copy()
+            if isinstance(value,(int,float)) and not isinstance(value,bool):
+                NumberLine._real(value,'Secant label')
+            elif not isinstance(value,str):
+                raise TypeError('Secant labels must be strings, real numbers or Mobjects')
+            return MathTex(str(value))
+        dx_mob,df_mob = make_label(dx_label),make_label(dy_label)
+        p1,p2 = self.i2gp(x,graph),self.i2gp(x+dx,graph)
+        corner = Vector((p2[0],p1[1],0))
+        dy_line_color = graph.color if dy_line_color is None else dy_line_color
+        group = _SecantSlopeGroup()
+        for role,line in (('dx_line',Line(p1,corner,color=dx_line_color)),
+                          ('df_line',Line(corner,p2,color=dy_line_color))):
+            line._secant_role = role
+            group.add(line)
+        def label_bounds(label):
+            # Font metrics live in the browser; use an explicit size estimate here.
+            if label._type in ('text','mathtex'):
+                height = label.font_size/50
+                width = max(1,len(label.text))*.6*height
+                center = label._geometry_center()
+                corners = [label._point_to_world(center+Vector((a*width/2,b*height/2,0)))
+                           for a in (-1,1) for b in (-1,1)]
+            elif label.children:
+                corners = []
+                for child in label.children:
+                    left,bottom,right,top = label_bounds(child)
+                    corners.extend(label._point_to_world((a,b,0))
+                                   for a in (left,right) for b in (bottom,top))
+            else:
+                return label._bounds()
+            return (min(p[0] for p in corners),min(p[1] for p in corners),
+                    max(p[0] for p in corners),max(p[1] for p in corners))
+        labels = VGroup(*(label for label in (dx_mob,df_mob) if label is not None))
+        if len(labels):
+            left,bottom,right,top = label_bounds(labels)
+            width,height = right-left,top-bottom
+            span_x,span_y = abs(p2[0]-p1[0]),abs(p2[1]-p1[1])
+            factor = min(1,.8*span_x/width if width else 1,
+                         .8*span_y/height if height else 1)
+            for label in labels:
+                label.scale(factor)
+        sign = 1 if dx > 0 else -1
+        for label,role,line,direction in ((dx_mob,'dx_label',group.dx_line,DOWN*sign),
+                                          (df_mob,'df_label',group.df_line,RIGHT*sign)):
+            if label is not None:
+                left,bottom,right,top = label_bounds(label)
+                # Center anchors lack glyph bounds: explicitly leave room for text.
+                offset = (top-bottom)/2
+                if label._type in ('text','mathtex'):
+                    offset += (top-bottom)/2 if direction[1] else (right-left)/2
+                label.next_to(line,direction,buff=offset).set_color(line.color)
+                label._secant_role = role
+                group.add(label)
+        if include_secant_line:
+            vector = p2-p1
+            length = math.hypot(*vector)
+            if length == 0:
+                raise ValueError('Cannot extend a collapsed secant')
+            center = (p1+p2)*.5
+            NumberLine._real(length,'Secant span',positive=True)
+            half = Vector(value/length for value in vector)*(secant_line_length/2)
+            start,end = Line._endpoints(center-half,center+half)
+            secant = Line(start,end,color=secant_line_color)
+            secant._secant_role = 'secant_line'
+            group.add(secant)
+        return group
 
 
 class NumberPlane(Axes):

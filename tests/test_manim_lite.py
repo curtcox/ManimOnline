@@ -16,6 +16,101 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_secant_group_world_lines_default_interval_and_extended_length(self):
+        axes = lite.Axes([-2,2],[-2,4],x_length=8,y_length=6)
+        graph = axes.plot(lambda x:x*x)
+        group = axes.get_secant_slope_group(1,graph,dx=.5,secant_line_length=6)
+        p1,p2 = axes.i2gp(1,graph),axes.i2gp(1.5,graph)
+        self.assertPointAlmostEqual(group.dx_line.get_start(),p1)
+        self.assertPointAlmostEqual(group.dx_line.get_end(),(p2[0],p1[1],0))
+        self.assertPointAlmostEqual(group.df_line.get_start(),group.dx_line.get_end())
+        self.assertPointAlmostEqual(group.df_line.get_end(),p2)
+        self.assertIs(group.dy_line,group.df_line)
+        self.assertAlmostEqual(group.secant_line.get_length(),6)
+        self.assertPointAlmostEqual((group.secant_line.get_start()+group.secant_line.get_end())*.5,(p1+p2)*.5)
+        self.assertEqual(group.df_line.color,graph.color)
+        for dx in (None,0):
+            default = axes.get_secant_slope_group(0,graph,dx=dx)
+            self.assertPointAlmostEqual(default.df_line.get_end(),axes.i2gp(.4,graph))
+        axes.rotate(.5).scale(1.3).shift(lite.UP)
+        rotated = axes.get_secant_slope_group(1,graph,dx=.5)
+        self.assertAlmostEqual(rotated.dx_line.get_start()[1],rotated.dx_line.get_end()[1])
+        self.assertAlmostEqual(rotated.df_line.get_start()[0],rotated.df_line.get_end()[0])
+        self.assertPointAlmostEqual(rotated.df_line.get_end(),axes.i2gp(1.5,graph))
+
+    def test_secant_labels_scale_color_negative_direction_and_template_isolation(self):
+        axes = lite.Axes([-2,2],[-2,4],x_length=4,y_length=6)
+        graph = axes.plot(lambda x:x*x)
+        label = lite.Text('change',font_size=48)
+        before = label.to_dict()
+        group = axes.get_secant_slope_group(1,graph,dx=.5,dx_label=label,dy_label='df',
+                        dx_line_color=lite.YELLOW,dy_line_color=lite.RED)
+        self.assertEqual(label.to_dict(),before)
+        self.assertIsNot(group.dx_label,label)
+        self.assertEqual(group.dx_label.color,lite.YELLOW)
+        self.assertEqual(group.df_label.color,lite.RED)
+        self.assertEqual(group.df_label.text,'df')
+        self.assertEqual(group.df_label._type,'mathtex')
+        self.assertLessEqual(len(label.text)*.6*label.font_size/50*group.dx_label.geometry_scale,.8*.5+1e-9)
+        self.assertLess(group.dx_label.get_center()[1],group.dx_line.get_center()[1])
+        negative = axes.get_secant_slope_group(1,graph,dx=-.5,dx_label='dx',dy_label=3,include_secant_line=False)
+        self.assertGreater(negative.dx_label.get_center()[1],negative.dx_line.get_center()[1])
+        self.assertLess(negative.df_label.get_center()[0],negative.df_line.get_center()[0])
+        with self.assertRaises(AttributeError): negative.secant_line
+        flat = axes.plot(lambda x:1)
+        degenerate = axes.get_secant_slope_group(0,flat,dx_label='dx',dy_label='df')
+        self.assertEqual(degenerate.dx_label.geometry_scale,0)
+        json.dumps(degenerate.to_dict(),allow_nan=False)
+
+    def test_secant_components_copy_become_restore_and_missing_roles(self):
+        axes = lite.NumberPlane([-2,2],[-2,4])
+        graph = axes.plot(lambda x:x*x)
+        group = axes.get_secant_slope_group(1,graph,dx=.5,dx_label='dx',dy_label='df')
+        clone = group.copy()
+        clone.dx_line.set_color(lite.RED)
+        self.assertNotEqual(clone.dx_line.color,group.dx_line.color)
+        original = group.dx_line
+        group.become(clone)
+        self.assertIs(group.dx_line,original)
+        self.assertIs(group.dy_label,group.df_label)
+        group.save_state().shift(lite.UP).restore()
+        self.assertEqual(group.dx_line.color,lite.RED)
+        group.remove(group.df_label)
+        with self.assertRaises(AttributeError): group.df_label
+        json.dumps(group.to_dict(),allow_nan=False)
+
+    def test_secant_validation_preserves_source_geometry(self):
+        axes = lite.Axes()
+        graph = axes.plot(lambda x:x*x)
+        before = axes.to_dict(),graph.to_dict()
+        for options in ({'dx':True},{'dx':float('inf')},{'include_secant_line':1},
+                        {'secant_line_length':0},{'secant_line_length':float('nan')},
+                        {'dx_label':float('inf')}):
+            with self.assertRaises(ValueError): axes.get_secant_slope_group(0,graph,**options)
+        with self.assertRaises(TypeError): axes.get_secant_slope_group(0,graph,dx_label=[])
+        with self.assertRaises(ValueError): axes.get_secant_slope_group(1e20,graph,dx=.1)
+        with self.assertRaises(TypeError): axes.get_secant_slope_group(0,lite.Circle())
+        self.assertEqual((axes.to_dict(),graph.to_dict()),before)
+        with self.assertRaises(ValueError): axes.scale(0).get_secant_slope_group(0,graph)
+
+    def test_secant_gallery_redraw_labels_and_cleanup(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/secant_scene.py').read_text()))
+        self.assertEqual(result['duration'],9)
+        axes = lite.NumberPlane([-2,3],[-2,3],x_length=8,y_length=4).add_coordinates()
+        graph = axes.plot(lambda x:.5*x*x-.7)
+        for frame,x,dx in ((30,0,1.5),(75,0,.25),(105,1,.25)):
+            group = result['frames'][frame]['mobjects'][2]
+            self.assertEqual(len(group['children']),5)
+            roles = {child['_secant_role']:child for child in group['children']}
+            p1,p2 = axes.i2gp(x,graph),axes.i2gp(x+dx,graph)
+            for role,endpoint in (('dx_line',p1),('df_line',(p2[0],p1[1],0))):
+                line = roles[role]
+                self.assertPointAlmostEqual(lite.Vector(line['start'])+lite.Vector(line['position']),endpoint)
+            self.assertEqual(roles['dx_label']['text'],'dx')
+            self.assertEqual(roles['df_label']['text'],'df')
+        self.assertEqual(len(result['frames'][-1]['mobjects']),2)
+        json.dumps(result,allow_nan=False)
+
     def test_riemann_sampling_signed_colors_gradient_and_rectangle_identity(self):
         axes = lite.Axes([-2,2],[-2,2],x_length=4,y_length=4)
         graph = axes.plot(lambda x:x)

@@ -897,3 +897,16 @@ changing functions or axes. Declared plot gaps do not suppress cell sampling.
 Try **Refine signed area estimates** (`examples/riemann_scene.py`) for refinement
 and the region between two functions. General Manim color objects and continuous
 area fills remain open.
+
+
+`Axes.get_secant_slope_group(x, graph, dx=None)` draws horizontal dx and vertical
+function changes, plus an optional extended secant line. None or zero dx uses a
+tenth of the axis range; negative intervals reverse label sides. Set
+`include_secant_line=False` to omit the extended line, or change its length and
+colors. String/numeric labels use MathTex; supplied Mobjects are copied. Access
+components through dx_line, df_line (also dy_line), dx_label, df_label (also
+dy_label), and secant_line when present. Lines use world horizontal/vertical
+changes even on rotated axes, following the Community convention. Labels shrink
+to fit both changes; font sizes use estimates rather than measured glyph bounds,
+and a zero change collapses labels. Regenerate groups with always_redraw to
+follow changed inputs. Try **Follow a labeled secant** (`examples/secant_scene.py`).

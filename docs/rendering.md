@@ -1094,7 +1094,7 @@ provider closures stay out of frame JSON and retain normal copy behavior.
 
 Both plotting helpers default to the axes' range. Declared plot discontinuities
 split result contours but do not skip singularities inside an integration
-interval. Vectorized functions, symbolic/adaptive calculus, continuous area fills and secant groups remain open. Python tests cover numeric coordinates,
+interval. Vectorized functions, symbolic/adaptive calculus, continuous area fills remain open. Python tests cover numeric coordinates,
 signed dx, transformed/scaled frames, derivative samples, signed integrals,
 intercepts, convergence, provider isolation and invalid inputs. The gallery
 combines sine, its derivative, recovered sine, a moving tangent and numeric slope.
@@ -1136,3 +1136,29 @@ Local Pyodide playback verified 32 refined cells before four seconds and 16
 signed cells between the parabola and line at six seconds. The final eight-second
 frame removed the cells and bounding curve. Switching to DOT rendered the editor
 flow graph. All 258 Python and 72 Node tests passed.
+
+
+## Labeled secant groups
+
+Axes.get_secant_slope_group follows the [Community secant API](https://docs.manim.community/en/stable/_modules/manim/mobject/graphing/coordinate_systems.html):
+world-horizontal dx, world-vertical df, default interval one tenth of the x range,
+and an optional fixed-length secant centered between the graph points. Negative
+intervals reverse label sides. Strings and finite numbers become MathTex;
+Mobject label templates are copied. Independent style colors are supported.
+Role-tagged direct children expose components without serializing Mobject aliases,
+so copies, become, restore and dynamic redraw keep getters consistent.
+
+Label shrink/spacing uses font-size and character-count estimates because glyph
+metrics are browser-owned. Complex TeX can exceed those estimates; measured font
+layout remains open. Geometry labels use existing conservative bounds. Both
+changes constrain label sizes; flat or vertically collapsed spans collapse labels.
+Input validation rejects nonfinite values, invalid labels, unrepresentable dx and
+collapsed extended lines without modifying the graph or axes. Tests cover signed
+intervals, transformed axes, styles, copied templates, role lifecycle, validation,
+and gallery frame redraw and cleanup.
+
+
+Local Pyodide playback verified both formula labels and the three colored lines
+at two seconds, interval refinement at five seconds, input motion at seven seconds,
+and removal at nine seconds. Switching to DOT rendered the editor flow graph.
+All 263 Python and 72 Node tests passed.

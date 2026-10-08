@@ -225,3 +225,12 @@ four polygon corners in the current axes basis. Preflight ranges, counts and
 styles before callback sampling; no source graph/axis mutation. Preserve native
 open partition ends, left-input bounding baselines and signed color inversion.
 Cell colors support hex gradients; continuous area fills remain open.
+
+
+Read `examples/secant_scene.py` for interval refinement and moving labeled secants.
+Keep the native world-horizontal/vertical triangle convention on rotated axes.
+Component getters must find role-tagged children rather than stale object aliases.
+Supplied label Mobjects are copied. Font shrink/spacing uses explicit estimates;
+do not claim measured glyph layout. None/zero dx defaults to a tenth of the range;
+negative intervals reverse sides, and zero changes collapse labels. Use redraw
+for changing inputs; check final removal and both MathTex labels in Pyodide.
