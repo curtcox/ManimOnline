@@ -636,7 +636,7 @@ class Mobject:
 
     def to_dict(self):
         result = copy.deepcopy({key: value for key, value in self.__dict__.items()
-                                if key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels')})
+                                if key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels', '_angle_lines')})
         result['type'] = result.pop('_type')
         result['geometry_center'] = list(self._geometry_center())
         result['children'] = [child.to_dict() for child in self.children]
@@ -1686,6 +1686,93 @@ class Group(Mobject):
 class VGroup(Group):
     """Container for the supported vector/text geometry in this runtime."""
     pass
+
+
+class Elbow(VMobject):
+    """An open two-segment corner, rotated about the origin."""
+    def __init__(self, width=.2, angle=0, **kwargs):
+        for value in (width, angle):
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise ValueError('Elbow dimensions must be finite real numbers')
+        if width < 0:
+            raise ValueError('Elbow width must be nonnegative')
+        super().__init__(**kwargs)
+        self.set_points_as_corners([UP*width, (UP+RIGHT)*width, RIGHT*width])
+        self.rotate(angle, about_point=ORIGIN)
+
+
+class Angle(VMobject, VGroup):
+    """A snapshot angle marker; arc/corner and optional dot are separate children."""
+    def __init__(self, line1, line2, radius=None, quadrant=(1,1),
+                 other_angle=False, dot=False, dot_radius=None, dot_distance=.55,
+                 dot_color=WHITE, elbow=False, **kwargs):
+        if not all(isinstance(line, Line) for line in (line1,line2)):
+            raise TypeError('Angle requires two Lines')
+        if not isinstance(quadrant,(tuple,list)) or len(quadrant) != 2 or any(
+                isinstance(q,bool) or not isinstance(q,int) or q not in (-1,1) for q in quadrant):
+            raise ValueError('Angle quadrant needs two signs, each -1 or 1')
+        if not all(isinstance(value,bool) for value in (other_angle,dot,elbow)):
+            raise ValueError('Angle flags must be booleans')
+        for value in (radius,dot_radius,dot_distance):
+            if value is not None and (isinstance(value,bool) or not isinstance(value,(int,float))
+                    or not math.isfinite(value) or value < 0):
+                raise ValueError('Angle radii and dot distance must be nonnegative and finite')
+        if dot_distance is None:
+            raise ValueError('Dot distance must be finite')
+        super().__init__(**kwargs)
+        self._type = 'vgroup'
+        self._angle_lines = (line1,line2)
+        self.quadrant, self.elbow, self.angle_value = tuple(quadrant), elbow, 0
+        a,b = Line._endpoints(line1.get_start(),line1.get_end())
+        c,d = Line._endpoints(line2.get_start(),line2.get_end())
+        u,v = line1.get_unit_vector(),line2.get_unit_vector()
+        cross = u[0]*v[1]-u[1]*v[0]
+        if cross == 0:
+            return
+        delta = c-a
+        distance = (delta[0]*v[1]-delta[1]*v[0])/cross
+        intersection = a+u*distance
+        if not all(math.isfinite(value) for value in intersection):
+            raise ValueError('Angle intersection must be finite')
+        if radius is None:
+            nearest = min(math.dist(b if quadrant[0]==1 else a,intersection),
+                          math.dist(d if quadrant[1]==1 else c,intersection))
+            radius = nearest*2/3 if nearest < .6 else .4
+        self.radius = radius
+        first = intersection+u*(quadrant[0]*radius)
+        last = intersection+v*(quadrant[1]*radius)
+        start = math.atan2(u[1]*quadrant[0],u[0]*quadrant[0])
+        end = math.atan2(v[1]*quadrant[1],v[0]*quadrant[1])
+        sweep = (end-start)%TAU
+        self.angle_value = sweep-TAU if other_angle else sweep
+        if elbow:
+            middle = first+v*(quadrant[1]*radius)
+            mark = Elbow(**kwargs).set_points_as_corners([first,middle,last])
+        else:
+            mark = Arc(radius=radius,start_angle=start,angle=self.angle_value,
+                       arc_center=intersection,**kwargs)
+        self.add(mark)
+        if dot and not elbow:
+            offset = mark.get_center()-intersection
+            span = math.hypot(*offset)
+            anchor = intersection if span == 0 else intersection+Vector(
+                value/span for value in offset)*(radius*dot_distance)
+            self.add(Dot(anchor,radius=radius/10 if dot_radius is None else dot_radius,color=dot_color))
+
+    def get_lines(self):
+        return VGroup(*self._angle_lines)
+
+    def get_value(self, degrees=False):
+        return self.angle_value/DEGREES if degrees else self.angle_value
+
+    @staticmethod
+    def from_three_points(A,B,C,**kwargs):
+        return Angle(Line(B,A),Line(B,C),**kwargs)
+
+
+class RightAngle(Angle):
+    def __init__(self, line1, line2, length=None, **kwargs):
+        super().__init__(line1,line2,radius=length,elbow=True,**kwargs)
 
 
 class DashedVMobject(VMobject,VGroup):
@@ -3669,7 +3756,7 @@ class MovingCameraScene(Scene):
     camera_class = MovingCamera
 
 
-EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Arrow',
+EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'NumberPlane', 'ComplexPlane', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',

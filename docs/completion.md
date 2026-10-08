@@ -93,3 +93,8 @@ semantics (basic DecimalNumber/Integer numeric labels now implemented), broader 
 compatibility. These are not implemented or proven by the current tests. Keep
 the original requested scope open until its requirements are clarified and
 verified; successful individual feature commits do not close the overall goal.
+
+
+Angle, RightAngle and Elbow now add signed quadrant-selected marks, optional dots,
+construction-time queries and moving-line redraw. Native Angle own-point/family
+layout and general geometry-bearing families remain open.

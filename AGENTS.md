@@ -271,3 +271,11 @@ full closed-path chord before treating rounding noise as a direction. Normalize
 components directly so valid tiny spans do not overflow a reciprocal. Line angle
 changes default to the start; length changes default to the center. Preserve
 NumberLine's existing positive-length contract and the animated set_angle entry.
+
+
+Read `examples/angle_scene.py` for signed Angle sweeps, quadrant selection,
+optional dots, RightAngle and Elbow. Angle uses an explicit display group with
+separate geometry children; native own-path/submobject layout is not supported.
+`get_value` stores the construction-time sweep. Rebuild with `always_redraw` for
+moving lines. Defining line references are excluded from frame JSON; preserve
+that isolation when extending serialization. Parallel/zero-span lines are empty.

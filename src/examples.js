@@ -14,6 +14,7 @@ const ExampleCatalog = Object.freeze([
   { id: 'flash', label: 'Traveling outline highlights', path: 'examples/passing_flash_scene.py' },
   { id: 'numberline', label: 'Follow numeric coordinates', path: 'examples/number_line_scene.py' },
   { id: 'axes', label: 'Animate Cartesian coordinates', path: 'examples/axes_scene.py' },
+  { id: 'angles', label: 'Mark angles between moving lines', path: 'examples/angle_scene.py' },
   { id: 'tangents', label: 'Follow tangents along curved paths', path: 'examples/tangent_paths_scene.py' },
   { id: 'dashedpaths', label: 'Dash curved paths and shift their phase', path: 'examples/dashed_paths_scene.py' },
   { id: 'guides', label: 'Follow dashed coordinate guides', path: 'examples/guides_scene.py' },

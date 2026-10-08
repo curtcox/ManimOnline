@@ -1301,3 +1301,40 @@ with their chord midpoints matching the markers within floating-point precision.
 The nine-second frame removed tangent lines and markers while retaining source
 curves and labels. Switching to DOT rendered the editor flow graph. All 287 Python
 and 74 Node tests passed.
+
+
+## Angle and corner marks
+
+`Angle`, `RightAngle` and `Elbow` now support static and redrawn XY angle marks.
+Two finite Line shafts define their infinite-line intersection. Quadrant signs
+select the positive/negative shaft rays. Circular sweeps are counterclockwise by
+default and clockwise with `other_angle=True`. Automatic radius follows the
+selected endpoint distances (two-thirds of the shorter distance below .6,
+otherwise .4). Parallel/zero-length shafts produce empty geometry. Explicit
+radii and dot distances must be finite and nonnegative. RightAngle makes an
+elbow between the selected rays, including nonperpendicular inputs; it does not
+assert perpendicularity. Standalone Elbow rotates about the origin.
+
+The arc/corner and optional independently colored dot are actual display-group
+children, so creation, opacity, transformations, copying, redraw and removal use
+the established group pipeline. This differs from native Angle's own path with
+a dot submobject. Native own-point queries, slicing/family layout and general
+geometry-bearing family compatibility remain open. `get_lines` preserves the
+source references; they are omitted from frame JSON. `get_value` returns the
+construction-time signed sweep in radians or degrees (including elbow marks).
+The mark is a snapshot: use `always_redraw` for line motion. Dot placement follows
+the arc bounding-center direction, with a stable intersection fallback at zero
+radius. The gallery combines a changing angle/degree label, right corner and
+clockwise three-quarter arc, then removes all marks.
+
+Python checks cover quadrants, direction, automatic radii, defining references,
+dot positions, source isolation, elbow endpoints/rotation, empty cases,
+validation, JSON isolation and gallery redraw/removal.
+
+Reference: [official Manim geometry implementation](https://docs.manim.community/en/stable/_modules/manim/mobject/geometry/line.html).
+
+Local Pyodide playback verified a yellow quarter-circle at seven seconds, a
+green independently colored dot, a green two-segment elbow, a red clockwise
+three-quarter arc and the changing label ending at 90 degrees. At nine seconds
+all mark paths and dots were removed. Switching to the DOT gallery rendered
+the Editor → Render → Preview graph successfully.

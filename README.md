@@ -1012,3 +1012,17 @@ TangentLine behavior scale around the current center, accepting a finite
 nonnegative length. Positive resizing of a collapsed line needs fresh endpoints
 first. Dashed resizing preserves its existing count and child edits. NumberLine
 keeps its existing positive-length resize validation.
+
+
+### Angle markers
+
+Try **Mark angles between moving lines** (`examples/angle_scene.py`) for a
+rotating ray, a changing degree label, a dotted circular mark and a right-angle
+corner. `Angle` supports quadrant signs, signed clockwise/counterclockwise sweeps,
+automatic or explicit radius, dots and `from_three_points`. `RightAngle` builds
+an elbow mark; `Elbow` also works as an independent path. Parallel or zero-length
+lines produce an empty angle. Use `always_redraw` to follow moving lines.
+Angle marks are display groups containing an arc/corner and optional dot;
+they do not expose native Angle point-array/family layout. `get_value` is the
+construction-time angle, and `get_lines` returns the defining lines. Full Manim
+Community compatibility remains unfinished.

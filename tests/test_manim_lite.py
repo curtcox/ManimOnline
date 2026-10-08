@@ -16,6 +16,77 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_angle_signed_sweeps_quadrants_and_auto_radius(self):
+        first = lite.Line(lite.LEFT,lite.RIGHT)
+        second = lite.Line(lite.DOWN,lite.UP)
+        for quadrant,expected in (((1,1),90),((1,-1),270),((-1,1),270),((-1,-1),90)):
+            angle = lite.Angle(first,second,quadrant=quadrant)
+            self.assertAlmostEqual(angle.get_value(degrees=True),expected)
+            self.assertAlmostEqual(angle.radius,.4)
+            reverse = lite.Angle(first,second,quadrant=quadrant,other_angle=True)
+            self.assertAlmostEqual(reverse.get_value(degrees=True),expected-360)
+        short = lite.Angle(lite.Line(lite.ORIGIN,lite.RIGHT*.3),
+                           lite.Line(lite.ORIGIN,lite.UP))
+        self.assertAlmostEqual(short.radius,.2)
+        three = lite.Angle.from_three_points(lite.UP,lite.ORIGIN,lite.LEFT)
+        self.assertAlmostEqual(three.get_value(),lite.PI/2)
+
+    def test_angle_dot_elbow_transforms_and_source_isolation(self):
+        a = lite.Line((1,2,0),(3,2,0))
+        b = lite.Line((1,2,0),(1,4,0))
+        before = [a.to_dict(),b.to_dict()]
+        angle = lite.Angle(a,b,radius=1,dot=True,dot_radius=.12,dot_color=lite.RED,color=lite.YELLOW)
+        self.assertEqual(len(angle.children),2)
+        arc,dot = angle.children
+        self.assertPointAlmostEqual(arc.get_arc_center(),(1,2,0))
+        self.assertPointAlmostEqual(dot.get_center(),(1+.55/2**.5,2+.55/2**.5,0))
+        self.assertEqual(dot.color,lite.RED)
+        self.assertEqual(dot.radius,.12)
+        self.assertIs(angle.get_lines()[0],a)
+        json.dumps(angle.to_dict(),allow_nan=False)
+        copied = angle.copy().shift(lite.RIGHT).rotate(.3).scale(2)
+        self.assertEqual([a.to_dict(),b.to_dict()],before)
+        self.assertNotEqual(copied.to_dict(),angle.to_dict())
+        corner = lite.RightAngle(a,b,length=.5,color=lite.GREEN)
+        self.assertPointAlmostEqual(corner.children[0].get_start(),(1.5,2,0))
+        self.assertPointAlmostEqual(corner.children[0].get_end(),(1,2.5,0))
+        self.assertAlmostEqual(corner.get_value(degrees=True),90)
+        elbow = lite.Elbow(width=2,angle=lite.PI/2)
+        self.assertPointAlmostEqual(elbow.get_start(),(-2,0,0))
+        self.assertPointAlmostEqual(elbow.get_end(),(0,2,0))
+
+    def test_angle_parallel_zero_span_and_invalid_inputs(self):
+        a = lite.Line()
+        for b in (lite.Line().shift(lite.UP),lite.Line(lite.ORIGIN,lite.ORIGIN)):
+            angle = lite.Angle(a,b,dot=True)
+            self.assertEqual(angle.children,[])
+            self.assertEqual(angle.get_value(),0)
+            json.dumps(angle.to_dict(),allow_nan=False)
+        for options in ({'quadrant':(0,1)},{'quadrant':(True,1)},{'radius':-1},
+                        {'radius':float('inf')},{'dot_radius':float('nan')},
+                        {'dot_distance':None},{'dot_distance':-1},{'dot':1},
+                        {'elbow':'yes'},{'other_angle':1}):
+            with self.assertRaises(ValueError): lite.Angle(a,lite.Line(lite.DOWN,lite.UP),**options)
+        with self.assertRaises(TypeError): lite.Angle(lite.Circle(),a)
+        with self.assertRaises(ValueError): lite.Elbow(width=-1)
+        with self.assertRaises(ValueError): lite.Elbow(angle=float('nan'))
+        zero = lite.Angle(a,lite.Line(lite.DOWN,lite.UP),radius=0,dot=True)
+        json.dumps(zero.to_dict(),allow_nan=False)
+
+    def test_angle_gallery_redraw_signed_path_labels_and_cleanup(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/angle_scene.py').read_text()))
+        self.assertEqual(result['duration'],9)
+        first = result['frames'][30]['mobjects']
+        end = result['frames'][105]['mobjects']
+        self.assertAlmostEqual(first[4]['angle_value'],lite.PI/6)
+        self.assertAlmostEqual(end[4]['angle_value'],lite.PI/2)
+        self.assertAlmostEqual(end[7]['angle_value'],-3*lite.PI/2)
+        self.assertEqual(len(end[4]['children']),2)
+        self.assertNotEqual(first[4]['children'][1]['position'],end[4]['children'][1]['position'])
+        self.assertEqual(end[5]['text'],'90')
+        self.assertEqual(len(result['frames'][-1]['mobjects']),4)
+        json.dumps(result,allow_nan=False)
+
     def test_tangent_line_circle_direction_length_clipped_endpoints_and_style(self):
         circle = lite.Circle(radius=2,color=lite.BLUE).shift(lite.RIGHT)
         before = circle.to_dict()
