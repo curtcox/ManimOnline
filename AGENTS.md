@@ -198,3 +198,13 @@ keep faded/background groups before the axes and tag their roles rather than
 serializing Mobject aliases. Preserve native origin-relative spacing, omitted
 outer boundaries and default unit lengths. Bound subdivision counts before
 allocating geometry. Nonlinear transforms and preparation remain open.
+
+
+Read `examples/complex_scene.py` for complex coordinate conversion, imaginary
+labels and conjugate markers during plane transforms. n2p/p2n compose the inherited
+XY frame. Label queries produce world-positioned independent geometry; attachment
+inverts the parent transform and compensates its changed bounds pivot. Exclude
+unattached `_coordinate_labels` aliases from JSON; attached label getters find
+role-tagged children so become/copy/restore cannot leave stale object references.
+Keep per-label formatting options independent so imaginary units do not leak
+onto real labels. Nonlinear complex warping remains open.

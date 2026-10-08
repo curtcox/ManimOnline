@@ -16,6 +16,89 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_complex_plane_round_trip_transformed_and_nonzero_ranges(self):
+        for xr,yr in (([-3,3],[-2,2]),([2,6],[-4,-1])):
+            plane = lite.ComplexPlane(x_range=xr,y_range=yr,x_length=8,y_length=4)
+            plane.rotate(.7).scale(1.3).shift(lite.UR)
+            for number in (0,1,-2,2+1j,-3-2j,4j,'1-2j'):
+                value = complex(number)
+                self.assertPointAlmostEqual(plane.n2p(number),plane.c2p(value.real,value.imag))
+                self.assertAlmostEqual(plane.p2n(plane.n2p(number)),value)
+                self.assertAlmostEqual(plane.point_to_number(plane.number_to_point(number)),value)
+        with self.assertRaises(ValueError): plane.scale(0).p2n(lite.ORIGIN)
+
+    def test_complex_labels_axis_selection_formatting_and_option_isolation(self):
+        plane = lite.ComplexPlane(x_range=[-3,3],y_range=[-2,2])
+        options = {'num_decimal_places':1,'color':lite.RED,'direction':None,'buff':None}
+        labels = plane.get_coordinate_labels(2j,2,-1j,-2,1+2j,2+1j,1+1j,**options)
+        self.assertEqual([label.text for label in labels],['2.0i','2.0','-1.0i','-2.0','2.0i','2.0','1.0'])
+        self.assertIs(plane.coordinate_labels,labels)
+        self.assertNotIn('unit',options)
+        self.assertNotIn('_coordinate_labels',plane.to_dict())
+        self.assertEqual(len(plane.children),4)
+        for label in labels: self.assertEqual(label.fill_color,lite.RED)
+        labels = plane.get_coordinate_labels(1j,2,unit='m',num_decimal_places=0)
+        self.assertEqual([label.text for label in labels],['1i','2m'])
+        defaults = plane.get_coordinate_labels()
+        self.assertEqual([label.text for label in defaults],['-3','-2','-1','1','2','3','-2i','-1i','1i','2i'])
+        json.dumps(plane.to_dict(),allow_nan=False)
+
+    def test_complex_labels_world_queries_and_attached_pivot_compensation(self):
+        plane = lite.ComplexPlane(x_range=[-3,3],y_range=[-2,2]).rotate(.6).scale(1.4).shift(lite.UP)
+        coordinates = [0,1+1j,-3-2j,3+2j]
+        before = [plane.n2p(z) for z in coordinates]
+        labels = plane.get_coordinate_labels(-3,2j,num_decimal_places=0)
+        expected = [label.get_center() for label in labels]
+        self.assertEqual([label.angle for label in labels],[0,0])
+        plane.add_coordinates(-3,2j,num_decimal_places=0)
+        for label,point in zip(plane.coordinate_labels,expected):
+            self.assertPointAlmostEqual(plane._point_to_world(label.get_center()),point)
+            self.assertAlmostEqual(label.angle+plane.angle,0)
+            self.assertAlmostEqual(label.geometry_scale*plane.geometry_scale,1)
+        for z,point in zip(coordinates,before): self.assertPointAlmostEqual(plane.n2p(z),point)
+        plane.save_state()
+        clone = plane.copy()
+        self.assertIsNot(clone.coordinate_labels,plane.coordinate_labels)
+        clone.coordinate_labels[0].set_color(lite.RED)
+        self.assertNotEqual(clone.coordinate_labels[0].fill_color,plane.coordinate_labels[0].fill_color)
+        plane.become(clone)
+        self.assertIs(plane.coordinate_labels,plane.children[-1])
+        plane.shift(lite.RIGHT).restore()
+        self.assertPointAlmostEqual(plane.n2p(1+1j),before[1])
+        json.dumps(plane.to_dict(),allow_nan=False)
+
+    def test_complex_coordinate_validation_is_atomic(self):
+        plane = lite.ComplexPlane().add_coordinates()
+        before = plane.to_dict()
+        for value in (complex(float('nan'),0),complex(0,float('inf')),[],object(),'bad'):
+            with self.assertRaises(ValueError): plane.n2p(value)
+            with self.assertRaises(ValueError): plane.add_coordinates(1,value)
+            self.assertEqual(plane.to_dict(),before)
+        with self.assertRaises(ValueError): plane.add_coordinates(*range(1001))
+        with self.assertRaises(ValueError): plane.add_coordinates(1,2j,num_decimal_places=13)
+        self.assertEqual(plane.to_dict(),before)
+
+    def test_complex_gallery_samples_conjugates_and_restores_coordinates(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/complex_scene.py').read_text()))
+        self.assertEqual(result['duration'],11)
+        for index in (30,52,75,90,105,120,135,165):
+            objects = result['frames'][index]['mobjects']
+            data = objects[0]
+            plane = lite.ComplexPlane(x_range=[-3,3],y_range=[-2,2],x_length=8,y_length=4).add_coordinates()
+            plane.position,plane.angle,plane.geometry_scale = data['position'],data['angle'],data['geometry_scale']
+            plane._sampled_geometry_center = data['geometry_center']
+            value = plane.p2n(objects[1]['position'])
+            conjugate = plane.p2n(objects[2]['position'])
+            self.assertAlmostEqual(abs(value),2)
+            self.assertAlmostEqual(conjugate,value.conjugate())
+        final = result['frames'][-1]['mobjects']
+        self.assertEqual(len(final),3)
+        self.assertPointAlmostEqual(final[1]['position'],(0,2,0))
+        self.assertPointAlmostEqual(final[2]['position'],(0,-2,0))
+        self.assertEqual(final[0]['angle'],0)
+        texts = [label['text'] for label in final[0]['children'][-1]['children']]
+        self.assertIn('2i',texts); self.assertIn('-2i',texts)
+
     def test_number_plane_grid_spacing_styles_and_roles(self):
         plane = lite.NumberPlane([-3,3],[-2,2],faded_line_ratio=2,
                                  background_line_style={'stroke_width':4,'stroke_opacity':.8})

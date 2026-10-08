@@ -832,3 +832,24 @@ Use `always_redraw` to follow a moving plane. The accepted
 transform preparation and function application are still open.
 Try **Move a Cartesian grid** (`examples/plane_scene.py`) for animated coordinates,
 a function plot, rotation, scaling, restoration and vector cleanup.
+
+
+`ComplexPlane` extends NumberPlane with complex-valued coordinate conversion.
+`number_to_point`/`n2p` map finite complex-compatible scalars (including real
+numbers) through the current XY frame; `point_to_number`/`p2n` return a Python
+complex number by inverting that frame. Rotation, scaling, translation and
+sampled animation frames use the same conversion as Cartesian axes.
+
+`get_coordinate_labels(*numbers, **number_options)` returns independent,
+world-positioned DecimalNumber labels without attaching them. `add_coordinates`
+attaches labels while keeping existing coordinates fixed. With no arguments,
+labels follow each axis's tick range. Explicit values use the dominant component:
+imaginary magnitude greater than real selects the imaginary axis and appends
+`i`; ties select the real axis. Each label gets independent formatting options.
+`coordinate_labels` returns the latest queried or attached group. Attached
+children use the plane's local coordinates. Copies and saved-state restoration
+retain labels; numeric text uses the existing SVG font renderer.
+Try **Animate complex coordinates** (`examples/complex_scene.py`) for a complex
+value and its conjugate following a rotating plane. Complex function application,
+nonlinear warping, complex ValueTracker values and native TeX digit families
+remain open.

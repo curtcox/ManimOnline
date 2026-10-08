@@ -14,6 +14,7 @@ const ExampleCatalog = Object.freeze([
   { id: 'flash', label: 'Traveling outline highlights', path: 'examples/passing_flash_scene.py' },
   { id: 'numberline', label: 'Follow numeric coordinates', path: 'examples/number_line_scene.py' },
   { id: 'axes', label: 'Animate Cartesian coordinates', path: 'examples/axes_scene.py' },
+  { id: 'complex', label: 'Animate complex coordinates', path: 'examples/complex_scene.py' },
   { id: 'plane', label: 'Move a Cartesian grid', path: 'examples/plane_scene.py' },
   { id: 'plot', label: 'Plot smooth functions', path: 'examples/plot_scene.py' },
   { id: 'rounded', label: 'Rounded and concave corners', path: 'examples/rounded_rectangle_scene.py' },

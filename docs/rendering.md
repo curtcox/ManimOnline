@@ -1042,3 +1042,33 @@ vector touching its marker on the rotated/scaled plane at seven seconds. The
 final eleven-second frame restored the grid and removed the marker/vector.
 Switching to DOT rendered the editor flow graph. All 242 Python and 72 Node
 tests passed for this update.
+
+
+## Complex coordinates
+
+ComplexPlane uses NumberPlane's grid and transform-aware basis. Its scalar n2p
+and p2n methods follow the
+[official complex-plane API](https://docs.manim.community/en/stable/_modules/manim/mobject/graphing/coordinate_systems.html).
+Finite complex-compatible input maps real and imaginary components to c2p;
+p2n inverts the current XY basis. get_coordinate_labels creates independent
+world-positioned numeric labels. Defaults use the x/y tick ranges; explicit
+values choose the larger-magnitude component, with ties selecting real. Imaginary
+labels append i. Formatting dictionaries stay independent between labels.
+
+add_coordinates maps those labels into parent-local geometry, counteracting its
+rotation/scale, then compensates the changed bounding-box pivot. Existing world
+coordinates remain fixed. Attached getters find tagged children; runtime-only
+unattached aliases are excluded from JSON. Invalid values/options and oversized
+label sets fail before mutation. Numeric glyph bounds still use the existing Text
+approximation, and complex warping/nonlinear transforms remain open.
+
+Python tests cover round trips, nonzero ranges, transformed labels, formatting,
+option isolation, copies, become/restore, atomic validation and conjugate marker
+sampling. The gallery tracks a rotating complex value and its conjugate, rotates
+and restores the plane, then removes the vector while retaining the two points.
+
+Local Pyodide playback verified the conjugate markers and vector on the rotated
+plane at seven seconds, then restored the yellow point to 2i and green point to
+-2i at eleven seconds. Imaginary axis labels rendered as numeric SVG text and
+switching to DOT rendered the editor flow graph. All 247 Python and 72 Node
+tests passed for this update.

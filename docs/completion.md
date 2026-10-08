@@ -66,7 +66,9 @@ length changes and restoration. Axes now combines two NumberLines, with Cartesia
 conversion/inversion, batch coordinates, numeric and axis labels, transform-aware
 updater geometry and atomic coordinate-label additions. NumberPlane now adds styled major/faded grids, native origin-relative spacing,
 transform-aware vectors and bounded subdivisions. Broader coordinate/graph APIs
-and nonlinear transform preparation remain open. ParametricFunction, FunctionGraph
+and nonlinear transform preparation remain open. ComplexPlane now maps complex
+values through the XY frame, provides imaginary labels and preserves conjugate
+marker alignment during sampled transforms. Complex function warping remains open. ParametricFunction, FunctionGraph
 and Axes plotting now support sampled XY curves, default smooth interpolation,
 declared discontinuity gaps, graph-input queries and dynamic redraw.
 

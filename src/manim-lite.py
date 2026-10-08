@@ -631,7 +631,7 @@ class Mobject:
 
     def to_dict(self):
         result = copy.deepcopy({key: value for key, value in self.__dict__.items()
-                                if key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function')})
+                                if key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels')})
         result['type'] = result.pop('_type')
         result['geometry_center'] = list(self._geometry_center())
         result['children'] = [child.to_dict() for child in self.children]
@@ -2145,6 +2145,85 @@ class NumberPlane(Axes):
         return Arrow(start,end,**kwargs)
 
 
+class ComplexPlane(NumberPlane):
+    """Linear complex coordinates on the Cartesian grid."""
+    @staticmethod
+    def _complex(number):
+        try:
+            value = complex(number)
+        except (TypeError,ValueError,OverflowError) as error:
+            raise ValueError('Complex coordinates need a finite complex-compatible scalar') from error
+        if not math.isfinite(value.real) or not math.isfinite(value.imag):
+            raise ValueError('Complex coordinates must be finite')
+        return value
+
+    def number_to_point(self, number):
+        value = self._complex(number)
+        return self.c2p(value.real,value.imag)
+
+    n2p = number_to_point
+
+    def point_to_number(self, point):
+        x,y = self.p2c(point)
+        return complex(x,y)
+
+    p2n = point_to_number
+
+    def _get_default_coordinate_values(self):
+        return self.x_axis.get_tick_range()+[complex(0,y) for y in self.y_axis.get_tick_range() if y != 0]
+
+    @property
+    def coordinate_labels(self):
+        if '_coordinate_labels' in self.__dict__:
+            return self._coordinate_labels
+        for child in reversed(self.children):
+            if child.__dict__.get('_complex_labels'):
+                return child
+        raise ValueError('ComplexPlane has no coordinate labels')
+
+    def get_coordinate_labels(self, *numbers, **kwargs):
+        values = numbers if numbers else self._get_default_coordinate_values()
+        if len(values) > 1000:
+            raise ValueError('Complex coordinate labels are limited to 1000 values')
+        values = [self._complex(number) for number in values]
+        labels = VGroup()
+        for value in values:
+            imaginary = abs(value.imag) > abs(value.real)
+            axis = self.y_axis if imaginary else self.x_axis
+            coefficient = value.imag if imaginary else value.real
+            options = dict(kwargs)
+            if imaginary:
+                options['unit'] = 'i'
+            label = axis.get_number_mobject(coefficient,**options)
+            label.next_to(self._point_to_world(axis.n2p(coefficient)),
+                          direction=axis.label_direction if options.get('direction') is None else options['direction'],
+                          buff=axis.line_to_number_buff if options.get('buff') is None else options['buff'])
+            labels.add(label)
+        labels._complex_labels = True
+        # Only unattached label queries need a runtime reference; JSON excludes it.
+        self._coordinate_labels = labels
+        return labels
+
+    def add_coordinates(self, *numbers, **kwargs):
+        if self.geometry_scale == 0:
+            raise ValueError('Cannot add labels to a collapsed ComplexPlane')
+        labels = self.get_coordinate_labels(*numbers,**kwargs)
+        center = self._geometry_center()
+        for label in labels:
+            offset = label.get_center()-Vector(self.position)-center
+            local = center+Vector((offset[0]*math.cos(self.angle)+offset[1]*math.sin(self.angle),
+                                   -offset[0]*math.sin(self.angle)+offset[1]*math.cos(self.angle),0))*(1/self.geometry_scale)
+            label.move_to(local)
+            label.angle -= self.angle
+            label.geometry_scale /= self.geometry_scale
+        self.add(labels)
+        del self._coordinate_labels
+        delta = center-self._geometry_center()
+        rotated = Vector((delta[0]*math.cos(self.angle)-delta[1]*math.sin(self.angle),
+                          delta[0]*math.sin(self.angle)+delta[1]*math.cos(self.angle),0))*self.geometry_scale
+        return self.shift(delta-rotated)
+
+
 def linear(t):
     return t
 
@@ -3033,7 +3112,7 @@ class MovingCameraScene(Scene):
 
 
 EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'Arrow',
-           'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'NumberPlane', 'Create', 'Write', 'FadeIn',
+           'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'NumberPlane', 'ComplexPlane', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform', 'UP', 'DOWN', 'LEFT',
