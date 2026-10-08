@@ -18,6 +18,9 @@ compatibility layer, not a server running full Manim Community.
    `src/examples.js` contains the editor gallery catalog and stale-load protection.
    `src/manim-math.js` prepares vector formula glyphs for playback and SVG export.
    `src/manim-export.js` rasterizes current-frame PNG snapshots with bounded loading.
+   `offline-assets.js`, `service-worker.js`, and `src/offline.js` manage offline files.
+   Bump `OfflineAssets.VERSION` whenever a listed local asset changes, including
+   `index.html`, runtime scripts, or gallery sources, to avoid serving old cached code.
 7. `examples/multiple_scenes.py` for selection and geometry transform checks.
 8. `examples/creation_and_rotation.py` for stroke creation and orbital motion.
 9. `examples/layout_scene.py` for relative positioning and animated arrangements.

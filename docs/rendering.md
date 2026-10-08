@@ -24,6 +24,15 @@ method chains, waits, play/pause, replay, seeking, and current-frame SVG/PNG dow
 PNG snapshots pause playback and rasterize the serialized displayed frame at
 800 × 450 on black. Image loading has a ten-second deadline; snapshot URLs are
 released on success or failure, and changed-source results are discarded.
+
+Offline preparation caches a versioned, exact manifest of the editor, gallery,
+Pyodide core files, and pinned MathJax/LZString libraries. A complete install is
+required before “Ready offline” appears. Updates wait for user reload or all old
+tabs to close; failed installs preserve the previous version. Cache misses are
+repaired online, with a recovery page for incomplete offline navigation. External
+source URLs, arbitrary packages, and sharing-service responses are not cached.
+Local-server shutdown/reload verified gallery MathTex and DOT rendering; full
+internet-disconnection and cache-eviction checks across browsers remain open.
 Creation traces normalized SVG outlines and fades in their fill. Uncreate
 reverses drawing and removes the object. Group children and arrow components
 reveal simultaneously; text creation and writing use fades. Transforms between

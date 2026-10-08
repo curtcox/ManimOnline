@@ -240,9 +240,32 @@ at the displayed frame and exports an 800 × 450 image with a black background.
 These are still images, not video exports. SVG retains vector formula paths;
 PNG includes those paths and the browser's rendered text.
 
-Full LaTeX documents, 3D, updaters, full NumPy integration, MP4 export, and offline
-caching are not implemented. The broader examples directory includes APIs
+Full LaTeX documents, 3D, updaters, full NumPy integration, and MP4 export
+are not implemented. The broader examples directory includes APIs
 outside this subset. Unsupported operations report Python errors.
+
+## Offline use
+
+On HTTPS or localhost, the site saves the editor, supported examples, Python
+runtime, and MathTex library. Stay connected until the toolbar says **Ready
+offline**. Then reload the same site to edit and render DOT or supported Manim
+scenes, select gallery examples, and export frames without a connection.
+Preparation downloads the runtime even if you are editing DOT. Browser storage
+limits or a failed CDN request can prevent setup; use **Retry offline setup**
+after reconnecting. Browser storage may be cleared or evicted later.
+
+Only the listed application assets are cached. External source links, URL
+shortening, and arbitrary Python packages still need a connection. Sharing has
+a local compressed-link fallback. A first-ever visit without a connection cannot
+load the site; connect for the initial setup. If saved files are incomplete on
+an offline reload, the service worker shows a recovery page.
+
+New versions show **Update and reload** once their files are saved. Updates wait
+for that action or for old tabs to close. Applying an update reloads other open
+tabs too; each tab preserves its latest source and scene selection in its URL
+before reloading. Maintainers must bump the version in
+`offline-assets.js` when changing a cached local file. The pinned Python assets
+follow the [Pyodide deployment manifest](https://pyodide.org/en/0.27.0/usage/downloading-and-deploying.html).
 
 ## Verification
 

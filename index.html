@@ -490,6 +490,8 @@ class HelloWorld(Scene):
       </select>
     </label>
     <span id="export-status" role="status"></span>
+    <span id="offline-status" role="status"></span>
+    <button type="button" id="offline-action" hidden>Retry offline setup</button>
 
     <label>
       <input type="button" value="Share" id="share">
@@ -521,6 +523,7 @@ class HelloWorld(Scene):
   <script src="src/examples.js"></script>
   <script src="src/manim-math.js?v=1"></script>
   <script src="src/manim-export.js?v=1"></script>
+  <script src="src/offline.js?v=1"></script>
   <script>
     const editorElement = document.getElementById('editor');
     const reviewElement = document.getElementById('review');
@@ -678,6 +681,13 @@ class HelloWorld(Scene):
       let exportingPNG = false;
       const frameFormat = document.getElementById('manim-export-format');
       const exportStatus = document.getElementById('export-status');
+      window.addEventListener('offline-before-reload', () => {
+        const url = new URL(location.href);
+        for (const parameter of ['raw', 'compressed', 'url']) url.searchParams.delete(parameter);
+        url.hash = encodeURIComponent(editor.getSession().getDocument().getValue());
+        applySceneToURL(url);
+        history.replaceState(null, '', url);
+      });
       downloadBtn.addEventListener('click', async event => {
         if (currentType !== 'manim' || frameFormat.value !== 'png') return;
         event.preventDefault();
