@@ -1989,3 +1989,37 @@ queries after nonlinear deformation remain unfinished. Coordinate helper inversi
 does not become a general nonlinear inverse merely because its outline is warped.
 
 Reference: [Manim matrix, point and complex-function mapping](https://docs.manim.community/en/stable/reference/manim.mobject.mobject.Mobject.html).
+
+
+Try **Apply maps and swap along arcs** (`examples/apply_scene.py`). Transform and
+its subclasses now accept `path_arc` and `path_arc_axis` (OUT or IN), and
+`mobject.animate(run_time=..., rate_func=..., path_arc=...)` configures a method
+chain. Points follow Community's `path_along_arc`: each moves on a circular arc
+of the given signed angle; arcs below 0.01 radians remain straight. Snapshots of
+vector families are baked to world-relative points with identity poses, so the
+complex-weighted sample reproduces the native pointwise path exactly, including
+nested families and unequal outlines after alignment. Families that cannot be
+baked (Text, MathTex, camera frames) arc only their root pivot while their pose
+and local geometry interpolate linearly; this is exact for pure translations.
+ClockwiseTransform and CounterclockwiseTransform use -π and π.
+
+ApplyMethod, FadeToColor, ScaleInPlace, ApplyFunction, ApplyPointwiseFunction,
+ApplyPointwiseFunctionToCenter, ApplyMatrix and ApplyComplexFunction resolve
+their targets from a copy at the stage start, so consecutive plays and Succession
+stages compose. ApplyMethod keeps Community's trailing-dict method keywords.
+ApplyMatrix accepts 2 × 2 or 3 × 3 XY-preserving matrices about `about_point`
+(default ORIGIN) and keeps straight geometry straight; pointwise animations
+default to a three-second run time. ApplyComplexFunction arcs by arg f(1).
+CyclicReplace and Swap move each object to the next object's stage-start center
+on a 90° arc; a play() rate_func replaces their member rate functions. They
+animate separate objects: cycling children of a scene-added group is rejected as
+for other child animations. Custom `path_func` callables and `path_arc_centers`
+remain unimplemented.
+
+Local headless Chromium with Pyodide 0.27.0 loaded the gallery example: at 5.5 s
+the sheared square and label had swapped, at 6.9 s the three dots were offset on
+their cyclic arcs, at 8.5 s the circle was mid-way along its clockwise half-turn,
+and at 11.7 s only the background remained. Switching to DOT rendered
+Editor → Render → Preview.
+
+Reference: [Manim transform animations](https://docs.manim.community/en/stable/reference/manim.animation.transform.html).

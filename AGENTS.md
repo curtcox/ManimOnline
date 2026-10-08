@@ -463,3 +463,11 @@ ORIGIN; stretch defaults to the family center. Explicit real arrow children allo
 Arrow-to-cubic alignment; legacy snapshots without explicit_tips retain their
 prior morph behavior. Post-warp endpoint/tip edits and analytical centers remain
 implementation work; native NumPy and 3D are not supplied by these APIs.
+
+
+Read `examples/apply_scene.py` for path_arc transforms, Apply* animations and
+Swap/CyclicReplace. Transform._bake bakes start/target with stretch(1,0) for path
+arcs so complex weights on positions/points are exact; unbakeable families arc
+only the root pivot. TransformFromCopy bakes its source, not the target. Targets
+from create_target resolve at begin. CyclicReplace is an AnimationGroup of
+per-object moves sharing one timeline; keep rate_func pass-through in states.

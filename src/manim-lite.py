@@ -4105,11 +4105,59 @@ def _transform_plan(start, target):
     return ('interpolate' if matching else 'fade', start, target, [])
 
 
-def _sample_transform(plan, alpha):
+def _arc_weights(path_arc, alpha):
+    """Complex start/end weights of Community's path_along_arc for XY points."""
+    if abs(path_arc) < 0.01:
+        return None
+    turn = complex(math.cos(alpha*path_arc), math.sin(alpha*path_arc))
+    offset = 0 if path_arc == PI else 1/(2*math.tan(path_arc/2))
+    return ((1-turn)*complex(.5,-offset)+turn, (1-turn)*complex(.5,offset))
+
+
+_ARC_POINT_KEYS = ('position', 'curves', 'vertices', 'start', 'end', '_curve_arc_center')
+
+
+def _arc_points(first, last, alpha, weights):
+    if not isinstance(first, list) or not isinstance(last, list) or len(first) != len(last):
+        return None
+    if len(first) in (2, 3) and all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                                    for v in first + last):
+        a, b = weights
+        value = a*complex(first[0], first[1]) + b*complex(last[0], last[1])
+        return [value.real, value.imag] + [first[2]+(last[2]-first[2])*alpha][:len(first)-2]
+    result = [_arc_points(x, y, alpha, weights) for x, y in zip(first, last)]
+    return None if any(item is None for item in result) else result
+
+
+def _arc_snapshot(result, start, target, alpha, arc):
+    """Move a sampled snapshot along circular arcs instead of straight lines.
+
+    Baked snapshots (zero angle, unit scale at every level) are complex-affine
+    in their positions and local points, so weighting each term reproduces the
+    pointwise Community path exactly. Other poses arc only their root pivot."""
+    weights, exact = arc
+    pure = lambda data: data.get('angle', 0) == 0 and data.get('geometry_scale', 1) == 1
+    if exact and pure(start) and pure(target):
+        for key in _ARC_POINT_KEYS:
+            if key in start and key in target:
+                value = _arc_points(start[key], target[key], alpha, weights)
+                if value is not None:
+                    result[key] = value
+        return result
+    pivot = lambda data: [p+c for p, c in zip(data['position'], data.get('geometry_center', ORIGIN))]
+    value = _arc_points(pivot(start), pivot(target), alpha, weights)
+    if value is not None:
+        result['position'] = [p-c for p, c in zip(value, result.get('geometry_center', ORIGIN))]
+    return result
+
+
+def _sample_transform(plan, alpha, arc=None):
     kind, start, target, children = plan
+    # Only exact baked families arc their nested (parent-translated) members.
+    nested = arc if arc and arc[1] else None
     if kind == 'family':
-        own = _sample_transform(children[0],alpha)
-        members = _sample_transform(children[1],alpha)[0]['children']
+        own = _sample_transform(children[0],alpha,arc)
+        members = _sample_transform(children[1],alpha,nested)[0]['children']
         own[0]['children'] = members
         return own
     if kind == 'fade':
@@ -4118,9 +4166,11 @@ def _sample_transform(plan, alpha):
         last['opacity'] *= alpha
         return [first, last]
     result = interpolate(start, target, alpha)
+    if arc:
+        result = _arc_snapshot(result, start, target, alpha, arc)
     if kind == 'group':
         result['children'] = [snapshot for child in children
-                              for snapshot in _sample_transform(child, alpha)]
+                              for snapshot in _sample_transform(child, alpha, nested)]
     return [result]
 
 
@@ -4299,27 +4349,57 @@ class FadeOut(Animation):
 
 
 class Transform(Animation):
-    def __init__(self, mobject, target_mobject, **kwargs):
+    def __init__(self, mobject, target_mobject=None, path_arc=0, path_arc_axis=OUT,
+                 path_func=None, **kwargs):
         super().__init__(mobject, **kwargs)
-        self.target = target_mobject.copy()
+        if path_func is not None:
+            raise NotImplementedError('Custom path_func is not supported; use path_arc')
+        self.path_arc = Transform._path_arc(path_arc, path_arc_axis)
+        self.target = None if target_mobject is None else target_mobject.copy()
+
+    @staticmethod
+    def _path_arc(path_arc, axis=OUT):
+        NumberLine._real(path_arc, 'path_arc')
+        axis = Vector(axis)
+        if axis not in (OUT, IN):
+            raise NotImplementedError('path_arc_axis supports only OUT or IN in the XY plane')
+        return path_arc if axis == OUT else -path_arc
+
+    def create_target(self):
+        """Return a stage-start target, or None to keep the constructor target."""
+        return None
 
     def begin(self, scene):
+        target = self.create_target()
+        if target is not None:
+            self.target = target
+        if self.target is None:
+            raise ValueError('Transform needs a target mobject')
         super().begin(scene)
+        self._bake(self.mobject)
+
+    def _bake(self, source):
         self._transform_plan = None
         self._path_target = None
-        if self.mobject.__dict__.get('_stretch_baked') or self.target.__dict__.get('_stretch_baked'):
+        self._arc_exact = False
+        baked = source.__dict__.get('_stretch_baked') or self.target.__dict__.get('_stretch_baked')
+        if baked or abs(self.path_arc) >= .01:
             try:
-                start = self.mobject.copy().stretch(1,0).to_dict()
+                # Baked snapshots hold world-relative points with identity poses.
+                start = source.copy().stretch(1,0).to_dict()
                 target = self.target.copy().stretch(1,0).to_dict()
-            except NotImplementedError:
+            except (NotImplementedError, ValueError):
                 pass  # Unsupported target types keep the existing fade/morph plan.
             else:
                 self.start,self._path_target = start,target
+                self._arc_exact = True
 
     def sample(self, alpha):
         if self._transform_plan is None:
             self._transform_plan = _transform_plan(self.start, self._path_target or self.target.to_dict())
-        return _sample_transform(self._transform_plan, alpha)
+        weights = _arc_weights(self.path_arc, alpha)
+        return _sample_transform(self._transform_plan, alpha,
+                                 (weights, self._arc_exact) if weights else None)
 
     def finish(self, scene):
         # Preserve source and ordered child identities, callbacks and checkpoints.
@@ -4339,9 +4419,10 @@ class TransformFromCopy(Transform):
     def begin(self, scene):
         # Only the target is animated/added. The source is a read-only snapshot,
         # so it may also move independently or belong to a scene-added group.
-        super().begin(scene)
+        Animation.begin(self, scene)
         self.start = self.source.to_dict()
         self.target = self.mobject.copy()
+        self._bake(self.source)
 
     def sample(self, alpha):
         if alpha == 0:
@@ -4447,10 +4528,140 @@ class ReplacementTransform(Transform):
         return [self.mobject, self.replacement]
 
 
+class ClockwiseTransform(Transform):
+    def __init__(self, mobject, target_mobject, path_arc=-PI, **kwargs):
+        super().__init__(mobject, target_mobject, path_arc=path_arc, **kwargs)
+
+
+class CounterclockwiseTransform(Transform):
+    def __init__(self, mobject, target_mobject, path_arc=PI, **kwargs):
+        super().__init__(mobject, target_mobject, path_arc=path_arc, **kwargs)
+
+
+class ApplyMethod(Transform):
+    """Animate a bound Mobject method applied to a copy at the stage start.
+
+    As in Community, a trailing dict argument supplies the method keywords;
+    other keywords configure the animation."""
+    def __init__(self, method, *args, **kwargs):
+        if not inspect.ismethod(method):
+            raise ValueError('ApplyMethod expects an uncalled method, e.g. ApplyMethod(square.shift, UP)')
+        if not isinstance(method.__self__, Mobject):
+            raise TypeError('ApplyMethod expects a method bound to a Mobject')
+        super().__init__(method.__self__, **kwargs)
+        self.method, self.method_args = method, args
+
+    def create_target(self):
+        args = list(self.method_args)
+        method_kwargs = args.pop() if args and isinstance(args[-1], dict) else {}
+        target = self.mobject.copy()
+        self.method.__func__(target, *args, **method_kwargs)
+        return target
+
+
+class FadeToColor(ApplyMethod):
+    def __init__(self, mobject, color, **kwargs):
+        super().__init__(mobject.set_color, color, **kwargs)
+
+
+class ScaleInPlace(ApplyMethod):
+    def __init__(self, mobject, scale_factor, **kwargs):
+        super().__init__(mobject.scale, scale_factor, **kwargs)
+
+
+class ApplyFunction(Transform):
+    """Animate to the Mobject returned by function(copy) at the stage start."""
+    def __init__(self, function, mobject, **kwargs):
+        if not callable(function):
+            raise TypeError('ApplyFunction expects a callable')
+        if not isinstance(mobject, Mobject):
+            raise TypeError('ApplyFunction expects a Mobject')
+        super().__init__(mobject, **kwargs)
+        self.function = function
+
+    def create_target(self):
+        target = self.function(self.mobject.copy())
+        if not isinstance(target, Mobject):
+            raise TypeError('Functions passed to ApplyFunction must return object of type Mobject')
+        return target
+
+
+class ApplyPointwiseFunction(ApplyMethod):
+    def __init__(self, function, mobject, run_time=3, **kwargs):
+        if not callable(function):
+            raise TypeError('ApplyPointwiseFunction expects a callable point map')
+        if not isinstance(mobject, Mobject):
+            raise TypeError('ApplyPointwiseFunction expects a Mobject')
+        super().__init__(mobject.apply_function, function, run_time=run_time, **kwargs)
+
+
+class ApplyPointwiseFunctionToCenter(ApplyPointwiseFunction):
+    """Move the object rigidly to function(center), resolved at the stage start."""
+    def create_target(self):
+        return self.mobject.copy().move_to(self.method_args[0](self.mobject.get_center()))
+
+
+class ApplyMatrix(ApplyPointwiseFunction):
+    def __init__(self, matrix, mobject, about_point=ORIGIN, **kwargs):
+        rows = [list(row) for row in matrix]
+        if len(rows) not in (2, 3) or any(len(row) != len(rows) for row in rows):
+            raise ValueError('Matrix has bad dimensions')
+        for row in rows:
+            for value in row:
+                NumberLine._real(value, 'Matrix entry')
+        if len(rows) == 3 and (rows[2][0] or rows[2][1]):
+            raise NotImplementedError('Matrices must preserve the XY plane')
+        about_point = Vector(about_point)
+        if not all(math.isfinite(value) for value in about_point) or about_point[2]:
+            raise ValueError('ApplyMatrix about_point must be finite and in the XY plane')
+        self.matrix, self.about_point = rows, about_point
+        super().__init__(lambda point: point, mobject, **kwargs)
+
+    def create_target(self):
+        # A linear map keeps lines/polygons straight instead of baking cubics.
+        return self.mobject.copy().apply_matrix(self.matrix, about_point=self.about_point)
+
+
+class ApplyComplexFunction(ApplyMethod):
+    """Apply a complex map, arcing points by arg(function(1)) like Community."""
+    def __init__(self, function, mobject, **kwargs):
+        if not callable(function):
+            raise TypeError('ApplyComplexFunction expects a callable complex map')
+        if not isinstance(mobject, Mobject):
+            raise TypeError('ApplyComplexFunction expects a Mobject')
+        unit = complex(function(complex(1)))
+        if not (math.isfinite(unit.real) and math.isfinite(unit.imag)):
+            raise ValueError('ApplyComplexFunction requires a finite value at 1')
+        kwargs['path_arc'] = math.atan2(unit.imag, unit.real) if unit else 0
+        super().__init__(mobject.apply_complex_function, function, **kwargs)
+        self.function = function
+
+
+class _MoveToMobject(Transform):
+    def __init__(self, mobject, destination, **kwargs):
+        super().__init__(mobject, **kwargs)
+        self.destination = destination
+
+    def create_target(self):
+        return self.mobject.copy().move_to(self.destination.get_center())
+
+
 class Animate(Transform):
     def __init__(self, mobject):
         super().__init__(mobject, mobject)
         self.operations = []
+
+    def __call__(self, run_time=None, rate_func=None, path_arc=None, path_arc_axis=OUT):
+        """Configure this .animate chain, as in mobject.animate(run_time=2)."""
+        if run_time is not None:
+            self.run_time = NumberLine._real(run_time, 'run_time', positive=True)
+        if rate_func is not None:
+            if not callable(rate_func):
+                raise TypeError('rate_func must be callable')
+            self.rate_func = rate_func
+        if path_arc is not None:
+            self.path_arc = Transform._path_arc(path_arc, path_arc_axis)
+        return self
 
     def begin(self, scene):
         # Relative method chains resolve against the state at this stage's start.
@@ -4510,6 +4721,30 @@ class AnimationGroup:
     def finish(self, scene):
         for animation in self.animations:
             animation.finish(scene)
+
+
+class CyclicReplace(AnimationGroup):
+    """Move each object to the next one's stage-start center along an arc."""
+    def __init__(self, *mobjects, path_arc=90*DEGREES, run_time=1, rate_func=smooth, **kwargs):
+        if not mobjects or any(not isinstance(m, Mobject) for m in mobjects):
+            raise TypeError('CyclicReplace expects one or more mobjects')
+        if len({id(m) for m in mobjects}) != len(mobjects):
+            raise ValueError('CyclicReplace mobjects must be distinct')
+        super().__init__(*(_MoveToMobject(mobject, mobjects[(index+1) % len(mobjects)],
+                                          path_arc=path_arc, run_time=run_time,
+                                          rate_func=rate_func, **kwargs)
+                           for index, mobject in enumerate(mobjects)))
+
+    def states(self, alpha, rate_func=None):
+        # Every member shares one timeline, so a play() rate_func replaces theirs.
+        result = {}
+        for animation in self.animations:
+            result.update(animation.states(alpha, rate_func))
+        return result
+
+
+class Swap(CyclicReplace):
+    pass
 
 
 class LaggedStart(AnimationGroup):
@@ -4794,6 +5029,9 @@ EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'a
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform', 'UP', 'DOWN', 'LEFT',
            'RIGHT', 'ORIGIN', 'OUT', 'IN', 'UL', 'UR', 'DL', 'DR', 'BLUE', 'BLUE_D', 'RED', 'GREEN',
            'YELLOW', 'PURPLE', 'ORANGE', 'WHITE', 'BLACK', 'GRAY', 'GREY', 'PINK',
+           'ClockwiseTransform', 'CounterclockwiseTransform', 'ApplyMethod', 'FadeToColor', 'ScaleInPlace',
+           'ApplyFunction', 'ApplyPointwiseFunction', 'ApplyPointwiseFunctionToCenter', 'ApplyMatrix',
+           'ApplyComplexFunction', 'CyclicReplace', 'Swap',
            'linear', 'smooth', 'there_and_back', 'PI', 'TAU', 'DEGREES']
 
 

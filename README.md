@@ -99,7 +99,10 @@ Manim-like runtime, **not the full Manim Community engine**.
 - Animations: `Create`, `Uncreate`, `Write`, `FadeIn`, `FadeOut`, `GrowFromCenter`,
   `GrowFromPoint`, `ShrinkToCenter`, `Rotate`,
   `Rotating`, `MoveAlongPath`, `AnimationGroup`, `LaggedStart`, `Succession`, `Transform`, and
-  `ReplacementTransform`, `TransformFromCopy`, `Restore`, and `Indicate`; chained `.animate.shift()`, `.move_to()`,
+  `ReplacementTransform`, `TransformFromCopy`, `Restore`, `Indicate`, `ClockwiseTransform`,
+  `CounterclockwiseTransform`, `ApplyMethod`, `FadeToColor`, `ScaleInPlace`, `ApplyFunction`,
+  `ApplyPointwiseFunction`, `ApplyPointwiseFunctionToCenter`, `ApplyMatrix`,
+  `ApplyComplexFunction`, `CyclicReplace`, and `Swap` (transforms accept `path_arc`); chained `.animate.shift()`, `.move_to()`,
   `.set_color()`, `.set_fill()`, `.set_stroke()`, `.set_opacity()`, `.scale()`, `.rotate()`,
   `.next_to()`, `.arrange()`, and `.restore()`.
 - Connectors: `Line` and `Arrow` support `get_start()`, `get_end()`,
@@ -1298,3 +1301,29 @@ Glyph/camera/shared-family mapping, arbitrary 3D, native NumPy arrays, adaptive
 nonlinear preparation, post-warp connector/tip mutations and analytical arc-center
 queries after nonlinear deformation remain unfinished. Coordinate helper inversion
 does not become a general nonlinear inverse merely because its outline is warped.
+
+
+Try **Apply maps and swap along arcs** (`examples/apply_scene.py`). Transform and
+its subclasses now accept `path_arc` and `path_arc_axis` (OUT or IN), and
+`mobject.animate(run_time=..., rate_func=..., path_arc=...)` configures a method
+chain. Points follow Community's `path_along_arc`: each moves on a circular arc
+of the given signed angle; arcs below 0.01 radians remain straight. Snapshots of
+vector families are baked to world-relative points with identity poses, so the
+complex-weighted sample reproduces the native pointwise path exactly, including
+nested families and unequal outlines after alignment. Families that cannot be
+baked (Text, MathTex, camera frames) arc only their root pivot while their pose
+and local geometry interpolate linearly; this is exact for pure translations.
+ClockwiseTransform and CounterclockwiseTransform use -π and π.
+
+ApplyMethod, FadeToColor, ScaleInPlace, ApplyFunction, ApplyPointwiseFunction,
+ApplyPointwiseFunctionToCenter, ApplyMatrix and ApplyComplexFunction resolve
+their targets from a copy at the stage start, so consecutive plays and Succession
+stages compose. ApplyMethod keeps Community's trailing-dict method keywords.
+ApplyMatrix accepts 2 × 2 or 3 × 3 XY-preserving matrices about `about_point`
+(default ORIGIN) and keeps straight geometry straight; pointwise animations
+default to a three-second run time. ApplyComplexFunction arcs by arg f(1).
+CyclicReplace and Swap move each object to the next object's stage-start center
+on a 90° arc; a play() rate_func replaces their member rate functions. They
+animate separate objects: cycling children of a scene-added group is rejected as
+for other child animations. Custom `path_func` callables and `path_arc_centers`
+remain unimplemented.

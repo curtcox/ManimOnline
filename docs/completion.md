@@ -210,3 +210,10 @@ coverage verifies exact transformed controls, pivots, nested identities, callbac
 domain/validation, animated interpolation, restoration and tip-bearing connectors.
 Adaptive nonlinear preparation/inversion, glyph/camera/shared-family mapping,
 native NumPy, 3D and post-warp analytical/mutation APIs remain open.
+
+
+Transform path arcs, clockwise/counterclockwise transforms, `.animate(...)`
+options, the Apply* family, FadeToColor/ScaleInPlace and CyclicReplace/Swap now
+have regression coverage comparing sampled world points with Community's
+path_along_arc, stage-start target resolution, validation and gallery playback.
+Custom path functions, per-point arc centers and glyph-level arc sampling remain open.

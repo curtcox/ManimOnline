@@ -15,7 +15,189 @@ def render(body):
     return json.loads(lite.render_scene(source))
 
 
+def snapshot_world_points(snapshot, parent=lambda point: point):
+    """World points of a frame snapshot family, composed through parent poses."""
+    node = lite.Mobject()
+    node.__dict__.update(snapshot)
+    node._type, node.children = snapshot['type'], []
+    node._sampled_geometry_center = lite.Vector(snapshot['geometry_center'])
+    def world(point):
+        return parent(node._point_to_world(lite.Vector(point)))
+    own = ([world(point) for curve in lite._path_curves(snapshot) for point in curve]
+           if snapshot['type'] not in ('vgroup', 'mobject') else [])
+    return own + [point for child in snapshot.get('children', [])
+                  for point in snapshot_world_points(child, world)]
+
+
+def community_arc_point(start, end, alpha, path_arc):
+    """Manim Community's path_along_arc for one XY point."""
+    start, end = complex(start[0], start[1]), complex(end[0], end[1])
+    center = (start+end)/2
+    if path_arc != lite.PI:
+        center += 1j*(end-start)/2/lite.math.tan(path_arc/2)
+    value = center + complex(lite.math.cos(alpha*path_arc), lite.math.sin(alpha*path_arc))*(start-center)
+    return (value.real, value.imag, 0)
+
+
 class SceneTests(unittest.TestCase):
+    def test_apply_gallery_swaps_cycles_and_finishes_cleanly(self):
+        result=json.loads(lite.render_scene((ROOT/'examples/apply_scene.py').read_text()))
+        self.assertAlmostEqual(result['duration'],176/15)
+        swapped=result['frames'][82]['mobjects']
+        self.assertAlmostEqual(swapped[0]['position'][0],3,delta=.1)
+        self.assertEqual(swapped[2]['type'],'text')
+        self.assertAlmostEqual(swapped[2]['position'][0],-3,delta=.1)
+        cycled=result['frames'][127]['mobjects']
+        self.assertEqual([m['position'][:2] for m in cycled[3:]],[[0,-2],[2,-2],[-2,-2]])
+        self.assertEqual(cycled[2]['color'].upper(),'#FF6EB7')
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+
+    def test_path_arc_transform_matches_community_points_for_nested_families(self):
+        family=lite.VGroup(lite.Square().rotate(.3).shift(lite.LEFT),
+                          lite.VGroup(lite.Circle(radius=.4).shift(lite.RIGHT),
+                                      lite.Line(lite.UP,lite.RIGHT*2))).scale(.8).shift(lite.UP)
+        target=family.copy().rotate(1.1).scale(-1.3).shift(lite.RIGHT*3+lite.DOWN)
+        for path_arc in (2.0,-lite.PI,lite.PI):
+            animation=lite.Transform(family,target,path_arc=path_arc)
+            animation.begin(lite.Scene())
+            first=snapshot_world_points(animation.sample(0)[0])
+            last=snapshot_world_points(animation.sample(1)[0])
+            for point,expected in zip(last,snapshot_world_points(target.copy().stretch(1,0).to_dict())):
+                self.assertPointAlmostEqual(point,expected)
+            middle=snapshot_world_points(animation.sample(.35)[0])
+            self.assertEqual(len(middle),len(first))
+            for point,a,b in zip(middle,first,last):
+                self.assertPointAlmostEqual(point,community_arc_point(a,b,.35,path_arc))
+        reverse=lite.Transform(family,target,path_arc=2.0,path_arc_axis=lite.IN)
+        self.assertEqual(reverse.path_arc,-2.0)
+        straight,plain=lite.Transform(family,target,path_arc=.001),lite.Transform(family,target)
+        for animation in (straight,plain):
+            animation.begin(lite.Scene())
+        self.assertEqual(straight.sample(.5),plain.sample(.5))
+
+    def test_path_arc_fallback_arcs_unbakeable_root_pivot_and_validates(self):
+        result=render('a=Text("A").shift(RIGHT*2)\nself.add(a)\n'
+                      'self.play(Transform(a,a.copy().shift(LEFT*4),path_arc=PI/2),rate_func=linear)')
+        sample=result['frames'][7]['mobjects'][0]
+        pivot=[p+c for p,c in zip(sample['position'],sample['geometry_center'])]
+        self.assertPointAlmostEqual(pivot,community_arc_point((2,0),(-2,0),7/15,lite.PI/2))
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['position'],[-2,0,0])
+        with self.assertRaisesRegex(ValueError,'path_arc'):
+            lite.Transform(lite.Square(),lite.Circle(),path_arc=float('nan'))
+        with self.assertRaisesRegex(NotImplementedError,'path_arc_axis'):
+            lite.Transform(lite.Square(),lite.Circle(),path_arc=1,path_arc_axis=lite.RIGHT)
+        with self.assertRaisesRegex(NotImplementedError,'path_func'):
+            lite.Transform(lite.Square(),lite.Circle(),path_func=lambda a,b,t:a)
+
+    def test_clockwise_transforms_and_animate_options(self):
+        self.assertEqual(lite.ClockwiseTransform(lite.Dot(),lite.Square()).path_arc,-lite.PI)
+        self.assertEqual(lite.CounterclockwiseTransform(lite.Dot(),lite.Square()).path_arc,lite.PI)
+        result=render('d=Dot(LEFT*2)\nself.add(d)\n'
+                      'self.play(d.animate(run_time=2,rate_func=linear,path_arc=PI).shift(RIGHT*4))')
+        self.assertEqual(result['duration'],2)
+        middle=result['frames'][15]['mobjects'][0]
+        center=snapshot_world_points(middle)
+        cx=sum(p[0] for p in center)/len(center)
+        cy=sum(p[1] for p in center)/len(center)
+        self.assertAlmostEqual(cx,0,places=6)
+        self.assertAlmostEqual(cy,-2,places=6)
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['position'][:2],[2,0])
+        with self.assertRaisesRegex(ValueError,'run_time'):
+            lite.Dot().animate(run_time=0)
+        with self.assertRaisesRegex(TypeError,'rate_func'):
+            lite.Dot().animate(rate_func=3)
+
+    def test_apply_method_family_resolves_targets_at_stage_start(self):
+        result=render('s=Square()\nself.add(s)\n'
+                      'self.play(Succession(ApplyMethod(s.shift,RIGHT),ApplyMethod(s.shift,RIGHT),'
+                      'ApplyMethod(s.scale,2,{"about_point":ORIGIN}),FadeToColor(s,RED),ScaleInPlace(s,.25)))')
+        final=result['frames'][-1]['mobjects'][0]
+        self.assertPointAlmostEqual(final['position'],(4,0,0))
+        self.assertAlmostEqual(final['geometry_scale'],.5)
+        self.assertEqual(final['color'].upper(),'#FC6255')
+        with self.assertRaisesRegex(ValueError,'uncalled method'):
+            lite.ApplyMethod(lite.Square().shift(lite.UP))
+        with self.assertRaisesRegex(TypeError,'bound to a Mobject'):
+            lite.ApplyMethod(lite.Scene().wait)
+        s=lite.Square()
+        scene=lite.Scene()
+        with self.assertRaisesRegex(TypeError,'must return object of type Mobject'):
+            lite.ApplyFunction(lambda m:None,s).begin(scene)
+        result=render('s=Square()\nself.add(s)\n'
+                      'self.play(ApplyFunction(lambda m:m.shift(UP).set_color(GREEN),s))\n'
+                      'self.play(ApplyFunction(lambda m:m.shift(UP),s))\n'
+                      'self.play(ApplyPointwiseFunctionToCenter(lambda p:p*2,s))')
+        self.assertAlmostEqual(result['duration'],5)
+        self.assertPointAlmostEqual(result['frames'][-1]['mobjects'][0]['position'],(0,4,0))
+
+    def test_apply_matrix_pointwise_and_complex_functions(self):
+        animation=lite.ApplyPointwiseFunction(lambda p:(p[0],p[1]+p[0]**2,0),lite.Line(lite.LEFT,lite.RIGHT))
+        self.assertEqual(animation.run_time,3)
+        line=lite.Line(lite.LEFT,lite.RIGHT+lite.UP)
+        result=render('l=Line(LEFT,RIGHT+UP)\nself.add(l)\n'
+                      'self.play(ApplyMatrix([[2,0],[0,1]],l,about_point=LEFT),run_time=1)')
+        final=result['frames'][-1]['mobjects'][0]
+        self.assertEqual(final['type'],'line')
+        moved=line.copy().apply_matrix([[2,0],[0,1]],about_point=lite.LEFT)
+        self.assertEqual(snapshot_world_points(final),snapshot_world_points(moved.to_dict()))
+        with self.assertRaisesRegex(ValueError,'bad dimensions'):
+            lite.ApplyMatrix([[1,2,3]],line)
+        with self.assertRaisesRegex(ValueError,'Matrix entry'):
+            lite.ApplyMatrix([[1,'x'],[0,1]],line)
+        with self.assertRaisesRegex(NotImplementedError,'XY plane'):
+            lite.ApplyMatrix([[1,0,0],[0,1,0],[1,0,1]],line)
+        complex_map=lite.ApplyComplexFunction(lambda z:z*(1+1j),lite.Circle())
+        self.assertAlmostEqual(complex_map.path_arc,lite.PI/4)
+        self.assertEqual(lite.ApplyComplexFunction(lambda z:z-1,lite.Circle()).path_arc,0)
+        with self.assertRaisesRegex(ValueError,'finite value at 1'):
+            lite.ApplyComplexFunction(lambda z:complex('inf'),lite.Circle())
+        circle=lite.Circle(radius=.5).shift(lite.RIGHT*2)
+        animation=lite.ApplyComplexFunction(lambda z:z*1j,circle)
+        animation.begin(lite.Scene())
+        first=snapshot_world_points(animation.sample(0)[0])
+        for alpha in (.25,.6):
+            turn=complex(lite.math.cos(alpha*lite.PI/2),lite.math.sin(alpha*lite.PI/2))
+            for point,start in zip(snapshot_world_points(animation.sample(alpha)[0]),first):
+                value=turn*complex(start[0],start[1])
+                self.assertPointAlmostEqual(point,(value.real,value.imag,0))
+
+    def test_cyclic_replace_and_swap_follow_arcs_and_play_rate_func(self):
+        result=render('a,b,c=Dot(LEFT*2),Square().shift(RIGHT*2),Text("c").shift(UP*2)\n'
+                      'self.add(a,b,c)\nself.play(CyclicReplace(a,b,c),rate_func=linear)\n'
+                      'self.play(Swap(a,c),run_time=2)')
+        middle=result['frames'][7]['mobjects']
+        pivot=[p+q for p,q in zip(middle[2]['position'],middle[2]['geometry_center'])]
+        self.assertPointAlmostEqual(pivot,community_arc_point((0,2),(-2,0),7/15,lite.PI/2))
+        after=result['frames'][15]['mobjects']
+        self.assertPointAlmostEqual(after[0]['position'],(2,0,0))
+        self.assertPointAlmostEqual(after[1]['position'],(0,2,0))
+        self.assertPointAlmostEqual(after[2]['position'],(-2,0,0))
+        self.assertAlmostEqual(result['duration'],3)
+        final=result['frames'][-1]['mobjects']
+        self.assertPointAlmostEqual(final[0]['position'],(-2,0,0))
+        self.assertPointAlmostEqual(final[2]['position'],(2,0,0))
+        with self.assertRaisesRegex(ValueError,'distinct'):
+            d=lite.Dot()
+            lite.Swap(d,d)
+        with self.assertRaisesRegex(TypeError,'one or more mobjects'):
+            lite.CyclicReplace()
+
+    def test_transform_from_copy_bakes_source_for_path_arc(self):
+        source=lite.Square().shift(lite.LEFT*2)
+        target=lite.Circle().shift(lite.RIGHT*2)
+        animation=lite.TransformFromCopy(source,target,path_arc=lite.PI/2)
+        animation.begin(lite.Scene())
+        first=snapshot_world_points(animation.sample(0)[0])
+        expected=snapshot_world_points(source.copy().stretch(1,0).to_dict())
+        self.assertEqual(len(first),len(expected))
+        middle=snapshot_world_points(animation.sample(.5)[0])
+        # The unequal square/circle outlines align before sampling.
+        first=snapshot_world_points(lite._sample_transform(animation._transform_plan,0)[0])
+        last=snapshot_world_points(animation.sample(1)[0])
+        self.assertEqual(len(middle),len(first))
+        for point,a,b in zip(middle,first,last):
+            self.assertPointAlmostEqual(point,community_arc_point(a,b,.5,lite.PI/2))
+
     def test_point_mapping_gallery_warps_connector_and_restores(self):
         result=json.loads(lite.render_scene((ROOT/'examples/point_map_scene.py').read_text()))
         self.assertEqual(result['duration'],11)
@@ -3928,7 +4110,8 @@ self.wait(1)""")
         result = render('p = Arc(angle=PI)\nself.play(Transform(p,Arc(angle=-PI)),run_time=2,rate_func=linear)')
         self.assertEqual(result['frames'][15]['mobjects'][0]['arc_angle'],0)
         result = render('p = Arrow()\nself.play(Transform(p,Circle()),run_time=2,rate_func=linear)')
-        self.assertEqual([m['opacity'] for m in result['frames'][15]['mobjects']],[0.5,0.5])
+        # Arrows with explicit real tip children align their shaft into the cubic morph.
+        self.assertEqual([(m['type'],m['opacity']) for m in result['frames'][15]['mobjects']],[('bezierpath',1)])
 
     def test_primitive_morph_gallery_restores_circle_and_finishes_as_cubic(self):
         result = json.loads(lite.render_scene((ROOT / 'examples/shape_morph_scene.py').read_text()))
