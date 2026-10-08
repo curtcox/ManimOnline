@@ -342,3 +342,13 @@ Retain the live parent pose and child identities so animated layout does not
 introduce additional rotation or scale interpolation. Validate all translations
 before editing live children, synchronize pivot compensation, then optionally
 center. Zero-scale groups cannot invert their transform and remain unsupported.
+
+
+Read `examples/grid_layout_scene.py` for animated grid reflow and restoration.
+Group/VGroup grid layout supports dimension inference, all eight fill orders,
+cell and row/column alignment, separate gaps and optional measured cell sizes.
+`_layout_targets` composes world poses; `_apply_layout_targets` validates and
+inverts translations for both row and grid layouts. Retain parent angle/scale,
+child identities and starting center. Validate dimensions/options before changing
+children; cap grids at 1000 cells. Ordinary-shape child layout and collapsed
+groups remain unsupported. `animate.arrange_in_grid` uses the existing morph flow.

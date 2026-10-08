@@ -4401,6 +4401,119 @@ self.wait(1)""")
         self.assertAlmostEqual(square._bounds()[0], 0.5)
         self.assertAlmostEqual(square._bounds()[1], 0.5)
 
+    def test_grid_gallery_frame_layout_restoration_and_cleanup(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/grid_layout_scene.py').read_text()))
+        self.assertEqual(result['duration'],9)
+        for index in (30,45,60,75,90,105):
+            group = result['frames'][index]['mobjects'][0]
+            self.assertAlmostEqual(group['angle'],lite.PI/10)
+            self.assertAlmostEqual(group['geometry_scale'],.8)
+            self.assertEqual(len(group['children']),6)
+        data = result['frames'][60]['mobjects'][0]
+        group = lite.Mobject()
+        group.__dict__.update(data)
+        group._type = data['type']
+        group._sampled_geometry_center = lite.Vector(data['geometry_center'])
+        group.children = []
+        bounds = []
+        for child_data in data['children']:
+            child = lite.Mobject()
+            child.__dict__.update(child_data)
+            child._type = child_data['type']
+            child._sampled_geometry_center = lite.Vector(child_data['geometry_center'])
+            child.children = []
+            center = group._point_to_world(child.get_center())
+            child.position = list(center-child._geometry_center())
+            child.angle += group.angle
+            child.geometry_scale *= group.geometry_scale
+            bounds.append(child._bounds())
+        for index in (2,4):
+            self.assertAlmostEqual(bounds[0][0],bounds[index][0])
+            self.assertAlmostEqual(bounds[1][2],bounds[index+1][2])
+        initial = result['frames'][30]['mobjects'][0]
+        restored = result['frames'][105]['mobjects'][0]
+        for a,b in zip([initial]+initial['children'],[restored]+restored['children']):
+            for key in ('type','position','angle','geometry_scale','geometry_center','width','height','radius'):
+                self.assertEqual(a.get(key),b.get(key))
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+        json.dumps(result,allow_nan=False)
+
+    def test_grid_all_fill_orders_and_center_preservation(self):
+        expected = {
+            'rd':[(0,0),(0,1),(0,2),(1,0),(1,1),(1,2)],
+            'dr':[(0,0),(1,0),(0,1),(1,1),(0,2),(1,2)],
+            'ld':[(0,2),(0,1),(0,0),(1,2),(1,1),(1,0)],
+            'dl':[(0,2),(1,2),(0,1),(1,1),(0,0),(1,0)],
+            'ru':[(1,0),(1,1),(1,2),(0,0),(0,1),(0,2)],
+            'ur':[(1,0),(0,0),(1,1),(0,1),(1,2),(0,2)],
+            'lu':[(1,2),(1,1),(1,0),(0,2),(0,1),(0,0)],
+            'ul':[(1,2),(0,2),(1,1),(0,1),(1,0),(0,0)],
+        }
+        for order,cells in expected.items():
+            group = lite.VGroup(*(lite.Square(side_length=1) for _ in range(6))).shift((2,1,0))
+            group.arrange_in_grid(rows=2,cols=3,buff=(.4,.8),flow_order=order)
+            self.assertPointAlmostEqual(group.get_center(),(2,1,0))
+            for child,(row,col) in zip(group,cells):
+                self.assertPointAlmostEqual(group._point_to_world(child.get_center()),(2+(col-1)*1.4,1+(.5-row)*1.8,0))
+        empty = lite.Group().shift(lite.RIGHT)
+        self.assertIs(empty.arrange_in_grid(),empty)
+        self.assertEqual(empty.get_center(),lite.RIGHT)
+
+    def test_grid_inference_partial_cells_sizes_and_alignment(self):
+        shapes = [lite.Rectangle(width=w,height=h) for w,h in ((1,1),(2,.5),(.5,2))]
+        group = lite.VGroup(*shapes)
+        group.arrange_in_grid(col_alignments='lr',row_alignments='ud',col_widths=[3,None],row_heights=[2,3],buff=(.4,.7))
+        a,b,c = [shape._bounds() for shape in shapes]
+        self.assertAlmostEqual(a[3],b[3])
+        self.assertAlmostEqual(a[0],c[0])
+        self.assertAlmostEqual(b[2]-a[0],5.4)
+        self.assertAlmostEqual(a[3]-c[1],5.7)
+        inferred = lite.VGroup(*(lite.Dot() for _ in range(5))).arrange_in_grid(buff=1)
+        centers = [child.get_center() for child in inferred]
+        self.assertAlmostEqual(centers[0][1],centers[2][1])
+        self.assertGreater(centers[2][1],centers[3][1])
+        self.assertAlmostEqual(centers[0][0],centers[3][0])
+        aligned = lite.VGroup(lite.Rectangle(width=1,height=1),lite.Rectangle(width=2,height=2)).arrange_in_grid(rows=2,cell_alignment=lite.UL)
+        self.assertAlmostEqual(aligned[0].get_left()[0],aligned[1].get_left()[0])
+
+    def test_grid_transformed_nested_children_keep_pose_and_screen_spacing(self):
+        for scale in (.8,-1.1):
+            group = lite.Group(*(lite.VGroup(lite.Square(side_length=.4)) for _ in range(4))).rotate(.3).scale(scale).shift(lite.UP)
+            start = group.get_center()
+            refs = list(group.children)
+            group.arrange_in_grid(rows=2,cols=2,buff=(.5,.7))
+            self.assertPointAlmostEqual(group.get_center(),start)
+            self.assertEqual(group.children,refs)
+            self.assertAlmostEqual(group.angle,.3)
+            self.assertAlmostEqual(group.geometry_scale,scale)
+            world = [group._point_to_world(child.get_center()) for child in group]
+            size = .4*abs(scale)*(lite.math.cos(.3)+lite.math.sin(.3))
+            self.assertAlmostEqual(world[1][0]-world[0][0],size+.5)
+            self.assertAlmostEqual(world[0][1]-world[2][1],size+.7)
+            group.save_state()
+            saved = group.to_dict()
+            group.arrange_in_grid(rows=1,buff=1)
+            group.restore()
+            self.assertEqual(group.to_dict(),saved)
+
+    def test_grid_invalid_arguments_leave_live_geometry_unchanged(self):
+        group = lite.VGroup(lite.Circle(),lite.Square()).rotate(.4).scale(.8)
+        saved = group.to_dict()
+        for options in ({'rows':0},{'rows':True},{'cols':1.5},{'rows':1,'cols':1},
+                        {'rows':1001},{'rows':40,'cols':40},{'buff':(1,)},
+                        {'buff':float('inf')},{'buff':True},{'flow_order':'rr'},
+                        {'row_alignments':'x'},{'row_alignments':'cc','rows':1},
+                        {'col_widths':[float('nan')]},{'row_heights':[-1]},
+                        {'cols':2,'col_widths':[1]}, {'cell_alignment':(float('inf'),0,0)}):
+            with self.subTest(options=options),self.assertRaises(ValueError):
+                group.arrange_in_grid(**options)
+            self.assertEqual(group.to_dict(),saved)
+        with self.assertRaises(NotImplementedError):
+            group.arrange_in_grid(cell_alignment=lite.OUT)
+        self.assertEqual(group.to_dict(),saved)
+        with self.assertRaisesRegex(NotImplementedError,'collapsed'):
+            lite.Group(lite.Dot()).scale(0).arrange_in_grid()
+
     def test_transformed_layout_gallery_restores_orientation_and_cleans_up(self):
         result = json.loads(lite.render_scene((ROOT/'examples/transformed_layout_scene.py').read_text()))
         self.assertEqual(result['duration'],9)

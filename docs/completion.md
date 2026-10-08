@@ -130,3 +130,12 @@ scale, screen-space direction/buffer/aligned edges, fixed first-child placement
 without centering and animated position interpolation while retaining parent
 pose. Zero-scale arrangements and native world-space child coordinates remain
 unimplemented. Conservative bounds and general family restructuring remain open.
+
+
+Group/VGroup grid layout now supports inferred/explicit rows and columns, all
+eight flow orders, variable cell sizes, separate gaps, cell and row/column
+alignment, transformed families, animation and restoration. Python tests cover
+ordering, incomplete grids, spacing, negative scales and atomic validation; local
+Pyodide playback covers reflow/restoration/removal. Ordinary geometry-bearing
+parent layout, zero-scale layout and native world-coordinate semantics remain
+open; this does not implement Rectangle's internal grid-line geometry.

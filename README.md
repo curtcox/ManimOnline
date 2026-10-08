@@ -1101,3 +1101,19 @@ Stationary first children stay fixed with `center=False`; child references and
 shape orientations survive rearrangement and restoration. Collapsed zero-scale
 groups remain unsupported. Bounds retain the conservative curve/text limits
 described above.
+
+
+### Animated grid layout
+
+Try **Reflow a transformed grid** (`examples/grid_layout_scene.py`).
+`Group.arrange_in_grid` and `VGroup.arrange_in_grid` support explicit or inferred
+rows/columns, scalar gaps or `(horizontal, vertical)` gaps, `cell_alignment`,
+`row_alignments` (`u/c/d`), `col_alignments` (`l/c/r`), optional `row_heights` and
+`col_widths` with `None` for automatic measurement, and all eight `flow_order`
+values (`rd`, `dr`, `ld`, `dl`, `ru`, `ur`, `lu`, `ul`). Layout preserves the
+starting group center, shape orientations, and live child references, including
+`.animate` and checkpoint restoration. Incomplete final rows/columns are allowed.
+
+Grid cells use screen-space bounds and have a 1000-cell limit. Zero-scale groups
+cannot be arranged; text/curve bounds retain the limits above. Layout of children
+on ordinary geometry-bearing parents remains unfinished.

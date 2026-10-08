@@ -1584,3 +1584,34 @@ The local Pyodide gallery rearranged 30-degree shapes into a column with aligned
 left edges at four seconds, retained the 0.8 parent scale, restored the diagonal
 row at seven seconds, and removed all geometry at nine seconds. Switching to DOT
 rendered the editor flow graph. All 320 Python and 76 Node tests passed.
+
+
+## Group and VGroup grid layout
+
+arrange_in_grid now supports rows/cols inference from child count, alignment
+strings or size lists; explicit dimensions; horizontal/vertical buffers; all
+eight row/column fill directions; cell_alignment; u/c/d row and l/c/r column
+alignments; and explicit row_heights/col_widths with None entries for automatic
+world-bounds measurement. Empty cells contribute no geometry. Grids retain the
+starting group center and enforce finite inputs, option lengths and a 1000-cell
+limit before applying child translations. Zero-scale groups remain unsupported.
+
+Row and grid layouts share temporary world-space pose composition and inverse
+translation application. The parent rotation/scale and live child references
+remain fixed, supporting animation without extra pose interpolation. Bounds
+remain conservative for curves/composite families and incomplete for glyphs;
+ordinary geometry-bearing parent layout and native world-coordinate child
+semantics remain unfinished. Rectangle internal grid-line geometry is separate.
+
+Tests independently check all eight fill orders, explicit spacing, center
+preservation, inferred and incomplete grids, variable cell dimensions, aligned
+edges, nested rotated/negative-scale families, restoration and atomic invalid
+options. Frame tests cover animated three-row reflow, column alignment, parent
+pose preservation and restored geometry.
+
+Reference: [official Manim arrange_in_grid implementation](https://docs.manim.community/en/stable/_modules/manim/mobject/mobject.html).
+
+Local Pyodide playback showed six shapes in three rows at four seconds, retaining
+18-degree orientation and 0.8 scale. The original two-row grid returned at seven
+seconds; no circles remained at nine seconds. Switching to DOT rendered the
+editor flow graph. All 325 Python and 76 Node tests passed.
