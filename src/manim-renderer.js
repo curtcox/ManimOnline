@@ -87,13 +87,23 @@ const ManimRenderer = {
         return null;
     }
 
-    if (element) element.setAttribute('opacity', mobject.opacity ?? 1);
+    if (element) {
+      element.setAttribute('opacity', mobject.opacity ?? 1);
+      for (const leaf of [element, ...element.querySelectorAll('*')]) {
+        leaf.setAttribute('vector-effect', 'non-scaling-stroke');
+      }
+    }
 
     if (element && position) {
       const x = position[0] * this.UNIT_SCALE;
       const y = position[1] * this.UNIT_SCALE;
       const currentTransform = element.getAttribute('transform') || '';
-      element.setAttribute('transform', `translate(${x}, ${y}) ${currentTransform}`);
+      const center = mobject.geometry_center || [0, 0, 0];
+      const cx = center[0] * this.UNIT_SCALE;
+      const cy = center[1] * this.UNIT_SCALE;
+      const angle = (mobject.angle || 0) * 180 / Math.PI;
+      const size = mobject.geometry_scale ?? 1;
+      element.setAttribute('transform', `translate(${x}, ${y}) translate(${cx}, ${cy}) rotate(${angle}) scale(${size}) translate(${-cx}, ${-cy}) ${currentTransform}`);
     }
 
     return element;

@@ -22,20 +22,32 @@ Manim-lite is a compatibility subset, not the Manim Community engine.
 The first animation slice implements creation/fades, timed transforms, animate
 method chains, waits, play/pause, replay, seeking, and current-frame SVG download.
 Creation/writing use fades; transforms between different shape types crossfade.
-The first source-defined Scene is selected. Full Manim semantics are not implied.
+The Scene field selects a source-defined class and defaults to the first one.
+Successful renders return scene names for suggestions, and URL/shared links
+preserve selection with the `scene` query parameter. Missing selections fail
+explicitly; no class from previous source is used.
 
-Next work can add explicit scene selection, additional verified compatibility
-APIs, geometry-aware path transforms, and an offline asset strategy. Keep DOT
+Uniform scale and 2D rotation are serialized as SVG transforms around geometry
+centers. They support direct calls and animation chains, with explicit external
+pivots. Group centers use child bounds, and text uses its anchor without full
+font metrics. External-pivot animations interpolate center positions between
+endpoints; rigid orbital motion is not implemented. Full Manim semantics are
+not implied.
+
+Next work can add additional verified compatibility APIs, geometry-aware path
+transforms, rigid rotation animations, and an offline asset strategy. Keep DOT
 rendering, sharing, and static SVG/PNG export working as these features evolve.
 
-Use `examples/minimal_scene.py` as a baseline. Broader examples under `examples/`
+Use `examples/minimal_scene.py` as a baseline and `examples/multiple_scenes.py`
+for scene selection with animated scale and rotation. Broader examples under `examples/`
 are feature references, not an acceptance claim. Document unsupported APIs and
 limits on duration/frame count. MP4 export, LaTeX, 3D, arbitrary dependencies,
 updaters, and offline caching remain future work unless separately implemented.
 
 ## Verification
 
-Check initial Pyodide loading, a visible animation, seeking/replay, source edits,
+Check initial Pyodide loading, scene selection and URL reload, scale/rotation,
+a visible animation, seeking/replay, source edits,
 syntax errors, missing scenes, and a runaway loop timeout. Ensure a new source
 cannot select a scene class left behind by an older render. Check DOT rendering
 and export after switching away from Manim. Run tests for timing and frame state

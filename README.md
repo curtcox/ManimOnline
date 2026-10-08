@@ -35,6 +35,7 @@ Then open `http://localhost:8000` in your browser.
 - [AGENTS.md](AGENTS.md): project map and working guidance.
 - [Rendering roadmap](docs/rendering.md): current limitations and next milestones.
 - [Minimal scene](examples/minimal_scene.py): baseline animation input.
+- [Multiple scenes](examples/multiple_scenes.py): scene selection, scale, and rotation.
 
 ## Supported browser animation subset
 
@@ -47,14 +48,29 @@ Manim-like runtime, **not the full Manim Community engine**.
 - Scene operations: `add`, `remove`, `play`, and `wait`.
 - Animations: `Create`, `Write`, `FadeIn`, `FadeOut`, `Transform`, and
   `ReplacementTransform`; chained `.animate.shift()`, `.move_to()`,
-  `.set_color()`, `.set_fill()`, and `.set_stroke()`.
+  `.set_color()`, `.set_fill()`, `.set_stroke()`, `.scale()`, and `.rotate()`.
+- Geometry: uniform scaling, 2D rotation in radians, optional `about_point`,
+  `get_center()`, and `PI`, `TAU`, and `DEGREES` constants.
 - Timing: `run_time`, `linear`/`smooth` rate functions, and simultaneous animations.
 - Directions support vector addition/subtraction and scalar multiplication,
   such as `RIGHT * 2`.
 
 `Create` and `Write` currently reveal objects by fading them in. Transforms
 interpolate matching geometry and crossfade between different shape types.
-The first scene defined in the source is rendered. Animation previews run at
+Leave the Scene field empty to render the first scene defined in the source,
+or enter a class name to choose another. Successful renders suggest the scene
+names in that file. Press Enter to render immediately; editing the field also
+rerenders after a short delay. The selected name is preserved in the URL as
+`?scene=ClassName` and in shared links. If the class is removed or renamed, clear
+or update the field to resolve the selection error.
+
+Scaling and rotation use the object's center by default. Group centers use
+child bounds; text is center anchored without full font metrics. Animation
+chains interpolate transform values, and an external rotation pivot moves the
+center between endpoints rather than following a circular arc. These are
+preview semantics, not full Manim geometry behavior.
+
+Animation previews run at
 15 frames per second and are limited to 60 seconds, with a 90-second deadline
 for loading and execution. Editing cancels active computation. Download saves
 the current SVG frame, not a video.
@@ -73,7 +89,8 @@ node --test tests/*.test.js
 ```
 
 Serve the site locally to check actual Pyodide loading and browser playback.
-Check the default animation, replay/seek, a source edit, invalid Python, and
+Check the default animation, replay/seek, scene selection and URL reload,
+animated scale/rotation, a source edit, invalid Python, and
 switching to `digraph { a -> b }`. These unit tests cover the compatibility
 runtime and worker lifecycle; they do not substitute for browser checks.
 

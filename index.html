@@ -231,7 +231,8 @@
       gap: 12px;
     }
 
-    #options .graphviz-options.hidden {
+    #options .graphviz-options.hidden,
+    #options .manim-options.hidden {
       display: none;
     }
 
@@ -425,6 +426,13 @@ class HelloWorld(Scene):
     <span id="type-indicator" class="manim">Manim</span>
     <span id="pyodide-status" class="hidden">Python loading...</span>
 
+    <label class="manim-options" id="scene-option">
+      Scene:
+      <input id="scene-name" type="text" placeholder="First scene" list="scene-names"
+        aria-label="Scene class name" autocomplete="off" spellcheck="false" size="16">
+      <datalist id="scene-names"></datalist>
+    </label>
+
     <div class="graphviz-options hidden">
       <label id="engine">
         Engine:
@@ -499,6 +507,9 @@ class HelloWorld(Scene):
     const typeIndicator = document.getElementById('type-indicator');
     const pyodideStatus = document.getElementById('pyodide-status');
     const graphvizOptions = document.querySelector('.graphviz-options');
+    const manimOptions = document.querySelector('.manim-options');
+    const sceneNameInput = document.getElementById('scene-name');
+    const sceneNamesList = document.getElementById('scene-names');
 
     let isCollapsed = false;
     let isDragging = false;
@@ -716,6 +727,7 @@ class HelloWorld(Scene):
         let content = encodeURIComponent(editor.getSession().getDocument().getValue());
         const longUrl = new URL(location.href);
         longUrl.hash = content;
+        applySceneToURL(longUrl);
 
         shareEl.disabled = true;
         let n = 0;
@@ -738,6 +750,7 @@ class HelloWorld(Scene):
             const compressedUrl = new URL(location.href);
             compressedUrl.searchParams.append("compressed", compressedContent);
             compressedUrl.hash = "";
+            applySceneToURL(compressedUrl);
             shareURLEl.style.display = "inline";
             shareURLEl.value = compressedUrl.toString();
           }).finally(()=>{
@@ -764,6 +777,7 @@ class HelloWorld(Scene):
       }
 
       function updateTypeIndicator(type) {
+        manimOptions.classList.toggle('hidden', type !== 'manim');
         currentType = type;
         typeIndicator.className = type;
 
@@ -838,8 +852,13 @@ class HelloWorld(Scene):
         show_status('rendering Manim…');
         try {
           const code = editor.getSession().getDocument().getValue();
-          const sceneData = await manimClient.render(code);
+          const sceneData = await manimClient.render(code, { sceneName: sceneNameInput.value.trim() });
           if (revision !== renderRevision) return;
+          sceneNamesList.replaceChildren(...sceneData.scenes.map(name => {
+            const option = document.createElement('option');
+            option.value = name;
+            return option;
+          }));
           updateManimOutput(sceneData);
           pyodideStatus.textContent = 'Python ready';
           pyodideStatus.className = 'ready';
@@ -945,10 +964,17 @@ class HelloWorld(Scene):
         }
       }
 
+      function applySceneToURL(url) {
+        const scene = sceneNameInput.value.trim();
+        if (currentType === 'manim' && scene) url.searchParams.set('scene', scene);
+        else url.searchParams.delete('scene');
+      }
+
       function updateState() {
         const updatedUrl = new URL(window.location)
         const content = encodeURIComponent(editor.getSession().getDocument().getValue());
         updatedUrl.hash = content
+        applySceneToURL(updatedUrl);
         if (currentType === 'graphviz') {
           updatedUrl.searchParams.set("engine", engineEl.value)
         }
@@ -961,6 +987,7 @@ class HelloWorld(Scene):
       // Debounced change handler
       editor.getSession().on("change", function () {
         invalidateRender();
+        sceneNamesList.replaceChildren();
         clearTimeout(lastHD);
         clearTimeout(detectionTimer);
 
@@ -979,6 +1006,14 @@ class HelloWorld(Scene):
         }
       };
 
+      sceneNameInput.addEventListener('input', () => {
+        invalidateRender();
+        clearTimeout(lastHD);
+        lastHD = setTimeout(render, DEBOUNCE_DELAY);
+      });
+      sceneNameInput.addEventListener('keydown', event => {
+        if (event.key === 'Enter') { clearTimeout(lastHD); render(); }
+      });
       formatEl.addEventListener("change", render);
       engineEl.addEventListener("change", render);
       rawEl.addEventListener("change", render);
@@ -995,6 +1030,8 @@ class HelloWorld(Scene):
 
       // URL parameter parsing
       const params = new URLSearchParams(location.search.substring(1));
+      sceneNameInput.value = params.get('scene') || '';
+
       if (params.has('engine')) {
         const engine = params.get('engine');
         const index = engineEl.options.indexOf(engine);

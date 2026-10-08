@@ -57,9 +57,52 @@ class SceneTests(unittest.TestCase):
 
     def test_explicit_scene_and_missing_selection(self):
         source = 'from manim import *\nclass First(Scene): pass\nclass Second(Scene): pass'
-        self.assertEqual(json.loads(lite.render_scene(source, 'Second'))['scene'], 'Second')
+        result = json.loads(lite.render_scene(source, 'Second'))
+        self.assertEqual(result['scene'], 'Second')
+        self.assertEqual(result['scenes'], ['First', 'Second'])
         with self.assertRaisesRegex(ValueError, 'was not found'):
             lite.render_scene(source, 'Missing')
+
+    def test_scale_and_rotation_preserve_object_center(self):
+        shape = lite.Square().shift(lite.RIGHT * 2)
+        shape.scale(0.5).rotate(lite.PI / 4)
+        self.assertEqual(shape.get_center(), lite.RIGHT * 2)
+        self.assertEqual(shape.geometry_scale, 0.5)
+        self.assertAlmostEqual(shape.angle, lite.PI / 4)
+
+    def test_external_pivots_and_asymmetric_geometry(self):
+        line = lite.Line((1, 0), (3, 0))
+        self.assertEqual(line.get_center(), (2, 0, 0))
+        line.scale(2, about_point=lite.ORIGIN)
+        self.assertEqual(line.get_center(), (4, 0, 0))
+        line.rotate(90 * lite.DEGREES, about_point=lite.ORIGIN)
+        self.assertAlmostEqual(line.get_center()[0], 0)
+        self.assertAlmostEqual(line.get_center()[1], 4)
+        self.assertEqual(line.to_dict()['geometry_center'], [2, 0, 0])
+
+    def test_group_scaling_uses_child_bounds_as_its_pivot(self):
+        group = lite.VGroup(lite.Circle().shift(lite.RIGHT * 2), lite.Square().shift(lite.RIGHT * 4))
+        self.assertEqual(group.get_center(), (3, 0, 0))
+        group.scale(2)
+        self.assertEqual(group._bounds(), (-1, -2, 7, 2))
+        group.rotate(lite.PI / 2)
+        bounds = group._bounds()
+        self.assertAlmostEqual(bounds[0], 1)
+        self.assertAlmostEqual(bounds[2], 5)
+
+    def test_animated_scale_and_rotation_have_intermediate_states(self):
+        result = render('s = Square()\nself.play(s.animate.scale(2).rotate(PI / 2), run_time=2, rate_func=linear)')
+        midpoint = result['frames'][15]['mobjects'][0]
+        self.assertEqual(midpoint['geometry_scale'], 1.5)
+        self.assertAlmostEqual(midpoint['angle'], lite.PI / 4)
+        final = result['frames'][-1]['mobjects'][0]
+        self.assertEqual(final['geometry_scale'], 2)
+        self.assertAlmostEqual(final['angle'], lite.PI / 2)
+
+    def test_invalid_geometry_transform_is_rejected(self):
+        for operation in (lambda: lite.Circle().scale(float('inf')), lambda: lite.Circle().rotate(float('nan'))):
+            with self.assertRaises(ValueError):
+                operation()
 
     def test_limits_and_invalid_durations(self):
         for body in ('self.wait(100)', 'self.play(Create(Circle()), run_time=100)', 'self.wait(float("inf"))', 'self.play(Create(Circle()), run_time=-1)'):

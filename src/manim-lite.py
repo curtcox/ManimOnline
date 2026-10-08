@@ -34,6 +34,7 @@ BLUE, RED, GREEN = '#58C4DD', '#FC6255', '#83C167'
 YELLOW, PURPLE, ORANGE = '#FFFF00', '#9A72AC', '#FF8C00'
 WHITE, BLACK, GRAY = '#FFFFFF', '#000000', '#888888'
 GREY, PINK = GRAY, '#FF69B4'
+PI, TAU, DEGREES = math.pi, math.tau, math.pi / 180
 
 
 class Mobject:
@@ -45,6 +46,8 @@ class Mobject:
         self.fill_opacity = fill_opacity
         self.stroke_width = stroke_width
         self.opacity = 1
+        self.geometry_scale = 1
+        self.angle = 0
         self.children = []
         self._type = 'mobject'
 
@@ -54,6 +57,77 @@ class Mobject:
 
     def move_to(self, point):
         self.position = list(Vector(point))
+        return self
+
+    def _local_bounds(self):
+        if self._type == 'circle':
+            return (-self.radius, -self.radius, self.radius, self.radius)
+        if self._type == 'square':
+            half = self.side_length / 2
+            return (-half, -half, half, half)
+        if self._type == 'rectangle':
+            return (-self.width / 2, -self.height / 2, self.width / 2, self.height / 2)
+        if self._type in ('line', 'arrow'):
+            points = [self.start, self.end]
+        elif self._type == 'polygon':
+            points = self.vertices
+        elif self._type == 'triangle':
+            height = math.sqrt(3) / 2
+            points = [(0, height * 2 / 3), (-0.5, -height / 3), (0.5, -height / 3)]
+        elif self.children:
+            bounds = [child._bounds() for child in self.children]
+            return (min(b[0] for b in bounds), min(b[1] for b in bounds),
+                    max(b[2] for b in bounds), max(b[3] for b in bounds))
+        else:
+            # Text is anchored at its visual center; font metrics are browser-owned.
+            return (0, 0, 0, 0)
+        if not points:
+            return (0, 0, 0, 0)
+        return (min(p[0] for p in points), min(p[1] for p in points),
+                max(p[0] for p in points), max(p[1] for p in points))
+
+    def _geometry_center(self):
+        left, bottom, right, top = self._local_bounds()
+        return Vector(((left + right) / 2, (bottom + top) / 2, 0))
+
+    def get_center(self):
+        return Vector(self.position) + self._geometry_center()
+
+    def _bounds(self):
+        left, bottom, right, top = self._local_bounds()
+        center = self._geometry_center()
+        points = []
+        for x, y in ((left, bottom), (left, top), (right, bottom), (right, top)):
+            dx, dy = (x - center[0]) * self.geometry_scale, (y - center[1]) * self.geometry_scale
+            points.append((self.position[0] + center[0] + dx * math.cos(self.angle) - dy * math.sin(self.angle),
+                           self.position[1] + center[1] + dx * math.sin(self.angle) + dy * math.cos(self.angle)))
+        if self._type == 'circle':
+            r = abs(self.radius * self.geometry_scale)
+            return (self.position[0] - r, self.position[1] - r, self.position[0] + r, self.position[1] + r)
+        return (min(p[0] for p in points), min(p[1] for p in points),
+                max(p[0] for p in points), max(p[1] for p in points))
+
+    def scale(self, scale_factor, *, about_point=None):
+        if not math.isfinite(scale_factor):
+            raise ValueError('Scale factor must be finite')
+        if about_point is not None:
+            pivot = Vector(about_point)
+            center = self.get_center()
+            self.shift((center - pivot) * (scale_factor - 1))
+        self.geometry_scale *= scale_factor
+        return self
+
+    def rotate(self, angle, *, about_point=None):
+        if not math.isfinite(angle):
+            raise ValueError('Rotation angle must be finite')
+        if about_point is not None:
+            pivot = Vector(about_point)
+            center = self.get_center()
+            offset = center - pivot
+            rotated = Vector((offset[0] * math.cos(angle) - offset[1] * math.sin(angle),
+                              offset[0] * math.sin(angle) + offset[1] * math.cos(angle), offset[2]))
+            self.shift(rotated - offset)
+        self.angle += angle
         return self
 
     def set_color(self, color):
@@ -84,6 +158,7 @@ class Mobject:
     def to_dict(self):
         result = copy.deepcopy(self.__dict__)
         result['type'] = result.pop('_type')
+        result['geometry_center'] = list(self._geometry_center())
         result['children'] = [child.to_dict() for child in self.children]
         return result
 
@@ -249,7 +324,7 @@ class Animate(Transform):
         super().__init__(mobject, mobject)
 
     def __getattr__(self, name):
-        if name not in ('shift', 'move_to', 'set_color', 'set_fill', 'set_stroke'):
+        if name not in ('shift', 'move_to', 'set_color', 'set_fill', 'set_stroke', 'scale', 'rotate'):
             raise NotImplementedError(f'animate.{name} is not supported yet')
         def apply(*args, **kwargs):
             getattr(self.target, name)(*args, **kwargs)
@@ -326,7 +401,7 @@ EXPORTS = ['Scene', 'Mobject', 'Circle', 'Square', 'Rectangle', 'Line', 'Arrow',
            'FadeOut', 'Transform', 'ReplacementTransform', 'UP', 'DOWN', 'LEFT',
            'RIGHT', 'ORIGIN', 'UL', 'UR', 'DL', 'DR', 'BLUE', 'RED', 'GREEN',
            'YELLOW', 'PURPLE', 'ORANGE', 'WHITE', 'BLACK', 'GRAY', 'GREY', 'PINK',
-           'linear', 'smooth']
+           'linear', 'smooth', 'PI', 'TAU', 'DEGREES']
 
 
 def render_scene(source, scene_name=None):
@@ -347,4 +422,5 @@ def render_scene(source, scene_name=None):
     name = scene_name or next(iter(scenes))
     result = scenes[name]().render()
     result['scene'] = name
+    result['scenes'] = list(scenes)
     return json.dumps(result, allow_nan=False)
