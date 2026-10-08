@@ -1879,3 +1879,27 @@ Verification: all 350 Python and 78 Node tests passed. Local Pyodide playback
 rendered the open arc with two tangent tips and the closed circle with a stealth
 tip at six seconds, restored the saved pose at seven seconds and removed all
 geometry at nine seconds. Switching to DOT rendered Editor → Render → Preview.
+
+
+Try **Construct circles through three points** (`examples/circle_construction_scene.py`).
+`Circle.from_three_points(p1, p2, p3, **style)` constructs an XY circumcircle;
+points must be finite, distinct and noncollinear. Normalizing the chord calculation
+supports both very small and very large finite geometry. Nonfinite results and
+3D point sets fail explicitly. `Circle.point_at_angle(angle)` wraps any finite
+angle into a path proportion, so its result follows rotation, signed scaling,
+translation and edited outline geometry; the angle refers to path traversal,
+not an absolute screen direction. Circle now inherits Arc and accepts arc_center,
+with get_arc_center/move_arc_center_to available to Circle and Ellipse. Radius
+None selects the existing unit default; invalid radii now fail at construction.
+The gallery retains the three original points while a boundary marker follows
+the moving circle, then restores the circle and removes the scene.
+
+Reference: [Manim Circle construction and point queries](https://docs.manim.community/en/stable/reference/manim.mobject.geometry.arc.Circle.html).
+Circle surround/stretch behavior, native world-coordinate child semantics and
+3D circumcircles remain unfinished.
+
+
+Verification: all 353 Python and 78 Node tests passed. Local Pyodide playback
+showed the red boundary marker following the rotated/scaled translated circle
+at six seconds, five circles after restoration at seven seconds and no remaining
+geometry at nine seconds. Switching to DOT rendered Editor → Render → Preview.

@@ -1216,3 +1216,17 @@ include attached tips. TipableVMobject can also hold explicitly constructed cubi
 or corner paths. Empty paths reject positioned tips. normal_vector must be finite
 and perpendicular to the XY plane. Native world-coordinate children, general
 mutable-tip path semantics and arbitrary 3D remain unfinished.
+
+
+Try **Construct circles through three points** (`examples/circle_construction_scene.py`).
+`Circle.from_three_points(p1, p2, p3, **style)` constructs an XY circumcircle;
+points must be finite, distinct and noncollinear. Normalizing the chord calculation
+supports both very small and very large finite geometry. Nonfinite results and
+3D point sets fail explicitly. `Circle.point_at_angle(angle)` wraps any finite
+angle into a path proportion, so its result follows rotation, signed scaling,
+translation and edited outline geometry; the angle refers to path traversal,
+not an absolute screen direction. Circle now inherits Arc and accepts arc_center,
+with get_arc_center/move_arc_center_to available to Circle and Ellipse. Radius
+None selects the existing unit default; invalid radii now fail at construction.
+The gallery retains the three original points while a boundary marker follows
+the moving circle, then restores the circle and removes the scene.

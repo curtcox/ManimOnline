@@ -16,6 +16,59 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_circle_three_points_geometry_and_validation(self):
+        import math
+        for extent in (1,1e-100,1e100):
+            points=[lite.Vector((-extent,0,0)),lite.Vector((0,extent,0)),lite.Vector((extent,0,0))]
+            for order in (points,list(reversed(points))):
+                circle=lite.Circle.from_three_points(*order,color=lite.BLUE)
+                self.assertTrue(issubclass(lite.Circle,lite.Arc))
+                self.assertAlmostEqual(circle.radius/extent,1)
+                self.assertAlmostEqual(math.hypot(*circle.get_arc_center())/extent,0)
+                self.assertEqual(circle.stroke_color,lite.BLUE)
+        circle=lite.Circle.from_three_points((1,2,0),(3,4,0),(5,2,0))
+        self.assertPointAlmostEqual(circle.get_arc_center(),(3,2,0))
+        self.assertAlmostEqual(circle.radius,2)
+        circle.add_tip().rotate(.4).scale(.7)
+        circle.move_arc_center_to(lite.UP*2)
+        self.assertPointAlmostEqual(circle.get_arc_center(),lite.UP*2)
+        for points in ((lite.ORIGIN,lite.RIGHT,lite.RIGHT*2),
+                       (lite.RIGHT,lite.RIGHT,lite.UP)):
+            with self.assertRaises(ValueError): lite.Circle.from_three_points(*points)
+        with self.assertRaises(NotImplementedError):
+            lite.Circle.from_three_points(lite.ORIGIN,lite.RIGHT,lite.OUT)
+        for radius in (-1,float('inf'),float('nan')):
+            with self.assertRaises(ValueError): lite.Circle(radius=radius)
+        self.assertEqual(lite.Circle(radius=None).radius,1)
+
+    def test_circle_angle_queries_follow_path_pose_and_wrap(self):
+        circle=lite.Circle(radius=2,arc_center=(1,2,0))
+        self.assertPointAlmostEqual(circle.point_at_angle(lite.PI/2),(1,4,0))
+        circle.rotate(.3).scale(-.8).shift(lite.LEFT)
+        for angle in (0,lite.PI/2,-lite.PI/2,3*lite.TAU+.4):
+            self.assertPointAlmostEqual(circle.point_at_angle(angle),
+                                        circle.point_from_proportion((angle%lite.TAU)/lite.TAU))
+        circle.add_tip()
+        self.assertPointAlmostEqual(circle.point_at_angle(lite.TAU),circle.get_start())
+        ellipse=lite.Ellipse(width=4,height=2)
+        self.assertPointAlmostEqual(ellipse.point_at_angle(lite.PI/2),lite.UP)
+        for angle in (True,float('nan'),float('inf')):
+            with self.assertRaises(ValueError): circle.point_at_angle(angle)
+
+    def test_circle_construction_gallery_tracks_boundary_and_restores(self):
+        result=json.loads(lite.render_scene((ROOT/'examples/circle_construction_scene.py').read_text()))
+        self.assertEqual(result['duration'],9)
+        for index in (30,45,60,75,90,105):
+            circle=result['frames'][index]['mobjects'][0]
+            marker=result['frames'][index]['mobjects'][-1]
+            obj=lite.Circle()
+            obj.__dict__.update(circle)
+            obj._type=circle['type']
+            obj.children=[]
+            obj._sampled_geometry_center=lite.Vector(circle['geometry_center'])
+            self.assertPointAlmostEqual(marker['position'],obj.point_at_angle(lite.PI/2))
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+
     def test_generic_tip_paths_preserve_pose_and_fit_bases(self):
         for factory in (lambda:lite.Arc(radius=2,angle=-lite.PI),
                         lambda:lite.Circle(radius=2),
@@ -4787,7 +4840,7 @@ self.wait(1)""")
             lite.Line((float('nan'),0),(1,0))
         with self.assertRaises(NotImplementedError):
             lite.Line((0,0,1),(1,0,1))
-        for path in (lite.Polygon(), lite.Polygon((0, 0)), lite.Circle(radius=-1)):
+        for path in (lite.Polygon(), lite.Polygon((0, 0))):
             with self.assertRaises(ValueError):
                 path.point_from_proportion(0.5)
         for path in (lite.Text('x'), lite.VGroup(lite.Circle()), lite.Arrow(),

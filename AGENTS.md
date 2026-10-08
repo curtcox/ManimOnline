@@ -423,3 +423,12 @@ Arc/Circle/Line inherit it. Generic attachment materializes raw local cubics and
 compensates pivot changes before adding the tip family; preserve existing world
 geometry. Open shafts use the same _curved_tip_path fitting pipeline as curved
 arrows; exactly closed paths retain their full raw outline (zero chord).
+
+
+Read `examples/circle_construction_scene.py` for Circle.from_three_points,
+point_at_angle and arc-center motion. Circle now subclasses Arc but retains frame
+type circle. Keep point_at_angle as wrapped point_from_proportion so edited paths
+and signed transforms behave consistently. Three-point construction normalizes
+chords before solving the XY circumcenter; do not square raw large coordinates.
+Reject duplicate/collinear/3D or nonfinite geometry explicitly. Circle validation
+now occurs at construction through Arc, including radius=None's unit fallback.

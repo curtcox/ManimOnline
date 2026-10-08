@@ -1570,22 +1570,6 @@ class TipableVMobject(VMobject):
         return self._point_to_world(Vector(curves[-1][-2]))
 
 
-class Circle(TipableVMobject):
-    def __init__(self, radius=1, **kwargs):
-        kwargs.setdefault('stroke_width',2)
-        super().__init__(**kwargs)
-        self._type, self.radius = 'circle', radius
-
-
-class Ellipse(Circle):
-    def __init__(self, width=2, height=1, **kwargs):
-        if any(isinstance(v, bool) or not isinstance(v, (int, float)) or
-               not math.isfinite(v) or v < 0 for v in (width, height)):
-            raise ValueError('Ellipse dimensions must be nonnegative and finite')
-        super().__init__(**kwargs)
-        self._type, self.width, self.height = 'ellipse', width, height
-
-
 class Arc(TipableVMobject):
     def __init__(self, radius=1, start_angle=0, angle=PI / 2, arc_center=ORIGIN, **kwargs):
         center = Vector(arc_center)
@@ -1611,6 +1595,45 @@ class Arc(TipableVMobject):
         if point[2]:
             raise NotImplementedError('Arcs support only the XY plane')
         return self.shift(point - self.get_arc_center())
+
+
+class Circle(Arc):
+    def __init__(self, radius=1, **kwargs):
+        super().__init__(radius=1 if radius is None else radius, start_angle=0, angle=TAU, **kwargs)
+        self._type = 'circle'
+
+    def point_at_angle(self, angle):
+        NumberLine._real(angle,'Circle point angle')
+        return self.point_from_proportion((angle % TAU)/TAU)
+
+    @staticmethod
+    def from_three_points(p1, p2, p3, **kwargs):
+        points = VMobject._corners([p1,p2,p3])
+        origin,a,b = map(Vector,points)
+        u,v = a-origin,b-origin
+        extent = max(math.hypot(*u),math.hypot(*v))
+        if not math.isfinite(extent) or not extent:
+            raise ValueError('Circle points require a finite nonzero span')
+        u,v = Vector(value/extent for value in u),Vector(value/extent for value in v)
+        determinant = u[0]*v[1]-u[1]*v[0]
+        if not determinant:
+            raise ValueError('Circle points must be distinct and noncollinear')
+        uu,vv = sum(value*value for value in u),sum(value*value for value in v)
+        offset = Vector(((v[1]*uu-u[1]*vv)/(2*determinant),
+                         (u[0]*vv-v[0]*uu)/(2*determinant),0))*extent
+        center,radius = origin+offset,math.hypot(*offset)
+        if not all(math.isfinite(value) for value in (*center,radius)):
+            raise ValueError('Three-point circle geometry must be finite')
+        return Circle(radius=radius,**kwargs).shift(center)
+
+
+class Ellipse(Circle):
+    def __init__(self, width=2, height=1, **kwargs):
+        if any(isinstance(v, bool) or not isinstance(v, (int, float)) or
+               not math.isfinite(v) or v < 0 for v in (width, height)):
+            raise ValueError('Ellipse dimensions must be nonnegative and finite')
+        super().__init__(**kwargs)
+        self._type, self.width, self.height = 'ellipse', width, height
 
 
 class ArcBetweenPoints(Arc):

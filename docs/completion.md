@@ -181,3 +181,10 @@ TipableVMobject now shares XY path-tip factories and management across Line,
 Arc and Circle. Generic open/closed attachment and family restoration have
 regression coverage. Native world-coordinate children, full mutable-tip path
 semantics and arbitrary 3D remain open.
+
+
+Circle now inherits Arc, supplies XY three-point circumcircle construction,
+wrapped angle-based path queries and center motion. Numerical and animation
+regressions cover boundary markers during transformed playback and restoration.
+Circle surround/stretch, 3D circumcircles and native world-coordinate children
+remain open.
