@@ -1675,8 +1675,11 @@ class MovingCamera(PreviewConfig):
 
 
 class Line(Mobject):
-    def __init__(self, start=LEFT, end=RIGHT, buff=0, **kwargs):
+    def __init__(self, start=LEFT, end=RIGHT, buff=0, tip_length=.35, tip_style=None, **kwargs):
         start,end = self._endpoints(start,end)
+        ArrowTip._tip_dimension(tip_length,'length')
+        if tip_style is not None and not isinstance(tip_style,dict):
+            raise TypeError('tip_style must be a dictionary')
         if isinstance(buff,bool) or not isinstance(buff,(int,float)) or not math.isfinite(buff) or buff < 0:
             raise ValueError('Line buffer must be nonnegative and finite')
         span = math.dist(start,end)
@@ -1689,6 +1692,8 @@ class Line(Mobject):
         self._type = 'line'
         self.start, self.end = list(start),list(end)
         self.buff = buff
+        self.tip_length = tip_length
+        self.tip_style = copy.deepcopy(tip_style or {})
 
     def _tip(self, at_start=False):
         role = 'start' if at_start else 'end'
@@ -1696,7 +1701,10 @@ class Line(Mobject):
 
     @property
     def tip(self):
-        return self.get_tip()
+        tip = self._tip()
+        if tip is None:
+            raise ValueError('The line has no end tip')
+        return tip
 
     @property
     def start_tip(self):
@@ -1714,7 +1722,9 @@ class Line(Mobject):
     def get_tip(self):
         tip = self._tip()
         if tip is None:
-            raise ValueError('The line has no end tip')
+            tip = self._tip(True)
+        if tip is None:
+            raise ValueError('The line has no tip')
         return tip
 
     def get_tips(self):
@@ -1729,25 +1739,49 @@ class Line(Mobject):
         tip.rotate(angle-tip.tip_angle)
         tip.shift(Vector(self.start if at_start else self.end)-tip.tip_point)
 
-    def add_tip(self, tip=None, tip_shape=None, tip_length=None, at_start=False):
+    def get_unpositioned_tip(self, tip_shape=None, tip_length=None, tip_width=None):
+        shape = ArrowTriangleFilledTip if tip_shape is None else tip_shape
+        if not isinstance(shape,type) or not issubclass(shape,ArrowTip) or shape is ArrowTip:
+            raise TypeError('tip_shape must be a concrete ArrowTip class')
+        length = self.get_default_tip_length() if tip_length is None else tip_length
+        ArrowTip._tip_dimension(length,'length')
+        if tip_width is not None:
+            ArrowTip._tip_dimension(tip_width,'width')
+        if not isinstance(self.tip_style,dict):
+            raise TypeError('tip_style must be a dictionary')
+        style = dict(color=self.stroke_color,fill_color=self.stroke_color,stroke_color=self.stroke_color)
+        if shape is ArrowTriangleFilledTip:
+            style['width'] = self.get_default_tip_length() if tip_width is None else tip_width
+        style.update(copy.deepcopy(self.tip_style))
+        return shape(length=length,**style)
+
+    def position_tip(self, tip, at_start=False):
         if not isinstance(at_start,bool):
             raise ValueError('at_start must be a boolean')
-        if self.geometry_scale == 0:
-            raise ValueError('Cannot add a tip to collapsed geometry')
-        if tip is None:
-            shape = ArrowTriangleFilledTip if tip_shape is None else tip_shape
-            if not isinstance(shape,type) or not issubclass(shape,ArrowTip) or shape is ArrowTip:
-                raise TypeError('tip_shape must be a concrete ArrowTip class')
-            length = self.get_default_tip_length() if tip_length is None else tip_length
-            ArrowTip._tip_dimension(length,'length')
-            tip = shape(length=length,color=self.stroke_color)
-            tip.scale(1/abs(self.geometry_scale))
-        elif not isinstance(tip,ArrowTip):
+        if not isinstance(tip,ArrowTip):
             raise TypeError('tip must be an ArrowTip')
         self._validate_children([tip])
         self._geometry_center()
         # Tip coordinates, like other children, are local to this parent.
         self._orient_tip(tip,at_start)
+        return tip
+
+    def create_tip(self, tip_shape=None, tip_length=None, tip_width=None, at_start=False):
+        if not isinstance(at_start,bool):
+            raise ValueError('at_start must be a boolean')
+        if self.geometry_scale == 0:
+            raise ValueError('Cannot create a positioned tip on collapsed geometry')
+        tip = self.get_unpositioned_tip(tip_shape,tip_length,tip_width)
+        tip.scale(1/abs(self.geometry_scale))
+        return self.position_tip(tip,at_start)
+
+    def add_tip(self, tip=None, tip_shape=None, tip_length=None, tip_width=None, at_start=False):
+        if not isinstance(at_start,bool):
+            raise ValueError('at_start must be a boolean')
+        if self.geometry_scale == 0:
+            raise ValueError('Cannot add a tip to collapsed geometry')
+        tip = (self.create_tip(tip_shape,tip_length,tip_width,at_start) if tip is None
+               else self.position_tip(tip,at_start))
         role = 'start' if at_start else 'end'
         old = self._tip(at_start)
         tip._tip_role = role
@@ -2012,7 +2046,7 @@ class Arrow(Line):
         for value,name in ((tip_length,'length'),(max_tip_length_to_length_ratio,'length ratio'),
                            (max_stroke_width_to_length_ratio,'stroke ratio')):
             ArrowTip._tip_dimension(value,name)
-        super().__init__(start,end,buff=buff,stroke_width=stroke_width,**kwargs)
+        super().__init__(start,end,buff=buff,stroke_width=stroke_width,tip_length=tip_length,**kwargs)
         self._type = 'arrow'
         self.tip_length = tip_length
         self.max_tip_length_to_length_ratio = max_tip_length_to_length_ratio
@@ -2065,13 +2099,18 @@ class CurvedArrow(ArcBetweenPoints):
     get_tips = Line.get_tips
     get_default_tip_length = Line.get_default_tip_length
     add_tip = Line.add_tip
+    get_unpositioned_tip = Line.get_unpositioned_tip
+    position_tip = Line.position_tip
+    create_tip = Line.create_tip
     pop_tips = Line.pop_tips
     get_start_and_end = Line.get_start_and_end
     get_vector = Line.get_vector
     get_length = Line.get_length
     get_unit_vector = Line.get_unit_vector
 
-    def __init__(self, start_point, end_point, tip_shape=None, tip_length=.35, **kwargs):
+    def __init__(self, start_point, end_point, tip_shape=None, tip_length=.35, tip_style=None, **kwargs):
+        if tip_style is not None and not isinstance(tip_style,dict):
+            raise TypeError('tip_style must be a dictionary')
         ArrowTip._tip_dimension(tip_length,'length')
         super().__init__(start_point,end_point,**kwargs)
         center = Arc.get_arc_center(self)
@@ -2080,6 +2119,7 @@ class CurvedArrow(ArcBetweenPoints):
         self._curve_arc_center = list(center)
         self._curved_tip_path = True
         self.tip_length = tip_length
+        self.tip_style = copy.deepcopy(tip_style or {})
         self.add_tip(tip_shape=tip_shape)
 
     def _raw_curves(self):

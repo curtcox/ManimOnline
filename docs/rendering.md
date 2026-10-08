@@ -1819,3 +1819,44 @@ showed two curved shafts, three tip paths and four endpoint markers at six
 seconds, restored geometry at seven seconds, and no geometry at nine seconds.
 Switching to DOT rendered the Editor → Render → Preview graph. Curve fitting
 normalizes offsets before mapping, avoiding reciprocal overflow for tiny spans.
+
+
+## Tip styles and detached factories
+
+Line accepts tip_length and a copied tip_style mapping. Arrow passes its requested
+length through Line; CurvedArrow initializes the same style mapping before
+attaching tips. Straight/curved double-arrow classes inherit this behavior.
+get_unpositioned_tip constructs an independent shape with default fill/stroke
+colors from the connector stroke, then applies tip_style overrides. Existing
+constructor validation handles styles and rejects unsupported options.
+
+For exactly ArrowTriangleFilledTip, generated width is explicit tip_width or
+get_default_tip_length; a width in tip_style takes precedence. Other shapes keep
+their shape-specific dimensions. Explicit length/width validate as finite,
+nonnegative real values. This also corrects width capping for short default Arrow
+heads; width and length now share the default length cap.
+
+create_tip makes a tip, compensates parent scale for requested world dimensions,
+and positions it without attaching or assigning a role. position_tip orients a
+supplied ArrowTip in parent-local coordinates and also leaves it detached.
+add_tip reuses these helpers; supplied tip objects retain their own style/size.
+Factories retain shaft geometry and existing children. Positioned creation rejects
+collapsed parents; unpositioned creation remains available. get_tip now returns
+the first attached end/start tip, while tip/start_tip properties stay role-specific.
+
+Reference: [Manim tip creation and style precedence](https://docs.manim.community/en/stable/_modules/manim/mobject/geometry/arc.html).
+
+Tests cover copied dictionaries, independent colors/opacities, width/style
+precedence, default width caps, detached placement and attachment, transformed
+straight/curved factories, start-only tip queries, validation and failure without
+live mutation. The gallery replaces a styled tip with a wider detached factory
+tip, recolors it independently, restores the original tip and removes both arrows.
+General TipableVMobject inheritance, generic Arc/Circle attachment, 3D positioning
+and native world-coordinate children remain unfinished.
+
+
+Verification: all 347 Python and 78 Node tests passed. Local Pyodide playback
+showed the wider green tip with white border at six seconds, restored red fill
+(.4 opacity) and yellow border at seven seconds, and no geometry at nine seconds.
+The curved arrow retained yellow fills (.5 opacity) and purple outlines independently
+of its green shaft. Switching to DOT rendered the Editor → Render → Preview graph.

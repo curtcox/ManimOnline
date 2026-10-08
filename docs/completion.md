@@ -169,3 +169,9 @@ CurvedArrow/CurvedDoubleArrow now provide XY endpoint arcs with tangent-aligned
 real tip children, sampled shaft fitting, endpoint/center transforms and existing
 family morph/restoration flow. Generic Arc/Circle tip APIs, native world-coordinate
 children, arbitrary 3D and full tip-bearing path semantics remain open.
+
+
+Straight/curved connectors now accept tip_style and provide detached tip creation,
+positioning and tip_width controls. Default filled triangular widths follow native
+factory/style precedence and short-arrow caps. Generic TipableVMobject inheritance,
+Arc/Circle tip APIs and native world-coordinate child semantics remain open.

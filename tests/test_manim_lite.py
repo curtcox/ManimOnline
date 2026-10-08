@@ -16,6 +16,108 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_tip_factories_styles_widths_and_independent_attachment(self):
+        style={'fill_color':lite.RED,'stroke_color':lite.GREEN,'fill_opacity':.4,'stroke_width':3}
+        line=lite.Line((-2,1,0),(2,1,0),tip_length=.6,tip_style=style)
+        style['fill_color']=lite.YELLOW
+        before=line.to_dict()
+        raw=line.get_unpositioned_tip(tip_length=1.2,tip_width=.8)
+        self.assertEqual(line.to_dict(),before)
+        self.assertEqual(raw.fill_color,lite.RED)
+        self.assertEqual(raw.stroke_color,lite.GREEN)
+        self.assertEqual(raw.fill_opacity,.4)
+        self.assertEqual(raw.stroke_width,3)
+        self.assertAlmostEqual(raw.get_width(),1.2)
+        self.assertAlmostEqual(raw.get_height(),.8)
+        self.assertAlmostEqual(line.get_unpositioned_tip(tip_length=1.2).get_height(),.6)
+        line.tip_style['width']=.9
+        self.assertAlmostEqual(line.get_unpositioned_tip(tip_width=.8).get_height(),.9)
+        line.scale(2).rotate(.3)
+        before=line.to_dict()
+        made=line.create_tip(at_start=True)
+        self.assertEqual(line.to_dict(),before)
+        self.assertFalse(line.has_start_tip())
+        self.assertPointAlmostEqual(line._point_to_world(made.tip_point),line.get_start())
+        self.assertAlmostEqual(made.length*abs(line.geometry_scale),.6)
+        self.assertIs(line.position_tip(made),made)
+        self.assertPointAlmostEqual(line._point_to_world(made.tip_point),line.get_end())
+        self.assertFalse(line.has_tip())
+        line.add_tip(tip=made,at_start=True)
+        self.assertIs(line.get_tip(),made)
+        with self.assertRaises(ValueError):
+            _=line.tip
+        self.assertIs(line.start_tip,made)
+        capped=lite.Arrow((0,0,0),(.2,0,0),buff=0)
+        self.assertAlmostEqual(capped.tip.get_height(),.05)
+        self.assertAlmostEqual(capped.tip.length,.05)
+
+    def test_tip_style_constructors_validation_and_curved_factories(self):
+        style={'fill_color':lite.YELLOW,'stroke_color':lite.PURPLE,'fill_opacity':.3,'stroke_width':2}
+        for factory in (lambda **kw:lite.Arrow(buff=0,**kw),lambda **kw:lite.DoubleArrow(buff=0,**kw),
+                        lambda **kw:lite.CurvedArrow(lite.LEFT,lite.RIGHT,**kw),
+                        lambda **kw:lite.CurvedDoubleArrow(lite.LEFT,lite.RIGHT,**kw)):
+            arrow=factory(tip_style=style)
+            for tip in arrow.get_tips():
+                self.assertEqual(tip.fill_color,lite.YELLOW)
+                self.assertEqual(tip.stroke_color,lite.PURPLE)
+                self.assertEqual(tip.fill_opacity,.3)
+                self.assertEqual(tip.stroke_width,2)
+            arrow.rotate(.3).scale(.7)
+            made=arrow.create_tip(tip_shape=lite.ArrowCircleFilledTip,at_start=True)
+            self.assertPointAlmostEqual(arrow._point_to_world(made.tip_point),arrow.get_start())
+            arrow.add_tip(tip=made,at_start=True)
+            self.assertIs(arrow.start_tip,made)
+            with self.assertRaises(TypeError):
+                factory(tip_style=[])
+        line=lite.Line()
+        before=line.to_dict()
+        for kwargs in ({'tip_width':-1},{'tip_width':float('inf')},{'tip_length':True},{'tip_shape':lite.Dot}):
+            with self.assertRaises((ValueError,TypeError)):
+                line.get_unpositioned_tip(**kwargs)
+            self.assertEqual(line.to_dict(),before)
+        with self.assertRaises(ValueError):
+            line.create_tip(at_start=1)
+        with self.assertRaises(TypeError):
+            line.position_tip(lite.Dot())
+        line.tip_style={'stroke_width':-1}
+        before=line.to_dict()
+        with self.assertRaises(ValueError):
+            line.add_tip()
+        self.assertEqual(line.to_dict(),before)
+        line.tip_style={'unsupported':1}
+        with self.assertRaises(NotImplementedError):
+            line.get_unpositioned_tip()
+        collapsed=lite.Line().scale(0)
+        self.assertIsInstance(collapsed.get_unpositioned_tip(),lite.ArrowTip)
+        with self.assertRaises(ValueError):
+            collapsed.create_tip()
+
+    def test_tip_style_gallery_replacement_and_restoration(self):
+        result=json.loads(lite.render_scene((ROOT/'examples/tip_style_scene.py').read_text()))
+        self.assertEqual(result['duration'],9)
+        initial=result['frames'][30]['mobjects'][0]['children'][0]
+        replaced=result['frames'][90]['mobjects'][0]['children'][0]
+        restored=result['frames'][105]['mobjects'][0]['children'][0]
+        self.assertEqual(initial['fill_color'].upper(),lite.RED)
+        self.assertEqual(initial['fill_opacity'],.4)
+        self.assertEqual(replaced['fill_color'].upper(),lite.GREEN)
+        self.assertEqual(replaced['stroke_color'].upper(),lite.WHITE)
+        self.assertEqual(replaced['fill_opacity'],.8)
+        for key in ('position','angle','geometry_scale','vertices','fill_opacity','stroke_width'):
+            self.assertEqual(initial[key],restored[key])
+        for key in ('fill_color','stroke_color'):
+            self.assertEqual(initial[key].upper(),restored[key].upper())
+        for frame in result['frames'][30:106]:
+            for arrow in frame['mobjects'][:2]:
+                for child in arrow['children']:
+                    tip=lite.ArrowTriangleFilledTip()
+                    tip.__dict__.update(child)
+                    tip._type=child['type']
+                    tip.children=[]
+                    tip._sampled_geometry_center=lite.Vector(child['geometry_center'])
+                    self.assertPointAlmostEqual(arrow['shaft_'+child['_tip_role']],tip.base)
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+
     def test_curved_arrow_tangent_tips_and_trimmed_cubic_shaft(self):
         import math
         for cls in (lite.CurvedArrow,lite.CurvedDoubleArrow):

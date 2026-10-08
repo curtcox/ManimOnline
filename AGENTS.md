@@ -405,3 +405,13 @@ own-path queries consume fitted curves, logical endpoints use actual tip points.
 Orient tips from endpoint minus adjacent raw handle. Curved scaling includes tips
 and endpoint fitting transforms the whole family uniformly. Collapsed curves
 cannot expand by endpoint fitting. Preserve the stored local arc center.
+
+
+Read `examples/tip_style_scene.py` for tip_style, tip_width and detached factories.
+Line.get_unpositioned_tip merges generated styles then copied tip_style; exact
+ArrowTriangleFilledTip gets generated width from tip_width/default tip length.
+create_tip compensates parent scale and position_tip uses the existing local
+orientation helper. Neither attaches children. add_tip reuses them and supplied
+tip objects keep their style/size. CurvedArrow aliases these helpers and initializes
+its copied style mapping before attachment. get_tip can return a lone start tip;
+role-specific tip/start_tip properties require the matching attached role.

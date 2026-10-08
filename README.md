@@ -1187,3 +1187,19 @@ The shaft fits to actual tip bases on each sampled frame. Endpoint fitting
 preserves curve shape with a uniform rotation/scale; it cannot expand collapsed
 curves. General Arc/Circle tip attachment, native world-coordinate children,
 3D paths and full tip-bearing partial-path behavior remain unfinished.
+
+
+Try **Style and build arrow tips** (`examples/tip_style_scene.py`). Line and the
+straight/curved arrow classes accept `tip_style` dictionaries. Tip fill/stroke
+colors, opacities and stroke widths can differ from the shaft. `get_unpositioned_tip`
+creates a standalone tip; `create_tip` positions a detached tip, and `position_tip`
+positions a supplied tip. Attach with `add_tip` after configuring it.
+
+`add_tip`, `create_tip`, and `get_unpositioned_tip` accept `tip_width`. Following
+Manim's factory rule, this controls the built-in filled triangular shape; its
+default width follows the connector's default tip length. Other tip shapes retain
+their own constructor dimensions. `tip_style` overrides generated defaults,
+including a triangular `width`. Factory dimensions are finite and nonnegative;
+unsupported style options fail explicitly. Positioned tip coordinates use the
+runtime's parent-local convention. `get_tip()` returns the end tip or, if only a
+start tip exists, that start tip.
