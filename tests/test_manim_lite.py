@@ -16,6 +16,89 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_lifecycle_gallery_initializes_construct_objects_and_reports_elapsed_time(self):
+        result = json.loads(lite.render_scene((ROOT / 'examples/lifecycle_scene.py').read_text()))
+        self.assertEqual(result['scene'], 'LifecycleScene')
+        self.assertEqual(result['duration'], 7)
+        self.assertEqual(result['frames'][0]['mobjects'][1]['text'], 'Initialized in setup')
+        self.assertAlmostEqual(result['frames'][45]['mobjects'][0]['angle'], lite.PI/2)
+        self.assertEqual(len(result['frames'][74]['mobjects']), 2)
+        self.assertEqual(result['frames'][75]['mobjects'][2]['text'], 'Finished at 5.0s')
+        self.assertEqual(result['frames'][75]['mobjects'][2]['opacity'], 0)
+        self.assertEqual(result['frames'][-1]['mobjects'][2]['opacity'], 1)
+
+    def test_scene_lifecycle_runs_in_order_with_shared_initialized_objects(self):
+        events = []
+        class Base(lite.Scene):
+            def setup(self):
+                events.append(('setup', self.time))
+                self.shape = lite.Circle()
+                self.add(self.shape)
+                self.wait(0.5)
+            def tear_down(self):
+                events.append(('tear_down', self.time))
+                self.shape.set_color(lite.GREEN)
+        class Demo(Base):
+            def construct(self):
+                events.append(('construct', self.time))
+                self.play(lite.Rotate(self.shape, lite.PI), run_time=2)
+        scene = Demo()
+        result = scene.render()
+        self.assertEqual(events, [('setup', 0), ('construct', 8/15), ('tear_down', 38/15)])
+        self.assertEqual(scene.time, result['duration'])
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['color'], lite.GREEN)
+        self.assertEqual(result['frames'][0]['mobjects'][0]['color'], lite.WHITE)
+
+    def test_scene_clock_uses_sampled_max_duration_and_clear_does_not_reset_it(self):
+        scene = lite.Scene()
+        scene.wait(0)
+        self.assertEqual(scene.time, 0)
+        scene.play(lite.AnimationGroup(lite.Create(lite.Circle(), run_time=0.3), lite.Create(lite.Dot(), run_time=1.1)))
+        self.assertEqual(scene.time, 17/15)
+        scene.clear().wait(0.01)
+        self.assertEqual(scene.time, 18/15)
+        for call in (lambda: scene.wait(-1), lambda: scene.play(lite.Create(lite.Circle()), run_time=0)):
+            with self.assertRaises(ValueError):
+                call()
+            self.assertEqual(scene.time, 18/15)
+        with self.assertRaises(AttributeError):
+            scene.time = 5
+
+    def test_hooks_can_generate_frames_and_final_capture_does_not_advance_time(self):
+        class Demo(lite.Scene):
+            def setup(self):
+                self.add(lite.Circle())
+                self.wait(1)
+            def construct(self):
+                self.wait(2)
+            def tear_down(self):
+                self.clear()
+                self.wait(1)
+        scene = Demo()
+        result = scene.render()
+        self.assertEqual(scene.time, 4)
+        self.assertEqual(result['duration'], 4)
+        self.assertEqual(len(result['frames']), 61)
+        self.assertEqual(result['frames'][-1]['mobjects'], [])
+        empty = lite.Scene()
+        self.assertEqual(empty.render()['duration'], 0)
+        self.assertEqual(empty.time, 0)
+
+    def test_lifecycle_errors_propagate_without_running_later_hooks(self):
+        for failed in ('setup', 'construct', 'tear_down'):
+            calls = []
+            def hook(name):
+                def execute(self):
+                    calls.append(name)
+                    if name == failed:
+                        raise ValueError('Failure in ' + name)
+                return execute
+            demo = type('Demo', (lite.Scene,), {name: hook(name) for name in ('setup', 'construct', 'tear_down')})()
+            with self.assertRaisesRegex(ValueError, 'Failure in ' + failed):
+                demo.render()
+            self.assertEqual(calls, ['setup', 'construct', 'tear_down'][:['setup', 'construct', 'tear_down'].index(failed)+1])
+            self.assertEqual(demo.frames, [])
+
     def test_order_gallery_reorders_groups_clears_and_reintroduces_title(self):
         result = json.loads(lite.render_scene((ROOT / 'examples/order_scene.py').read_text()))
         self.assertEqual(result['duration'], 7)

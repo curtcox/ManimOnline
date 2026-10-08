@@ -72,6 +72,7 @@ Then open `http://localhost:8000` in your browser.
 - [Path scene](examples/path_scene.py): motion along transformed circles, polygon outlines, and lines.
 - [Arc scene](examples/arc_scene.py): open circular paths and clockwise/counterclockwise motion.
 - [Growth scene](examples/growth_scene.py): growth from a point, group growth, and staggered shrinking.
+- [Scene lifecycle](examples/lifecycle_scene.py): setup-created objects, scene time, and teardown animation.
 - [Scene order](examples/order_scene.py): reorder whole groups, clear the display, and reuse objects.
 - [Layer scene](examples/layer_scene.py): animated depth changes across transformed groups.
 - [Style scene](examples/style_scene.py): independent fill/outline colors and group opacity changes.
@@ -304,6 +305,19 @@ can be added or animated again. Ordering a child of an added group or a group
 containing independently added children requires family restructuring and reports
 an explicit error before changing the scene. Foreground-object APIs and broader
 scene-family restructuring remain unsupported.
+
+Scenes may override `setup()` and `tear_down()`. The runtime calls setup before
+construct and teardown afterward; all three hooks can add objects, play
+animations, and wait. Inherited hooks work normally. A hook error stops rendering
+and propagates to the editor; later hooks are not run. The final seekable frame
+captures the state after teardown.
+
+Read-only `Scene.time` reports elapsed sampled animation time in seconds. Waits
+and the longest parallel animation advance it at 15 fps; durations round up to
+whole frames. Clearing the display does not reset it, and the final still frame
+does not advance it. Time is independent of Python execution/loading and browser
+playback or seeking. The hook order and time concept follow the
+[Manim Scene API](https://docs.manim.community/en/stable/_modules/manim/scene/scene.html).
 
 ## Offline use
 

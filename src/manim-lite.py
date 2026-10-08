@@ -929,6 +929,11 @@ class Succession(AnimationGroup):
 class Scene:
     def __init__(self):
         self.mobjects, self.frames = [], []
+        self._elapsed_frames = 0
+
+    @property
+    def time(self):
+        return self._elapsed_frames / FPS
 
     def add(self, *mobjects):
         for mobject in mobjects:
@@ -969,13 +974,15 @@ class Scene:
         self.mobjects = []
         return self
 
-    def capture(self, overrides=None):
+    def capture(self, overrides=None, *, advance_time=True):
         if len(self.frames) >= MAX_FRAMES:
             raise ValueError('Preview exceeds 60 seconds / 900 frames. Shorten the scene.')
         objects = []
         for mobject in self.mobjects:
             objects.extend(overrides[mobject] if overrides and mobject in overrides else [mobject.to_dict()])
         self.frames.append({'mobjects': objects})
+        if advance_time:
+            self._elapsed_frames += 1
 
     def play(self, *animations, run_time=None, rate_func=None, **kwargs):
         if kwargs:
@@ -1023,13 +1030,21 @@ class Scene:
         for _ in range(count):
             self.capture()
 
+    def setup(self):
+        pass
+
     def construct(self):
         pass
 
+    def tear_down(self):
+        pass
+
     def render(self):
+        self.setup()
         self.construct()
-        # A final state is always seekable, including after FadeOut or Transform.
-        self.capture()
+        self.tear_down()
+        # A final state is seekable without advancing the scene clock.
+        self.capture(advance_time=False)
         return {'frames': self.frames, 'fps': FPS, 'duration': (len(self.frames)-1)/FPS}
 
 

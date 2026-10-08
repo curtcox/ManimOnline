@@ -58,6 +58,21 @@ Local Pyodide browser checks verified the group's move forward before rotation,
 move back afterward, blank frame at four seconds, and reintroduced title at the
 end. DOT rendered after switching. See `examples/order_scene.py`.
 
+## Scene lifecycle and clock
+
+Scene rendering calls setup, construct, and tear_down in that order, then captures
+the final state. Inherited hooks and hook-generated frames are supported. Errors
+propagate and prevent later hooks from running. Read-only `Scene.time` counts
+sampled frames from play/wait at 15 fps; clearing objects retains it. The terminal
+still frame does not advance the clock. This is the preview timeline, independent
+of loading/execution time and browser playback. Sub-frame durations round up.
+
+Python tests cover inheritance, hook order, generated frames, failures, parallel
+maximum duration, zero/sub-frame waits, rejected operations, and terminal time.
+Local Pyodide playback showed setup-created title/shape, a 90-degree terminal
+rotation, teardown's “Finished at 5.0s” text, and a seven-second full timeline.
+DOT rendered after switching. See `examples/lifecycle_scene.py`.
+
 ## Implemented milestone and next work
 
 The first animation slice implements creation/fades, timed transforms, animate
