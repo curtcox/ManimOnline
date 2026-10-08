@@ -7,6 +7,7 @@ const ExampleCatalog = Object.freeze([
   { id: 'layout', label: 'Position and arrange', path: 'examples/layout_scene.py' },
   { id: 'stagger', label: 'Staggered animations', path: 'examples/staggered_scene.py' },
   { id: 'succession', label: 'Animate in sequence', path: 'examples/succession_scene.py' },
+  { id: 'redraw', label: 'Rebuild shapes each frame', path: 'examples/redraw_scene.py' },
   { id: 'tracker', label: 'Animate a shared value', path: 'examples/value_tracker_scene.py' },
   { id: 'updaters', label: 'Follow objects each frame', path: 'examples/updater_scene.py' },
   { id: 'autozoom', label: 'Fit shapes in the view', path: 'examples/auto_zoom_scene.py' },

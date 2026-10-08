@@ -551,7 +551,7 @@ are suspended while their animation samples; other callbacks can query sampled
 positions to follow them. Moving camera frames update even when not scene roots.
 Callbacks remain Python-only and are excluded from exported frame data. See
 **Follow objects each frame** for a spinner, follower and tracking camera.
-This adds object callbacks, not full scene updaters, always_redraw,
+This adds object callbacks, not full scene updaters,
 UpdateFromFunc or custom animation subclasses. Crossfade queries use the more
 visible snapshot; child queries retain this runtime's existing group coordinates.
 
@@ -566,3 +566,15 @@ save_state/Restore, easing, parallel timelines and Succession use the existing
 animation pipeline. Values occupy the tracker's x coordinate. ComplexValueTracker,
 point-array access, and full numeric display classes remain unsupported. See
 **Animate a shared value** for two moving shapes and a live connector.
+
+
+`always_redraw(factory)` creates an object and rebuilds its geometry/styles from
+factory() each update. It follows sampled ValueTracker/animation state and supports
+suspend/resume/clear_updaters. The factory must return a supported Mobject.
+`mobject.become(target)` replaces geometry/styles, preserving source identity,
+callbacks, suspension and checkpoint. Existing child identities are retained in
+order where possible; growing/shrinking families add/drop children. Copies own
+their redraw updates but factory closures still refer to the original variables.
+The Python class does not change when becoming a different shape. Optional native
+become fitting/stretch arguments and general scene restructuring remain unsupported.
+See **Rebuild shapes each frame** for changing dimensions, suspension and freezing.

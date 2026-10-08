@@ -16,6 +16,80 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_become_keeps_identity_callbacks_checkpoint_and_independent_target(self):
+        source = lite.Circle().save_state()
+        callback = lambda m:m.set_color(lite.GREEN)
+        source.add_updater(callback)
+        target = lite.Square(side_length=3).shift(lite.RIGHT)
+        self.assertIs(source.become(target), source)
+        self.assertEqual(source.to_dict()['type'], 'square')
+        self.assertEqual(source.get_center(), lite.RIGHT)
+        target.shift(lite.RIGHT)
+        self.assertEqual(source.get_center(), lite.RIGHT)
+        self.assertEqual(source.get_updaters(), [callback])
+        source.restore()
+        self.assertEqual(source.to_dict()['type'], 'circle')
+        self.assertEqual(source.get_updaters(), [callback])
+        before=source.to_dict()
+        for invalid in [3,lite.ValueTracker(),lite.MovingCameraScene().camera.frame]:
+            with self.assertRaises((TypeError,ValueError)): source.become(invalid)
+            self.assertEqual(source.to_dict(),before)
+
+    def test_become_group_preserves_prefix_links_and_aligns_shared_aliases(self):
+        first = lite.Circle()
+        group = lite.Group(first)
+        group.become(lite.Group(lite.Square(),lite.Triangle()))
+        self.assertIs(group[0], first)
+        self.assertEqual(first.to_dict()['type'],'square')
+        self.assertEqual(len(group),2)
+        shared = lite.Circle()
+        group.become(lite.Group(lite.Group(shared),lite.Group(shared)))
+        self.assertIs(group[0].children[0],group[1].children[0])
+        group.become(lite.Group(lite.Group(lite.Square()),lite.Group(lite.Triangle())))
+        self.assertIsNot(group[0].children[0],group[1].children[0])
+        self.assertEqual(group[0].children[0].to_dict()['type'],'square')
+        self.assertEqual(group[1].children[0].to_dict()['type'],'triangle')
+        group.become(lite.Group())
+        self.assertEqual(len(group),0)
+
+    def test_redraw_rebuilds_sampled_geometry_and_copies_update_themselves(self):
+        tracker=lite.ValueTracker(1)
+        circle=lite.always_redraw(lambda:lite.Circle(radius=tracker.get_value()))
+        original=circle.copy()
+        scene=lite.Scene().add(tracker,circle)
+        scene.play(tracker.animate.set_value(3),run_time=2,rate_func=lite.linear)
+        self.assertEqual(scene.frames[15]['mobjects'][0]['radius'],2)
+        self.assertEqual(circle.radius,3)
+        tracker.set_value(4)
+        original.update()
+        self.assertEqual(original.radius,4)
+        self.assertEqual(circle.radius,3)
+        self.assertEqual(len(circle.get_updaters()),1)
+        self.assertEqual(scene.frames[15]['mobjects'][0]['radius'],2)
+        circle.suspend_updating().update()
+        self.assertEqual(circle.radius,3)
+        circle.resume_updating()
+        self.assertEqual(circle.radius,4)
+        circle.clear_updaters()
+        tracker.set_value(2)
+        circle.update()
+        self.assertEqual(circle.radius,4)
+
+    def test_redraw_errors_leave_last_valid_geometry_and_gallery_freezes(self):
+        with self.assertRaises(TypeError): lite.always_redraw(3)
+        with self.assertRaises(TypeError): lite.always_redraw(lambda:3)
+        valid=[True]
+        circle=lite.always_redraw(lambda:lite.Circle() if valid[0] else 3)
+        before=circle.to_dict()
+        valid[0]=False
+        with self.assertRaises(TypeError): circle.update()
+        self.assertEqual(circle.to_dict(),before)
+        result=json.loads(lite.render_scene((ROOT/'examples/redraw_scene.py').read_text()))
+        self.assertEqual(result['duration'],8)
+        self.assertEqual(result['frames'][60]['mobjects'][0]['radius'],1.5)
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['radius'],1)
+        self.assertEqual(result['frames'][-1]['mobjects'][1]['children'][0]['side_length'],.5)
+
     def test_value_tracker_values_arithmetic_identity_and_validation(self):
         tracker = lite.ValueTracker(2)
         original = tracker

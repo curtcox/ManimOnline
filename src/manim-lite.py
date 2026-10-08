@@ -443,6 +443,41 @@ class Mobject:
     def copy(self):
         return copy.deepcopy(self)
 
+    def become(self, mobject):
+        """Replace supported geometry while retaining identity and updater registrations."""
+        if not isinstance(mobject, Mobject):
+            raise TypeError('become expects a Mobject')
+        for special in (CameraFrame, ValueTracker):
+            if isinstance(self, special) != isinstance(mobject, special):
+                raise ValueError('Camera frames and trackers can only become their own kind')
+        target = mobject.copy()
+        if isinstance(self, CameraFrame):
+            if (target.angle or target.position[2] or target.get_width() <= 0 or target.get_height() <= 0 or
+                    not all(math.isfinite(v) for v in (*target.position,target.get_width(),target.get_height()))):
+                raise ValueError('Camera frames must remain positive axis-aligned XY rectangles')
+        replacements, used = {}, set()
+        def replace(source, replacement):
+            replacements[id(replacement)] = source
+            used.add(source)
+            children = []
+            for index, child in enumerate(replacement.children):
+                if id(child) in replacements:
+                    member = replacements[id(child)]
+                else:
+                    member = source.children[index] if index < len(source.children) else child.copy()
+                    if member in used:
+                        member = child.copy()
+                    replace(member, child)
+                children.append(member)
+            retained = {key:source.__dict__[key] for key in ('updaters','updating_suspended','_saved_state')
+                        if key in source.__dict__}
+            state = copy.deepcopy({key:value for key,value in replacement.__dict__.items()
+                                   if key not in ('children','updaters','updating_suspended','_saved_state','_sampled_geometry_center')})
+            state.update(retained, children=children)
+            source.__dict__ = state
+        replace(self, target)
+        return self
+
     def save_state(self):
         # Replace the checkpoint without nesting earlier checkpoints inside it.
         self._saved_state = copy.deepcopy({key: value for key, value in self.__dict__.items()
@@ -512,6 +547,16 @@ for _name, _operation in [('add', operator.add), ('sub', operator.sub),
                            ('pow', operator.pow)]:
     setattr(ValueTracker, '__' + _name + '__', _tracker_arithmetic(_operation))
     setattr(ValueTracker, '__i' + _name + '__', _tracker_arithmetic(_operation, True))
+
+
+def always_redraw(func):
+    if not callable(func):
+        raise TypeError('always_redraw expects a callable returning a Mobject')
+    mobject = func()
+    if not isinstance(mobject, Mobject):
+        raise TypeError('always_redraw factory must return a Mobject')
+    # Use the updater argument so copies regenerate themselves, not the original.
+    return mobject.add_updater(lambda current: current.become(func()))
 
 
 class VMobject(Mobject):
@@ -1416,7 +1461,7 @@ class Animate(Transform):
     def __getattr__(self, name):
         if name.startswith('__'):
             raise AttributeError(name)
-        if name not in ('set_value', 'increment_value', 'shift', 'move_to', 'set_width', 'set_height', 'move_arc_center_to', 'put_start_and_end_on', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'set_points_as_corners', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
+        if name not in ('become', 'set_value', 'increment_value', 'shift', 'move_to', 'set_width', 'set_height', 'move_arc_center_to', 'put_start_and_end_on', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'set_points_as_corners', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
             raise NotImplementedError(f'animate.{name} is not supported yet')
         def apply(*args, **kwargs):
             getattr(self.target, name)(*args, **kwargs)
@@ -1741,7 +1786,7 @@ class MovingCameraScene(Scene):
     camera_class = MovingCamera
 
 
-EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'VMobject', 'CubicBezier', 'Circle', 'Arc', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
+EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'CubicBezier', 'Circle', 'Arc', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'MathTex', 'Group', 'VGroup', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'TransformFromCopy',

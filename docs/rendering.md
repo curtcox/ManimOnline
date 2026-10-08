@@ -574,7 +574,7 @@ expose their more visible snapshot to queries. Transform completion/checkpoint
 restoration preserve source callback registrations. Callbacks/suspension/private
 sample state never enter JSON. Frozen earlier frames remain immutable.
 
-Scene callbacks, always_redraw, custom UpdateFromFunc animations,
+Scene callbacks, custom UpdateFromFunc animations,
 and changing scene membership/family structure during callback execution still
 need implementation. Group children retain the existing local coordinate query
 semantics. Tests cover waits, time totals, following sampled movement, camera
@@ -604,3 +604,31 @@ Local Pyodide playback verified value=1 at three seconds: dot at (1,-1), square
 at (-1,1), and matching connector endpoints. Consecutive decrements ended with
 both shapes on x=0 at seven seconds, with exactly three visible shapes. DOT
 rendered after switching.
+
+
+## Geometry regeneration
+
+Mobject.become replaces supported geometry/style state while retaining root identity,
+callbacks, suspension and checkpoints. Targets are copied before replacement;
+ordered existing child links are reused, new children are copied, excess children
+are removed, and shared target aliases are retained. Source aliases split when
+separate target children require independent geometry. Python classes stay unchanged;
+use generic Mobject queries for cross-type replacement. Camera/tracker roots only
+accept their own kind, and camera geometry is validated before mutation.
+
+always_redraw attaches a callback that calls become(factory()) each update, following
+the [official continuous-update utility](https://docs.manim.community/en/stable/_modules/manim/animation/updaters/mobject_update_utils.html).
+The callback acts on its argument so deep copies regenerate themselves. Root callback
+registrations stay intact across regeneration, even if the factory returns fresh
+objects each time. Factories execute in Python and see exposed animation samples.
+Suspension and callback removal freeze geometry; invalid factory results preserve
+the last valid object and fail the render. Native become fitting/stretch parameters,
+full family identity alignment and scene restructuring remain open. Tests cover
+copy isolation, checkpoint/callback retention, child links/aliases, sampled dimensions,
+suspension/freezing, factory errors, immutable earlier frames and gallery playback.
+
+Local Pyodide gallery playback verified the suspended circle stays at radius 1.5
+at four seconds while the group continues shrinking. After resumption the circle
+ends at radius 1, and the group's square stays frozen at side .5 after callback
+removal. SVG dimensions were 75/50 pixels at four seconds and 50/25 at the end.
+DOT rendered after switching.

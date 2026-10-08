@@ -110,3 +110,8 @@ Read `examples/value_tracker_scene.py` for shared animated values, callback orde
 and consecutive relative increments. Trackers participate in timeline/updater
 sampling but stay invisible in root and grouped rendering. Preserve finite real
 validation and identity for in-place arithmetic.
+
+Read `examples/redraw_scene.py` for factory-driven geometry, suspension/resumption,
+and freezing callbacks. become must preserve source callbacks/checkpoints and
+independent target geometry. Redraw copies update the callback argument; do not
+capture a fixed original object in the regeneration callback.
