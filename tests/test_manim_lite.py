@@ -16,6 +16,100 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_double_arrow_defaults_and_independent_shapes(self):
+        arrow=lite.DoubleArrow()
+        self.assertIsInstance(arrow,lite.Arrow)
+        self.assertIsInstance(arrow,lite.Line)
+        self.assertIsInstance(arrow.tip,lite.ArrowTriangleFilledTip)
+        self.assertIsInstance(arrow.start_tip,lite.ArrowTriangleFilledTip)
+        self.assertPointAlmostEqual(arrow.get_start(),(-.75,0,0))
+        self.assertPointAlmostEqual(arrow.get_end(),(.75,0,0))
+        self.assertEqual(len(arrow.get_tips()),2)
+        mixed=lite.DoubleArrow(lite.LEFT*2,lite.RIGHT*2,buff=0,
+                               tip_shape_start=lite.ArrowSquareTip,
+                               tip_shape_end=lite.ArrowCircleFilledTip,
+                               tip_shape=lite.StealthTip,tip_length=.6,color=lite.BLUE)
+        self.assertIsInstance(mixed.start_tip,lite.ArrowSquareTip)
+        self.assertIsInstance(mixed.tip,lite.ArrowCircleFilledTip)
+        self.assertAlmostEqual(mixed.tip.length,.6)
+        self.assertEqual(mixed.start_tip.stroke_color,lite.BLUE)
+        self.assertEqual(mixed.tip.fill_color,lite.BLUE)
+        self.assertEqual(mixed.start_tip.fill_opacity,0)
+        self.assertEqual(mixed.tip.fill_opacity,1)
+        legacy=lite.DoubleArrow(tip_shape=lite.StealthTip)
+        self.assertIsInstance(legacy.tip,lite.StealthTip)
+        self.assertIsInstance(legacy.start_tip,lite.ArrowTriangleFilledTip)
+        for kwargs in ({'tip_shape_start':lite.Dot},{'tip_shape_end':lite.ArrowTip},
+                       {'buff':-1},{'tip_length':float('nan')}):
+            with self.assertRaises((TypeError,ValueError)):
+                lite.DoubleArrow(**kwargs)
+
+    def test_double_arrow_transformed_tips_cleanup_and_restore(self):
+        arrow=lite.DoubleArrow(lite.LEFT*3,lite.RIGHT*3,buff=0,tip_length=.5)
+        endtip,starttip=arrow.tip,arrow.start_tip
+        lengths=[tip.length for tip in (endtip,starttip)]
+        for factor in (.4,-2,1.5):
+            arrow.scale(factor).rotate(.4).shift(lite.UP)
+            for tip,length in zip((endtip,starttip),lengths):
+                self.assertAlmostEqual(tip.length*abs(arrow.geometry_scale),length)
+            arrow.put_start_and_end_on((-2,1,0),(3,-2,0))
+            self.assertPointAlmostEqual(arrow._point_to_world(endtip.tip_point),arrow.get_end())
+            self.assertPointAlmostEqual(arrow._point_to_world(starttip.tip_point),arrow.get_start())
+            self.assertPointAlmostEqual(arrow.get_points()[0],arrow._point_to_world(starttip.base))
+            self.assertPointAlmostEqual(arrow.get_points()[-1],arrow._point_to_world(endtip.base))
+        scene=lite.Scene()
+        scene.add(arrow)
+        before=arrow.to_dict()
+        arrow.save_state()
+        scene.play(arrow.animate.scale(.8,scale_tips=True).rotate(.3),run_time=.2)
+        scene.play(lite.Restore(arrow),run_time=.2)
+        self.assertIs(arrow.tip,endtip)
+        self.assertIs(arrow.start_tip,starttip)
+        self.assertEqual(arrow.to_dict(),before)
+        copied=arrow.copy()
+        self.assertIsNot(copied.start_tip,starttip)
+        tips=arrow.pop_tips()
+        self.assertEqual(tips.children,[endtip,starttip])
+        self.assertPointAlmostEqual(arrow.get_points()[0],arrow.get_start())
+        self.assertPointAlmostEqual(arrow.get_points()[-1],arrow.get_end())
+        arrow.add_tip(tip=tips[1],at_start=True).add_tip(tip=tips[0])
+        self.assertIs(arrow.tip,endtip)
+        self.assertIs(arrow.start_tip,starttip)
+
+    def test_double_arrow_gallery_both_endpoints_and_sampled_shafts(self):
+        result=json.loads(lite.render_scene((ROOT/'examples/double_arrow_scene.py').read_text()))
+        self.assertEqual(result['duration'],9)
+        for frame in result['frames'][30:106]:
+            marker_group=frame['mobjects'][2]
+            parent=lite.Mobject()
+            parent.__dict__.update(marker_group)
+            parent._type=marker_group['type']
+            parent.children=[]
+            parent._sampled_geometry_center=lite.Vector(marker_group['geometry_center'])
+            for index,arrow in enumerate(frame['mobjects'][:2]):
+                host=lite.DoubleArrow(buff=0)
+                host.__dict__.update(arrow)
+                host._type=arrow['type']
+                host.children=[]
+                host._sampled_geometry_center=lite.Vector(arrow['geometry_center'])
+                for offset,expected in enumerate(host.get_start_and_end()):
+                    marker=marker_group['children'][index*2+offset]
+                    self.assertPointAlmostEqual(parent._point_to_world(lite.Vector(marker['position'])),expected)
+                self.assertEqual({child['_tip_role'] for child in arrow['children']},{'start','end'})
+                for child in arrow['children']:
+                    tip=lite.ArrowTriangleFilledTip()
+                    tip.__dict__.update(child)
+                    tip._type=child['type']
+                    tip.children=[]
+                    tip._sampled_geometry_center=lite.Vector(child['geometry_center'])
+                    self.assertPointAlmostEqual(arrow['shaft_'+child['_tip_role']],tip.base)
+        for a,b in zip(result['frames'][30]['mobjects'][:2],result['frames'][105]['mobjects'][:2]):
+            for key in ('position','angle','geometry_scale','start','end'):
+                self.assertEqual(a[key],b[key])
+            for c,d in zip(a['children'],b['children']):
+                self.assertEqual(lite._path_curves(c),lite._path_curves(d))
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+
     def test_circle_square_tip_anchors_styles_and_editable_geometry(self):
         import math
         for cls,filled,count,point,base,length in (

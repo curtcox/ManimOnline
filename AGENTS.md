@@ -388,3 +388,10 @@ first anchor. Square length sets side length, inherited tip length measures the
 diagonal, and start_angle is metadata (native constructor does not pass it to
 Square). Preserve the anchor order: shaft bases use the ordered curve midpoint.
 Both filled/outline variants flow through existing family/path rendering.
+
+
+Read `examples/double_arrow_scene.py` for DoubleArrow with independently configured
+tip_shape_start/tip_shape_end, both endpoint markers and restoration. DoubleArrow
+subclasses Arrow and retains frame type arrow; never introduce a second renderer
+implementation. tip_shape_end overrides tip_shape; start shape defaults separately
+to filled triangle. Both tips use the existing role tags and sampled shaft bases.

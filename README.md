@@ -1165,3 +1165,12 @@ Circle `start_angle` selects its first anchor; square `start_angle` is metadata,
 as in the native constructor. Square tip length queries measure the corner-to-
 opposite-corner diagonal. These classes support the existing path editing,
 transforms, partial curves, tip queries, copying and restoration.
+
+
+Try **Animate two-ended arrows** (`examples/double_arrow_scene.py`). `DoubleArrow`
+extends Arrow and adds a real filled triangular start tip by default. Configure
+each end independently with `tip_shape_start` and `tip_shape_end`; the latter
+replaces `tip_shape` for the end tip when both are supplied. It inherits Arrow's
+endpoint buffer, sizing caps, fixed-size tip scaling, endpoint editing, tip
+management, copying and checkpoint animation. Tip coordinates retain the
+runtime's parent-local convention; curved double arrows remain unfinished.

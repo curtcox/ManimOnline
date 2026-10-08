@@ -14,6 +14,7 @@ const ExampleCatalog = Object.freeze([
   { id: 'flash', label: 'Traveling outline highlights', path: 'examples/passing_flash_scene.py' },
   { id: 'numberline', label: 'Follow numeric coordinates', path: 'examples/number_line_scene.py' },
   { id: 'axes', label: 'Animate Cartesian coordinates', path: 'examples/axes_scene.py' },
+  { id: 'doublearrow', label: 'Animate two-ended arrows', path: 'examples/double_arrow_scene.py' },
   { id: 'roundsquaretips', label: 'Render circular and square arrow tips', path: 'examples/round_square_tips_scene.py' },
   { id: 'arrowtips', label: 'Manage arrow tips and shafts', path: 'examples/arrow_tips_scene.py' },
   { id: 'tipgeometry', label: 'Edit arrow tip outlines', path: 'examples/tip_geometry_scene.py' },

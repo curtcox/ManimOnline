@@ -1702,7 +1702,7 @@ outlines without adding an implicit head; older packets still use the legacy hea
 
 The gallery exercises two heads, fixed-size scaling, endpoint edits, replacing the
 heads with a stealth tip, restoration and cleanup. General curved-tip APIs,
-DoubleArrow, Arrow partial curves and cross-type path morphs,
+Arrow partial curves and cross-type path morphs,
 and native world-coordinate child semantics remain open.
 
 Reference: [Manim TipableVMobject API](https://docs.manim.community/en/stable/reference/manim.mobject.geometry.arc.TipableVMobject.html).
@@ -1743,6 +1743,38 @@ alignment.
 
 
 Verification: all 338 Python and 77 Node tests passed. Local Pyodide playback
-showed two buffered shafts, four styled tip outlines and two endpoint markers
+showed two trimmed shafts, four styled tip outlines and two endpoint markers
 at six seconds, restored geometry at seven seconds, and no geometry at nine
 seconds. Switching to DOT rendered the Editor → Render → Preview graph.
+
+
+## Double-ended straight arrows
+
+DoubleArrow extends Arrow, adds a start tip after constructing the end tip, and
+uses the existing two-role shaft geometry. tip_shape_start defaults to
+ArrowTriangleFilledTip independently of the end shape. tip_shape_end overrides
+tip_shape when both are provided; other positional/keyword arguments forward to
+Arrow. No new frame or renderer type is introduced.
+
+The class inherits endpoint buffering and queries, both-end tip management,
+length/stroke caps, fixed-size or uniform tip scaling, rotation and direct or
+animated endpoint edits. Copying yields independent tip children. Restore
+animation preserves existing matching tip identities; pop_tips returns both
+original tip objects and restores the full shaft. Native world-coordinate child
+semantics, curved double arrows and Arrow partial-path/cross-type morph behavior
+remain open.
+
+Reference: [Manim DoubleArrow implementation](https://docs.manim.community/en/stable/_modules/manim/mobject/geometry/line.html).
+
+Tests verify default tips/buffer, separate shape configuration and precedence,
+validation, negative/positive scaling, animated endpoint markers, per-frame shaft
+bases, checkpoint geometry, child identity retention, copying and removal/reuse.
+The gallery contains a default triangular DoubleArrow and a square/circular
+DoubleArrow, with four live endpoint markers, pose and endpoint animations,
+restoration and final cleanup.
+
+
+Verification: all 341 Python and 77 Node tests passed. Local Pyodide playback
+showed two shafts, four tip paths and four endpoint markers at six seconds,
+restored horizontal geometry at seven seconds, and no geometry at nine seconds.
+Switching to DOT rendered the Editor → Render → Preview graph.
