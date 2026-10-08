@@ -147,3 +147,11 @@ child identities, copying/checkpoints, atomic validation and animated frames.
 Local Pyodide playback verifies a fixed own-outline corner during grid/row changes,
 restoration and complete family removal. Zero-scale and glyph/native world-point
 semantics remain open.
+
+
+Standalone triangular/filled triangular/stealth arrow-tip objects now have editable
+closed paths, styles, point/base/vector/angle/length properties, family layout,
+transforms, morphing and restoration. Python tests and Pyodide playback verify
+queries and marker tracking. Arrow itself still lacks real tip children, native
+attachment/removal, shaft trimming and fixed-size tip scaling; circle/square tips
+and full tip-family compatibility remain open.

@@ -4401,6 +4401,94 @@ self.wait(1)""")
         self.assertAlmostEqual(square._bounds()[0], 0.5)
         self.assertAlmostEqual(square._bounds()[1], 0.5)
 
+    def test_tip_geometry_queries_transforms_and_styles(self):
+        outline = lite.ArrowTriangleTip(length=2,width=1,color=lite.BLUE)
+        self.assertPointAlmostEqual(outline.tip_point,(-1,0,0))
+        self.assertPointAlmostEqual(outline.base,(1,0,0))
+        self.assertPointAlmostEqual(outline.vector,(-2,0,0))
+        self.assertAlmostEqual(abs(outline.tip_angle),lite.PI)
+        self.assertAlmostEqual(outline.length,2)
+        self.assertEqual(outline.get_num_curves(),3)
+        self.assertTrue(outline.is_closed())
+        self.assertEqual((outline.fill_opacity,outline.stroke_width),(0,3))
+        filled = lite.ArrowTriangleFilledTip(length=2,width=1,color=lite.RED)
+        self.assertEqual((filled.fill_opacity,filled.stroke_width),(1,0))
+        for scale in (0,2,-1):
+            tip = filled.copy().scale(scale).rotate(lite.PI/2).shift(lite.UP)
+            self.assertPointAlmostEqual(tip.tip_point,(0,1-scale,0))
+            self.assertPointAlmostEqual(tip.base,(0,1+scale,0))
+            self.assertAlmostEqual(tip.length,2*abs(scale))
+        stealth = lite.StealthTip(length=1.6)
+        self.assertPointAlmostEqual(stealth.tip_point,(1,0,0))
+        self.assertPointAlmostEqual(stealth.base,lite.ORIGIN)
+        self.assertAlmostEqual(stealth.length,1.6)
+        self.assertEqual(stealth.get_num_curves(),4)
+        self.assertTrue(stealth.is_closed())
+        self.assertAlmostEqual(stealth.tip_angle,0)
+        self.assertEqual(len(stealth.family_members_with_points()),1)
+
+    def test_tip_points_copy_restoration_partial_paths_and_family_layout(self):
+        tip = lite.ArrowTriangleFilledTip(length=1,width=.8).rotate(.3).scale(1.2)
+        tip.add(lite.Dot(lite.UP))
+        tip.save_state()
+        saved = tip.to_dict()
+        original = tip.get_points()
+        copied = tip.copy().shift(lite.RIGHT)
+        self.assertNotEqual(copied.tip_point,tip.tip_point)
+        tip.reverse_direction()
+        tip.restore()
+        self.assertEqual(tip.to_dict(),saved)
+        self.assertEqual(tip.get_points(),original)
+        partial = tip.get_subcurve(0,.5)
+        self.assertPointAlmostEqual(partial.get_start(),tip.tip_point)
+        tip.clear_points()
+        with self.assertRaises(ValueError):
+            _ = tip.base
+        tip.set_points(original)
+        self.assertPointAlmostEqual(tip.tip_point,original[0])
+        group = lite.VGroup(lite.ArrowTriangleTip(),lite.StealthTip()).arrange_in_grid(rows=1)
+        self.assertEqual(len(group.family_members_with_points()),2)
+
+    def test_tip_geometry_validation_and_zero_dimensions(self):
+        with self.assertRaises(NotImplementedError):
+            lite.ArrowTip()
+        for cls in (lite.ArrowTriangleTip,lite.ArrowTriangleFilledTip,lite.StealthTip):
+            for value in (-1,float('nan'),float('inf'),True):
+                with self.assertRaises(ValueError):
+                    cls(length=value)
+                with self.assertRaises(ValueError):
+                    cls(start_angle=value if value != -1 else float('inf'))
+            tip = cls(length=0)
+            self.assertAlmostEqual(tip.length,0)
+            json.dumps(tip.to_dict(),allow_nan=False)
+        for value in (-1,float('inf'),True):
+            with self.assertRaises(ValueError):
+                lite.ArrowTriangleTip(width=value)
+        tip = lite.ArrowTriangleTip(length=1,width=.5,start_angle=0)
+        self.assertPointAlmostEqual(tip.tip_point,(.5,0,0))
+        self.assertPointAlmostEqual(tip.base,(-.5,0,0))
+        huge = lite.ArrowTriangleTip(start_angle=1e308)
+        self.assertTrue(all(lite.math.isfinite(v) for point in huge.get_points() for v in point))
+
+    def test_tip_gallery_live_queries_morph_restore_and_cleanup(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/tip_geometry_scene.py').read_text()))
+        self.assertEqual(result['duration'],9)
+        for index in (30,45,60,75,90,105):
+            frame = result['frames'][index]
+            data = frame['mobjects'][1]
+            tip = lite.ArrowTriangleFilledTip()
+            tip.__dict__.update(data)
+            tip._type = data['type']
+            tip._sampled_geometry_center = lite.Vector(data['geometry_center'])
+            tip.children = []
+            self.assertPointAlmostEqual(tip.tip_point,frame['mobjects'][3]['position'])
+            self.assertPointAlmostEqual(tip.base,frame['mobjects'][4]['position'])
+        initial,restored = [result['frames'][i]['mobjects'][1] for i in (30,105)]
+        for key in ('position','angle','geometry_scale','vertices','geometry_center'):
+            self.assertEqual(initial.get(key),restored.get(key))
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+        json.dumps(result,allow_nan=False)
+
     def test_shape_child_layout_preserves_own_path_and_world_spacing(self):
         for factory in (lite.Rectangle,lite.Circle,lite.VMobject,lite.Mobject):
             for scale in (.8,-1.2):

@@ -1800,6 +1800,85 @@ class TangentLine(Line):
         self.length,self.d_alpha = length,d_alpha
 
 
+class ArrowTip(VMobject):
+    """Editable tip geometry; subclasses supply their closed outline."""
+    def __init__(self, **kwargs):
+        if type(self) is ArrowTip:
+            raise NotImplementedError('ArrowTip requires a concrete tip shape')
+        super().__init__(**kwargs)
+
+    @property
+    def tip_point(self):
+        return self.get_start()
+
+    @property
+    def base(self):
+        # Native tips use the midpoint of their ordered cubic curve array.
+        curves = _path_curves(self.to_dict())
+        if not curves:
+            raise ValueError('The tip has no completed curves')
+        index = len(curves)/2
+        return self._point_to_world(VMobject._bezier_point(curves[min(int(index),len(curves)-1)],index-int(index)))
+
+    @property
+    def vector(self):
+        return self.tip_point-self.base
+
+    @property
+    def tip_angle(self):
+        vector = self.vector
+        return math.atan2(vector[1],vector[0])
+
+    @property
+    def length(self):
+        return math.hypot(*self.vector)
+
+    @staticmethod
+    def _tip_dimension(value, name):
+        if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or value < 0:
+            raise ValueError('Tip '+name+' must be nonnegative and finite')
+
+
+class ArrowTriangleTip(ArrowTip):
+    def __init__(self, length=.35, width=.35, start_angle=PI,
+                 fill_opacity=0, stroke_width=3, **kwargs):
+        self._tip_dimension(length,'length')
+        self._tip_dimension(width,'width')
+        if isinstance(start_angle,bool) or not isinstance(start_angle,(int,float)) or not math.isfinite(start_angle):
+            raise ValueError('Tip start_angle must be finite')
+        super().__init__(fill_opacity=fill_opacity,stroke_width=stroke_width,**kwargs)
+        phase = math.atan2(math.sin(start_angle),math.cos(start_angle))
+        vertices = [Vector((math.cos(phase+i*TAU/3),math.sin(phase+i*TAU/3),0)) for i in range(3)]
+        xs,ys = [v[0] for v in vertices],[v[1] for v in vertices]
+        cx,cy = (min(xs)+max(xs))/2,(min(ys)+max(ys))/2
+        sx,sy = max(xs)-min(xs),max(ys)-min(ys)
+        points = [Vector(((v[0]-cx)*length/sx,(v[1]-cy)*width/sy,0)) for v in vertices]
+        self.set_points_as_corners(points+[points[0]])
+        self.start_angle = start_angle
+
+
+class ArrowTriangleFilledTip(ArrowTriangleTip):
+    def __init__(self, fill_opacity=1, stroke_width=0, **kwargs):
+        super().__init__(fill_opacity=fill_opacity,stroke_width=stroke_width,**kwargs)
+
+
+class StealthTip(ArrowTip):
+    def __init__(self, length=.175, start_angle=PI, fill_opacity=1,
+                 stroke_width=3, **kwargs):
+        self._tip_dimension(length,'length')
+        if isinstance(start_angle,bool) or not isinstance(start_angle,(int,float)) or not math.isfinite(start_angle):
+            raise ValueError('Tip start_angle must be finite')
+        super().__init__(fill_opacity=fill_opacity,stroke_width=stroke_width,**kwargs)
+        factor = length/3.2
+        points = [Vector((x*factor,y*factor,0)) for x,y in ((2,0),(-1.2,1.6),(0,0),(-1.2,-1.6),(2,0))]
+        self.set_points_as_corners(points)
+        self.start_angle = start_angle
+
+    @property
+    def length(self):
+        return math.hypot(*self.vector)*1.6
+
+
 class Arrow(Line):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -4078,7 +4157,7 @@ class MovingCameraScene(Scene):
     camera_class = MovingCamera
 
 
-EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'Arrow',
+EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'StealthTip', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'NumberPlane', 'ComplexPlane', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',

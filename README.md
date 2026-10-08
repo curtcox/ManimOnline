@@ -1129,3 +1129,20 @@ preserves the family center. Supported rotation/nonzero signed scale, animation,
 child references, and checkpoint restoration use the same behavior as groups.
 Zero-scale families, glyph bounds, and native world-space child coordinates
 remain unfinished.
+
+
+### Editable arrow-tip geometry
+
+Try **Edit arrow tip outlines** (`examples/tip_geometry_scene.py`).
+`ArrowTriangleTip`, `ArrowTriangleFilledTip`, and `StealthTip` now provide closed
+editable VMobject outlines, styles, path queries, layout, transforms, morphing,
+copying, and restoration. The abstract `ArrowTip` base supplies `tip_point`,
+`base`, `vector`, `tip_angle`, and `length` properties. Dimensions are nonnegative
+and finite; triangle `width` and `start_angle` control its outline. Triangle
+bounds are centered locally. Stealth tips use the concave outline and an
+enclosing-triangle length; their start_angle is metadata, as in the referenced
+constructor.
+
+These are standalone tip objects. Arrow still uses its existing renderer-drawn
+head; native tip attachment, shaft trimming, Arrow tip APIs and fixed-size tip
+scaling remain unfinished. Circle/square tip classes are also unfinished.

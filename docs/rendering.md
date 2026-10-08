@@ -1646,3 +1646,32 @@ Local Pyodide playback showed four colored child dots in a grid at four seconds,
 the restored row at seven seconds, and no rectangle/dots at nine seconds. The
 white corner reference remained aligned. Switching to DOT rendered the editor
 flow graph. All 328 Python and 76 Node tests passed.
+
+
+## Standalone editable arrow-tip geometry
+
+ArrowTip is now an abstract VMobject base with geometry-derived tip_point, base,
+vector, tip_angle and length properties. Triangular outline/filled classes and
+StealthTip construct closed corner paths and use the existing SVG/path/morph
+flow. Triangle length/width and angle inputs are validated; a stable trig phase
+avoids coincident vertices caused by adding small increments to huge angles.
+Triangle bounds are centered in local coordinates. Base sampling uses the
+ordered curve-array midpoint, matching native tip anchor semantics, rather than
+the runtime's distance-based point_from_proportion. Stealth length uses its
+enclosing-triangle factor; its start_angle is stored metadata.
+
+These objects support positive/negative/zero scaling, rotation, own-point APIs,
+partial curves, family filtering, layout, callbacks, copying and checkpoints.
+They are standalone geometry. Arrow still renders an implicit head and does not
+yet attach a real tip child or implement native shaft trimming, tip management,
+fixed-size tip scaling, or circle/square tip variants.
+
+Reference: [official Manim arrow-tip implementation](https://docs.manim.community/en/stable/_modules/manim/mobject/geometry/tips.html).
+
+Tests cover constructor styles, tip/base/vector/angle/length, transformed queries,
+zero dimensions, abstract/invalid inputs, stable huge-angle construction, editing,
+copy/restore, partial paths, family layout and animated marker alignment. Local
+Pyodide playback showed a red stealth morph with white tip and purple base markers
+at six seconds, restored green triangular geometry and its original anchors at
+seven seconds, and no paths/dots at nine seconds. Switching to DOT rendered the
+editor flow graph. All 332 Python and 76 Node tests passed.

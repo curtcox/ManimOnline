@@ -360,3 +360,13 @@ children, not split()/iteration, which include the own outline for ordinary
 shapes. arrange_submobjects delegates dynamically to arrange and is supported
 in .animate chains. Preserve parent outlines with center=False; optional
 centering intentionally translates the whole family. Grid preserves family center.
+
+
+Read `examples/tip_geometry_scene.py` for standalone editable tip outlines and
+live point/base queries during morphs. ArrowTip is an abstract VMobject base;
+ArrowTriangleTip/ArrowTriangleFilledTip and StealthTip supply closed corner paths.
+Tip base queries use the midpoint of the ordered cubic array, not distance-based
+path sampling, and tip_point uses the first path point. Stealth length is 1.6
+times its base-to-tip span. Triangle angles are reduced to a stable trig phase
+before constructing distinct vertices. Arrow attachment remains a separate
+milestone: renderer-drawn Arrow heads are not yet Python child objects.
