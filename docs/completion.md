@@ -39,7 +39,7 @@ movement, vertex interpolation, and cleanup. Unequal connected path/polygon
 counts now align through exact cubic subdivision, with tests and local Pyodide
 checks for continuous morphing, restored pivots, and the final polygon; connected cubic paths support tracing, parameter sampling,
 and equal-count control-point interpolation, with Python/SVG tests and local
-Pyodide gallery checks. Primitive circle/ellipse/arc/straight outlines now convert into
+Pyodide gallery checks. Primitive circle/ellipse/arc/sector/straight outlines now convert into
 this morph pipeline, with Python tests and local Pyodide checks for primitive
 transitions, restoration, and the terminal curve. Recursive ordered VGroup alignment now has frame tests for nested/unequal/empty
 families, leaf wrapping, copy and sequential restoration. General Mobject family

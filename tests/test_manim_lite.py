@@ -16,6 +16,61 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_sectors_have_closed_curved_outlines_and_native_style_defaults(self):
+        ring = lite.AnnularSector(inner_radius=1, outer_radius=2)
+        self.assertIsInstance(ring, lite.Arc)
+        self.assertIsInstance(ring, lite.VMobject)
+        self.assertEqual(ring.curves[0][0], [1,0,0])
+        self.assertEqual(ring.curves[-1][-1], [1,0,0])
+        self.assertEqual(len(ring.curves), 6)
+        self.assertAlmostEqual(ring.curves[2][-1][1], 2)
+        self.assertEqual(ring.fill_opacity, 1)
+        self.assertEqual(ring.stroke_width, 0)
+        wedge = lite.Sector(radius=2, angle=-lite.PI)
+        self.assertEqual(wedge.inner_radius, 0)
+        self.assertEqual(wedge.get_start(), lite.ORIGIN)
+        self.assertEqual(wedge.get_end(), lite.ORIGIN)
+        self.assertAlmostEqual(wedge.curves[4][-1][0], -2)
+        for invalid in [-1, True, float('nan'), float('inf'), '2']:
+            with self.assertRaises(ValueError): lite.Sector(radius=invalid)
+            with self.assertRaises(ValueError): lite.AnnularSector(inner_radius=invalid)
+        for inner, outer, angle in [(0,0,0), (1,1,lite.TAU), (2,1,-lite.PI)]:
+            sector = lite.AnnularSector(inner_radius=inner, outer_radius=outer, angle=angle)
+            self.assertEqual(sector.curves[0][0], sector.curves[-1][-1])
+            self.assertTrue(all(lite.math.isfinite(v) for v in sector.point_from_proportion(.5)))
+        with self.assertRaises(NotImplementedError): lite.Sector(angle=2*lite.TAU)
+        with self.assertRaises(NotImplementedError): lite.Sector(arc_center=lite.OUT)
+
+    def test_sector_transformed_center_and_path_queries(self):
+        sector = lite.Sector(radius=2, arc_center=lite.RIGHT)
+        self.assertEqual(sector.get_arc_center(), lite.RIGHT)
+        sector.rotate(lite.PI/2)
+        sector.move_arc_center_to(lite.UP)
+        for actual, expected in zip(sector.get_arc_center(), lite.UP):
+            self.assertAlmostEqual(actual, expected)
+        sector.reverse_direction()
+        for point in [sector.point_from_proportion(0), sector.point_from_proportion(.5),
+                      sector.point_from_proportion(1)]:
+            self.assertTrue(all(lite.math.isfinite(v) for v in point))
+        with self.assertRaises(ValueError): sector.move_arc_center_to([float('nan'),0,0])
+        for actual, expected in zip(sector.get_arc_center(), lite.UP):
+            self.assertAlmostEqual(actual, expected)
+
+    def test_sector_gallery_aligns_unequal_curves_and_restores(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/sector_scene.py').read_text()))
+        self.assertEqual(result['duration'], 10)
+        middle = result['frames'][90]['mobjects'][1]
+        self.assertEqual(middle['type'], 'bezierpath')
+        self.assertEqual(len(middle['curves']), 14)
+        final = result['frames'][-1]['mobjects']
+        self.assertEqual(len(final), 2)
+        self.assertEqual(final[1]['inner_radius'], .7)
+        self.assertEqual(final[1]['outer_radius'], 1.5)
+        self.assertEqual(final[1]['arc_angle'], -3*lite.PI/2)
+        self.assertAlmostEqual(final[0]['angle'], lite.PI/2)
+        for shape in final:
+            self.assertEqual(shape['curves'][0][0], shape['curves'][-1][-1])
+
     def test_ellipse_dimensions_path_and_rotated_bounds(self):
         ellipse = lite.Ellipse(width=4, height=2).rotate(lite.PI/2).shift(lite.RIGHT)
         for actual, expected in zip(ellipse._bounds(), [0, -2, 2, 2]):

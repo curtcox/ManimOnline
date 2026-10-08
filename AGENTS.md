@@ -129,3 +129,8 @@ appending world-space points so earlier vertices retain their position.
 Read `examples/ellipse_scene.py` for elliptical path motion, primitive morphing
 and restoration. Ellipse dimensions are local geometry; preserve exact rotated
 bounds, angular outline queries, and independent X/Y radii during cubic alignment.
+
+Read `examples/sector_scene.py` for Sector/AnnularSector signed sweeps,
+connected outline following and unequal-curve morphing. Preserve native inner-arc,
+radial-edge, reversed-outer-arc and closing-edge order; zero inner radius is valid.
+Sectors serialize through the existing bezierpath pipeline.

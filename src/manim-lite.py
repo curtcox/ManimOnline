@@ -752,6 +752,37 @@ class Arc(Mobject):
         return self.shift(point - self.get_arc_center())
 
 
+class AnnularSector(Arc, VMobject):
+    """One connected outline: inner arc, radial edge, reversed outer arc, edge."""
+    def __init__(self, inner_radius=1, outer_radius=2, angle=PI/2, start_angle=0,
+                 fill_opacity=1, stroke_width=0, color=WHITE, arc_center=ORIGIN, **kwargs):
+        if any(isinstance(v, bool) or not isinstance(v, (int, float)) or
+               not math.isfinite(v) or v < 0 for v in (inner_radius, outer_radius)):
+            raise ValueError('Sector radii must be nonnegative and finite')
+        super().__init__(radius=outer_radius, angle=angle, start_angle=start_angle,
+                         arc_center=arc_center, fill_opacity=fill_opacity,
+                         stroke_width=stroke_width, color=color, **kwargs)
+        self.inner_radius, self.outer_radius = inner_radius, outer_radius
+        arcs = []
+        for radius in (inner_radius, outer_radius):
+            snapshot = {'type':'arc', 'radius':radius,
+                        'start_angle':self.start_angle, 'arc_angle':self.arc_angle}
+            arcs.append(_path_curves(snapshot))
+        inner, outer = arcs
+        outer = [list(reversed(curve)) for curve in reversed(outer)]
+        def edge(a, b):
+            a, b = Vector(a), Vector(b)
+            return [list(a), list(a + (b-a)*(1/3)),
+                    list(a + (b-a)*(2/3)), list(b)]
+        self.curves = inner + [edge(inner[-1][-1], outer[0][0])] + outer + [edge(outer[-1][-1], inner[0][0])]
+        self._type, self.vertices = 'bezierpath', []
+
+
+class Sector(AnnularSector):
+    def __init__(self, radius=1, **kwargs):
+        super().__init__(inner_radius=0, outer_radius=radius, **kwargs)
+
+
 class Dot(Circle):
     def __init__(self, point=ORIGIN, radius=0.08, **kwargs):
         kwargs.setdefault('fill_opacity', 1)
@@ -1921,7 +1952,7 @@ class MovingCameraScene(Scene):
     camera_class = MovingCamera
 
 
-EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
+EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'AnnularSector', 'Sector', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'TransformFromCopy',

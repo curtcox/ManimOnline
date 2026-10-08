@@ -706,3 +706,27 @@ Local Pyodide playback verified the 30-degree ellipse with SVG radii 100/50 pixe
 the dot at (-.5, .866) after two seconds, a single cubic morph outline at six
 seconds, and the restored ellipse without the dot at ten seconds. DOT rendered
 after switching.
+
+
+## Circular sectors
+
+Sector and AnnularSector use the [official connected contour order](https://docs.manim.community/en/stable/_modules/manim/mobject/geometry/arc.html):
+inner arc, radial connector, reversed outer arc, closing connector. Sector fixes
+the inner radius to zero. Constructor defaults match the native radius/sweep/style
+options; signed sweeps are bounded to one full turn as for Arc. Radii must be
+finite and nonnegative, including zero/equal/reversed radii. Arc centers support
+finite XY coordinates. Both classes participate in Arc/VMobject queries and
+serialize to the existing connected cubic path backend, retaining source sector
+metadata across checkpoints and restoration.
+
+Existing SVG path creation, fill/stroke, scaling/rotation, outline motion, growth
+and unequal-curve alignment apply without a separate rendering representation.
+Bounds conservatively include cubic control points; path-distance queries use
+existing sampled cubic lengths. No disconnected full Annulus API is implied.
+Tests cover defaults, closed contour order, signed angles, validation, transformed
+arc centers, path queries, unequal morphing, restored metadata and gallery output.
+
+Local Pyodide gallery playback verified a filled quarter wedge and clockwise
+three-quarter ring sector with an empty center. At six seconds the ring morph
+used fourteen cubic segments; restoration retained two closed sector paths at
+ten seconds without the follower dot. Graphviz rendered after switching.

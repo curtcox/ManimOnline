@@ -93,7 +93,7 @@ Python runs in a Web Worker using Pyodide 0.27.0. The browser loads Python on
 first use, so the first render needs an internet connection. This is a small
 Manim-like runtime, **not the full Manim Community engine**.
 
-- Shapes: `Circle`, `Ellipse`, `Arc`, `CubicBezier`, `VMobject`, `Dot`, `Square`, `Rectangle`, `Line`, `Arrow`, `Triangle`, `Polygon`,
+- Shapes: `Circle`, `Ellipse`, `Arc`, `Sector`, `AnnularSector`, `CubicBezier`, `VMobject`, `Dot`, `Square`, `Rectangle`, `Line`, `Arrow`, `Triangle`, `Polygon`,
   `Text`, `MathTex`, and `VGroup`.
 - Scene operations: `add`, `remove`, `play`, and `wait`.
 - Animations: `Create`, `Uncreate`, `Write`, `FadeIn`, `FadeOut`, `GrowFromCenter`,
@@ -613,3 +613,15 @@ use exact analytical extents. Transforms to other supported outlines align cubic
 curves; the final object retains native ellipse SVG geometry after Restore.
 **Follow an ellipse** demonstrates creation, a rotated orbit, circle morphing and
 restoration. Native stretch methods and general point-array editing remain open.
+
+
+`Sector(radius=1)` and `AnnularSector(inner_radius=1, outer_radius=2)` create
+filled circular wedges and ring sectors. Both accept start_angle, signed angle
+(default PI/2, up to one full turn), arc_center and standard styles; fill_opacity
+and stroke_width default to 1 and 0. Finite nonnegative radii include collapsed
+geometry. Their connected outlines follow the inner arc, a radial edge, reversed
+outer arc and closing edge. Create/Uncreate, MoveAlongPath, rotation, growth,
+curve morphing and Restore use the existing cubic path pipeline. get_arc_center
+and move_arc_center_to account for transforms. Bounds and path-speed queries use
+the existing cubic approximation. **Circular and ring sectors** demonstrates
+signed sweeps, outline following, unequal-curve morphing and restoration.
