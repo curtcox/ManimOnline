@@ -706,3 +706,12 @@ copy includes an unfinished anchor; a partial selection with no completed source
 curves leaves the receiver unchanged. **Extract and wrap curve highlights**
 shows a precise cubic highlight, a wrapped circular highlight and animated
 partial replacement. General glyph outlines and smoothing remain open.
+
+`ShowPassingFlash(outline, time_width=.1)` moves an exact cubic-parameter window
+along an outline, introducing the flash and removing it when playback finishes.
+Use a styled copy to keep the original outline visible. Widths are finite,
+nonnegative fractions; values greater than one can reveal the complete outline
+at once. Groups highlight their supported children simultaneously while keeping
+their original transform pivots. The removed object retains its geometry and can
+be reused in `Succession`. Glyphs, arrows and per-child flash delays remain open.
+Try **Traveling outline highlights** (`examples/passing_flash_scene.py`).

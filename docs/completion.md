@@ -51,7 +51,9 @@ copied outline append now have transformed-world-coordinate tests and animate
 support. Full NumPy semantics, mutable points attributes and glyph geometry remain open.
 Exact pointwise_become_partial/get_subcurve now support transformed geometry,
 ordered disconnected contours, closed-outline wrapping and animated replacement.
-Broader partial-creation and passing-highlight animation APIs remain open.
+ShowPassingFlash now travels over exact outline portions, including simultaneous
+group highlights and reusable removed objects. Broader partial-creation APIs,
+per-child passing-highlight delays and glyph geometry remain open.
 RoundedRectangle now uses closed cubic outlines for circular/concave corners,
 per-corner morphing, path following and restoration; general polygon rounding
 and rectangle grids remain open.

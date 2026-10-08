@@ -864,7 +864,7 @@ Tests cover exact cubic parameter correspondence after transforms, source/copy
 independence, receiver styles, unequal straight segment lengths, boundary null
 curves, disconnected/self partial replacement, ring endpoints, closure/wrapping,
 clamping/invalid/empty inputs and gallery cleanup. This supplies partial geometry;
-native partial-creation/passing-highlight animations, smoothing and glyph outlines
+broader partial-creation animations, smoothing and glyph outlines
 remain implementation work.
 
 Local Pyodide playback verified the yellow exact cubic portion and a blue
@@ -872,3 +872,29 @@ four-cubic circular highlight wrapped across the positive-X endpoint at four
 seconds. Animated replacement selected the curve's final portion; at eight
 seconds both highlights were removed and the original gray curve and circle
 remained. Graphviz rendered after switching examples.
+
+## Traveling outline highlights
+
+ShowPassingFlash implements the moving window described in the official
+[Manim indication source](https://docs.manim.community/en/stable/_modules/manim/animation/indication.html):
+upper = (1 + time_width) * alpha, lower = upper - time_width, clipped to [0,1].
+Fractions allocate by cubic index, rather than physical distance. Default width
+is .1; zero and widths greater than one are accepted. Widths must be finite,
+nonnegative real values. Existing animation easing and run_time apply.
+
+The animation introduces its object, samples exact partial geometry from an
+independent start copy and removes it at completion. Live geometry, styles,
+callbacks and checkpoints remain available for subsequent animations. Use a
+styled copy to retain the visible original. Each supported group child uses the
+same window; group transform pivots remain fixed while clipped child bounds
+change. Validation rejects unsupported glyphs/arrows before adding the object.
+Per-child lag, general glyph geometry and broader passing-flash variants remain
+open; this does not change Create's existing SVG stroke reveal.
+
+Python checks cover exact transformed clipping, width endpoints/validation,
+fixed nested-group pivots, empty objects, removal, checkpoint restoration and
+reuse in Succession. The gallery renders nine seconds with simultaneous curve
+and group highlights, followed by two sequential flashes on the same object.
+Local Pyodide playback verified yellow/blue sections aligned with gray original
+outlines at two seconds and their removal at nine seconds. Switching to the DOT
+example rendered Editor → Render → Preview successfully.

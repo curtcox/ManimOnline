@@ -160,3 +160,8 @@ Read `examples/partial_curve_scene.py` for exact subcurve extraction, closed-loo
 wrapping and animated partial replacement. Partial fractions allocate by cubic
 index, unlike distance-weighted path following. Preserve contour boundaries and
 receiver styles/callbacks; split control points exactly before baking world coordinates.
+
+Read `examples/passing_flash_scene.py` for ShowPassingFlash, simultaneous group
+highlights and sequence reuse. Clip snapshot copies; keep group pivots fixed as
+child bounds change. Validate every outline before introducing a group, remove
+the flash at completion, and retain its live geometry for subsequent animations.

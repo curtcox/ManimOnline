@@ -1748,6 +1748,48 @@ class Create(Animation):
         return [result]
 
 
+class ShowPassingFlash(Animation):
+    """Move a temporary cubic-parameter window over supported vector outlines."""
+    def __init__(self, mobject, time_width=.1, **kwargs):
+        super().__init__(mobject, **kwargs)
+        if (isinstance(time_width, bool) or not isinstance(time_width, (int, float))
+                or not math.isfinite(time_width) or time_width < 0):
+            raise ValueError('ShowPassingFlash time_width must be nonnegative and finite')
+        self.time_width = time_width
+
+    def begin(self, scene):
+        def validate(mobject):
+            if not isinstance(mobject, Mobject):
+                raise TypeError('ShowPassingFlash expects a supported vector outline or group')
+            if mobject._type == 'vgroup':
+                for child in mobject.children:
+                    validate(child)
+            elif mobject._type not in ('polyline', 'polygon', 'bezierpath', 'circle',
+                                      'arc', 'ellipse', 'square', 'rectangle',
+                                      'triangle', 'line', 'annulus'):
+                raise TypeError('ShowPassingFlash expects supported vector outlines; glyphs and arrows are unsupported')
+        validate(self.mobject)
+        self.original = self.mobject.copy()
+        super().begin(scene)
+
+    def sample(self, alpha):
+        upper = (1 + self.time_width) * max(0, min(1, alpha))
+        lower, upper = max(0, upper - self.time_width), min(1, upper)
+        def clip(source, snapshot):
+            if source._type == 'vgroup':
+                result = copy.deepcopy(snapshot)
+                result['children'] = [clip(child, data) for child, data in
+                                      zip(source.children, snapshot['children'])]
+                # Keep the original group pivot even as child bounds shrink.
+                return result
+            return source.get_subcurve(lower, upper).to_dict()
+        return [clip(self.original, self.start)]
+
+    def finish(self, scene):
+        # Sampling never changes live geometry, so the removed object is reusable.
+        scene.remove(self.mobject)
+
+
 class Uncreate(Create):
     def sample(self, alpha):
         return super().sample(1 - alpha)
@@ -2259,7 +2301,7 @@ class MovingCameraScene(Scene):
 EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
-           'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'TransformFromCopy',
+           'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform', 'UP', 'DOWN', 'LEFT',
            'RIGHT', 'ORIGIN', 'OUT', 'IN', 'UL', 'UR', 'DL', 'DR', 'BLUE', 'RED', 'GREEN',
            'YELLOW', 'PURPLE', 'ORANGE', 'WHITE', 'BLACK', 'GRAY', 'GREY', 'PINK',

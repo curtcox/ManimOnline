@@ -16,6 +16,78 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_passing_flash_exact_window_and_reusable_source(self):
+        source = lite.CubicBezier(lite.LEFT*3,lite.UP*2,lite.DOWN*2,lite.RIGHT*3).rotate(.4)
+        source.set_stroke(color=lite.YELLOW,width=7).save_state()
+        original = source.to_dict()
+        scene = lite.Scene()
+        flash = lite.ShowPassingFlash(source,time_width=.4,rate_func=lite.linear)
+        flash.prepare(scene)
+        expected = source.get_subcurve(.3,.7).to_dict()
+        actual = flash.sample(.5)[0]
+        for a, b in zip(actual['curves'][0],expected['curves'][0]):
+            self.assertPointAlmostEqual(a,b)
+        self.assertEqual(actual['stroke_color'],expected['stroke_color'])
+        self.assertEqual(actual['stroke_width'],expected['stroke_width'])
+        for alpha in (0,1):
+            curve = flash.sample(alpha)[0]['curves'][0]
+            for point in curve:
+                self.assertPointAlmostEqual(point,curve[0])
+        self.assertEqual(flash.states(1),{source:[]})
+        flash.finish(scene)
+        self.assertEqual(scene.mobjects,[])
+        self.assertEqual(source.to_dict(),original)
+        source.shift(lite.UP).restore()
+        self.assertEqual(source.to_dict(),original)
+
+    def test_passing_flash_groups_preserve_pivots_and_independent_styles(self):
+        group = lite.VGroup(lite.Circle().shift(lite.LEFT*2),
+                            lite.VGroup(lite.Square().shift(lite.RIGHT*2))).rotate(.7).scale(1.3).shift(lite.UP)
+        original = group.to_dict()
+        flash = lite.ShowPassingFlash(group,time_width=.2)
+        flash.prepare(lite.Scene())
+        middle = flash.sample(.5)[0]
+        for key in ('position','angle','geometry_scale','geometry_center'):
+            self.assertEqual(middle[key],original[key])
+            self.assertEqual(middle['children'][1][key],original['children'][1][key])
+        expected = group.children[0].get_subcurve(.4,.6).to_dict()
+        for actual_curve, expected_curve in zip(middle['children'][0]['curves'],expected['curves']):
+            for a,b in zip(actual_curve,expected_curve):
+                self.assertPointAlmostEqual(a,b)
+        self.assertEqual(group.to_dict(),original)
+
+    def test_passing_flash_width_and_unsupported_inputs(self):
+        for width in (-1,float('inf'),float('nan'),True,'wide'):
+            with self.assertRaises(ValueError): lite.ShowPassingFlash(lite.Line(),time_width=width)
+        source = lite.Circle()
+        for width in (0,2):
+            flash = lite.ShowPassingFlash(source,time_width=width)
+            flash.prepare(lite.Scene())
+            middle = flash.sample(.5)[0]
+            if width == 0:
+                self.assertTrue(all(p == middle['curves'][0][0] for p in middle['curves'][0]))
+            else:
+                self.assertEqual(middle,source.get_subcurve(0,1).to_dict())
+        for source in (lite.Text('unsupported'),lite.Arrow(),lite.VGroup(lite.Circle(),lite.Text('unsupported'))):
+            scene = lite.Scene()
+            with self.assertRaises(TypeError): lite.ShowPassingFlash(source).prepare(scene)
+            self.assertEqual(scene.mobjects,[])
+        for source in (lite.VMobject(),lite.VGroup()):
+            flash = lite.ShowPassingFlash(source)
+            flash.prepare(lite.Scene())
+            flash.sample(.5)
+
+    def test_passing_flash_gallery_sequence_cleanup(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/passing_flash_scene.py').read_text()))
+        self.assertEqual(result['duration'],9)
+        self.assertEqual(len(result['frames'][30]['mobjects']),4)
+        for index in (75,105):
+            self.assertEqual(len(result['frames'][index]['mobjects']),3)
+            self.assertEqual(result['frames'][index]['mobjects'][-1]['stroke_color'].upper(),lite.YELLOW)
+        final = result['frames'][-1]['mobjects']
+        self.assertEqual(len(final),2)
+        self.assertEqual(final[0],result['frames'][0]['mobjects'][0])
+
     def test_partial_cubic_is_exact_with_transforms_and_independent_style(self):
         source = lite.CubicBezier((-2,0),(-1,3),(1,-2),(2,1)).rotate(.6).scale(1.7).shift(lite.UP)
         original = source.to_dict()
