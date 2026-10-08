@@ -15,6 +15,7 @@ compatibility layer, not a server running full Manim Community.
 4. `src/unified-worker.js` and `src/manim-client.js` for execution and deadlines.
 5. `src/manim-renderer.js`, `src/manim-player.js`, and `src/detector.js`.
 6. `docs/rendering.md` for current gaps and next milestones.
+   `src/examples.js` contains the editor gallery catalog and stale-load protection.
 7. `examples/multiple_scenes.py` for selection and geometry transform checks.
 8. `examples/creation_and_rotation.py` for stroke creation and orbital motion.
 9. `examples/layout_scene.py` for relative positioning and animated arrangements.

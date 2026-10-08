@@ -1,0 +1,5 @@
+digraph {
+  rankdir=LR;
+  node [shape=box, style=rounded];
+  Editor -> Render -> Preview;
+}

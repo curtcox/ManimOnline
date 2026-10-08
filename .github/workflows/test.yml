@@ -22,3 +22,4 @@ jobs:
           node --check src/manim-client.js
           node --check src/manim-player.js
           node --check src/manim-renderer.js
+          node --check src/examples.js

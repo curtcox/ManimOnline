@@ -150,7 +150,7 @@
       margin: 0;
       position: fixed;
       left: calc(50% + 5px);
-      width: 100%;
+      right: 0;
       flex: 0 0 auto;
       background: linear-gradient(to bottom, #ffffff, #f8f9fa);
       border-bottom: 1px solid #dee2e6;
@@ -159,6 +159,7 @@
       transition: left 0.3s ease;
       box-shadow: 0 2px 4px rgba(0,0,0,0.08);
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       gap: 12px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -169,6 +170,9 @@
     #options.expanded {
       left: 0 !important;
     }
+
+    #example-picker { max-width: 190px; }
+    #example-status { color: #495057; font-size: 12px; }
 
     #options label {
       margin: 0;
@@ -426,6 +430,14 @@ class HelloWorld(Scene):
     <span id="type-indicator" class="manim">Manim</span>
     <span id="pyodide-status" class="hidden">Python loading...</span>
 
+    <label>Example:
+      <select id="example-picker" aria-label="Example">
+        <option value="">Choose an example</option>
+      </select>
+    </label>
+    <input type="button" id="load-example" value="Load example" disabled>
+    <span id="example-status" role="status" aria-live="polite"></span>
+
     <label class="manim-options" id="scene-option">
       Scene:
       <input id="scene-name" type="text" placeholder="First scene" list="scene-names"
@@ -498,10 +510,16 @@ class HelloWorld(Scene):
   <script src="src/manim-renderer.js"></script>
   <script src="src/manim-client.js"></script>
   <script src="src/manim-player.js"></script>
+  <script src="src/examples.js"></script>
   <script>
     const editorElement = document.getElementById('editor');
     const reviewElement = document.getElementById('review');
     const optionsElement = document.getElementById('options');
+    // Wrapped controls must not cover the preview when the panel is narrow.
+    new ResizeObserver(() => {
+      reviewElement.style.top = `${optionsElement.offsetHeight}px`;
+      resizeSVG();
+    }).observe(optionsElement);
     const toggleBtn = document.getElementById('toggle-btn');
     const splitter = document.getElementById('splitter');
     const typeIndicator = document.getElementById('type-indicator');
@@ -652,6 +670,38 @@ class HelloWorld(Scene):
         pyodideStatus.textContent = text;
         pyodideStatus.className = 'loading';
       }});
+
+      const examplePicker = document.getElementById('example-picker');
+      const loadExampleButton = document.getElementById('load-example');
+      const exampleStatus = document.getElementById('example-status');
+      for (const example of ExampleCatalog) {
+        const option = document.createElement('option');
+        option.value = example.id;
+        option.textContent = example.label;
+        examplePicker.appendChild(option);
+      }
+      const exampleLoader = new ExampleLoader({
+        onStatus: (message, loading) => {
+          exampleStatus.textContent = message;
+          loadExampleButton.disabled = loading || !examplePicker.value;
+        },
+        onError: error => { exampleStatus.textContent = error.message; },
+        onLoad: source => {
+          sceneNameInput.value = '';
+          // Loading an example opts into automatic detection, even from a typed link.
+          const url = new URL(location.href);
+          for (const parameter of ['type', 'scene', 'raw', 'compressed', 'url']) {
+            url.searchParams.delete(parameter);
+          }
+          history.replaceState(null, '', url);
+          editor.getSession().setValue(source);
+          clearTimeout(lastHD);
+          clearTimeout(detectionTimer);
+          render();
+        }
+      });
+      examplePicker.addEventListener('change', () => exampleLoader.cancel());
+      loadExampleButton.addEventListener('click', () => exampleLoader.load(examplePicker.value));
 
       function invalidateRender() {
         renderRevision++;
@@ -986,6 +1036,7 @@ class HelloWorld(Scene):
 
       // Debounced change handler
       editor.getSession().on("change", function () {
+        exampleLoader.cancel();
         invalidateRender();
         sceneNamesList.replaceChildren();
         clearTimeout(lastHD);
@@ -1007,6 +1058,7 @@ class HelloWorld(Scene):
       };
 
       sceneNameInput.addEventListener('input', () => {
+        exampleLoader.cancel();
         invalidateRender();
         clearTimeout(lastHD);
         lastHD = setTimeout(render, DEBOUNCE_DELAY);
@@ -1061,6 +1113,7 @@ class HelloWorld(Scene):
         render();
       } else if (params.has('url')) {
         const url = params.get('url');
+        const revision = renderRevision;
         let ok = false;
         fetch(url)
           .then(res => {
@@ -1068,13 +1121,14 @@ class HelloWorld(Scene):
             return res.text();
           })
           .then(res => {
+            if (revision !== renderRevision) return;
             if (!ok) {
               throw { message: res };
             }
             editor.getSession().setValue(res);
             render();
           }).catch(e => {
-            show_error(e);
+            if (revision === renderRevision) show_error(e);
           });
       } else if (location.hash.length > 1) {
         editor.getSession().setValue(decodeURIComponent(location.hash.substring(1)));

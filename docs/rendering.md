@@ -150,6 +150,13 @@ parent group; they do not accumulate parent transforms. Arrow queries use the
 shaft endpoints, with the renderer's existing fixed local arrowhead. Buffers,
 curved connectors, and attachment to object boundaries remain unsupported.
 
+The editor's example picker loads supported Python scenes and a DOT diagram
+from a fixed local catalog in `src/examples.js`. It resets scene selection and
+URL source/type overrides, then uses the normal render and sharing pipeline.
+Revision checks discard superseded responses and errors, including when edits
+arrive during response-body loading. Failed loads leave editor source unchanged.
+Toolbar controls wrap, with preview placement tracking the toolbar height.
+
 Next work can add additional verified compatibility APIs, geometry-aware path
 transforms, glyph outline rendering, sequential animation composition, and an offline
 asset strategy. Keep DOT
