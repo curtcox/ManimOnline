@@ -850,6 +850,45 @@ class Rectangle(Mobject):
         self._type, self.width, self.height = 'rectangle', width, height
 
 
+class RoundedRectangle(Rectangle, VMobject):
+    """A closed rectangle with circular, optionally concave corner cuts."""
+    def __init__(self, corner_radius=0.5, width=4, height=2, **kwargs):
+        if any(isinstance(v, bool) or not isinstance(v, (int, float)) or
+               not math.isfinite(v) or v < 0 for v in (width, height)):
+            raise ValueError('Rounded rectangle dimensions must be nonnegative and finite')
+        radii = list(corner_radius) if isinstance(corner_radius, (list, tuple)) else [corner_radius]
+        if not radii or any(isinstance(v, bool) or not isinstance(v, (int, float)) or
+                            not math.isfinite(v) for v in radii):
+            raise ValueError('Corner radii must be finite real values in a nonempty sequence')
+        super().__init__(width=width, height=height, **kwargs)
+        self.corner_radius = copy.deepcopy(corner_radius)
+        corners = [Vector(p) for p in ((width/2,height/2), (-width/2,height/2),
+                                      (-width/2,-height/2), (width/2,-height/2))]
+        incoming = [UP, LEFT, DOWN, RIGHT]
+        outgoing = [LEFT, DOWN, RIGHT, UP]
+        arcs = []
+        # Native rounding assigns the first radius to the second vertex (UL),
+        # then rotates its arc list to begin at the first vertex (UR).
+        for i, (corner, before, after) in enumerate(zip(corners, incoming, outgoing)):
+            radius = radii[(i-1) % 4 % len(radii)]
+            cut = min(abs(radius), min(width, height)/2)
+            start = corner - before * cut
+            center = corner - before * cut + after * cut if radius >= 0 else corner
+            angle = math.atan2(start[1]-center[1], start[0]-center[0])
+            curves = _path_curves({'type':'arc', 'radius':cut, 'start_angle':angle,
+                                   'arc_angle':PI/2 if radius >= 0 else -PI/2})
+            curves = [[list(Vector(p) + center) for p in curve] for curve in curves]
+            # Pin joins exactly to avoid tiny floating-point closing seams.
+            curves[0][0], curves[-1][-1] = list(start), list(corner + after * cut)
+            arcs.append(curves)
+        self.curves = []
+        for i, arc in enumerate(arcs):
+            self.curves.extend(arc)
+            a, b = Vector(arc[-1][-1]), Vector(arcs[(i+1)%4][0][0])
+            self.curves.append([list(a), list(a+(b-a)*(1/3)), list(a+(b-a)*(2/3)), list(b)])
+        self._type, self.vertices = 'bezierpath', []
+
+
 class CameraFrame(Rectangle):
     """Invisible, axis-aligned view rectangle used by MovingCameraScene."""
     def scale(self, scale_factor, *, about_point=None):
@@ -1999,7 +2038,7 @@ class MovingCameraScene(Scene):
     camera_class = MovingCamera
 
 
-EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
+EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'TransformFromCopy',

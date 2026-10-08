@@ -138,3 +138,8 @@ Sectors serialize through the existing bezierpath pipeline.
 Read `examples/annulus_scene.py` for separate full-ring contours, outline motion,
 radius interpolation and restoration. Preserve opposite winding and separate SVG
 subpaths; never insert a radial connector. General disconnected morphing remains open.
+
+Read `examples/rounded_rectangle_scene.py` for circular/concave corner following,
+per-corner morphing and restoration. Radii repeat starting at the upper-left;
+the path starts at the upper-right. Clamp each cut to half the shorter side and
+pin cubic joins exactly so the existing renderer closes the outline without seams.

@@ -16,6 +16,64 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_rounded_rectangle_contours_dimensions_and_radius_order(self):
+        box = lite.RoundedRectangle()
+        self.assertIsInstance(box, lite.Rectangle)
+        self.assertIsInstance(box, lite.VMobject)
+        self.assertEqual(box._bounds(), (-2,-1,2,1))
+        self.assertEqual(box.get_start(), lite.Vector((2,.5,0)))
+        self.assertEqual(box.get_end(), box.get_start())
+        self.assertEqual(len(box.curves), 12)
+        for first, second in zip(box.curves, box.curves[1:]):
+            self.assertEqual(first[-1], second[0])
+        varying = lite.RoundedRectangle(corner_radius=[.1,.2,.3,.4])
+        for index, expected in [(0,[2,.6,0]),(3,[-1.9,1,0]),
+                                (6,[-2,-.8,0]),(9,[1.7,-1,0])]:
+            for actual, value in zip(varying.curves[index][0], expected):
+                self.assertAlmostEqual(actual, value)
+        repeated = lite.RoundedRectangle(corner_radius=[.1,.2])
+        self.assertEqual(repeated.curves[0][0], [2,.8,0])
+        concave = lite.RoundedRectangle(corner_radius=-.5)
+        convex_mid = box.curves[0][-1]
+        concave_mid = concave.curves[0][-1]
+        self.assertGreater(convex_mid[0], concave_mid[0])
+        self.assertGreater(convex_mid[1], concave_mid[1])
+        box.rotate(lite.PI/2).scale(2).shift(lite.RIGHT)
+        for actual, expected in zip(box.get_start(), [0,4,0]):
+            self.assertAlmostEqual(actual, expected)
+
+    def test_rounded_rectangle_degenerate_radii_and_invalid_inputs(self):
+        for width, height, radius in [(4,2,0),(4,2,99),(4,2,-99),
+                                       (0,2,.5),(4,0,.5),(0,0,.5)]:
+            box = lite.RoundedRectangle(width=width, height=height, corner_radius=radius)
+            self.assertEqual(box._bounds(), (-width/2,-height/2,width/2,height/2))
+            self.assertEqual(box.get_start(), box.get_end())
+            self.assertTrue(all(lite.math.isfinite(v) for v in box.point_from_proportion(.5)))
+        for value in [True, float('nan'), float('inf'), '1', [], [False], [.2,float('inf')]]:
+            with self.assertRaises(ValueError): lite.RoundedRectangle(corner_radius=value)
+        for value in [-1,True,float('nan'),float('inf'),'1']:
+            with self.assertRaises(ValueError): lite.RoundedRectangle(width=value)
+            with self.assertRaises(ValueError): lite.RoundedRectangle(height=value)
+
+    def test_rounded_rectangle_gallery_morph_and_restore(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/rounded_rectangle_scene.py').read_text()))
+        self.assertEqual(result['duration'], 11)
+        middle = result['frames'][105]['mobjects'][0]
+        self.assertEqual(middle['type'], 'bezierpath')
+        self.assertEqual(len(middle['curves']), 12)
+        final = result['frames'][-1]['mobjects']
+        self.assertEqual(len(final), 1)
+        original = lite.RoundedRectangle(width=5,height=3,corner_radius=.6,color=lite.BLUE,fill_opacity=.25)
+        self.assertEqual(final[0]['curves'], original.curves)
+        self.assertEqual(final[0]['corner_radius'], .6)
+        self.assertEqual(final[0]['color'], lite.BLUE)
+
+    def test_rounded_rectangle_aligns_with_other_outlines(self):
+        result = render('box = RoundedRectangle()\nself.add(box)\nself.play(Transform(box, Triangle()), run_time=2)')
+        self.assertEqual(result['frames'][15]['mobjects'][0]['type'], 'bezierpath')
+        self.assertEqual(len(result['frames'][15]['mobjects'][0]['curves']), 12)
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['type'], 'triangle')
+
     def test_annulus_bounds_contour_order_and_validation(self):
         ring = lite.Annulus(inner_radius=1, outer_radius=2, arc_center=lite.UP)
         self.assertEqual(ring._bounds(), (-2,-1,2,3))

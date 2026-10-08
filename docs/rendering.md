@@ -753,3 +753,23 @@ Local Pyodide playback verified separate closed contours at two seconds with
 an empty center and no radial seam. At seven seconds the radii interpolated to
 0.95 and 1.75; the eleven-second final frame restored 0.7 and 1.5 and removed
 the follower dot. Graphviz rendered after switching examples.
+
+## Rounded rectangles
+
+RoundedRectangle uses the [official corner-cut and radius ordering](https://docs.manim.community/en/stable/_modules/manim/mobject/geometry/polygram.html).
+It accepts finite scalar or repeating per-corner radii, including negative values
+for concave cuts, and finite nonnegative width/height. Cuts clamp to half the
+shorter side. The native radius sequence starts at upper-left; the closed path
+starts at upper-right. Four two-cubic circular corners and connecting straight
+segments use the connected bezierpath backend, with exactly pinned joins.
+
+Creation, path motion, rotation/scaling, primitive morphing, copying and Restore
+therefore share existing behavior. Tests cover corner correspondence, concavity,
+clamping, collapsed dimensions, transformed queries, validation, primitive
+alignment and gallery restoration. General polygon rounding, native point-array
+editing and rectangle grids remain open.
+
+Local Pyodide playback verified a closed twelve-segment rounded outline at two
+seconds, alternating concave/convex corners at eight seconds, and the restored
+blue outline without the follower at eleven seconds. Graphviz rendered after
+switching examples.

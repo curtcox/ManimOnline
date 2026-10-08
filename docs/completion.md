@@ -45,6 +45,9 @@ transitions, restoration, and the terminal curve. Recursive ordered VGroup align
 families, leaf wrapping, copy and sequential restoration. General Mobject family
 restructuring and disconnected subpath alignment remain open; Annulus now renders
 separate ring contours and interpolates radii for same-type transforms.
+RoundedRectangle now uses closed cubic outlines for circular/concave corners,
+per-corner morphing, path following and restoration; general polygon rounding
+and rectangle grids remain open.
 
 Full Community parity additionally requires general geometry/path morphing, full scene-family
 composition and layering, 3D cameras and advanced camera APIs (2D settings, moving-camera pan/zoom and automatic bounds fitting now have Python/SVG tests), glyph-level text/TeX

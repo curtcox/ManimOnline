@@ -1,7 +1,8 @@
 /** Exact offline dependencies. Bump VERSION whenever any listed local file changes. */
 const OfflineAssets = {
-  VERSION: 'manimonline-offline-v33',
+  VERSION: 'manimonline-offline-v34',
   local: [
+    'examples/rounded_rectangle_scene.py',
     'index.html', 'ace/ace.js', 'ace/theme-twilight.js', 'ace/mode-python.js', 'ace/mode-dot.js',
     'viz-global.js', 'svg-pan-zoom.min.js', 'src/detector.js', 'src/render-scheduler.js', 'src/unified-worker.js',
     'src/manim-lite.py', 'src/manim-client.js', 'src/manim-renderer.js', 'src/manim-player.js',

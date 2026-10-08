@@ -93,7 +93,7 @@ Python runs in a Web Worker using Pyodide 0.27.0. The browser loads Python on
 first use, so the first render needs an internet connection. This is a small
 Manim-like runtime, **not the full Manim Community engine**.
 
-- Shapes: `Circle`, `Ellipse`, `Arc`, `Sector`, `AnnularSector`, `Annulus`, `CubicBezier`, `VMobject`, `Dot`, `Square`, `Rectangle`, `Line`, `Arrow`, `Triangle`, `Polygon`,
+- Shapes: `Circle`, `Ellipse`, `Arc`, `Sector`, `AnnularSector`, `Annulus`, `CubicBezier`, `VMobject`, `Dot`, `Square`, `Rectangle`, `RoundedRectangle`, `Line`, `Arrow`, `Triangle`, `Polygon`,
   `Text`, `MathTex`, and `VGroup`.
 - Scene operations: `add`, `remove`, `play`, and `wait`.
 - Animations: `Create`, `Uncreate`, `Write`, `FadeIn`, `FadeOut`, `GrowFromCenter`,
@@ -637,3 +637,14 @@ is no drawn connector. Bounds use the larger radius. mark_paths_closed is accept
 as a boolean; SVG contours are always closed. General disconnected path editing
 and morphing rings into other shapes remain open (other types crossfade).
 **Rings with separate contours** shows creation, path following and changing radii.
+
+`RoundedRectangle(corner_radius=0.5, width=4, height=2)` builds a closed cubic
+outline. A finite scalar rounds every corner; a nonempty list/tuple repeats in
+upper-left, lower-left, lower-right, upper-right order. Negative values produce
+concave cuts. Each radius is limited to half the shorter side, following the
+native corner-cut clamp. Dimensions must be finite and nonnegative; zero-sized
+outlines remain stable. Create/Uncreate, path following, morphs to supported
+outlines, styling, copying and Restore use the existing path pipeline. Curves
+approximate circular corners with two cubic segments. General polygon
+round_corners and rectangle grid lines remain open. **Rounded and concave corners**
+demonstrates outline following, per-corner morphing and restoration.
