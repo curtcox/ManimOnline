@@ -11,9 +11,11 @@ compatibility layer, not a server running full Manim Community.
 
 1. `README.md` for local serving instructions and public status.
 2. `index.html` for editor setup, rendering integration, and output controls.
-3. `src/detector.js`, `src/manim-renderer.js`, and `src/unified-worker.js`.
-4. `docs/rendering.md` for current gaps and next milestones.
-5. `todo/master_plan.md` and the other `todo/` documents for background plans.
+3. `src/manim-lite.py` for the compatibility API and timed frame generation.
+4. `src/unified-worker.js` and `src/manim-client.js` for execution and deadlines.
+5. `src/manim-renderer.js`, `src/manim-player.js`, and `src/detector.js`.
+6. `docs/rendering.md` for current gaps and next milestones.
+7. `todo/master_plan.md` and the other `todo/` documents for background plans.
 
 `ace/`, `viz-global.js`, and `svg-pan-zoom.min.js` are vendored dependencies.
 Avoid editing these to implement Manim features. The Markdown files under
@@ -38,6 +40,7 @@ Avoid editing these to implement Manim features. The Markdown files under
 
 ## Verification and handoff
 
+Run `python3 -m unittest discover -s tests -v` and `node --test tests/*.test.js`.
 Serve locally with `python3 -m http.server 8000`. Check both a DOT graph and a
 Manim example in a real browser. Syntax checks or native Python tests do not
 prove Pyodide loading or browser playback. Report which checks actually ran.

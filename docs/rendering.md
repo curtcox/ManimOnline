@@ -4,23 +4,29 @@
 
 ManimOnline is a static editor deployed through `.github/workflows/deploy.yml`.
 `index.html` integrates ACE, DOT detection, Graphviz rendering, and a Pyodide
-Manim-lite path. `src/manim-renderer.js` turns serialized shapes into SVG;
-`src/unified-worker.js` contains an early worker implementation. The imported
-implementation currently has duplicated Python definitions, main-thread Python
-execution, and no-op `play()`/`wait()` methods. Animation support is incomplete.
+Manim-lite path. `src/manim-lite.py` implements a compatibility subset and generates timed frames.
+`src/unified-worker.js` loads it into Pyodide; `src/manim-client.js` enforces the
+90-second deadline and terminates active work on edits. The worker rebuilds the
+compatibility definitions and executes source in a fresh namespace per render.
+`src/manim-renderer.js` turns serialized shapes into SVG and `src/manim-player.js`
+provides playback, replay, and seeking. Preview generation is limited to 900 timed
+samples plus a terminal frame (60 seconds at 15 fps), with a 12 MiB serialized
+result limit. These bounds do not limit arbitrary Python memory allocation.
 
 The established direction in `todo/master_plan.md` is in-browser execution and
 frame playback. Full native Manim in WebAssembly has not been demonstrated.
 Manim-lite is a compatibility subset, not the Manim Community engine.
 
-## Next milestone
+## Implemented milestone and next work
 
-1. Consolidate the Python compatibility layer into one source.
-2. Execute scenes in a worker, with a hard timeout enforced by the main thread.
-3. Use a fresh namespace for each render and prevent stale results after edits.
-4. Implement basic timed creation, fades, transforms, and waits.
-5. Provide play/pause, replay, and seeking for the generated SVG frames.
-6. Keep DOT rendering and static SVG download working.
+The first animation slice implements creation/fades, timed transforms, animate
+method chains, waits, play/pause, replay, seeking, and current-frame SVG download.
+Creation/writing use fades; transforms between different shape types crossfade.
+The first source-defined Scene is selected. Full Manim semantics are not implied.
+
+Next work can add explicit scene selection, additional verified compatibility
+APIs, geometry-aware path transforms, and an offline asset strategy. Keep DOT
+rendering, sharing, and static SVG/PNG export working as these features evolve.
 
 Use `examples/minimal_scene.py` as a baseline. Broader examples under `examples/`
 are feature references, not an acceptance claim. Document unsupported APIs and

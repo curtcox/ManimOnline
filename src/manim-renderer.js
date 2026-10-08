@@ -50,7 +50,7 @@ const ManimRenderer = {
     const position = mobject.position || [0, 0, 0];
     const color = mobject.color || '#FFFFFF';
     const fillOpacity = mobject.fill_opacity !== undefined ? mobject.fill_opacity : 1;
-    const strokeWidth = mobject.stroke_width || 2;
+    const strokeWidth = mobject.stroke_width ?? 2;
 
     let element = null;
 
@@ -87,6 +87,8 @@ const ManimRenderer = {
         return null;
     }
 
+    if (element) element.setAttribute('opacity', mobject.opacity ?? 1);
+
     if (element && position) {
       const x = position[0] * this.UNIT_SCALE;
       const y = position[1] * this.UNIT_SCALE;
@@ -102,14 +104,14 @@ const ManimRenderer = {
    */
   renderCircle(mobject) {
     const circle = document.createElementNS(this.SVG_NS, 'circle');
-    const radius = (mobject.radius || 1) * this.UNIT_SCALE;
+    const radius = (mobject.radius ?? 1) * this.UNIT_SCALE;
     circle.setAttribute('r', radius);
     circle.setAttribute('cx', 0);
     circle.setAttribute('cy', 0);
     circle.setAttribute('fill', mobject.color || '#FFFFFF');
     circle.setAttribute('fill-opacity', mobject.fill_opacity !== undefined ? mobject.fill_opacity : 0);
     circle.setAttribute('stroke', mobject.color || '#FFFFFF');
-    circle.setAttribute('stroke-width', mobject.stroke_width || 2);
+    circle.setAttribute('stroke-width', mobject.stroke_width ?? 2);
     return circle;
   },
 
@@ -118,7 +120,7 @@ const ManimRenderer = {
    */
   renderSquare(mobject) {
     const rect = document.createElementNS(this.SVG_NS, 'rect');
-    const size = (mobject.side_length || 2) * this.UNIT_SCALE;
+    const size = (mobject.side_length ?? 2) * this.UNIT_SCALE;
     rect.setAttribute('x', -size / 2);
     rect.setAttribute('y', -size / 2);
     rect.setAttribute('width', size);
@@ -126,7 +128,7 @@ const ManimRenderer = {
     rect.setAttribute('fill', mobject.color || '#FFFFFF');
     rect.setAttribute('fill-opacity', mobject.fill_opacity !== undefined ? mobject.fill_opacity : 0);
     rect.setAttribute('stroke', mobject.color || '#FFFFFF');
-    rect.setAttribute('stroke-width', mobject.stroke_width || 2);
+    rect.setAttribute('stroke-width', mobject.stroke_width ?? 2);
     return rect;
   },
 
@@ -135,8 +137,8 @@ const ManimRenderer = {
    */
   renderRectangle(mobject) {
     const rect = document.createElementNS(this.SVG_NS, 'rect');
-    const width = (mobject.width || 4) * this.UNIT_SCALE;
-    const height = (mobject.height || 2) * this.UNIT_SCALE;
+    const width = (mobject.width ?? 4) * this.UNIT_SCALE;
+    const height = (mobject.height ?? 2) * this.UNIT_SCALE;
     rect.setAttribute('x', -width / 2);
     rect.setAttribute('y', -height / 2);
     rect.setAttribute('width', width);
@@ -144,7 +146,7 @@ const ManimRenderer = {
     rect.setAttribute('fill', mobject.color || '#FFFFFF');
     rect.setAttribute('fill-opacity', mobject.fill_opacity !== undefined ? mobject.fill_opacity : 0);
     rect.setAttribute('stroke', mobject.color || '#FFFFFF');
-    rect.setAttribute('stroke-width', mobject.stroke_width || 2);
+    rect.setAttribute('stroke-width', mobject.stroke_width ?? 2);
     return rect;
   },
 
@@ -160,7 +162,7 @@ const ManimRenderer = {
     line.setAttribute('x2', end[0] * this.UNIT_SCALE);
     line.setAttribute('y2', end[1] * this.UNIT_SCALE);
     line.setAttribute('stroke', mobject.color || '#FFFFFF');
-    line.setAttribute('stroke-width', mobject.stroke_width || 2);
+    line.setAttribute('stroke-width', mobject.stroke_width ?? 2);
     return line;
   },
 
@@ -180,7 +182,7 @@ const ManimRenderer = {
     line.setAttribute('x2', end[0] * this.UNIT_SCALE);
     line.setAttribute('y2', end[1] * this.UNIT_SCALE);
     line.setAttribute('stroke', color);
-    line.setAttribute('stroke-width', mobject.stroke_width || 2);
+    line.setAttribute('stroke-width', mobject.stroke_width ?? 2);
     group.appendChild(line);
 
     // Arrowhead
@@ -201,7 +203,7 @@ const ManimRenderer = {
 
     path.setAttribute('d', `M ${endX} ${endY} L ${x1} ${y1} M ${endX} ${endY} L ${x2} ${y2}`);
     path.setAttribute('stroke', color);
-    path.setAttribute('stroke-width', mobject.stroke_width || 2);
+    path.setAttribute('stroke-width', mobject.stroke_width ?? 2);
     path.setAttribute('fill', 'none');
     group.appendChild(path);
 
@@ -224,7 +226,7 @@ const ManimRenderer = {
     polygon.setAttribute('fill', mobject.color || '#FFFFFF');
     polygon.setAttribute('fill-opacity', mobject.fill_opacity !== undefined ? mobject.fill_opacity : 0);
     polygon.setAttribute('stroke', mobject.color || '#FFFFFF');
-    polygon.setAttribute('stroke-width', mobject.stroke_width || 2);
+    polygon.setAttribute('stroke-width', mobject.stroke_width ?? 2);
     return polygon;
   },
 
@@ -243,7 +245,7 @@ const ManimRenderer = {
     polygon.setAttribute('fill', mobject.color || '#FFFFFF');
     polygon.setAttribute('fill-opacity', mobject.fill_opacity !== undefined ? mobject.fill_opacity : 0);
     polygon.setAttribute('stroke', mobject.color || '#FFFFFF');
-    polygon.setAttribute('stroke-width', mobject.stroke_width || 2);
+    polygon.setAttribute('stroke-width', mobject.stroke_width ?? 2);
     return polygon;
   },
 
@@ -261,6 +263,7 @@ const ManimRenderer = {
     text.setAttribute('dominant-baseline', 'middle');
     // Flip text back since canvas is y-inverted
     text.setAttribute('transform', 'scale(1, -1)');
+    text.setAttribute('fill-opacity', mobject.fill_opacity ?? 1);
     text.textContent = mobject.text || '';
     return text;
   },
