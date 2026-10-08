@@ -229,7 +229,7 @@ class Mobject:
         if self._type == 'square':
             half = self.side_length / 2
             return (-half, -half, half, half)
-        if self._type == 'rectangle':
+        if self._type in ('rectangle', 'ellipse'):
             return (-self.width / 2, -self.height / 2, self.width / 2, self.height / 2)
         if self._type in ('line', 'arrow'):
             points = [self.start, self.end]
@@ -283,7 +283,10 @@ class Mobject:
                     return self._point_to_world(VMobject._bezier_point(curve, remaining / length if length else 0))
                 remaining -= length
             return self._point_to_world(Vector(self.curves[-1][-1]))
-        if self._type in ('circle', 'arc'):
+        if self._type == 'ellipse':
+            angle = TAU * alpha
+            point = Vector((self.width / 2 * math.cos(angle), self.height / 2 * math.sin(angle), 0))
+        elif self._type in ('circle', 'arc'):
             if not math.isfinite(self.radius) or self.radius < 0:
                 raise ValueError('Path radius must be nonnegative and finite')
             angle = TAU * alpha if self._type == 'circle' else self.start_angle + self.arc_angle * alpha
@@ -350,6 +353,12 @@ class Mobject:
             dx, dy = (x - center[0]) * self.geometry_scale, (y - center[1]) * self.geometry_scale
             points.append((self.position[0] + center[0] + dx * math.cos(self.angle) - dy * math.sin(self.angle),
                            self.position[1] + center[1] + dx * math.sin(self.angle) + dy * math.cos(self.angle)))
+        if self._type == 'ellipse':
+            rx, ry = self.width / 2, self.height / 2
+            dx = abs(self.geometry_scale) * math.hypot(rx * math.cos(self.angle), ry * math.sin(self.angle))
+            dy = abs(self.geometry_scale) * math.hypot(rx * math.sin(self.angle), ry * math.cos(self.angle))
+            return (self.position[0] - dx, self.position[1] - dy,
+                    self.position[0] + dx, self.position[1] + dy)
         if self._type == 'circle':
             r = abs(self.radius * self.geometry_scale)
             return (self.position[0] - r, self.position[1] - r, self.position[0] + r, self.position[1] + r)
@@ -706,6 +715,15 @@ class Circle(Mobject):
     def __init__(self, radius=1, **kwargs):
         super().__init__(**kwargs)
         self._type, self.radius = 'circle', radius
+
+
+class Ellipse(Circle):
+    def __init__(self, width=2, height=1, **kwargs):
+        if any(isinstance(v, bool) or not isinstance(v, (int, float)) or
+               not math.isfinite(v) or v < 0 for v in (width, height)):
+            raise ValueError('Ellipse dimensions must be nonnegative and finite')
+        super().__init__(**kwargs)
+        self._type, self.width, self.height = 'ellipse', width, height
 
 
 class Arc(Mobject):
@@ -1133,8 +1151,8 @@ def _path_curves(snapshot):
     kind = snapshot['type']
     if kind == 'bezierpath':
         return copy.deepcopy(snapshot['curves'])
-    if kind in ('circle', 'arc'):
-        radius = snapshot['radius']
+    if kind in ('circle', 'arc', 'ellipse'):
+        radius = 1 if kind == 'ellipse' else snapshot['radius']
         if not math.isfinite(radius) or radius < 0:
             raise ValueError('Path radius must be nonnegative and finite')
         start = snapshot.get('start_angle', 0)
@@ -1151,6 +1169,9 @@ def _path_curves(snapshot):
             tangent_a, tangent_b = Vector((-a[1], a[0], 0)), Vector((-b[1], b[0], 0))
             curves.append([list(a), list(a + tangent_a * factor),
                            list(b - tangent_b * factor), list(b)])
+        if kind == 'ellipse':
+            curves = [[[p[0] * snapshot['width'] / 2, p[1] * snapshot['height'] / 2, 0]
+                       for p in curve] for curve in curves]
         return curves
     if kind in ('square', 'rectangle'):
         width = snapshot['side_length'] if kind == 'square' else snapshot['width']
@@ -1200,7 +1221,7 @@ def _subdivide_curves(curves, count):
 
 
 def _align_path_snapshots(start, target):
-    path_types = ('polyline', 'polygon', 'bezierpath', 'circle', 'arc',
+    path_types = ('polyline', 'polygon', 'bezierpath', 'circle', 'arc', 'ellipse',
                   'square', 'rectangle', 'triangle', 'line')
     if start['type'] not in path_types or target['type'] not in path_types:
         return None
@@ -1900,7 +1921,7 @@ class MovingCameraScene(Scene):
     camera_class = MovingCamera
 
 
-EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'CubicBezier', 'Circle', 'Arc', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
+EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'TransformFromCopy',

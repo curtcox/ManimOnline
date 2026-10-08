@@ -93,7 +93,7 @@ Python runs in a Web Worker using Pyodide 0.27.0. The browser loads Python on
 first use, so the first render needs an internet connection. This is a small
 Manim-like runtime, **not the full Manim Community engine**.
 
-- Shapes: `Circle`, `Arc`, `CubicBezier`, `VMobject`, `Dot`, `Square`, `Rectangle`, `Line`, `Arrow`, `Triangle`, `Polygon`,
+- Shapes: `Circle`, `Ellipse`, `Arc`, `CubicBezier`, `VMobject`, `Dot`, `Square`, `Rectangle`, `Line`, `Arrow`, `Triangle`, `Polygon`,
   `Text`, `MathTex`, and `VGroup`.
 - Scene operations: `add`, `remove`, `play`, and `wait`.
 - Animations: `Create`, `Uncreate`, `Write`, `FadeIn`, `FadeOut`, `GrowFromCenter`,
@@ -466,7 +466,7 @@ alignment remain open. This follows the curve-subdivision concept in
 
 ### Primitive outline morphing
 
-Circle, Arc, Square, Rectangle, Triangle, and Line can morph into each other and
+Circle, Ellipse, Arc, Square, Rectangle, Triangle, and Line can morph into each other and
 into supported corner/cubic/polygon paths. Straight outlines convert exactly to
 cubic segments. Circles and arcs use tangent-matched cubic segments spanning at
 most 45 degrees, with exact anchors and closure for full turns. Circular geometry
@@ -603,3 +603,13 @@ tracing and its clock; clear_updaters freezes the trail. Copy/checkpoints and
 transforms use the existing path pipeline. Trails use straight sample segments;
 3D points and opacity gradients remain unsupported. **Trace moving points**
 compares a full circular trail with a one-second trail that disappears during wait.
+
+
+`Ellipse(width=2, height=1)` supports independent nonnegative finite dimensions,
+fill/stroke styles, transforms, Create/Uncreate, growth and restoration. Its outline
+can be used by MoveAlongPath or point_from_proportion; like Circle, sampling uses
+angular proportion rather than constant arc-length speed. Rotated ellipse bounds
+use exact analytical extents. Transforms to other supported outlines align cubic
+curves; the final object retains native ellipse SVG geometry after Restore.
+**Follow an ellipse** demonstrates creation, a rotated orbit, circle morphing and
+restoration. Native stretch methods and general point-array editing remain open.

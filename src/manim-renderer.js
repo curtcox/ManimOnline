@@ -86,6 +86,9 @@ const ManimRenderer = {
       case 'circle':
         element = this.renderCircle(mobject);
         break;
+      case 'ellipse':
+        element = this.renderEllipse(mobject);
+        break;
       case 'arc':
         element = this.renderArc(mobject);
         break;
@@ -187,6 +190,20 @@ const ManimRenderer = {
     circle.setAttribute('stroke', mobject.color || '#FFFFFF');
     circle.setAttribute('stroke-width', mobject.stroke_width ?? 2);
     return circle;
+  },
+
+  /** Render an oval with independent horizontal and vertical radii. */
+  renderEllipse(mobject) {
+    const ellipse = document.createElementNS(this.SVG_NS, 'ellipse');
+    ellipse.setAttribute('rx', (mobject.width ?? 2) * this.UNIT_SCALE / 2);
+    ellipse.setAttribute('ry', (mobject.height ?? 1) * this.UNIT_SCALE / 2);
+    ellipse.setAttribute('cx', 0);
+    ellipse.setAttribute('cy', 0);
+    ellipse.setAttribute('fill', mobject.color || '#FFFFFF');
+    ellipse.setAttribute('fill-opacity', mobject.fill_opacity ?? 0);
+    ellipse.setAttribute('stroke', mobject.color || '#FFFFFF');
+    ellipse.setAttribute('stroke-width', mobject.stroke_width ?? 2);
+    return ellipse;
   },
 
   /** Render a circular arc as bounded SVG arc segments, including a full turn. */

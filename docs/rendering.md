@@ -683,3 +683,26 @@ Local Pyodide gallery playback verified a three-quarter blue trail and a short
 yellow trail at three seconds. By 5.9 seconds the blue circle stayed frozen and
 the yellow path contained only coincident endpoint samples. All geometry was
 removed at seven seconds; DOT rendered after switching.
+
+
+## Elliptical geometry
+
+Ellipse follows the [official width/height constructor](https://docs.manim.community/en/stable/_modules/manim/mobject/geometry/arc.html)
+with defaults 2×1. It renders as SVG ellipse with separate X/Y radii. Finite
+nonnegative dimensions include collapsed geometry; invalid values fail during
+construction. Existing style, transform, creation/growth and checkpoint pipelines
+apply. Local bounds use half dimensions; rotated world bounds use exact elliptical
+extents instead of rotated rectangle corners. Outline queries use angular
+proportion, matching the current Circle approach rather than constant speed.
+
+Eight cubic arc segments with separately scaled coordinates join the existing
+primitive morph alignment pipeline, preserving original pivots and terminal
+ellipse metadata. Tests cover defaults/validation, degenerate dimensions, rotated
+bounds and path points, cubic alignment, morph/restoration gallery frames, SVG
+radii, styles, creation dashes and transforms. Native stretch methods and general
+point-array operations remain open.
+
+Local Pyodide playback verified the 30-degree ellipse with SVG radii 100/50 pixels,
+the dot at (-.5, .866) after two seconds, a single cubic morph outline at six
+seconds, and the restored ellipse without the dot at ten seconds. DOT rendered
+after switching.

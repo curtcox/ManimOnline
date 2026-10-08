@@ -16,6 +16,38 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_ellipse_dimensions_path_and_rotated_bounds(self):
+        ellipse = lite.Ellipse(width=4, height=2).rotate(lite.PI/2).shift(lite.RIGHT)
+        for actual, expected in zip(ellipse._bounds(), [0, -2, 2, 2]):
+            self.assertAlmostEqual(actual, expected)
+        for alpha, expected in [(0, [1, 2, 0]), (.25, [0, 0, 0]), (.5, [1, -2, 0])]:
+            for actual, value in zip(ellipse.point_from_proportion(alpha), expected):
+                self.assertAlmostEqual(actual, value)
+        self.assertEqual(lite.Ellipse().to_dict()['width'], 2)
+        self.assertEqual(lite.Ellipse().to_dict()['height'], 1)
+        self.assertEqual(lite.Ellipse(width=0, height=0)._bounds(), (0,0,0,0))
+        for invalid in [-1, True, float('nan'), float('inf'), '2']:
+            with self.assertRaises(ValueError): lite.Ellipse(width=invalid)
+            with self.assertRaises(ValueError): lite.Ellipse(height=invalid)
+
+    def test_ellipse_morph_alignment_and_gallery_restoration(self):
+        ellipse = lite.Ellipse(width=4, height=2)
+        curves = lite._path_curves(ellipse.to_dict())
+        self.assertEqual(len(curves), 8)
+        self.assertEqual(curves[0][0], [2, 0, 0])
+        self.assertAlmostEqual(curves[2][0][1], 1)
+        result = json.loads(lite.render_scene((ROOT/'examples/ellipse_scene.py').read_text()))
+        self.assertEqual(result['duration'], 10)
+        middle = result['frames'][90]['mobjects'][0]
+        self.assertEqual(middle['type'], 'bezierpath')
+        self.assertEqual(len(middle['curves']), 8)
+        final = result['frames'][-1]['mobjects'][0]
+        self.assertEqual(final['type'], 'ellipse')
+        self.assertEqual(final['width'], 4)
+        self.assertEqual(final['height'], 2)
+        self.assertAlmostEqual(final['angle'], lite.PI/6)
+        self.assertEqual(len(result['frames'][-1]['mobjects']), 1)
+
     def test_trace_tracks_sampled_geometry_and_serializes_without_callbacks(self):
         result = render("""dot = Dot(LEFT * 2)
 trace = TracedPath(dot.get_center)

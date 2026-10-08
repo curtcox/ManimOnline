@@ -125,3 +125,7 @@ Read `examples/trace_scene.py` for TracedPath sampling, timed dissipation,
 freezing and removal. Exclude traced_point_func from snapshots, preserve the
 original sampled source identity, and bake current path transforms before
 appending world-space points so earlier vertices retain their position.
+
+Read `examples/ellipse_scene.py` for elliptical path motion, primitive morphing
+and restoration. Ellipse dimensions are local geometry; preserve exact rotated
+bounds, angular outline queries, and independent X/Y radii during cubic alignment.

@@ -253,3 +253,18 @@ test('moving camera centers the focus after zoom without moving scene geometry',
   assert.deepEqual(circle.position,[2,1,0]);
   assert.throws(()=>renderer.render({camera:{frame_center:[0,0,1]}}),/Invalid preview camera center/);
 });
+
+
+test('ellipses render separate radii with tracing, fill and transforms', () => {
+  const ellipse = renderer.renderMobject({type:'ellipse', width:4, height:2,
+    fill_opacity:.3, draw_progress:.5, position:[1,0,0], angle:Math.PI/2,
+    geometry_scale:2, stroke_color:'#00FF00'});
+  assert.equal(ellipse.tag, 'ellipse');
+  assert.equal(ellipse.getAttribute('rx'), '100');
+  assert.equal(ellipse.getAttribute('ry'), '50');
+  assert.equal(ellipse.getAttribute('stroke'), '#00FF00');
+  assert.equal(ellipse.getAttribute('pathLength'), '1');
+  assert.equal(ellipse.getAttribute('stroke-dasharray'), '1 1');
+  assert.equal(ellipse.getAttribute('stroke-dashoffset'), '0.5');
+  assert.match(ellipse.getAttribute('transform'), /translate\(50, 0\).*rotate\(90\).*scale\(2\)/);
+});
