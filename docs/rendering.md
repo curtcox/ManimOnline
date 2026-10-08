@@ -1860,3 +1860,22 @@ showed the wider green tip with white border at six seconds, restored red fill
 (.4 opacity) and yellow border at seven seconds, and no geometry at nine seconds.
 The curved arrow retained yellow fills (.5 opacity) and purple outlines independently
 of its green shaft. Switching to DOT rendered the Editor → Render → Preview graph.
+
+
+Try **Attach tips to arcs and circles** (`examples/generic_tips_scene.py`).
+TipableVMobject now shares the XY tip factories and management API across Line,
+Arc, Circle and their subclasses. Open paths fit their cubic shaft endpoints to
+actual tip bases; closed circles retain their complete outline and place tips at
+the shared start/end anchor. Attachment preserves the path's existing pose.
+Logical endpoint queries use tip points, while own-point queries use the fitted
+shaft. Ordinary family transforms, endpoint fitting, copying and restoration
+include attached tips. TipableVMobject can also hold explicitly constructed cubic
+or corner paths. Empty paths reject positioned tips. normal_vector must be finite
+and perpendicular to the XY plane. Native world-coordinate children, general
+mutable-tip path semantics and arbitrary 3D remain unfinished.
+
+
+Verification: all 350 Python and 78 Node tests passed. Local Pyodide playback
+rendered the open arc with two tangent tips and the closed circle with a stealth
+tip at six seconds, restored the saved pose at seven seconds and removed all
+geometry at nine seconds. Switching to DOT rendered Editor → Render → Preview.

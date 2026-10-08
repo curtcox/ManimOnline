@@ -1203,3 +1203,16 @@ including a triangular `width`. Factory dimensions are finite and nonnegative;
 unsupported style options fail explicitly. Positioned tip coordinates use the
 runtime's parent-local convention. `get_tip()` returns the end tip or, if only a
 start tip exists, that start tip.
+
+
+Try **Attach tips to arcs and circles** (`examples/generic_tips_scene.py`).
+TipableVMobject now shares the XY tip factories and management API across Line,
+Arc, Circle and their subclasses. Open paths fit their cubic shaft endpoints to
+actual tip bases; closed circles retain their complete outline and place tips at
+the shared start/end anchor. Attachment preserves the path's existing pose.
+Logical endpoint queries use tip points, while own-point queries use the fitted
+shaft. Ordinary family transforms, endpoint fitting, copying and restoration
+include attached tips. TipableVMobject can also hold explicitly constructed cubic
+or corner paths. Empty paths reject positioned tips. normal_vector must be finite
+and perpendicular to the XY plane. Native world-coordinate children, general
+mutable-tip path semantics and arbitrary 3D remain unfinished.

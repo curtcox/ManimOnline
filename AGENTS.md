@@ -412,6 +412,14 @@ Line.get_unpositioned_tip merges generated styles then copied tip_style; exact
 ArrowTriangleFilledTip gets generated width from tip_width/default tip length.
 create_tip compensates parent scale and position_tip uses the existing local
 orientation helper. Neither attaches children. add_tip reuses them and supplied
-tip objects keep their style/size. CurvedArrow aliases these helpers and initializes
+tip objects keep their style/size. CurvedArrow inherits these helpers and initializes
 its copied style mapping before attachment. get_tip can return a lone start tip;
 role-specific tip/start_tip properties require the matching attached role.
+
+
+Read `examples/generic_tips_scene.py` for Arc/Circle attachment. TipableVMobject
+owns common factories, management, tangent orientation and logical endpoint APIs.
+Arc/Circle/Line inherit it. Generic attachment materializes raw local cubics and
+compensates pivot changes before adding the tip family; preserve existing world
+geometry. Open shafts use the same _curved_tip_path fitting pipeline as curved
+arrows; exactly closed paths retain their full raw outline (zero chord).

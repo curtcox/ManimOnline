@@ -175,3 +175,9 @@ Straight/curved connectors now accept tip_style and provide detached tip creatio
 positioning and tip_width controls. Default filled triangular widths follow native
 factory/style precedence and short-arrow caps. Generic TipableVMobject inheritance,
 Arc/Circle tip APIs and native world-coordinate child semantics remain open.
+
+
+TipableVMobject now shares XY path-tip factories and management across Line,
+Arc and Circle. Generic open/closed attachment and family restoration have
+regression coverage. Native world-coordinate children, full mutable-tip path
+semantics and arbitrary 3D remain open.

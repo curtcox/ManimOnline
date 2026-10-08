@@ -1361,8 +1361,218 @@ class CubicBezier(VMobject):
         self._type = 'bezierpath'
 
 
-class Circle(Mobject):
+class TipableVMobject(VMobject):
+    """Shared XY path-tip geometry, factories and family management."""
+    def __init__(self, tip_length=.35, tip_style=None, normal_vector=OUT, **kwargs):
+        ArrowTip._tip_dimension(tip_length,'length')
+        if tip_style is not None and not isinstance(tip_style,dict):
+            raise TypeError('tip_style must be a dictionary')
+        normal = Vector(normal_vector)
+        if not all(math.isfinite(value) for value in normal):
+            raise ValueError('Tip normal must be finite')
+        if normal[0] or normal[1] or not normal[2]:
+            raise NotImplementedError('Tip paths support only the XY plane')
+        super().__init__(**kwargs)
+        self.tip_length = tip_length
+        self.tip_style = copy.deepcopy(tip_style or {})
+        self.normal_vector = list(normal)
+
+    def _tip(self, at_start=False):
+        role = 'start' if at_start else 'end'
+        return next((child for child in self.children if child.__dict__.get('_tip_role') == role),None)
+
+    @property
+    def tip(self):
+        tip = self._tip()
+        if tip is None:
+            raise ValueError('The path has no end tip')
+        return tip
+
+    @property
+    def start_tip(self):
+        tip = self._tip(True)
+        if tip is None:
+            raise ValueError('The path has no start tip')
+        return tip
+
+    def has_tip(self):
+        return self._tip() is not None
+
+    def has_start_tip(self):
+        return self._tip(True) is not None
+
+    def get_tip(self):
+        tip = self._tip()
+        if tip is None:
+            tip = self._tip(True)
+        if tip is None:
+            raise ValueError('The path has no tip')
+        return tip
+
+    def get_tips(self):
+        return VGroup(*(tip for tip in (self._tip(),self._tip(True)) if tip is not None))
+
+    def get_default_tip_length(self):
+        return getattr(self,'tip_length',.35)
+
+    def _orient_tip(self, tip, at_start):
+        curves = self._raw_curves()
+        if not curves:
+            raise ValueError('The curve has no completed segments')
+        curve = curves[0] if at_start else curves[-1]
+        anchor = Vector(curve[0] if at_start else curve[-1])
+        handle = Vector(curve[1] if at_start else curve[-2])
+        vector = anchor-handle
+        angle = math.atan2(vector[1],vector[0]) if any(vector) else 0
+        tip.rotate(angle-tip.tip_angle)
+        tip.shift(anchor-tip.tip_point)
+
+    def get_unpositioned_tip(self, tip_shape=None, tip_length=None, tip_width=None):
+        shape = ArrowTriangleFilledTip if tip_shape is None else tip_shape
+        if not isinstance(shape,type) or not issubclass(shape,ArrowTip) or shape is ArrowTip:
+            raise TypeError('tip_shape must be a concrete ArrowTip class')
+        length = self.get_default_tip_length() if tip_length is None else tip_length
+        ArrowTip._tip_dimension(length,'length')
+        if tip_width is not None:
+            ArrowTip._tip_dimension(tip_width,'width')
+        if not isinstance(self.tip_style,dict):
+            raise TypeError('tip_style must be a dictionary')
+        style = dict(color=self.stroke_color,fill_color=self.stroke_color,stroke_color=self.stroke_color)
+        if shape is ArrowTriangleFilledTip:
+            style['width'] = self.get_default_tip_length() if tip_width is None else tip_width
+        style.update(copy.deepcopy(self.tip_style))
+        return shape(length=length,**style)
+
+    def position_tip(self, tip, at_start=False):
+        if not isinstance(at_start,bool):
+            raise ValueError('at_start must be a boolean')
+        if not isinstance(tip,ArrowTip):
+            raise TypeError('tip must be an ArrowTip')
+        self._validate_children([tip])
+        self._geometry_center()
+        # Tip coordinates, like other children, are local to this parent.
+        self._orient_tip(tip,at_start)
+        return tip
+
+    def create_tip(self, tip_shape=None, tip_length=None, tip_width=None, at_start=False):
+        if not isinstance(at_start,bool):
+            raise ValueError('at_start must be a boolean')
+        if self.geometry_scale == 0:
+            raise ValueError('Cannot create a positioned tip on collapsed geometry')
+        tip = self.get_unpositioned_tip(tip_shape,tip_length,tip_width)
+        tip.scale(1/abs(self.geometry_scale))
+        return self.position_tip(tip,at_start)
+
+    def add_tip(self, tip=None, tip_shape=None, tip_length=None, tip_width=None, at_start=False):
+        if not isinstance(at_start,bool):
+            raise ValueError('at_start must be a boolean')
+        if self.geometry_scale == 0:
+            raise ValueError('Cannot add a tip to collapsed geometry')
+        tip = (self.create_tip(tip_shape,tip_length,tip_width,at_start) if tip is None
+               else self.position_tip(tip,at_start))
+        self._prepare_tip_path()
+        role = 'start' if at_start else 'end'
+        old = self._tip(at_start)
+        tip._tip_role = role
+        self._replace_children([child for child in self.children if child is not old and child is not tip]+[tip])
+        self.explicit_tips = True
+        return self
+
+    def pop_tips(self):
+        tips = self.get_tips()
+        self.remove(*tips.children)
+        self.explicit_tips = True
+        return tips
+
+    def _raw_curves(self):
+        snapshot = self.to_dict()
+        snapshot.pop('shaft_curves',None)
+        snapshot.pop('shaft_start',None)
+        snapshot.pop('shaft_end',None)
+        return _path_curves(snapshot)
+
+    def get_start(self):
+        tip = self._tip(True)
+        curves = self._raw_curves() if tip is None else None
+        if curves == []:
+            raise ValueError('The curve has no completed segments')
+        point = tip.tip_point if tip is not None else Vector(curves[0][0])
+        return self._point_to_world(point)
+
+    def get_end(self):
+        tip = self._tip()
+        curves = self._raw_curves() if tip is None else None
+        if curves == []:
+            raise ValueError('The curve has no completed segments')
+        point = tip.tip_point if tip is not None else Vector(curves[-1][-1])
+        return self._point_to_world(point)
+
+    def put_start_and_end_on(self, start, end):
+        start,end = Line._endpoints(start,end)
+        old_start,old_end = self.get_start_and_end()
+        old_vector,new_vector = old_end-old_start,end-start
+        old_length,new_length = math.hypot(*old_vector),math.hypot(*new_vector)
+        if not math.isfinite(new_length):
+            raise ValueError('Curve endpoint span must be finite')
+        if not old_length:
+            if new_length:
+                raise ValueError('Cannot expand a collapsed curve with endpoint fitting')
+            return self.shift(start-old_start)
+        factor = new_length/old_length
+        if not math.isfinite(factor):
+            raise ValueError('Curve endpoint scale must be finite')
+        angle = math.atan2(new_vector[1],new_vector[0])-math.atan2(old_vector[1],old_vector[0])
+        self.rotate(angle,about_point=old_start).scale(factor,about_point=old_start)
+        return self.shift(start-old_start)
+
+    def get_start_and_end(self):
+        return self.get_start(), self.get_end()
+
+    def get_vector(self):
+        return self.get_end() - self.get_start()
+
+    def get_length(self):
+        return math.dist(self.get_start(), self.get_end())
+
+    def get_unit_vector(self):
+        length = self.get_length()
+        if not math.isfinite(length):
+            raise ValueError('Line length must be finite')
+        return Vector(value/length for value in self.get_vector()) if length else ORIGIN
+
+    def _prepare_tip_path(self):
+        if self._type in ('line','arrow') or self.__dict__.get('_curved_tip_path'):
+            return
+        curves = self._raw_curves()
+        if not curves:
+            raise ValueError('The path has no completed segments')
+        before = self._geometry_center()
+        self.curves,self.vertices = curves,[]
+        self._type = 'bezierpath'
+        self._curved_tip_path = True
+        self.__dict__.pop('_family_pivot_cache',None)
+        after = self._geometry_center()
+        delta = after-before
+        transformed = Vector((delta[0]*math.cos(self.angle)-delta[1]*math.sin(self.angle),
+                              delta[0]*math.sin(self.angle)+delta[1]*math.cos(self.angle),0))*self.geometry_scale
+        self.shift(transformed-delta)
+
+    def get_first_handle(self):
+        curves = _path_curves(self.to_dict())
+        if not curves:
+            raise ValueError('The path has no completed segments')
+        return self._point_to_world(Vector(curves[0][1]))
+
+    def get_last_handle(self):
+        curves = _path_curves(self.to_dict())
+        if not curves:
+            raise ValueError('The path has no completed segments')
+        return self._point_to_world(Vector(curves[-1][-2]))
+
+
+class Circle(TipableVMobject):
     def __init__(self, radius=1, **kwargs):
+        kwargs.setdefault('stroke_width',2)
         super().__init__(**kwargs)
         self._type, self.radius = 'circle', radius
 
@@ -1376,7 +1586,7 @@ class Ellipse(Circle):
         self._type, self.width, self.height = 'ellipse', width, height
 
 
-class Arc(Mobject):
+class Arc(TipableVMobject):
     def __init__(self, radius=1, start_angle=0, angle=PI / 2, arc_center=ORIGIN, **kwargs):
         center = Vector(arc_center)
         if not all(math.isfinite(v) for v in (radius, start_angle, angle, *center)) or radius < 0:
@@ -1385,6 +1595,7 @@ class Arc(Mobject):
             raise NotImplementedError('Arcs support only the XY plane')
         if abs(angle) > TAU:
             raise NotImplementedError('Arcs support at most one full turn')
+        kwargs.setdefault('stroke_width',2)
         super().__init__(**kwargs)
         self._type, self.radius = 'arc', radius
         self.start_angle, self.arc_angle = start_angle % TAU, angle
@@ -1402,11 +1613,10 @@ class Arc(Mobject):
         return self.shift(point - self.get_arc_center())
 
 
-class ArcBetweenPoints(Arc, VMobject):
+class ArcBetweenPoints(Arc):
     """A circular XY arc spanning two endpoints, or a straight zero-angle path."""
-    get_start = Mobject.get_start
-    get_end = Mobject.get_end
     def __init__(self, start, end, angle=PI/2, radius=None, **kwargs):
+        kwargs.setdefault('stroke_width',4)
         start,end = Line._endpoints(start,end)
         if isinstance(angle,bool) or not isinstance(angle,(int,float)) or not math.isfinite(angle):
             raise ValueError('Arc angle must be finite')
@@ -1674,7 +1884,7 @@ class MovingCamera(PreviewConfig):
         return result
 
 
-class Line(Mobject):
+class Line(TipableVMobject):
     def __init__(self, start=LEFT, end=RIGHT, buff=0, tip_length=.35, tip_style=None, **kwargs):
         start,end = self._endpoints(start,end)
         ArrowTip._tip_dimension(tip_length,'length')
@@ -1688,112 +1898,17 @@ class Line(Mobject):
         if span > 2*buff and buff:
             offset = (end-start)*(buff/span)
             start,end = start+offset,end-offset
-        super().__init__(**kwargs)
+        kwargs.setdefault('stroke_width',2)
+        super().__init__(tip_length=tip_length,tip_style=tip_style,**kwargs)
         self._type = 'line'
         self.start, self.end = list(start),list(end)
         self.buff = buff
-        self.tip_length = tip_length
-        self.tip_style = copy.deepcopy(tip_style or {})
-
-    def _tip(self, at_start=False):
-        role = 'start' if at_start else 'end'
-        return next((child for child in self.children if child.__dict__.get('_tip_role') == role),None)
-
-    @property
-    def tip(self):
-        tip = self._tip()
-        if tip is None:
-            raise ValueError('The line has no end tip')
-        return tip
-
-    @property
-    def start_tip(self):
-        tip = self._tip(True)
-        if tip is None:
-            raise ValueError('The line has no start tip')
-        return tip
-
-    def has_tip(self):
-        return self._tip() is not None
-
-    def has_start_tip(self):
-        return self._tip(True) is not None
-
-    def get_tip(self):
-        tip = self._tip()
-        if tip is None:
-            tip = self._tip(True)
-        if tip is None:
-            raise ValueError('The line has no tip')
-        return tip
-
-    def get_tips(self):
-        return VGroup(*(tip for tip in (self._tip(),self._tip(True)) if tip is not None))
-
-    def get_default_tip_length(self):
-        return getattr(self,'tip_length',.35)
 
     def _orient_tip(self, tip, at_start):
         vector = Vector(self.start)-Vector(self.end) if at_start else Vector(self.end)-Vector(self.start)
         angle = math.atan2(vector[1],vector[0]) if any(vector) else 0
         tip.rotate(angle-tip.tip_angle)
         tip.shift(Vector(self.start if at_start else self.end)-tip.tip_point)
-
-    def get_unpositioned_tip(self, tip_shape=None, tip_length=None, tip_width=None):
-        shape = ArrowTriangleFilledTip if tip_shape is None else tip_shape
-        if not isinstance(shape,type) or not issubclass(shape,ArrowTip) or shape is ArrowTip:
-            raise TypeError('tip_shape must be a concrete ArrowTip class')
-        length = self.get_default_tip_length() if tip_length is None else tip_length
-        ArrowTip._tip_dimension(length,'length')
-        if tip_width is not None:
-            ArrowTip._tip_dimension(tip_width,'width')
-        if not isinstance(self.tip_style,dict):
-            raise TypeError('tip_style must be a dictionary')
-        style = dict(color=self.stroke_color,fill_color=self.stroke_color,stroke_color=self.stroke_color)
-        if shape is ArrowTriangleFilledTip:
-            style['width'] = self.get_default_tip_length() if tip_width is None else tip_width
-        style.update(copy.deepcopy(self.tip_style))
-        return shape(length=length,**style)
-
-    def position_tip(self, tip, at_start=False):
-        if not isinstance(at_start,bool):
-            raise ValueError('at_start must be a boolean')
-        if not isinstance(tip,ArrowTip):
-            raise TypeError('tip must be an ArrowTip')
-        self._validate_children([tip])
-        self._geometry_center()
-        # Tip coordinates, like other children, are local to this parent.
-        self._orient_tip(tip,at_start)
-        return tip
-
-    def create_tip(self, tip_shape=None, tip_length=None, tip_width=None, at_start=False):
-        if not isinstance(at_start,bool):
-            raise ValueError('at_start must be a boolean')
-        if self.geometry_scale == 0:
-            raise ValueError('Cannot create a positioned tip on collapsed geometry')
-        tip = self.get_unpositioned_tip(tip_shape,tip_length,tip_width)
-        tip.scale(1/abs(self.geometry_scale))
-        return self.position_tip(tip,at_start)
-
-    def add_tip(self, tip=None, tip_shape=None, tip_length=None, tip_width=None, at_start=False):
-        if not isinstance(at_start,bool):
-            raise ValueError('at_start must be a boolean')
-        if self.geometry_scale == 0:
-            raise ValueError('Cannot add a tip to collapsed geometry')
-        tip = (self.create_tip(tip_shape,tip_length,tip_width,at_start) if tip is None
-               else self.position_tip(tip,at_start))
-        role = 'start' if at_start else 'end'
-        old = self._tip(at_start)
-        tip._tip_role = role
-        self._replace_children([child for child in self.children if child is not old and child is not tip]+[tip])
-        self.explicit_tips = True
-        return self
-
-    def pop_tips(self):
-        tips = self.get_tips()
-        self.remove(*tips.children)
-        self.explicit_tips = True
-        return tips
 
     @staticmethod
     def _endpoints(start, end):
@@ -2090,24 +2205,6 @@ class DoubleArrow(Arrow):
 
 class CurvedArrow(ArcBetweenPoints):
     """An editable endpoint arc with tangent-aligned tip children."""
-    _tip = Line._tip
-    tip = Line.tip
-    start_tip = Line.start_tip
-    has_tip = Line.has_tip
-    has_start_tip = Line.has_start_tip
-    get_tip = Line.get_tip
-    get_tips = Line.get_tips
-    get_default_tip_length = Line.get_default_tip_length
-    add_tip = Line.add_tip
-    get_unpositioned_tip = Line.get_unpositioned_tip
-    position_tip = Line.position_tip
-    create_tip = Line.create_tip
-    pop_tips = Line.pop_tips
-    get_start_and_end = Line.get_start_and_end
-    get_vector = Line.get_vector
-    get_length = Line.get_length
-    get_unit_vector = Line.get_unit_vector
-
     def __init__(self, start_point, end_point, tip_shape=None, tip_length=.35, tip_style=None, **kwargs):
         if tip_style is not None and not isinstance(tip_style,dict):
             raise TypeError('tip_style must be a dictionary')
@@ -2122,59 +2219,9 @@ class CurvedArrow(ArcBetweenPoints):
         self.tip_style = copy.deepcopy(tip_style or {})
         self.add_tip(tip_shape=tip_shape)
 
-    def _raw_curves(self):
-        snapshot = self.to_dict()
-        snapshot.pop('shaft_curves',None)
-        return _path_curves(snapshot)
-
-    def _orient_tip(self, tip, at_start):
-        curves = self._raw_curves()
-        if not curves:
-            raise ValueError('The curve has no completed segments')
-        curve = curves[0] if at_start else curves[-1]
-        anchor = Vector(curve[0] if at_start else curve[-1])
-        handle = Vector(curve[1] if at_start else curve[-2])
-        vector = anchor-handle
-        angle = math.atan2(vector[1],vector[0]) if any(vector) else 0
-        tip.rotate(angle-tip.tip_angle)
-        tip.shift(anchor-tip.tip_point)
-
-    def get_start(self):
-        tip = self._tip(True)
-        curves = self._raw_curves() if tip is None else None
-        if curves == []:
-            raise ValueError('The curve has no completed segments')
-        point = tip.tip_point if tip is not None else Vector(curves[0][0])
-        return self._point_to_world(point)
-
-    def get_end(self):
-        tip = self._tip()
-        curves = self._raw_curves() if tip is None else None
-        if curves == []:
-            raise ValueError('The curve has no completed segments')
-        point = tip.tip_point if tip is not None else Vector(curves[-1][-1])
-        return self._point_to_world(point)
-
     def get_arc_center(self):
         return self._point_to_world(Vector(self.__dict__.get('_curve_arc_center',ORIGIN)))
 
-    def put_start_and_end_on(self, start, end):
-        start,end = Line._endpoints(start,end)
-        old_start,old_end = self.get_start_and_end()
-        old_vector,new_vector = old_end-old_start,end-start
-        old_length,new_length = math.hypot(*old_vector),math.hypot(*new_vector)
-        if not math.isfinite(new_length):
-            raise ValueError('Curve endpoint span must be finite')
-        if not old_length:
-            if new_length:
-                raise ValueError('Cannot expand a collapsed curve with endpoint fitting')
-            return self.shift(start-old_start)
-        factor = new_length/old_length
-        if not math.isfinite(factor):
-            raise ValueError('Curve endpoint scale must be finite')
-        angle = math.atan2(new_vector[1],new_vector[0])-math.atan2(old_vector[1],old_vector[0])
-        self.rotate(angle,about_point=old_start).scale(factor,about_point=old_start)
-        return self.shift(start-old_start)
 
 
 class CurvedDoubleArrow(CurvedArrow):
@@ -4514,7 +4561,7 @@ class MovingCameraScene(Scene):
     camera_class = MovingCamera
 
 
-EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
+EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
            'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'NumberPlane', 'ComplexPlane', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',

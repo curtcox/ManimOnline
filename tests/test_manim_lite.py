@@ -16,6 +16,59 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_generic_tip_paths_preserve_pose_and_fit_bases(self):
+        for factory in (lambda:lite.Arc(radius=2,angle=-lite.PI),
+                        lambda:lite.Circle(radius=2),
+                        lambda:lite.TipableVMobject().set_points_as_corners([lite.LEFT,lite.UP,lite.RIGHT])):
+            path=factory().rotate(.3).scale(-1.2).shift(lite.UP)
+            self.assertIsInstance(path,lite.VMobject)
+            start,end=path.get_start_and_end()
+            raw_world=path.get_points()
+            path.add_tip(tip_length=.4).add_tip(at_start=True,tip_shape=lite.ArrowSquareFilledTip)
+            self.assertPointAlmostEqual(path.get_start(),start)
+            self.assertPointAlmostEqual(path.get_end(),end)
+            self.assertEqual(len(path.get_tips()),2)
+            if isinstance(path,lite.Circle):
+                self.assertEqual(path.to_dict()['shaft_curves'],path._raw_curves())
+            else:
+                self.assertPointAlmostEqual(path.get_points()[0],path._point_to_world(path.start_tip.base))
+                self.assertPointAlmostEqual(path.get_points()[-1],path._point_to_world(path.tip.base))
+            path.save_state()
+            before=path.to_dict()
+            path.rotate(.7).scale(.8).restore()
+            self.assertEqual(path.to_dict(),before)
+            copy=path.copy()
+            self.assertIsNot(copy.tip,path.tip)
+            path.pop_tips()
+            for actual,expected in zip(path.get_points(),raw_world):
+                self.assertPointAlmostEqual(actual,expected)
+
+    def test_generic_tip_validation_and_inheritance(self):
+        for cls in (lite.Line,lite.Arc,lite.Circle,lite.ArcBetweenPoints,lite.CurvedArrow):
+            self.assertTrue(issubclass(cls,lite.TipableVMobject))
+        empty=lite.TipableVMobject()
+        before=empty.to_dict()
+        with self.assertRaises(ValueError): empty.add_tip()
+        self.assertEqual(empty.to_dict(),before)
+        for normal in (lite.UP,lite.ORIGIN):
+            with self.assertRaises(NotImplementedError): lite.Arc(normal_vector=normal)
+        with self.assertRaises(ValueError): lite.Circle(tip_length=-1)
+        self.assertEqual(lite.Arc().stroke_width,2)
+        self.assertEqual(lite.CurvedArrow(lite.LEFT,lite.RIGHT).stroke_width,4)
+
+    def test_generic_tip_gallery_restoration_and_cleanup(self):
+        result=json.loads(lite.render_scene((ROOT/'examples/generic_tips_scene.py').read_text()))
+        self.assertEqual(result['duration'],9)
+        for initial,restored in zip(result['frames'][30]['mobjects'][:2],result['frames'][105]['mobjects'][:2]):
+            for key in ('curves','position','angle','geometry_scale','shaft_curves'):
+                self.assertEqual(initial[key],restored[key])
+        for frame in result['frames'][30:106]:
+            arc,circle=frame['mobjects'][:2]
+            self.assertPointAlmostEqual(arc['shaft_curves'][0][0],arc['shaft_start'])
+            self.assertPointAlmostEqual(arc['shaft_curves'][-1][-1],arc['shaft_end'])
+            self.assertEqual(circle['shaft_curves'],circle['curves'])
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+
     def test_tip_factories_styles_widths_and_independent_attachment(self):
         style={'fill_color':lite.RED,'stroke_color':lite.GREEN,'fill_opacity':.4,'stroke_width':3}
         line=lite.Line((-2,1,0),(2,1,0),tip_length=.6,tip_style=style)
