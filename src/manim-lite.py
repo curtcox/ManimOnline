@@ -283,6 +283,84 @@ class Mobject:
     def has_points(self):
         return self.get_num_points() > 0
 
+    def get_num_curves(self):
+        return self.get_num_points() // 4
+
+    def get_start(self):
+        points = self.get_points()
+        if not points:
+            raise ValueError('The path has no points')
+        return Vector(points[0])
+
+    def get_end(self):
+        points = self.get_points()
+        if not points:
+            raise ValueError('The path has no points')
+        return Vector(points[-1])
+
+    def is_closed(self):
+        points = self.get_points()
+        return bool(points) and all(abs(a-b) <= 1e-6 for a,b in zip(points[0],points[-1]))
+
+    def pointwise_become_partial(self, vmobject, a, b):
+        if not isinstance(vmobject, Mobject) or vmobject._type not in (
+                'polyline', 'polygon', 'bezierpath', 'circle', 'arc', 'ellipse',
+                'square', 'rectangle', 'triangle', 'line', 'annulus'):
+            raise TypeError('Partial geometry expects a supported vector outline')
+        if any(isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v)
+               for v in (a,b)):
+            raise ValueError('Partial curve bounds must be finite real values')
+        a, b = max(0,min(1,a)), max(0,min(1,b))
+        if a > b:
+            raise ValueError('Partial curve lower bound must not exceed its upper bound')
+        points = vmobject.get_points()
+        if a == 0 and b == 1:
+            lengths = copy.deepcopy(vmobject.__dict__.get('subpath_lengths'))
+            VMobject.set_points(self, points)
+            if lengths:
+                self.subpath_lengths = lengths
+            return self
+        count = len(points) // 4
+        if not count:
+            return self
+        first, last = min(int(a*count),count-1), min(int(b*count),count-1)
+        lower, upper = a*count-first, b*count-last
+        curves = []
+        for i in range(first,last+1):
+            curve = points[i*4:i*4+4]
+            lo, hi = lower if i == first else 0, upper if i == last else 1
+            if lo == hi:
+                point = list(VMobject._bezier_point(curve,lo))
+                curves.append([point[:] for _ in range(4)])
+            else:
+                if hi < 1:
+                    curve = _split_cubic(curve,hi)[0]
+                if lo > 0:
+                    curve = _split_cubic(curve,lo/hi)[1]
+                curves.append(curve)
+        # Record boundaries before replacing self (the source may be self).
+        lengths, offset = [], 0
+        for path in _path_subpaths(vmobject.to_dict(),include_pending=False):
+            overlap = min(offset+len(path)-1,last) - max(offset,first) + 1
+            if overlap > 0:
+                lengths.append(overlap)
+            offset += len(path)
+        VMobject.set_points(self,[point for curve in curves for point in curve])
+        if len(lengths) > 1:
+            self.subpath_lengths = lengths
+        return self
+
+    def get_subcurve(self, a, b):
+        result = self.copy()
+        if (isinstance(a,(int,float)) and isinstance(b,(int,float)) and
+                math.isfinite(a) and math.isfinite(b) and a > b and self.is_closed()):
+            result.pointwise_become_partial(self,a,1)
+            second = self.copy().pointwise_become_partial(self,0,b)
+            VMobject.append_vectorized_mobject(result,second)
+        else:
+            result.pointwise_become_partial(self,a,b)
+        return result
+
     def point_from_proportion(self, alpha):
         """Sample supported XY outlines by distance, then apply SVG geometry transforms."""
         if not math.isfinite(alpha) or not 0 <= alpha <= 1:
@@ -628,7 +706,7 @@ class VMobject(Mobject):
         return vertices
 
     def set_points(self, points):
-        points = self._corners(points)
+        points = VMobject._corners(points)
         if len(points) % 4 not in (0, 1):
             raise ValueError('Cubic points need groups of four, optionally followed by one new anchor')
         completed = len(points) - len(points) % 4
@@ -665,7 +743,7 @@ class VMobject(Mobject):
         existing = self.get_points()
         if len(existing) % 4:
             existing = existing[:-1]
-        return self.set_points(existing + incoming)
+        return VMobject.set_points(self, existing + incoming)
 
     def set_points_as_corners(self, points):
         vertices = self._corners(points)
@@ -928,6 +1006,8 @@ class Annulus(Circle):
         return self.point_from_proportion(0)
 
     def get_end(self):
+        if self._type == 'bezierpath':
+            return Mobject.get_end(self)
         return self._point_to_world(Vector((self.inner_radius, 0, 0)))
 
 
@@ -1851,7 +1931,7 @@ class Animate(Transform):
     def __getattr__(self, name):
         if name.startswith('__'):
             raise AttributeError(name)
-        if name not in ('become', 'set_value', 'increment_value', 'shift', 'move_to', 'set_width', 'set_height', 'move_arc_center_to', 'put_start_and_end_on', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'set_points', 'append_points', 'clear_points', 'add_subpath', 'append_vectorized_mobject', 'start_new_path', 'close_path', 'set_points_as_corners', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
+        if name not in ('become', 'set_value', 'increment_value', 'shift', 'move_to', 'set_width', 'set_height', 'move_arc_center_to', 'put_start_and_end_on', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'pointwise_become_partial', 'set_points', 'append_points', 'clear_points', 'add_subpath', 'append_vectorized_mobject', 'start_new_path', 'close_path', 'set_points_as_corners', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
             raise NotImplementedError(f'animate.{name} is not supported yet')
         def apply(*args, **kwargs):
             getattr(self.target, name)(*args, **kwargs)

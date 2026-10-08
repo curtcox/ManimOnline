@@ -840,3 +840,35 @@ Local Pyodide playback verified raw pending-anchor completion, animated handle
 edits and appended ring geometry. At four seconds the preview contained three
 separate contours and seventeen cubics; at eight seconds Restore returned the
 original single curve. Graphviz rendered after switching examples.
+
+## Exact partial curves
+
+Supported outlines implement get_subcurve and pointwise_become_partial using
+the [official cubic-index selection and wrap behavior](https://docs.manim.community/en/stable/_modules/manim/mobject/types/vectorized_mobject.html).
+Finite fractions clamp to [0,1]; source curve count determines the lower/upper
+indices and local residues. Exact De Casteljau splits trim only boundary cubics;
+interior curves remain unchanged. An exact boundary may include the next curve
+as a null segment, matching native selection. Zero-length intervals collapse to
+one point. Full-range copying includes a pending anchor; a partial request with
+no completed source curves leaves the receiver unchanged.
+
+Pointwise replacement keeps receiver styles, callbacks and checkpoint. Queries
+return independent copies, and get_subcurve wraps reversed intervals on outlines
+whose first/last anchors coincide (is_closed); direct reversed partial replacement
+raises an error before mutation. Geometry is baked to world coordinates, preserving
+transformed source shape. Integer contour lengths retain disconnected boundaries.
+get_num_curves counts completed cubics. Animate accepts partial replacement, and
+native target/checkpoint representations use the existing transform pipeline.
+
+Tests cover exact cubic parameter correspondence after transforms, source/copy
+independence, receiver styles, unequal straight segment lengths, boundary null
+curves, disconnected/self partial replacement, ring endpoints, closure/wrapping,
+clamping/invalid/empty inputs and gallery cleanup. This supplies partial geometry;
+native partial-creation/passing-highlight animations, smoothing and glyph outlines
+remain implementation work.
+
+Local Pyodide playback verified the yellow exact cubic portion and a blue
+four-cubic circular highlight wrapped across the positive-X endpoint at four
+seconds. Animated replacement selected the curve's final portion; at eight
+seconds both highlights were removed and the original gray curve and circle
+remained. Graphviz rendered after switching examples.

@@ -10,6 +10,7 @@ const ExampleCatalog = Object.freeze([
   { id: 'annulus', label: 'Rings with separate contours', path: 'examples/annulus_scene.py' },
   { id: 'subpaths', label: 'Morph separate contours', path: 'examples/subpath_scene.py' },
   { id: 'points', label: 'Edit cubic point arrays', path: 'examples/point_array_scene.py' },
+  { id: 'partial', label: 'Extract and wrap curve highlights', path: 'examples/partial_curve_scene.py' },
   { id: 'rounded', label: 'Rounded and concave corners', path: 'examples/rounded_rectangle_scene.py' },
   { id: 'sectors', label: 'Circular and ring sectors', path: 'examples/sector_scene.py' },
   { id: 'ellipse', label: 'Follow an ellipse', path: 'examples/ellipse_scene.py' },

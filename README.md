@@ -690,3 +690,19 @@ styles. These editing methods work in animate chains and with Restore. Returned
 lists are copies; NumPy point-array indexing and direct mutable points attributes
 remain open. **Edit cubic point arrays** builds a transformed curve from raw
 points, animates its handles, appends a ring and restores the curve.
+
+`get_subcurve(a,b)` returns an independent exact cubic portion of a supported
+outline. `pointwise_become_partial(source,a,b)` replaces only the receiver's
+geometry and retains its styles, callbacks and checkpoint; it also works in
+animate chains. Fractions allocate equal parameter ranges to each source cubic,
+as in native Manim, rather than weighting by physical distance. De Casteljau
+splitting preserves the selected curve exactly, including transformed geometry.
+Bounds must be finite real values and are clamped to [0,1]; reversed bounds are
+rejected by pointwise_become_partial. get_subcurve permits a reversed interval
+on a closed outline, wrapping through its end/start. `is_closed()` compares the
+first and last anchors; `get_num_curves()` counts completed cubics. A zero-length
+interval becomes a null curve. Disconnected contours stay separate. Full-range
+copy includes an unfinished anchor; a partial selection with no completed source
+curves leaves the receiver unchanged. **Extract and wrap curve highlights**
+shows a precise cubic highlight, a wrapped circular highlight and animated
+partial replacement. General glyph outlines and smoothing remain open.

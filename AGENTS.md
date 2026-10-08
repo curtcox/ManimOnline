@@ -155,3 +155,8 @@ point queries, animated handle edits and copied outline append. Validate array
 length/XY coordinates before mutation; bake transforms before raw appends or
 start_new_path so changing bounds cannot move earlier geometry. Returned points
 are independent lists; NumPy indexing and mutable points attributes remain open.
+
+Read `examples/partial_curve_scene.py` for exact subcurve extraction, closed-loop
+wrapping and animated partial replacement. Partial fractions allocate by cubic
+index, unlike distance-weighted path following. Preserve contour boundaries and
+receiver styles/callbacks; split control points exactly before baking world coordinates.

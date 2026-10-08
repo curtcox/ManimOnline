@@ -16,6 +16,90 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_partial_cubic_is_exact_with_transforms_and_independent_style(self):
+        source = lite.CubicBezier((-2,0),(-1,3),(1,-2),(2,1)).rotate(.6).scale(1.7).shift(lite.UP)
+        original = source.to_dict()
+        partial = source.get_subcurve(.2,.8)
+        self.assertEqual(partial.get_num_curves(), 1)
+        for t in (0,.1,.25,.5,.9,1):
+            expected = source._point_to_world(lite.VMobject._bezier_point(source.curves[0],.2+.6*t))
+            for actual, value in zip(lite.VMobject._bezier_point(partial.curves[0],t),expected):
+                self.assertAlmostEqual(actual,value)
+        partial.set_color(lite.YELLOW)
+        self.assertEqual(source.to_dict(),original)
+        receiver = lite.VMobject(color=lite.RED,stroke_width=8)
+        receiver.pointwise_become_partial(source,.2,.8)
+        self.assertEqual(receiver.color,lite.RED)
+        self.assertEqual(receiver.stroke_width,8)
+
+    def test_partial_curve_count_parameter_and_exact_boundary_null_curve(self):
+        path = lite.VMobject().set_points_as_corners([lite.ORIGIN,lite.RIGHT,lite.RIGHT*10])
+        half = path.get_subcurve(0,.5)
+        self.assertEqual(half.get_end(),lite.RIGHT)
+        self.assertEqual(half.get_num_curves(),2)
+        self.assertTrue(all(p == list(lite.RIGHT) for p in half.curves[-1]))
+        middle = path.get_subcurve(.25,.75)
+        self.assertEqual(middle.get_start(),lite.RIGHT*.5)
+        self.assertEqual(middle.get_end(),lite.RIGHT*5.5)
+        point = path.get_subcurve(.25,.25)
+        self.assertEqual(point.get_start(),point.get_end())
+        self.assertEqual(point.get_start(),lite.RIGHT*.5)
+
+    def test_partial_disconnected_paths_keep_boundaries_and_source_checkpoint(self):
+        path = lite.VMobject().start_new_path(lite.ORIGIN).add_line_to(lite.RIGHT*2)
+        path.start_new_path(lite.RIGHT*10).add_line_to(lite.RIGHT*14)
+        path.save_state()
+        partial = path.get_subcurve(.25,.75)
+        self.assertEqual(partial.subpath_lengths,[1,1])
+        self.assertEqual(partial.get_start(),lite.RIGHT)
+        self.assertEqual(partial.get_end(),lite.RIGHT*12)
+        self.assertEqual(len(partial.get_subpaths()),2)
+        path.pointwise_become_partial(path,.25,.75)
+        self.assertEqual(path.get_points(),partial.get_points())
+        path.restore()
+        self.assertEqual(path.get_start(),lite.ORIGIN)
+        self.assertEqual(path.get_end(),lite.RIGHT*14)
+        ring = lite.Annulus().get_subcurve(.25,.75)
+        self.assertEqual(ring.subpath_lengths,[4,5])
+        self.assertEqual(ring.get_num_curves(),9)
+        for actual, expected in zip(ring.get_end(),[-1,0,0]):
+            self.assertAlmostEqual(actual,expected)
+
+    def test_closed_subcurve_wrap_and_invalid_bounds_are_atomic(self):
+        circle = lite.Circle().shift(lite.UP)
+        self.assertTrue(circle.is_closed())
+        wrapped = circle.get_subcurve(.75,.25)
+        for actual, expected in zip(wrapped.get_start(),[0,0,0]):
+            self.assertAlmostEqual(actual,expected)
+        for actual, expected in zip(wrapped.get_end(),[0,2,0]):
+            self.assertAlmostEqual(actual,expected)
+        self.assertEqual(wrapped.get_num_curves(),5)
+        self.assertEqual(len(lite._path_subpaths(wrapped.to_dict())),1)
+        source = lite.CubicBezier(lite.ORIGIN,lite.UP,lite.UR,lite.RIGHT)
+        before = source.to_dict()
+        for a,b in [(True,.5), (float('nan'),1), (0,float('inf')),('0',1),(.8,.2)]:
+            with self.assertRaises(ValueError): source.pointwise_become_partial(source,a,b)
+            self.assertEqual(source.to_dict(),before)
+        with self.assertRaises(TypeError): source.pointwise_become_partial(lite.Text('text'),0,1)
+        self.assertEqual(source.to_dict(),before)
+        source.pointwise_become_partial(source,-1,2)
+        self.assertEqual(source.get_num_curves(),1)
+        empty = lite.VMobject()
+        source.pointwise_become_partial(empty,.2,.8)
+        self.assertEqual(source.get_num_curves(),1)
+        source.pointwise_become_partial(empty,0,1)
+        self.assertFalse(source.has_points())
+
+    def test_partial_curve_gallery_highlights_and_cleans_up(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/partial_curve_scene.py').read_text()))
+        self.assertEqual(result['duration'],8)
+        highlighted = result['frames'][60]['mobjects']
+        self.assertEqual(len(highlighted),4)
+        self.assertEqual(highlighted[2]['type'],'bezierpath')
+        self.assertEqual(highlighted[2]['stroke_color'].upper(),lite.YELLOW)
+        self.assertEqual(highlighted[3]['stroke_color'].upper(),lite.BLUE)
+        self.assertEqual(len(result['frames'][-1]['mobjects']),2)
+
     def test_raw_points_round_trip_transforms_without_mutable_aliases(self):
         curve = lite.CubicBezier(lite.LEFT*2,lite.UL,lite.DR,lite.RIGHT*2)
         curve.rotate(lite.PI/3).scale(2).shift(lite.UP)
