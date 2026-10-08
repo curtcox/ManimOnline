@@ -118,6 +118,61 @@ class Mobject:
     def get_center(self):
         return Vector(self.position) + self._geometry_center()
 
+    def point_from_proportion(self, alpha):
+        """Sample supported XY outlines by distance, then apply SVG geometry transforms."""
+        if not math.isfinite(alpha) or not 0 <= alpha <= 1:
+            raise ValueError('Path proportion must be finite and between 0 and 1')
+        if self._type == 'circle':
+            if not math.isfinite(self.radius) or self.radius < 0:
+                raise ValueError('Path radius must be nonnegative and finite')
+            point = Vector((self.radius * math.cos(TAU * alpha),
+                            self.radius * math.sin(TAU * alpha), 0))
+        else:
+            closed = True
+            if self._type == 'line':
+                vertices, closed = [self.start, self.end], False
+            elif self._type == 'polygon':
+                vertices = self.vertices
+            elif self._type in ('square', 'rectangle'):
+                width = self.side_length if self._type == 'square' else self.width
+                height = self.side_length if self._type == 'square' else self.height
+                vertices = [(width / 2, height / 2), (-width / 2, height / 2),
+                            (-width / 2, -height / 2), (width / 2, -height / 2)]
+            elif self._type == 'triangle':
+                height = math.sqrt(3) / 2
+                vertices = [(0, height * 2 / 3), (-0.5, -height / 3), (0.5, -height / 3)]
+            else:
+                raise NotImplementedError('Paths support Circle, Line, Polygon, Square, Rectangle, and Triangle')
+            if len(vertices) < 2:
+                raise ValueError('A path needs at least two vertices')
+            vertices = [Vector(v) for v in vertices]
+            if any(not all(math.isfinite(c) for c in v) for v in vertices):
+                raise ValueError('Path coordinates must be finite')
+            if any(v[2] for v in vertices):
+                raise NotImplementedError('Paths support only the XY plane')
+            points = vertices + [vertices[0]] if closed else vertices
+            segments = [(a, b, math.dist(a, b)) for a, b in zip(points, points[1:])]
+            total = sum(length for _, _, length in segments)
+            if not math.isfinite(total):
+                raise ValueError('Path length must be finite')
+            remaining = total * alpha
+            point = points[-1]
+            for start, end, length in segments:
+                if length > 0 and remaining <= length:
+                    point = start + (end - start) * (remaining / length)
+                    break
+                remaining -= length
+        if self.position[2]:
+            raise NotImplementedError('Paths support only the XY plane')
+        center = self._geometry_center()
+        offset = (point - center) * self.geometry_scale
+        point = Vector(self.position) + center + Vector((
+            offset[0] * math.cos(self.angle) - offset[1] * math.sin(self.angle),
+            offset[0] * math.sin(self.angle) + offset[1] * math.cos(self.angle), 0))
+        if not all(math.isfinite(v) for v in point):
+            raise ValueError('Path coordinates must be finite')
+        return point
+
     def _bounds(self):
         left, bottom, right, top = self._local_bounds()
         center = self._geometry_center()
@@ -429,6 +484,30 @@ class Rotating(Rotate):
                          run_time=run_time, rate_func=rate_func, **kwargs)
 
 
+class MoveAlongPath(Animation):
+    def __init__(self, mobject, path, **kwargs):
+        if not isinstance(path, Mobject):
+            raise TypeError('MoveAlongPath expects a supported shape as its path')
+        if mobject is path:
+            raise ValueError('The moving object and path must be different objects')
+        super().__init__(mobject, **kwargs)
+        self.path = path
+
+    def begin(self, scene):
+        self.path_snapshot = self.path.copy()
+        # Validate before adding the moving object to the scene.
+        self.path_snapshot.point_from_proportion(0)
+        super().begin(scene)
+        self.original = self.mobject.copy()
+
+    def sample(self, alpha):
+        current = self.original.copy().move_to(self.path_snapshot.point_from_proportion(alpha))
+        return [current.to_dict()]
+
+    def finish(self, scene):
+        self.mobject.move_to(self.path_snapshot.point_from_proportion(1))
+
+
 class ReplacementTransform(Transform):
     def __init__(self, mobject, target_mobject, **kwargs):
         super().__init__(mobject, target_mobject, **kwargs)
@@ -580,7 +659,7 @@ class Scene:
 
 EXPORTS = ['Scene', 'Mobject', 'Circle', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'VGroup', 'Create', 'Write', 'FadeIn',
-           'AnimationGroup', 'LaggedStart',
+           'AnimationGroup', 'LaggedStart', 'MoveAlongPath',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform', 'UP', 'DOWN', 'LEFT',
            'RIGHT', 'ORIGIN', 'OUT', 'IN', 'UL', 'UR', 'DL', 'DR', 'BLUE', 'RED', 'GREEN',
            'YELLOW', 'PURPLE', 'ORANGE', 'WHITE', 'BLACK', 'GRAY', 'GREY', 'PINK',

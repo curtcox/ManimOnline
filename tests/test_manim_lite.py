@@ -16,6 +16,96 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def assertPointAlmostEqual(self, point, expected):
+        for value, target in zip(point, expected):
+            self.assertAlmostEqual(value, target)
+
+    def test_circle_and_transformed_line_path_samples(self):
+        circle = lite.Circle(radius=2).scale(0.5).rotate(lite.PI / 2).shift(lite.RIGHT * 3)
+        self.assertPointAlmostEqual(circle.point_from_proportion(0), (3, 1, 0))
+        self.assertPointAlmostEqual(circle.point_from_proportion(0.25), (2, 0, 0))
+        self.assertPointAlmostEqual(circle.point_from_proportion(1), (3, 1, 0))
+        line = lite.Line((1, 0), (3, 0)).scale(2).rotate(lite.PI / 2).shift(lite.UP)
+        self.assertPointAlmostEqual(line.point_from_proportion(0), (2, -1, 0))
+        self.assertPointAlmostEqual(line.point_from_proportion(0.5), (2, 1, 0))
+        self.assertPointAlmostEqual(line.point_from_proportion(1), (2, 3, 0))
+
+    def test_polygon_path_uses_distance_and_closes_the_outline(self):
+        path = lite.Polygon((0, 0), (4, 0), (4, 1), (0, 1))
+        self.assertPointAlmostEqual(path.point_from_proportion(0.4), (4, 0, 0))
+        self.assertPointAlmostEqual(path.point_from_proportion(0.45), (4, 0.5, 0))
+        self.assertPointAlmostEqual(path.point_from_proportion(0.95), (0, 0.5, 0))
+        self.assertPointAlmostEqual(path.point_from_proportion(1), (0, 0, 0))
+        self.assertPointAlmostEqual(lite.Square().point_from_proportion(0.25), (-1, 1, 0))
+        self.assertPointAlmostEqual(lite.Rectangle(width=4, height=2).point_from_proportion(0.5), (-2, -1, 0))
+        triangle = lite.Triangle()
+        self.assertPointAlmostEqual(triangle.point_from_proportion(1 / 3), (-0.5, -3**0.5 / 6, 0))
+
+    def test_zero_length_and_duplicate_path_vertices_are_stable(self):
+        for path in (lite.Line((2, 1), (2, 1)), lite.Polygon((2, 1), (2, 1), (2, 1))):
+            for alpha in (0, 0.5, 1):
+                self.assertPointAlmostEqual(path.point_from_proportion(alpha), (2, 1, 0))
+        path = lite.Polygon((0, 0), (0, 0), (2, 0), (2, 0))
+        self.assertPointAlmostEqual(path.point_from_proportion(0.25), (1, 0, 0))
+
+    def test_move_along_circle_keeps_radius_and_mover_orientation(self):
+        result = render('p = Circle(radius=2).shift(RIGHT)\ns = Square(side_length=0.5).rotate(PI / 4)\nself.add(p)\nself.play(MoveAlongPath(s, p), run_time=4, rate_func=linear)')
+        for frame in result['frames']:
+            mover = frame['mobjects'][1]
+            x, y, _ = mover['position']
+            self.assertAlmostEqual((x - 1)**2 + y*y, 4)
+            self.assertAlmostEqual(mover['angle'], lite.PI / 4)
+        self.assertPointAlmostEqual(result['frames'][15]['mobjects'][1]['position'], (1, 2, 0))
+        self.assertPointAlmostEqual(result['frames'][-1]['mobjects'][1]['position'], (3, 0, 0))
+
+    def test_path_motion_centers_asymmetric_movers_and_keeps_followup_identity(self):
+        result = render('m = Line((1, 0), (3, 0))\np = Line(LEFT * 2, RIGHT * 2)\nself.play(MoveAlongPath(m, p), run_time=2, rate_func=linear)\nself.play(m.animate.shift(UP))')
+        middle = result['frames'][15]['mobjects'][0]
+        self.assertPointAlmostEqual(middle['position'], (-2, 0, 0))
+        self.assertPointAlmostEqual(result['frames'][-1]['mobjects'][0]['position'], (0, 1, 0))
+        d, path = lite.Dot(), lite.Line()
+        scene = lite.Scene()
+        motion = lite.MoveAlongPath(d, path)
+        motion.prepare(scene)
+        path.shift(lite.UP * 3)
+        self.assertPointAlmostEqual(motion.states(0.5)[d][0]['position'], (0, 0, 0))
+
+    def test_path_motion_supports_lagged_groups_and_easing(self):
+        result = render('p = Line(LEFT * 2, RIGHT * 2)\na, b = Dot(), Dot()\nself.play(LaggedStart(MoveAlongPath(a, p, rate_func=linear), MoveAlongPath(b, p, rate_func=linear), lag_ratio=1), run_time=4)')
+        self.assertPointAlmostEqual(result['frames'][15]['mobjects'][0]['position'], (0, 0, 0))
+        self.assertPointAlmostEqual(result['frames'][15]['mobjects'][1]['position'], (-2, 0, 0))
+        result = render('self.play(MoveAlongPath(Dot(), Line(LEFT * 2, RIGHT * 2)), run_time=4)')
+        self.assertPointAlmostEqual(result['frames'][15]['mobjects'][0]['position'], (-1.375, 0, 0))
+
+    def test_paths_reject_invalid_proportions_geometry_and_unsupported_types(self):
+        for alpha in (-0.1, 1.1, float('nan'), float('inf')):
+            with self.assertRaises(ValueError):
+                lite.Circle().point_from_proportion(alpha)
+        for path in (lite.Polygon(), lite.Polygon((0, 0)), lite.Circle(radius=-1),
+                     lite.Line((float('nan'), 0), (1, 0))):
+            with self.assertRaises(ValueError):
+                path.point_from_proportion(0.5)
+        for path in (lite.Text('x'), lite.VGroup(lite.Circle()), lite.Arrow(),
+                     lite.Line((0, 0, 1), (1, 0, 1)), lite.Circle().shift(lite.OUT)):
+            with self.assertRaises(NotImplementedError):
+                path.point_from_proportion(0.5)
+        with self.assertRaises(TypeError):
+            lite.MoveAlongPath(lite.Dot(), [(0, 0), (1, 0)])
+        dot = lite.Dot()
+        with self.assertRaises(ValueError):
+            lite.MoveAlongPath(dot, dot)
+
+    def test_path_examples_render_and_finish_at_expected_endpoint(self):
+        result = json.loads(lite.render_scene((ROOT / 'examples/path_scene.py').read_text()))
+        self.assertEqual(result['duration'], 9)
+        self.assertEqual(len(result['frames'][-1]['mobjects']), 5)
+        mover = result['frames'][-1]['mobjects'][3]
+        line = lite.Line(lite.LEFT * 3, lite.RIGHT * 3).rotate(-lite.PI / 12).shift(lite.DOWN * 2)
+        self.assertPointAlmostEqual(mover['position'], line.point_from_proportion(1))
+        text = (ROOT / 'examples/anim/move-along-path.md').read_text()
+        result = json.loads(lite.render_scene(text.split('```py\n')[1].split('```')[0]))
+        self.assertEqual(len(result['frames'][-1]['mobjects']), 2)
+
     def test_lagged_start_delays_reveals_and_rescales_duration(self):
         result = render('dots = VGroup(Dot(LEFT), Dot(), Dot(RIGHT))\nself.play(LaggedStart(*[FadeIn(d, rate_func=linear) for d in dots], lag_ratio=0.5), run_time=4)')
         self.assertEqual(result['duration'], 4)

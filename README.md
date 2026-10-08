@@ -39,6 +39,7 @@ Then open `http://localhost:8000` in your browser.
 - [Creation and rotation](examples/creation_and_rotation.py): outline drawing and a circular orbit.
 - [Layout scene](examples/layout_scene.py): shape spacing and animated row-to-column arrangement.
 - [Staggered scene](examples/staggered_scene.py): delayed reveals, overlapping movement, and staggered fades.
+- [Path scene](examples/path_scene.py): motion along transformed circles, polygon outlines, and lines.
 
 ## Supported browser animation subset
 
@@ -50,7 +51,7 @@ Manim-like runtime, **not the full Manim Community engine**.
   `Text`, and `VGroup`.
 - Scene operations: `add`, `remove`, `play`, and `wait`.
 - Animations: `Create`, `Uncreate`, `Write`, `FadeIn`, `FadeOut`, `Rotate`,
-  `Rotating`, `AnimationGroup`, `LaggedStart`, `Transform`, and
+  `Rotating`, `MoveAlongPath`, `AnimationGroup`, `LaggedStart`, `Transform`, and
   `ReplacementTransform`; chained `.animate.shift()`, `.move_to()`,
   `.set_color()`, `.set_fill()`, `.set_stroke()`, `.scale()`, `.rotate()`,
   `.next_to()`, and `.arrange()`.
@@ -59,6 +60,8 @@ Manim-like runtime, **not the full Manim Community engine**.
   creates rows or columns with optional `center=False`.
 - Geometry: uniform scaling, 2D rotation in radians, optional `about_point`,
   `get_center()`, and `PI`, `TAU`, and `DEGREES` constants.
+- Paths: `point_from_proportion(alpha)` for circles, lines, polygons, squares,
+  rectangles, and triangles, including their 2D geometry transforms.
 - Timing: `run_time`, `linear`/`smooth` rate functions, simultaneous animations,
   and nested animation groups with staggered starts.
 - Directions support vector addition/subtraction and scalar multiplication,
@@ -111,6 +114,17 @@ animation lists. Use independent objects: repeated objects, parent/child overlap
 and animating a child inside a scene-added group are unsupported. Animate the
 whole added group or keep its children as separate scene objects. `Succession`
 and repeated-object sequences within one play remain unsupported.
+
+`MoveAlongPath(object, path)` moves the object's center along a path without
+turning it to face the direction of travel. It defaults to one second with
+smooth easing; use `rate_func=linear` for constant speed. Paths are snapshotted
+at animation start. Circles use exact circular sampling from the positive X
+axis counterclockwise; polygon outlines follow their vertex order and close
+back to the first vertex. Square/rectangle paths start at the upper right
+corner; triangles start at their top vertex. Straight edges are sampled by
+distance, so longer edges take proportionally longer. Path sampling is limited
+to the XY plane; groups, text, arrowheads, arbitrary curves, and live path
+updates are unsupported. This is preview geometry, not Manim's Bézier engine.
 
 Animation previews run at
 15 frames per second and are limited to 60 seconds, with a 90-second deadline
