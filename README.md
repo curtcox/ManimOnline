@@ -37,6 +37,7 @@ Then open `http://localhost:8000` in your browser.
 - [Minimal scene](examples/minimal_scene.py): baseline animation input.
 - [Multiple scenes](examples/multiple_scenes.py): scene selection, scale, and rotation.
 - [Creation and rotation](examples/creation_and_rotation.py): outline drawing and a circular orbit.
+- [Layout scene](examples/layout_scene.py): shape spacing and animated row-to-column arrangement.
 
 ## Supported browser animation subset
 
@@ -44,13 +45,17 @@ Python runs in a Web Worker using Pyodide 0.27.0. The browser loads Python on
 first use, so the first render needs an internet connection. This is a small
 Manim-like runtime, **not the full Manim Community engine**.
 
-- Shapes: `Circle`, `Square`, `Rectangle`, `Line`, `Arrow`, `Triangle`, `Polygon`,
+- Shapes: `Circle`, `Dot`, `Square`, `Rectangle`, `Line`, `Arrow`, `Triangle`, `Polygon`,
   `Text`, and `VGroup`.
 - Scene operations: `add`, `remove`, `play`, and `wait`.
 - Animations: `Create`, `Uncreate`, `Write`, `FadeIn`, `FadeOut`, `Rotate`,
   `Rotating`, `Transform`, and
   `ReplacementTransform`; chained `.animate.shift()`, `.move_to()`,
-  `.set_color()`, `.set_fill()`, `.set_stroke()`, `.scale()`, and `.rotate()`.
+  `.set_color()`, `.set_fill()`, `.set_stroke()`, `.scale()`, `.rotate()`,
+  `.next_to()`, and `.arrange()`.
+- Layout: `move_to` centers geometry on a point or another object; `next_to`
+  positions shapes with `direction`, `buff`, and `aligned_edge`; `VGroup.arrange`
+  creates rows or columns with optional `center=False`.
 - Geometry: uniform scaling, 2D rotation in radians, optional `about_point`,
   `get_center()`, and `PI`, `TAU`, and `DEGREES` constants.
 - Timing: `run_time`, `linear`/`smooth` rate functions, and simultaneous animations.
@@ -84,6 +89,15 @@ center. `Rotating` defaults to a full turn over five seconds at a constant rate;
 `angle`, `about_point`, `run_time`, and `rate_func`. `OUT` rotates counterclockwise
 and `IN` reverses it; other axes are unsupported. Unlike `.animate.rotate()`,
 these animations sample the circular trajectory at each frame.
+
+`Dot` is a filled circle with radius 0.08 and no outline by default. Layout
+uses bounding boxes in the XY plane and a default gap of 0.25 units. Text
+bounds use only its center anchor, so layout does not account for text width
+or height. Rotated polygon/line bounds are conservative; arrowheads and stroke
+thickness do not contribute to spacing. Arrange groups before scaling or
+rotating them, then apply the group transform. Group children use local
+coordinates; placing a child independently does not resolve its parent's
+transforms. Animated layouts interpolate child positions between arrangements.
 
 Animation previews run at
 15 frames per second and are limited to 60 seconds, with a 90-second deadline

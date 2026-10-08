@@ -41,6 +41,15 @@ original state at each frame and preserve orbital radius around an explicit
 pivot. Only the XY plane with OUT/IN axes is supported. Full Manim semantics
 are not implied.
 
+Layout supports `next_to` with a bounding-box gap and aligned edge, and
+`VGroup.arrange` with direction, buffer, and optional centering. `move_to` uses
+the geometry center and accepts a point or another object. `Dot` uses a filled
+circle with radius 0.08 and no outline. Layout and arrangement also work in
+animate chains. Arrange groups before applying group scale/rotation; rearranging
+an already scaled or rotated group is explicitly unsupported. Child coordinates
+are local to their group. Bounds do not include text metrics, arrowheads, or
+stroke thickness; rotated polygon/line bounds are conservative.
+
 Next work can add additional verified compatibility APIs, geometry-aware path
 transforms, glyph outline rendering, staggered animation timing, and an offline
 asset strategy. Keep DOT
@@ -53,11 +62,14 @@ erasure. Broader examples under `examples/`
 are feature references, not an acceptance claim. Document unsupported APIs and
 limits on duration/frame count. MP4 export, LaTeX, 3D, arbitrary dependencies,
 updaters, and offline caching remain future work unless separately implemented.
+Use `examples/layout_scene.py` for shape spacing, dot positioning, and animated
+row-to-column layout checks.
 
 ## Verification
 
 Check initial Pyodide loading, scene selection and URL reload, scale/rotation,
 partial outline drawing, erasure, orbital motion, seeking/replay, source edits,
+relative positioning and animated arrangements,
 syntax errors, missing scenes, and a runaway loop timeout. Ensure a new source
 cannot select a scene class left behind by an older render. Check DOT rendering
 and export after switching away from Manim. Run tests for timing and frame state
@@ -68,6 +80,7 @@ independently of browser integration; report both categories separately.
 - [Manim quickstart](https://docs.manim.community/en/stable/tutorials/quickstart.html)
 - [Manim creation animation](https://docs.manim.community/en/stable/reference/manim.animation.creation.Create.html)
 - [Manim rotation animation](https://docs.manim.community/en/stable/reference/manim.animation.rotation.Rotate.html)
+- [Manim positioning methods](https://docs.manim.community/en/stable/reference/manim.mobject.mobject.Mobject.html)
 - [Manim configuration](https://docs.manim.community/en/stable/guides/configuration.html)
 - [Pyodide worker guidance](https://pyodide.org/en/stable/usage/webworker.html)
 

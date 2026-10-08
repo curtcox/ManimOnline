@@ -16,6 +16,75 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_dot_defaults_position_and_style_overrides(self):
+        dot = lite.Dot(lite.RIGHT * 2)
+        self.assertEqual(dot.get_center(), (2, 0, 0))
+        self.assertEqual((dot.radius, dot.fill_opacity, dot.stroke_width), (0.08, 1, 0))
+        styled = lite.Dot(radius=0.2, fill_opacity=0.5, stroke_width=3)
+        self.assertEqual((styled.radius, styled.fill_opacity, styled.stroke_width), (0.2, 0.5, 3))
+        result = render('self.play(FadeIn(Dot(LEFT)))')
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['position'], [-1, 0, 0])
+
+    def test_move_to_uses_geometry_center_and_accepts_mobjects(self):
+        line = lite.Line((1, 0), (3, 0)).rotate(lite.PI / 2).move_to(lite.UP)
+        self.assertEqual(line.get_center(), lite.UP)
+        group = lite.VGroup(lite.Square().shift(lite.RIGHT * 4), lite.Circle().shift(lite.RIGHT * 7))
+        group.move_to(line)
+        self.assertEqual(group.get_center(), lite.UP)
+
+    def test_next_to_spacing_alignment_and_transformed_shapes(self):
+        circle = lite.Circle().shift(lite.LEFT)
+        square = lite.Square(side_length=1).next_to(circle)
+        self.assertAlmostEqual(square._bounds()[0] - circle._bounds()[2], 0.25)
+        square.next_to(circle, lite.LEFT, buff=0.5, aligned_edge=lite.UP)
+        self.assertAlmostEqual(circle._bounds()[0] - square._bounds()[2], 0.5)
+        self.assertAlmostEqual(square._bounds()[3], circle._bounds()[3])
+        square.scale(2).rotate(lite.PI / 4).next_to(circle, lite.DOWN, buff=0.4)
+        self.assertAlmostEqual(circle._bounds()[1] - square._bounds()[3], 0.4)
+        square.next_to(lite.ORIGIN, lite.UR, buff=0.5)
+        self.assertAlmostEqual(square._bounds()[0], 0.5)
+        self.assertAlmostEqual(square._bounds()[1], 0.5)
+
+    def test_arrange_centers_row_and_preserves_first_child_when_requested(self):
+        shapes = [lite.Square(), lite.Circle(radius=0.5), lite.Dot()]
+        group = lite.VGroup(*shapes).arrange(buff=0.8)
+        self.assertEqual(group.get_center(), lite.ORIGIN)
+        for first, second in zip(shapes, shapes[1:]):
+            self.assertAlmostEqual(second._bounds()[0] - first._bounds()[2], 0.8)
+        shapes[0].shift(lite.UP * 3)
+        start = shapes[0].get_center()
+        group.arrange(lite.DOWN, buff=0.4, center=False, aligned_edge=lite.LEFT)
+        self.assertEqual(shapes[0].get_center(), start)
+        for first, second in zip(shapes, shapes[1:]):
+            self.assertAlmostEqual(first._bounds()[1] - second._bounds()[3], 0.4)
+            self.assertAlmostEqual(first._bounds()[0], second._bounds()[0])
+        self.assertEqual(lite.VGroup().arrange().get_center(), lite.ORIGIN)
+
+    def test_animated_layout_has_intermediate_states(self):
+        result = render('g = VGroup(Square(), Circle()).arrange(RIGHT, buff=1)\nself.add(g)\nself.play(g.animate.arrange(DOWN, buff=0.5), run_time=2, rate_func=linear)')
+        first, middle, last = [result['frames'][i]['mobjects'][0] for i in (0, 15, -1)]
+        self.assertNotEqual(first['children'][1]['position'], middle['children'][1]['position'])
+        self.assertNotEqual(last['children'][1]['position'], middle['children'][1]['position'])
+        result = render('d = Dot(LEFT * 2)\nself.play(d.animate.next_to(ORIGIN, RIGHT, buff=0.5), run_time=2, rate_func=linear)')
+        self.assertAlmostEqual(result['frames'][-1]['mobjects'][0]['position'][0], 0.58)
+
+    def test_layout_rejects_unsupported_options_and_invalid_inputs(self):
+        for direction in (lite.ORIGIN, (float('nan'), 0, 0)):
+            with self.assertRaises(ValueError):
+                lite.Square().next_to(lite.ORIGIN, direction)
+        with self.assertRaises(NotImplementedError):
+            lite.Dot().next_to(lite.ORIGIN, lite.OUT)
+        with self.assertRaises(ValueError):
+            lite.Dot().next_to(lite.ORIGIN, buff=float('inf'))
+        with self.assertRaises(ValueError):
+            lite.Dot().next_to((float('inf'), 0))
+        with self.assertRaises(ValueError):
+            lite.Dot().move_to((float('nan'), 0))
+        with self.assertRaises(TypeError):
+            lite.Dot().next_to(lite.ORIGIN, coor_mask=(1, 0, 0))
+        with self.assertRaisesRegex(NotImplementedError, 'before scaling'):
+            lite.VGroup(lite.Dot()).scale(2).arrange()
+
     def test_baseline_animation(self):
         result = json.loads(lite.render_scene((ROOT / 'examples/minimal_scene.py').read_text()))
         self.assertEqual(result['scene'], 'MinimalScene')

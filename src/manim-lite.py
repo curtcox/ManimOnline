@@ -57,8 +57,32 @@ class Mobject:
         return self
 
     def move_to(self, point):
-        self.position = list(Vector(point))
-        return self
+        target = point.get_center() if isinstance(point, Mobject) else Vector(point)
+        if not all(math.isfinite(v) for v in target):
+            raise ValueError('Position must be finite')
+        return self.shift(target - self.get_center())
+
+    def _critical_point(self, direction):
+        left, bottom, right, top = self._bounds()
+        x, y, _ = direction
+        return Vector((right if x > 0 else left if x < 0 else (left + right) / 2,
+                       top if y > 0 else bottom if y < 0 else (bottom + top) / 2,
+                       self.get_center()[2]))
+
+    def next_to(self, mobject_or_point, direction=RIGHT, buff=0.25, aligned_edge=ORIGIN):
+        direction, aligned_edge = Vector(direction), Vector(aligned_edge)
+        if not all(math.isfinite(v) for v in (*direction, *aligned_edge, buff)):
+            raise ValueError('Layout coordinates and buffer must be finite')
+        if direction[2] or aligned_edge[2]:
+            raise NotImplementedError('Layout supports only XY directions')
+        if not any(direction):
+            raise ValueError('Layout direction must be nonzero')
+        target = (mobject_or_point._critical_point(aligned_edge + direction)
+                  if isinstance(mobject_or_point, Mobject) else Vector(mobject_or_point))
+        if not all(math.isfinite(v) for v in target):
+            raise ValueError('Layout target must be finite')
+        anchor = self._critical_point(aligned_edge - direction)
+        return self.shift(target - anchor + direction * buff)
 
     def _local_bounds(self):
         if self._type == 'circle':
@@ -170,6 +194,14 @@ class Circle(Mobject):
         self._type, self.radius = 'circle', radius
 
 
+class Dot(Circle):
+    def __init__(self, point=ORIGIN, radius=0.08, **kwargs):
+        kwargs.setdefault('fill_opacity', 1)
+        kwargs.setdefault('stroke_width', 0)
+        super().__init__(radius=radius, **kwargs)
+        self.move_to(point)
+
+
 class Square(Mobject):
     def __init__(self, side_length=2, **kwargs):
         super().__init__(**kwargs)
@@ -222,6 +254,17 @@ class VGroup(Mobject):
 
     def add(self, *mobjects):
         self.children.extend(mobjects)
+        return self
+
+    def arrange(self, direction=RIGHT, buff=0.25, center=True, aligned_edge=ORIGIN):
+        if self.geometry_scale != 1 or self.angle != 0:
+            raise NotImplementedError('Arrange the group before scaling or rotating it')
+        # Child positions are local to this group; its translation is preserved
+        # when center=False, and centering moves the whole arranged group.
+        for previous, current in zip(self.children, self.children[1:]):
+            current.next_to(previous, direction, buff, aligned_edge)
+        if center:
+            self.move_to(ORIGIN)
         return self
 
 
@@ -380,7 +423,7 @@ class Animate(Transform):
         super().__init__(mobject, mobject)
 
     def __getattr__(self, name):
-        if name not in ('shift', 'move_to', 'set_color', 'set_fill', 'set_stroke', 'scale', 'rotate'):
+        if name not in ('shift', 'move_to', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'scale', 'rotate'):
             raise NotImplementedError(f'animate.{name} is not supported yet')
         def apply(*args, **kwargs):
             getattr(self.target, name)(*args, **kwargs)
@@ -452,7 +495,7 @@ class Scene:
         return {'frames': self.frames, 'fps': FPS, 'duration': (len(self.frames)-1)/FPS}
 
 
-EXPORTS = ['Scene', 'Mobject', 'Circle', 'Square', 'Rectangle', 'Line', 'Arrow',
+EXPORTS = ['Scene', 'Mobject', 'Circle', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'VGroup', 'Create', 'Write', 'FadeIn',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform', 'UP', 'DOWN', 'LEFT',
            'RIGHT', 'ORIGIN', 'OUT', 'IN', 'UL', 'UR', 'DL', 'DR', 'BLUE', 'RED', 'GREEN',
