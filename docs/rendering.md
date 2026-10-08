@@ -525,7 +525,7 @@ Background and configured export dimensions remain independent of focus.
 
 The API follows the basic frame usage in the
 [MovingCameraScene documentation](https://docs.manim.community/en/stable/reference/manim.scene.moving_camera_scene.MovingCameraScene.html).
-Rotation, 3D, auto_zoom, moving camera updaters, frame replacement/removal effects
+Rotation, 3D, moving camera updaters, frame replacement/removal effects
 and full camera APIs remain unsupported. Camera frames cannot belong to display
 groups. Python tests cover intermediate pan/zoom, checkpoints, consecutive
 relative stages, parallel completion holds, clear persistence, camera overrides,
@@ -535,3 +535,25 @@ Local Pyodide playback verified a 2× view focused on x=2 at four seconds, a 2×
 view focused on x=-2 at six seconds, and the exact default view at the end. The
 scene showed only its original square/circle/title, with no camera rectangle.
 DOT rendered after switching.
+
+
+## Automatic camera framing
+
+MovingCamera.auto_zoom accepts one Mobject or an iterable, selects the limiting
+width/height relative to the current view, adds margin to that full dimension,
+and centers the frame on combined bounds. It returns a deferred animation by
+default or updates immediately with animate=False. Frame objects are ignored;
+only_mobjects_in_frame filters by inclusive bounding-box overlap using is_in_frame.
+frame_center also supports direct read/write. These follow the
+[official camera implementation](https://docs.manim.community/en/stable/_modules/manim/camera/moving_camera.html).
+Validation precedes mutation; empty selections, invalid bounds, non-XY geometry,
+and nonpositive fitted dimensions fail explicitly. Negative margins can crop when
+the final dimension stays positive. Existing transformed geometry bounds are
+conservative for curves/groups; glyph measurement remains open. The fit is computed
+when auto_zoom is called, rather than continuously tracking later object changes.
+Tests cover width/height fits, deferred sampling, transformed groups, edge overlap,
+filtering, generators, invalid-input atomicity and restored checkpoints.
+
+Local Pyodide playback verified the combined fit at four seconds (8-unit width,
+2× zoom), single-circle focus at seven seconds (3-unit height, 3× zoom, x=-2),
+and the exact original view at nine seconds. DOT rendered after switching.

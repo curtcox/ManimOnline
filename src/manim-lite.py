@@ -591,12 +591,60 @@ class MovingCamera(PreviewConfig):
         return super().__getattribute__(name)
 
     def __setattr__(self, name, value):
+        if name == 'frame_center' and '_frame' in self.__dict__:
+            self.frame.move_to(value)
+            return
         if '_frame' in self.__dict__ and name in ('frame_width','frame_height'):
             getattr(self.frame, 'set_width' if name == 'frame_width' else 'set_height')(value)
             return
         super().__setattr__(name, value)
         if '_frame' in self.__dict__ and name in ('pixel_width','pixel_height'):
             self.frame.width = self.frame.height * self.pixel_width / self.pixel_height
+
+    @property
+    def frame_center(self):
+        return self.frame.get_center()
+
+    @staticmethod
+    def _object_bounds(mobject):
+        if not isinstance(mobject, Mobject):
+            raise TypeError('Camera framing expects Mobjects')
+        bounds = mobject._bounds()
+        if not all(math.isfinite(v) for v in bounds):
+            raise ValueError('Camera framing bounds must be finite')
+        if any(member.position[2] for member in mobject.get_family()):
+            raise NotImplementedError('Camera framing supports only the XY plane')
+        return bounds
+
+    def is_in_frame(self, mobject):
+        left, bottom, right, top = self._object_bounds(mobject)
+        x, y, _ = self.frame_center
+        return not (right < x - self.frame_width / 2 or left > x + self.frame_width / 2 or
+                    bottom > y + self.frame_height / 2 or top < y - self.frame_height / 2)
+
+    def auto_zoom(self, mobjects, margin=0, only_mobjects_in_frame=False, animate=True):
+        """Fit XY bounds; margin adds to the chosen dimension, as in Manim."""
+        if not isinstance(margin, (int, float)) or not math.isfinite(margin):
+            raise ValueError('Camera margin must be finite')
+        objects = [mobjects] if isinstance(mobjects, Mobject) else list(mobjects)
+        bounds = []
+        for mobject in objects:
+            box = self._object_bounds(mobject)
+            if mobject is self.frame or (only_mobjects_in_frame and not self.is_in_frame(mobject)):
+                continue
+            bounds.append(box)
+        if not bounds:
+            raise ValueError('Cannot frame an empty selection')
+        left, bottom = min(b[0] for b in bounds), min(b[1] for b in bounds)
+        right, top = max(b[2] for b in bounds), max(b[3] for b in bounds)
+        width, height = right - left, top - bottom
+        use_width = width / self.frame_width > height / self.frame_height
+        extent = (width if use_width else height) + margin
+        if not math.isfinite(extent) or extent <= 0:
+            raise ValueError('Camera framing must produce a positive finite extent')
+        target = self.frame.animate if animate else self.frame
+        return getattr(target.move_to(((left + right) / 2, (bottom + top) / 2, 0)),
+                       'set_width' if use_width else 'set_height')(extent)
 
     def to_dict(self, frame_snapshot=None):
         result = super().to_dict()

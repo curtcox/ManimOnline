@@ -95,3 +95,8 @@ Manim example in a real browser. Syntax checks or native Python tests do not
 prove Pyodide loading or browser playback. Report which checks actually ran.
 Update the README and these notes when adding test commands or changing the
 runtime. Do not claim full Manim compatibility from a subset implementation.
+
+Read `examples/auto_zoom_scene.py` for combined camera fitting, single-object
+focus and restoration. Margin adds to the chosen full frame dimension; preserve
+inclusive visibility filtering, pre-mutation validation and deferred animation.
+Framing uses existing geometry bounds; text glyph measurements remain open.

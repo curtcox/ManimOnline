@@ -16,6 +16,64 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_auto_zoom_fits_wide_and_tall_bounds_without_eager_animation(self):
+        scene = lite.MovingCameraScene()
+        camera = scene.camera
+        shapes = [lite.Square().shift(lite.LEFT * 3), lite.Circle().shift(lite.RIGHT * 3)]
+        before = camera.frame.to_dict()
+        animation = camera.auto_zoom(iter(shapes), margin=2)
+        self.assertEqual(camera.frame.to_dict(), before)
+        scene.add(*shapes).play(animation, run_time=2, rate_func=lite.linear)
+        self.assertEqual(scene.frames[15]['camera']['frame_width'], 13)
+        self.assertEqual(camera.frame_width, 10)
+        self.assertEqual(camera.frame_height, 5.625)
+        tall = lite.Rectangle(width=1, height=6).shift(lite.UP * 2)
+        self.assertIs(camera.auto_zoom(tall, margin=1, animate=False), camera.frame)
+        self.assertEqual(camera.frame_height, 7)
+        self.assertEqual(camera.frame_center, lite.UP * 2)
+
+    def test_camera_visibility_filter_includes_partial_overlap_and_transformed_group(self):
+        camera = lite.MovingCameraScene().camera
+        camera.frame_center = lite.RIGHT * 2
+        edge = lite.Square().shift(lite.RIGHT * 11)
+        outside = lite.Circle().shift(lite.RIGHT * 20)
+        self.assertTrue(camera.is_in_frame(edge))
+        self.assertFalse(camera.is_in_frame(outside))
+        camera.auto_zoom([camera.frame, edge, outside], margin=1,
+                         only_mobjects_in_frame=True, animate=False)
+        self.assertEqual(camera.frame_center, lite.RIGHT * 11)
+        self.assertEqual(camera.frame_height, 3)
+        group = lite.VGroup(lite.Square().shift(lite.LEFT * 2), lite.Circle().shift(lite.RIGHT * 2))
+        group.scale(2).rotate(lite.PI / 2).shift(lite.UP)
+        camera.auto_zoom(group, margin=2, animate=False)
+        self.assertAlmostEqual(camera.frame_height, 14)
+        self.assertEqual(camera.frame_center, lite.UP)
+
+    def test_camera_framing_failures_preserve_view_and_checkpoints(self):
+        camera = lite.MovingCameraScene().camera
+        camera.frame.save_state()
+        before = camera.frame.to_dict()
+        for objects, options in [([], {}), ([camera.frame], {}), ([lite.Circle(), object()], {}),
+                                 ([lite.Circle()], {'margin':float('nan')}),
+                                 ([lite.Circle()], {'margin':-2}),
+                                 ([lite.Circle().shift(lite.RIGHT*30)], {'only_mobjects_in_frame':True}),
+                                 ([lite.Text('unknown metrics')], {}),
+                                 ([lite.Circle().shift((0,0,1))], {})]:
+            with self.assertRaises((ValueError, TypeError, NotImplementedError)):
+                camera.auto_zoom(objects, animate=False, **options)
+            self.assertEqual(camera.frame.to_dict(), before)
+        camera.auto_zoom(lite.Circle().shift(lite.RIGHT*3), margin=1, animate=False)
+        camera.frame.restore()
+        self.assertEqual(camera.frame.to_dict(), before)
+
+    def test_auto_zoom_gallery_frames_and_restores(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/auto_zoom_scene.py').read_text()))
+        self.assertEqual(result['duration'], 9)
+        self.assertEqual(result['frames'][60]['camera']['frame_width'], 8)
+        self.assertEqual(result['frames'][105]['camera']['frame_center'], [-2,0,0])
+        self.assertEqual(result['frames'][105]['camera']['frame_height'], 3)
+        self.assertEqual(result['frames'][-1]['camera']['frame_width'], 16)
+
     def test_moving_camera_samples_pan_zoom_and_exact_restoration(self):
         source = "from manim import *\nclass Demo(MovingCameraScene):\n    def construct(self):\n        frame=self.camera.frame.save_state()\n        self.add(Circle())\n        self.play(frame.animate.move_to(RIGHT*2).scale(.5),run_time=2,rate_func=linear)\n        self.play(Restore(frame),run_time=2,rate_func=linear)"
         result=json.loads(lite.render_scene(source))

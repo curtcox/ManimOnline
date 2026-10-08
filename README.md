@@ -515,7 +515,7 @@ height. Set config before constructing the scene; Scene snapshots its own camera
 which supports the same properties and optional camera_config constructor overrides.
 Camera backgrounds are captured per frame. SVG/PNG exports retain the background
 and configured resolution. Config resets for every source, including after errors.
-See **Configure the canvas**. Frame rate remains 15 fps; moving cameras, 3D, config
+See **Configure the canvas**. Frame rate remains 15 fps; 3D, config
 files, quality presets, and full ManimConfig/color semantics remain unsupported.
 
 
@@ -526,5 +526,18 @@ Frame samples become camera metadata, never visible geometry; scene objects keep
 their own coordinates. Sequential and parallel animation timelines can include
 the camera. Zoom factors/extents must stay positive and finite, with XY positions.
 Setting width/height preserves aspect ratio. Rotation, 3D views, camera frame
-replacement/removal effects, auto_zoom and updaters remain unsupported. The **Pan
+replacement/removal effects and updaters remain unsupported. The **Pan
 and zoom the view** gallery demonstrates focus changes and view restoration.
+
+
+`self.camera.auto_zoom(mobjects, margin=0, only_mobjects_in_frame=False,
+animate=True)` fits the combined XY bounds of one object or an iterable. Pass its
+result to `self.play(...)`, or use animate=False to change the frame immediately.
+The longer relative dimension determines the fit; margin adds to that full
+width/height, preserving aspect ratio. `is_in_frame(object)` includes objects
+partially overlapping the view. `frame_center` reads/sets the view center.
+Camera frames are excluded from fitting. Empty/fully filtered selections and
+nonpositive final extents raise errors without changing the camera. Bounds use
+existing geometry queries: rotated groups/curves may include conservative extra
+space, and text/TeX glyph dimensions are not measured. Use **Fit shapes in the
+view** for animated combined framing, single-object focus, and restoration.
