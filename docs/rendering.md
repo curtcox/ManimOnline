@@ -106,6 +106,18 @@ zero. Opacity is validated in [0, 1]; stroke width is finite/nonnegative.
 Six-digit hex colors interpolate; other CSS color strings switch at completion.
 Gradients, background strokes, and full Manim color parsing are unsupported.
 
+`save_state` records a deep checkpoint without retaining prior checkpoints on
+the same object. `restore` replaces live geometry/style state while keeping the
+checkpoint available for reuse. `Restore` and `.animate.restore()` use existing
+Transform sampling, including group timing, geometry interpolation, and
+crossfades for different shape types. Transform completion preserves the source
+checkpoint and does not adopt the target's checkpoint. Saved states are excluded
+from recursive frame serialization. Root identity is retained; children are
+copied on group restoration, matching the current group-transform behavior.
+Camera state, scene membership, child identity preservation, and undo stacks
+are outside this API. Construct Restore after saving the intended checkpoint;
+the animation target is snapshotted at construction.
+
 Next work can add additional verified compatibility APIs, geometry-aware path
 transforms, glyph outline rendering, sequential animation composition, and an offline
 asset strategy. Keep DOT
@@ -125,6 +137,7 @@ Use `examples/path_scene.py` for transformed circular/polygon paths and line mot
 Use `examples/arc_scene.py` for open paths, opposite sweeps, and transformed arc motion.
 Use `examples/growth_scene.py` for point/center growth and staggered shrink cleanup.
 Use `examples/style_scene.py` for distinct fill/stroke colors and animated group opacity.
+Use `examples/restore_scene.py` for group restoration and recovery after shrinking.
 
 ## Verification
 
@@ -150,6 +163,7 @@ independently of browser integration; report both categories separately.
 - [Manim growth from a point](https://docs.manim.community/en/stable/reference/manim.animation.growing.GrowFromPoint.html)
 - [Manim shrinking](https://docs.manim.community/en/stable/reference/manim.animation.transform.ShrinkToCenter.html)
 - [Manim vector styles](https://docs.manim.community/en/stable/reference/manim.mobject.types.vectorized_mobject.VMobject.html)
+- [Manim restoration](https://docs.manim.community/en/stable/reference/manim.animation.transform.Restore.html)
 - [Manim configuration](https://docs.manim.community/en/stable/guides/configuration.html)
 - [Pyodide worker guidance](https://pyodide.org/en/stable/usage/webworker.html)
 

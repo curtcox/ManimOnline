@@ -285,12 +285,27 @@ class Mobject:
     def copy(self):
         return copy.deepcopy(self)
 
+    def save_state(self):
+        # Replace the checkpoint without nesting earlier checkpoints inside it.
+        self._saved_state = copy.deepcopy({key: value for key, value in self.__dict__.items()
+                                          if key != '_saved_state'})
+        return self
+
+    def restore(self):
+        if '_saved_state' not in self.__dict__:
+            raise ValueError('Call save_state() before restoring an object')
+        saved = self._saved_state
+        self.__dict__ = copy.deepcopy(saved)
+        self._saved_state = saved
+        return self
+
     @property
     def animate(self):
         return Animate(self)
 
     def to_dict(self):
-        result = copy.deepcopy(self.__dict__)
+        result = copy.deepcopy({key: value for key, value in self.__dict__.items()
+                                if key not in ('_saved_state', 'children')})
         result['type'] = result.pop('_type')
         result['geometry_center'] = list(self._geometry_center())
         result['children'] = [child.to_dict() for child in self.children]
@@ -577,7 +592,17 @@ class Transform(Animation):
         return [source, target]
 
     def finish(self, scene):
+        saved = self.mobject.__dict__.get('_saved_state')
         self.mobject.__dict__ = copy.deepcopy(self.target.__dict__)
+        self.mobject.__dict__.pop('_saved_state', None)
+        if saved is not None:
+            self.mobject._saved_state = saved
+
+
+class Restore(Transform):
+    def __init__(self, mobject, **kwargs):
+        # The target is snapshotted now, as for other Transform animations.
+        super().__init__(mobject, mobject.copy().restore(), **kwargs)
 
 
 class Rotate(Animation):
@@ -657,7 +682,7 @@ class Animate(Transform):
     def __getattr__(self, name):
         if name.startswith('__'):
             raise AttributeError(name)
-        if name not in ('shift', 'move_to', 'move_arc_center_to', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'scale', 'rotate'):
+        if name not in ('shift', 'move_to', 'move_arc_center_to', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'restore', 'scale', 'rotate'):
             raise NotImplementedError(f'animate.{name} is not supported yet')
         def apply(*args, **kwargs):
             getattr(self.target, name)(*args, **kwargs)
@@ -789,7 +814,7 @@ class Scene:
 EXPORTS = ['Scene', 'Mobject', 'Circle', 'Arc', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'VGroup', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'MoveAlongPath',
-           'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter',
+           'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform', 'UP', 'DOWN', 'LEFT',
            'RIGHT', 'ORIGIN', 'OUT', 'IN', 'UL', 'UR', 'DL', 'DR', 'BLUE', 'RED', 'GREEN',
            'YELLOW', 'PURPLE', 'ORANGE', 'WHITE', 'BLACK', 'GRAY', 'GREY', 'PINK',

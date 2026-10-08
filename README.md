@@ -43,6 +43,7 @@ Then open `http://localhost:8000` in your browser.
 - [Arc scene](examples/arc_scene.py): open circular paths and clockwise/counterclockwise motion.
 - [Growth scene](examples/growth_scene.py): growth from a point, group growth, and staggered shrinking.
 - [Style scene](examples/style_scene.py): independent fill/outline colors and group opacity changes.
+- [Restore scene](examples/restore_scene.py): saved geometry/styles, animated restoration, and recovery from zero size.
 
 ## Supported browser animation subset
 
@@ -56,9 +57,9 @@ Manim-like runtime, **not the full Manim Community engine**.
 - Animations: `Create`, `Uncreate`, `Write`, `FadeIn`, `FadeOut`, `GrowFromCenter`,
   `GrowFromPoint`, `ShrinkToCenter`, `Rotate`,
   `Rotating`, `MoveAlongPath`, `AnimationGroup`, `LaggedStart`, `Transform`, and
-  `ReplacementTransform`; chained `.animate.shift()`, `.move_to()`,
+  `ReplacementTransform`, and `Restore`; chained `.animate.shift()`, `.move_to()`,
   `.set_color()`, `.set_fill()`, `.set_stroke()`, `.set_opacity()`, `.scale()`, `.rotate()`,
-  `.next_to()`, and `.arrange()`.
+  `.next_to()`, `.arrange()`, and `.restore()`.
 - Layout: `move_to` centers geometry on a point or another object; `next_to`
   positions shapes with `direction`, `buff`, and `aligned_edge`; `VGroup.arrange`
   creates rows or columns with optional `center=False`.
@@ -164,6 +165,18 @@ finite. Fades multiply existing style opacity. Text has no outline by default
 but supports `set_stroke`; arrows use stroke styling for shaft and open head.
 Color interpolation supports six-digit hex strings; other CSS colors switch
 at the animation endpoint. Gradients and background strokes are unsupported.
+
+`object.save_state()` keeps one checkpoint of geometry, styles, and group
+children. A later save replaces it. `object.restore()` returns to it immediately;
+`Restore(object)` or `object.animate.restore()` animates the return using normal
+transform timing. A saved state survives changes to the object's shape type,
+and can restore size after `ShrinkToCenter`. Restore animations snapshot the
+checkpoint when constructed; restoring without one raises an error. The root
+object keeps its identity, while group children are copied, as with transforms.
+Keep working through the restored group instead of retaining old child references.
+Checkpoints do not capture scene membership or camera state and are excluded
+from frame output and SVG export. Removed objects can be reintroduced by a
+Restore animation; a direct restore does not add them to the scene.
 
 Animation previews run at
 15 frames per second and are limited to 60 seconds, with a 90-second deadline

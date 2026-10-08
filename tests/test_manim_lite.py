@@ -16,6 +16,85 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_save_and_restore_are_repeatable_isolated_and_replace_the_checkpoint(self):
+        shape = lite.Arc().set_fill(lite.BLUE, 0.4).set_stroke(lite.YELLOW, 4)
+        original = shape.to_dict()
+        self.assertIs(shape.save_state(), shape)
+        shape.shift(lite.RIGHT).scale(2).rotate(lite.PI).set_opacity(0.2)
+        self.assertIs(shape.restore(), shape)
+        self.assertEqual(shape.to_dict(), original)
+        shape.set_fill(lite.RED).restore()
+        self.assertEqual(shape.fill_color, lite.BLUE)
+        shape.shift(lite.UP).save_state().shift(lite.RIGHT).restore()
+        self.assertEqual(shape.position, list(lite.UP))
+        self.assertNotIn('_saved_state', shape._saved_state)
+        clone = shape.copy().shift(lite.LEFT)
+        clone.save_state().set_color(lite.GREEN).restore()
+        self.assertEqual(shape.fill_color, lite.BLUE)
+
+    def test_saved_state_is_not_serialized_even_in_nested_groups(self):
+        child = lite.Square().save_state()
+        group = lite.VGroup(lite.VGroup(child)).save_state()
+        before = json.dumps(group.to_dict())
+        for _ in range(20):
+            group.save_state()
+        self.assertEqual(json.dumps(group.to_dict()), before)
+        self.assertNotIn('_saved_state', before)
+        group.children[0].children[0].shift(lite.RIGHT).set_color(lite.RED)
+        group.restore()
+        self.assertEqual(json.dumps(group.to_dict()), before)
+
+    def test_restore_interpolates_geometry_styles_and_keeps_scene_identity(self):
+        shape = lite.Square(fill_color=lite.BLUE, fill_opacity=0.5).save_state()
+        shape.shift(lite.RIGHT * 2).scale(0.5).set_fill(lite.RED, 1)
+        scene = lite.Scene()
+        scene.play(lite.Restore(shape), run_time=2, rate_func=lite.linear)
+        middle = scene.frames[15]['mobjects'][0]
+        self.assertEqual(middle['position'], [1, 0, 0])
+        self.assertEqual(middle['geometry_scale'], 0.75)
+        self.assertEqual(middle['fill_opacity'], 0.75)
+        self.assertIs(scene.mobjects[0], shape)
+        self.assertEqual(shape.position, [0, 0, 0])
+        self.assertEqual(shape.fill_color, lite.BLUE)
+        scene.play(lite.ShrinkToCenter(shape))
+        scene.play(shape.animate.restore())
+        self.assertEqual(shape.geometry_scale, 1)
+
+    def test_transform_preserves_source_checkpoint_across_shape_changes(self):
+        shape = lite.Square().save_state()
+        scene = lite.Scene()
+        scene.play(lite.Transform(shape, lite.Circle(color=lite.RED).shift(lite.RIGHT)))
+        scene.play(lite.Restore(shape), run_time=2, rate_func=lite.linear)
+        self.assertEqual([s['type'] for s in scene.frames[30]['mobjects']], ['circle', 'square'])
+        self.assertEqual(shape._type, 'square')
+        self.assertEqual(shape.color, lite.WHITE)
+        shape.shift(lite.RIGHT).restore()
+        self.assertEqual(shape.position, [0, 0, 0])
+        unsaved = lite.Square()
+        scene = lite.Scene()
+        scene.play(lite.Transform(unsaved, lite.Circle().save_state()))
+        with self.assertRaises(ValueError):
+            unsaved.restore()
+
+    def test_restore_requires_checkpoint_and_supports_staggered_groups(self):
+        shape = lite.Square()
+        with self.assertRaises(ValueError):
+            shape.restore()
+        with self.assertRaises(ValueError):
+            lite.Restore(shape)
+        result = render('a = Circle().shift(LEFT).save_state().shift(DOWN)\nb = Square().shift(RIGHT).save_state().shift(UP)\nself.play(LaggedStart(Restore(a), Restore(b), lag_ratio=0.5), run_time=3)')
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['position'], [-1, 0, 0])
+        self.assertEqual(result['frames'][-1]['mobjects'][1]['position'], [1, 0, 0])
+
+    def test_restore_example_returns_group_to_initial_geometry_and_styles(self):
+        result = json.loads(lite.render_scene((ROOT / 'examples/restore_scene.py').read_text()))
+        self.assertEqual(result['duration'], 11)
+        group = result['frames'][-1]['mobjects'][1]
+        self.assertEqual((group['geometry_scale'], group['angle']), (1, 0))
+        for child in group['children']:
+            self.assertEqual((child['fill_color'], child['stroke_color']), (lite.BLUE, lite.YELLOW))
+        self.assertNotIn('_saved_state', json.dumps(result))
+
     def test_fill_and_stroke_styles_are_independent_and_color_sets_both(self):
         shape = lite.Square(color=lite.BLUE, fill_color=lite.RED, stroke_color=lite.GREEN,
                             fill_opacity=0.4, stroke_opacity=0.7)
