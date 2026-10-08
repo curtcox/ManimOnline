@@ -16,6 +16,83 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_closed_corner_paths_follow_return_to_start_and_restore_reversed_geometry(self):
+        path = lite.VMobject().set_points_as_corners([lite.ORIGIN, lite.RIGHT, lite.UR, lite.ORIGIN]).save_state()
+        self.assertEqual(path.get_start(), path.get_end())
+        self.assertEqual(path.point_from_proportion(1), path.get_start())
+        saved = path.to_dict()
+        path.reverse_direction().set_color(lite.RED).restore()
+        self.assertEqual(path.to_dict(), saved)
+        result = render('p = VMobject().set_points_as_corners([ORIGIN, RIGHT, UR, ORIGIN])\nd = Dot()\nself.add(p)\nself.play(MoveAlongPath(d,p), run_time=1, rate_func=linear)')
+        self.assertEqual(result['frames'][-1]['mobjects'][1]['position'], [0,0,0])
+
+    def test_corner_gallery_traces_moves_and_cleans_up(self):
+        result = json.loads(lite.render_scene((ROOT / 'examples/corner_path_scene.py').read_text()))
+        self.assertEqual(result['duration'], 9)
+        self.assertEqual(result['frames'][0]['mobjects'][0]['type'], 'polyline')
+        path = lite.VMobject().set_points_as_corners([(-3,-1,0),(-1,1,0),(1,-1,0),(3,1,0)]).scale(0.8).rotate(lite.PI/12).shift(lite.DOWN*0.3)
+        for actual, expected in zip(result['frames'][75]['mobjects'][1]['position'], path.get_end()):
+            self.assertAlmostEqual(actual, expected)
+        self.assertEqual(result['frames'][105]['mobjects'][0]['color'], lite.GREEN)
+        self.assertEqual([m['type'] for m in result['frames'][-1]['mobjects']], ['text'])
+
+    def test_corner_path_set_append_reverse_and_geometry_queries(self):
+        path = lite.VMobject(color=lite.BLUE).set_points_as_corners([(-2, 0, 0), (0, 0, 0)])
+        self.assertIs(path.add_line_to((0, 2, 0)).add_points_as_corners([(2, 2, 0)]), path)
+        self.assertEqual(path.get_start(), (-2, 0, 0))
+        self.assertEqual(path.get_end(), (2, 2, 0))
+        self.assertEqual(path.point_from_proportion(0.5), (0, 1, 0))
+        original = path.copy()
+        self.assertIs(path.reverse_direction(), path)
+        self.assertEqual(path.get_start(), original.get_end())
+        self.assertEqual(path.get_end(), original.get_start())
+        self.assertEqual(path._local_bounds(), (-2, 0, 2, 2))
+        self.assertEqual(path.stroke_width, 4)
+        path.set_points_as_corners([(0, 0, 0), (2, 0, 0)]).scale(2).rotate(lite.PI/2).shift(lite.RIGHT)
+        for actual, expected in ((path.get_start(), (2, -2, 0)), (path.get_end(), (2, 2, 0)), (path.point_from_proportion(0.5), (2, 0, 0))):
+            for a, b in zip(actual, expected):
+                self.assertAlmostEqual(a, b)
+
+    def test_corner_paths_validate_atomically_and_handle_empty_or_degenerate_geometry(self):
+        path = lite.VMobject()
+        self.assertEqual(path.to_dict()['vertices'], [])
+        for query in (path.get_start, path.get_end, lambda: path.point_from_proportion(0.5)):
+            with self.assertRaises(ValueError):
+                query()
+        path.set_points_as_corners([(1, 2, 0)])
+        self.assertEqual(path.point_from_proportion(0.8), (1, 2, 0))
+        path.add_line_to((1, 2, 0))
+        self.assertEqual(path.point_from_proportion(0.8), (1, 2, 0))
+        before = path.to_dict()
+        for method in (path.set_points_as_corners, path.add_points_as_corners):
+            with self.assertRaises(ValueError):
+                method([(0, 0, 0), (float('inf'), 0, 0)])
+            with self.assertRaises(NotImplementedError):
+                method([(0, 0, 1)])
+            self.assertEqual(path.to_dict(), before)
+        path.set_points_as_corners([])
+        self.assertEqual(path.to_dict()['vertices'], [])
+
+    def test_corner_paths_create_move_morph_and_remove(self):
+        result = render('p = VMobject().set_points_as_corners([(0,0,0), (2,0,0), (2,2,0)])\nd = Dot()\nself.play(Create(p), run_time=2, rate_func=linear)\nself.play(MoveAlongPath(d, p), run_time=2, rate_func=linear)\nself.play(p.animate.set_points_as_corners([(0,0,0), (4,0,0), (4,4,0)]), run_time=2, rate_func=linear)\nself.play(Uncreate(p), FadeOut(d))')
+        self.assertEqual(result['frames'][15]['mobjects'][0]['draw_progress'], 0.5)
+        self.assertEqual(result['frames'][45]['mobjects'][1]['position'], [2, 0, 0])
+        self.assertEqual(result['frames'][60]['mobjects'][1]['position'], [2, 2, 0])
+        self.assertEqual(result['frames'][75]['mobjects'][0]['vertices'], [[0,0,0], [3,0,0], [3,3,0]])
+        self.assertEqual(result['frames'][-1]['mobjects'], [])
+
+    def test_unequal_corner_counts_crossfade_instead_of_jumping(self):
+        for shape in ('VMobject().set_points_as_corners', 'Polygon'):
+            initial = '[(0,0,0), (2,0,0)]' if shape.startswith('VM') else '(0,0,0), (2,0,0), (0,2,0)'
+            target = '[(0,0,0), (2,0,0), (2,2,0)]' if shape.startswith('VM') else '(0,0,0), (2,0,0), (2,2,0), (0,2,0)'
+            result = render(f'p = {shape}({initial})\nq = {shape}({target})\nself.play(Transform(p,q), run_time=2, rate_func=linear)')
+            middle = result['frames'][15]['mobjects']
+            self.assertEqual(len(middle), 2)
+            self.assertEqual([m['opacity'] for m in middle], [0.5, 0.5])
+            self.assertNotEqual(len(middle[0]['vertices']), len(middle[1]['vertices']))
+            self.assertEqual(len(result['frames'][-1]['mobjects']), 1)
+            self.assertEqual(result['frames'][-1]['mobjects'][0]['vertices'], middle[1]['vertices'])
+
     def test_lifecycle_gallery_initializes_construct_objects_and_reports_elapsed_time(self):
         result = json.loads(lite.render_scene((ROOT / 'examples/lifecycle_scene.py').read_text()))
         self.assertEqual(result['scene'], 'LifecycleScene')

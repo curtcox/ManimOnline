@@ -112,7 +112,7 @@ class Mobject:
             return (-self.width / 2, -self.height / 2, self.width / 2, self.height / 2)
         if self._type in ('line', 'arrow'):
             points = [self.start, self.end]
-        elif self._type == 'polygon':
+        elif self._type in ('polygon', 'polyline'):
             points = self.vertices
         elif self._type == 'triangle':
             height = math.sqrt(3) / 2
@@ -149,8 +149,9 @@ class Mobject:
             closed = True
             if self._type == 'line':
                 vertices, closed = [self.start, self.end], False
-            elif self._type == 'polygon':
+            elif self._type in ('polygon', 'polyline'):
                 vertices = self.vertices
+                closed = self._type == 'polygon'
             elif self._type in ('square', 'rectangle'):
                 width = self.side_length if self._type == 'square' else self.width
                 height = self.side_length if self._type == 'square' else self.height
@@ -160,7 +161,9 @@ class Mobject:
                 height = math.sqrt(3) / 2
                 vertices = [(0, height * 2 / 3), (-0.5, -height / 3), (0.5, -height / 3)]
             else:
-                raise NotImplementedError('Paths support Circle, Arc, Line, Polygon, Square, Rectangle, and Triangle')
+                raise NotImplementedError('Paths support Circle, Arc, Line, Polygon, VMobject corners, Square, Rectangle, and Triangle')
+            if self._type == 'polyline' and len(vertices) == 1:
+                return self._point_to_world(Vector(vertices[0]))
             if len(vertices) < 2:
                 raise ValueError('A path needs at least two vertices')
             vertices = [Vector(v) for v in vertices]
@@ -173,6 +176,8 @@ class Mobject:
             total = sum(length for _, _, length in segments)
             if not math.isfinite(total):
                 raise ValueError('Path length must be finite')
+            if alpha in (0, 1):
+                return self._point_to_world(points[0] if alpha == 0 else points[-1])
             remaining = total * alpha
             point = points[-1]
             for start, end, length in segments:
@@ -320,6 +325,48 @@ class Mobject:
         result['geometry_center'] = list(self._geometry_center())
         result['children'] = [child.to_dict() for child in self.children]
         return result
+
+
+class VMobject(Mobject):
+    """A single XY path made of connected straight segments."""
+    def __init__(self, **kwargs):
+        kwargs.setdefault('stroke_width', 4)
+        super().__init__(**kwargs)
+        self._type, self.vertices = 'polyline', []
+
+    @staticmethod
+    def _corners(points):
+        vertices = [list(Vector(point)) for point in points]
+        if any(not all(math.isfinite(v) for v in point) for point in vertices):
+            raise ValueError('Path coordinates must be finite')
+        if any(point[2] for point in vertices):
+            raise NotImplementedError('Corner paths support only the XY plane')
+        return vertices
+
+    def set_points_as_corners(self, points):
+        self.vertices = self._corners(points)
+        return self
+
+    def add_points_as_corners(self, points):
+        self.vertices.extend(self._corners(points))
+        return self
+
+    def add_line_to(self, point):
+        return self.add_points_as_corners([point])
+
+    def reverse_direction(self):
+        self.vertices.reverse()
+        return self
+
+    def get_start(self):
+        if not self.vertices:
+            raise ValueError('The path has no points')
+        return self._point_to_world(Vector(self.vertices[0]))
+
+    def get_end(self):
+        if not self.vertices:
+            raise ValueError('The path has no points')
+        return self._point_to_world(Vector(self.vertices[-1]))
 
 
 class Circle(Mobject):
@@ -662,7 +709,9 @@ class Transform(Animation):
     def sample(self, alpha):
         target = self.target.to_dict()
         if (self.start['type'] == target['type'] and
-                (target['type'] != 'mathtex' or self.start['text'] == target['text'])):
+                (target['type'] != 'mathtex' or self.start['text'] == target['text']) and
+                (target['type'] not in ('polygon', 'polyline') or
+                 len(self.start['vertices']) == len(target['vertices']))):
             return [interpolate(self.start, target, alpha)]
         # Different geometry is crossfaded rather than claiming path morphing.
         source = copy.deepcopy(self.start)
@@ -814,7 +863,7 @@ class Animate(Transform):
     def __getattr__(self, name):
         if name.startswith('__'):
             raise AttributeError(name)
-        if name not in ('shift', 'move_to', 'move_arc_center_to', 'put_start_and_end_on', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'restore', 'scale', 'rotate'):
+        if name not in ('shift', 'move_to', 'move_arc_center_to', 'put_start_and_end_on', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'set_points_as_corners', 'add_points_as_corners', 'add_line_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
             raise NotImplementedError(f'animate.{name} is not supported yet')
         def apply(*args, **kwargs):
             getattr(self.target, name)(*args, **kwargs)
@@ -1048,7 +1097,7 @@ class Scene:
         return {'frames': self.frames, 'fps': FPS, 'duration': (len(self.frames)-1)/FPS}
 
 
-EXPORTS = ['Scene', 'Mobject', 'Circle', 'Arc', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
+EXPORTS = ['Scene', 'Mobject', 'VMobject', 'Circle', 'Arc', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'MathTex', 'VGroup', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'TransformFromCopy',

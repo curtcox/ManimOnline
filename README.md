@@ -72,6 +72,7 @@ Then open `http://localhost:8000` in your browser.
 - [Path scene](examples/path_scene.py): motion along transformed circles, polygon outlines, and lines.
 - [Arc scene](examples/arc_scene.py): open circular paths and clockwise/counterclockwise motion.
 - [Growth scene](examples/growth_scene.py): growth from a point, group growth, and staggered shrinking.
+- [Corner paths](examples/corner_path_scene.py): trace, follow, and deform a connected path.
 - [Scene lifecycle](examples/lifecycle_scene.py): setup-created objects, scene time, and teardown animation.
 - [Scene order](examples/order_scene.py): reorder whole groups, clear the display, and reuse objects.
 - [Layer scene](examples/layer_scene.py): animated depth changes across transformed groups.
@@ -106,7 +107,7 @@ Manim-like runtime, **not the full Manim Community engine**.
 - Geometry: uniform scaling, 2D rotation in radians, optional `about_point`,
   `get_center()`, and `PI`, `TAU`, and `DEGREES` constants.
 - Paths: `point_from_proportion(alpha)` for circles, arcs, lines, polygons, squares,
-  rectangles, and triangles, including their 2D geometry transforms.
+  rectangles, triangles, and VMobject corner paths, including their 2D geometry transforms.
 - Timing: `run_time`, `linear`/`smooth` rate functions, simultaneous animations,
   and nested animation groups with staggered starts.
 - Directions support vector addition/subtraction and scalar multiplication,
@@ -318,6 +319,22 @@ whole frames. Clearing the display does not reset it, and the final still frame
 does not advance it. Time is independent of Python execution/loading and browser
 playback or seeking. The hook order and time concept follow the
 [Manim Scene API](https://docs.manim.community/en/stable/_modules/manim/scene/scene.html).
+
+`VMobject()` supports a single connected XY path. Build it with
+`set_points_as_corners(points)`, extend it with `add_points_as_corners(points)` or
+`add_line_to(point)`, and reverse it with `reverse_direction()`. These methods
+also work in animate chains. Points are local coordinates and must be finite;
+repeat the first point at the end to close the outline. Empty paths render no
+geometry, and endpoint queries require at least one point.
+
+Corner paths support Create/Uncreate, styles, layout, group/depth ordering,
+transforms, checkpoints, `get_start()`/`get_end()`, and `MoveAlongPath` sampled
+by distance along straight segments. Equal-count point lists interpolate;
+unequal-count corner paths and polygons crossfade rather than jumping between
+vertex lists. Full Bézier control points, smooth curves, multiple subpaths, and
+arbitrary shape-to-shape path alignment remain unsupported. This uses the
+[Manim corner-path API](https://docs.manim.community/en/stable/reference/manim.mobject.types.vectorized_mobject.VMobject.html?highlight=corner)
+with a straight-segment SVG representation.
 
 ## Offline use
 

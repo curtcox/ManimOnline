@@ -85,6 +85,9 @@ const ManimRenderer = {
       case 'triangle':
         element = this.renderTriangle(mobject);
         break;
+      case 'polyline':
+        element = this.renderCornerPath(mobject);
+        break;
       case 'polygon':
         element = this.renderPolygon(mobject);
         break;
@@ -304,6 +307,17 @@ const ManimRenderer = {
   /**
    * Render a polygon
    */
+  renderCornerPath(mobject) {
+    const path = document.createElementNS(this.SVG_NS, 'path');
+    const points = mobject.vertices || [];
+    path.setAttribute('d', points.map((point, i) => `${i ? 'L' : 'M'} ${point[0] * this.UNIT_SCALE},${point[1] * this.UNIT_SCALE}`).join(' '));
+    path.setAttribute('fill', mobject.fill_color ?? mobject.color ?? '#FFFFFF');
+    path.setAttribute('fill-opacity', mobject.fill_opacity ?? 0);
+    path.setAttribute('stroke', mobject.stroke_color ?? mobject.color ?? '#FFFFFF');
+    path.setAttribute('stroke-width', mobject.stroke_width ?? 4);
+    return path;
+  },
+
   renderPolygon(mobject) {
     const polygon = document.createElementNS(this.SVG_NS, 'polygon');
     const vertices = mobject.vertices || [];

@@ -7,6 +7,7 @@ const ExampleCatalog = Object.freeze([
   { id: 'layout', label: 'Position and arrange', path: 'examples/layout_scene.py' },
   { id: 'stagger', label: 'Staggered animations', path: 'examples/staggered_scene.py' },
   { id: 'succession', label: 'Animate in sequence', path: 'examples/succession_scene.py' },
+  { id: 'corners', label: 'Connected corner paths', path: 'examples/corner_path_scene.py' },
   { id: 'path', label: 'Follow a path', path: 'examples/path_scene.py' },
   { id: 'arc', label: 'Circular arcs', path: 'examples/arc_scene.py' },
   { id: 'growth', label: 'Grow and shrink', path: 'examples/growth_scene.py' },

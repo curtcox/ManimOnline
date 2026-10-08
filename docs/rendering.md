@@ -73,6 +73,26 @@ Local Pyodide playback showed setup-created title/shape, a 90-degree terminal
 rotation, teardown's “Finished at 5.0s” text, and a seven-second full timeline.
 DOT rendered after switching. See `examples/lifecycle_scene.py`.
 
+## Corner paths
+
+VMobject stores a connected list of finite XY corners, rendered as one SVG path.
+Set/append corners, add_line_to, and reverse_direction support direct and animated
+calls. Repeating the first corner closes the outline; empty paths render no
+geometry. Endpoint queries and distance-based sampling apply the existing local
+geometry transforms, with exact endpoints for straight-edged paths. Create and
+Uncreate trace the whole connected stroke. Styles, checkpoints, depth/group
+ordering, transforms, and MoveAlongPath use the existing pipeline. Same-count
+vertex lists interpolate; different-count corner paths/polygons crossfade to avoid
+the earlier terminal jump. Bézier handles, smooth/multiple paths, and arbitrary
+shape alignment remain open.
+
+Tests cover construction, extension, reversal, validation without partial edits,
+empty/degenerate/closed paths, transformed endpoint queries, movement, tracing,
+deformation, unequal-count crossfades, checkpoints, SVG styles, and gallery
+cleanup. Local Pyodide checks showed half tracing at one second, endpoint arrival
+at five seconds, deformed vertices at six, removal at the end, and DOT after
+switching. See `examples/corner_path_scene.py`.
+
 ## Implemented milestone and next work
 
 The first animation slice implements creation/fades, timed transforms, animate
@@ -172,7 +192,7 @@ Paths are snapshotted at animation start. `point_from_proportion` applies the
 same translation, scale, rotation, and geometry center as SVG rendering.
 Circles and arcs use analytical circular motion; closed primitive outlines use
 distance-weighted straight segments. Only XY Circle, Arc, Line, Polygon, Square,
-Rectangle, and Triangle paths are supported. Arbitrary Bézier curves, text,
+Rectangle, Triangle, and VMobject corner paths are supported. Arbitrary Bézier curves, text,
 groups, arrows, 3D paths, live path updates, and automatic tangent orientation
 remain unsupported. Zero-length segments are stable and nonfinite paths fail
 explicitly.

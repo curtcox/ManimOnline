@@ -31,7 +31,11 @@ Pyodide browser playback checks. Foreground APIs and broader family composition
 remain implementation work. Scene lifecycle hooks and elapsed sampled time
 have Python tests and Pyodide browser checks, including teardown animation.
 
-Full Community parity additionally requires geometry/path morphing, full scene-family
+Corner-path VMobjects now have Python/SVG tests and Pyodide checks for tracing,
+movement, equal-count vertex interpolation, and cleanup. Unequal-count paths and
+polygons crossfade; general geometry/path alignment remains open.
+
+Full Community parity additionally requires general geometry/path morphing, full scene-family
 composition and layering, camera configuration, glyph-level text/TeX
 semantics, updaters, graphing, 3D, rendering/video output, and broad API/package
 compatibility. These are not implemented or proven by the current tests. Keep

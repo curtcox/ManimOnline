@@ -176,3 +176,18 @@ test('equal depth keeps scene/family order and changing depth changes paint orde
   a.z_index = -1;
   assert.deepEqual(tags(), ['circle', 'rect', 'polygon']);
 });
+
+
+test('corner paths render connected open segments with tracing and standard geometry styles', () => {
+  const path = renderer.renderMobject({ type: 'polyline', vertices: [[-2, 0, 0], [0, 1, 0], [2, 0, 0]],
+    fill_color: '#0000FF', stroke_color: '#FF0000', fill_opacity: 0.2, stroke_width: 4,
+    draw_progress: 0.5, geometry_scale: 2, angle: Math.PI / 2, position: [1, 0, 0] });
+  assert.equal(path.tag, 'path');
+  assert.equal(path.getAttribute('d'), 'M -100,0 L 0,50 L 100,0');
+  assert.equal(path.getAttribute('fill'), '#0000FF');
+  assert.equal(path.getAttribute('stroke'), '#FF0000');
+  assert.equal(path.getAttribute('pathLength'), '1');
+  assert.equal(path.getAttribute('stroke-dashoffset'), '0.5');
+  assert.match(path.getAttribute('transform'), /translate\(50, 0\).*rotate\(90\) scale\(2\)/);
+  assert.equal(renderer.renderMobject({ type: 'polyline', vertices: [] }).getAttribute('d'), '');
+});
