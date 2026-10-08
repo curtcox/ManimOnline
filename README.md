@@ -1026,3 +1026,15 @@ Angle marks are display groups containing an arc/corner and optional dot;
 they do not expose native Angle point-array/family layout. `get_value` is the
 construction-time angle, and `get_lines` returns the defining lines. Full Manim
 Community compatibility remains unfinished.
+
+
+### Endpoint arcs
+
+Try **Bend arcs between moving endpoints** (`examples/endpoint_arc_scene.py`).
+`ArcBetweenPoints(start, end, angle=PI/2, radius=None)` creates a circular XY
+path between coordinates. Signed angles select direction, including sweeps larger
+than a semicircle. A signed radius overrides the angle and selects the shorter
+arc; its magnitude must be at least half the endpoint distance. Angle zero makes
+a straight path and coincident endpoints collapse to a point. Use `always_redraw`
+for changing endpoints or bend. Full turns and unresolvable extreme floating-point
+geometry are rejected; arbitrary 3D arcs and curved arrow tips remain open.

@@ -1338,3 +1338,33 @@ green independently colored dot, a green two-segment elbow, a red clockwise
 three-quarter arc and the changing label ending at 90 degrees. At nine seconds
 all mark paths and dots were removed. Switching to the DOT gallery rendered
 the Editor → Render → Preview graph successfully.
+
+
+## Endpoint-defined arcs
+
+ArcBetweenPoints now constructs circular paths between finite XY endpoints using
+signed sweeps shorter than one turn. Its center is the chord midpoint plus the
+left normal times half the chord length divided by tan(angle/2). Its radius is
+half the chord length divided by abs(sin(angle/2)). Positive sweeps are
+counterclockwise; negative sweeps clockwise, with major arcs supported.
+An explicit signed radius overrides the angle using twice the signed arcsine
+of half-chord/radius, selecting a minor arc. Too-small, zero or nonfinite radii
+are rejected. Zero angle creates a straight polyline, and coincident endpoints
+collapse to a point. These cases serialize finite values rather than native
+straight-arc infinite-radius metadata. Full turns and endpoints that cannot be
+resolved at floating-point precision are rejected. The existing Arc query,
+partial-curve, transform, restore and morph pipeline supplies playback geometry.
+
+The gallery redraws positive-angle and negative-radius arcs as one endpoint
+moves, then reduces the positive bend to zero and removes both paths. Python
+checks cover positive/negative minor and major sweeps, center/radius calculation,
+endpoint alignment, radius precedence, zero/coincident cases, world transforms,
+partial extraction, restoration, validation, precision and gallery cleanup.
+General 3D arcs, mutable native points and curved arrow tips remain open.
+
+Reference: [official Manim arc implementation](https://docs.manim.community/en/stable/_modules/manim/mobject/geometry/arc.html).
+
+Local Pyodide playback verified both oppositely directed arcs at five seconds,
+the yellow straight chord at seven seconds and removal of both paths at nine
+seconds. The DOT gallery still rendered the editor flow graph. All 295 Python
+and 74 Node tests passed for this change.

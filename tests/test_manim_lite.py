@@ -16,6 +16,64 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_endpoint_arc_signed_sweep_radius_and_endpoints(self):
+        for sweep in (lite.PI/2,-lite.PI/2,lite.PI*1.5,-lite.PI*1.5):
+            arc = lite.ArcBetweenPoints(lite.LEFT,lite.RIGHT,angle=sweep)
+            self.assertPointAlmostEqual(arc.get_start(),lite.LEFT)
+            self.assertPointAlmostEqual(arc.get_end(),lite.RIGHT)
+            self.assertAlmostEqual(arc.radius,1/abs(lite.math.sin(sweep/2)))
+            self.assertAlmostEqual(arc.arc_angle,sweep)
+            expected = 1/lite.math.tan(sweep/2)
+            self.assertPointAlmostEqual(arc.get_arc_center(),(0,expected,0))
+        for radius in (1,2,-1,-2):
+            arc = lite.ArcBetweenPoints(lite.LEFT,lite.RIGHT,radius=radius,angle=.1)
+            self.assertAlmostEqual(arc.radius,abs(radius))
+            self.assertAlmostEqual(arc.arc_angle,lite.math.copysign(2*lite.math.asin(1/abs(radius)),radius))
+        self.assertLess(lite.ArcBetweenPoints(lite.LEFT,lite.RIGHT).point_from_proportion(.5)[1],0)
+
+    def test_endpoint_arc_zero_angle_transforms_partial_and_restore(self):
+        start,end = lite.Vector((1,2,0)),lite.Vector((3,4,0))
+        arc = lite.ArcBetweenPoints(start,end,angle=0,color=lite.RED)
+        self.assertEqual(arc._type,'polyline')
+        self.assertPointAlmostEqual(arc.get_start(),start)
+        self.assertPointAlmostEqual(arc.get_end(),end)
+        self.assertPointAlmostEqual(arc.point_from_proportion(.5),(2,3,0))
+        curved = lite.ArcBetweenPoints(start,end).save_state()
+        curved.rotate(lite.PI/2,about_point=lite.ORIGIN).scale(2,about_point=lite.ORIGIN)
+        self.assertPointAlmostEqual(curved.get_start(),(-4,2,0))
+        self.assertPointAlmostEqual(curved.get_end(),(-8,6,0))
+        partial = curved.get_subcurve(.2,.7)
+        self.assertPointAlmostEqual(partial.get_start(),curved.get_subcurve(.2,.2).get_start())
+        curved.restore()
+        self.assertPointAlmostEqual(curved.get_start(),start)
+        self.assertPointAlmostEqual(curved.get_end(),end)
+        collapsed = lite.ArcBetweenPoints(start,start)
+        self.assertPointAlmostEqual(collapsed.point_from_proportion(.5),start)
+        json.dumps(collapsed.to_dict(),allow_nan=False)
+
+    def test_endpoint_arc_validation_and_precision(self):
+        for options in ({'radius':.5},{'radius':0},{'radius':True},{'radius':float('inf')},
+                        {'angle':lite.TAU},{'angle':-lite.TAU},{'angle':True},
+                        {'angle':float('nan')},{'angle':1e-20}):
+            with self.assertRaises(ValueError): lite.ArcBetweenPoints(lite.LEFT,lite.RIGHT,**options)
+        with self.assertRaises(NotImplementedError): lite.ArcBetweenPoints(lite.ORIGIN,lite.OUT)
+        with self.assertRaises(ValueError): lite.ArcBetweenPoints((float('nan'),0),lite.RIGHT)
+        small = lite.ArcBetweenPoints(lite.LEFT,lite.RIGHT,angle=1e-5)
+        self.assertPointAlmostEqual(small.get_start(),lite.LEFT)
+        self.assertPointAlmostEqual(small.get_end(),lite.RIGHT)
+
+    def test_endpoint_arc_gallery_redraw_straight_transition_and_cleanup(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/endpoint_arc_scene.py').read_text()))
+        self.assertEqual(result['duration'],9)
+        first = result['frames'][30]['mobjects']
+        final = result['frames'][105]['mobjects']
+        self.assertNotEqual(first[2]['position'],final[2]['position'])
+        self.assertEqual(final[2]['type'],'polyline')
+        self.assertEqual(final[2]['vertices'],[[-2,0,0],[2,1.5,0]])
+        self.assertLess(final[3]['arc_angle'],0)
+        self.assertEqual(len(result['frames'][-1]['mobjects']),2)
+        json.dumps(result,allow_nan=False)
+
     def test_angle_signed_sweeps_quadrants_and_auto_radius(self):
         first = lite.Line(lite.LEFT,lite.RIGHT)
         second = lite.Line(lite.DOWN,lite.UP)

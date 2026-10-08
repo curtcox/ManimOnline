@@ -1155,6 +1155,43 @@ class Arc(Mobject):
         return self.shift(point - self.get_arc_center())
 
 
+class ArcBetweenPoints(Arc, VMobject):
+    """A circular XY arc spanning two endpoints, or a straight zero-angle path."""
+    get_start = Mobject.get_start
+    get_end = Mobject.get_end
+    def __init__(self, start, end, angle=PI/2, radius=None, **kwargs):
+        start,end = Line._endpoints(start,end)
+        if isinstance(angle,bool) or not isinstance(angle,(int,float)) or not math.isfinite(angle):
+            raise ValueError('Arc angle must be finite')
+        if radius is not None and (isinstance(radius,bool) or not isinstance(radius,(int,float))
+                or not math.isfinite(radius) or radius == 0):
+            raise ValueError('Endpoint arc radius must be finite and nonzero')
+        chord = end-start
+        length = math.hypot(*chord)
+        if not math.isfinite(length):
+            raise ValueError('Endpoint arc span must be finite')
+        if radius is not None:
+            if abs(radius) < length/2:
+                raise ValueError('Arc radius must be at least half the endpoint distance')
+            angle = math.copysign(2*math.asin(min(1,length/2/abs(radius))),radius)
+        if abs(angle) >= TAU:
+            raise ValueError('Endpoint arcs require less than one full turn')
+        if angle == 0 or length == 0:
+            super().__init__(radius=0,angle=0,**kwargs)
+            self.set_points_as_corners([start,end])
+            return
+        half = angle/2
+        extent = length/2/abs(math.sin(half))
+        normal = Vector((-chord[1]/length,chord[0]/length,0))
+        center = start*.5+end*.5+normal*(length/2/math.tan(half))
+        initial = math.atan2(start[1]-center[1],start[0]-center[0])
+        super().__init__(radius=extent,start_angle=initial,angle=angle,arc_center=center,**kwargs)
+        # Reject unresolvable extreme geometry rather than return a different path.
+        tolerance = max(length,1)*1e-9
+        if math.dist(self.get_start(),start)>tolerance or math.dist(self.get_end(),end)>tolerance:
+            raise ValueError('Endpoint arc cannot resolve these coordinates at floating-point precision')
+
+
 class AnnularSector(Arc, VMobject):
     """One connected outline: inner arc, radial edge, reversed outer arc, edge."""
     def __init__(self, inner_radius=1, outer_radius=2, angle=PI/2, start_angle=0,
@@ -3756,7 +3793,7 @@ class MovingCameraScene(Scene):
     camera_class = MovingCamera
 
 
-EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'Arrow',
+EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'NumberPlane', 'ComplexPlane', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',

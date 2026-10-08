@@ -98,3 +98,8 @@ verified; successful individual feature commits do not close the overall goal.
 Angle, RightAngle and Elbow now add signed quadrant-selected marks, optional dots,
 construction-time queries and moving-line redraw. Native Angle own-point/family
 layout and general geometry-bearing families remain open.
+
+
+ArcBetweenPoints now supplies signed minor/major endpoint arcs, signed-radius
+construction, moving endpoints and straight-path transitions. Full 3D arc and
+curved-arrow families remain open.

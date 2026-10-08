@@ -279,3 +279,11 @@ separate geometry children; native own-path/submobject layout is not supported.
 `get_value` stores the construction-time sweep. Rebuild with `always_redraw` for
 moving lines. Defining line references are excluded from frame JSON; preserve
 that isolation when extending serialization. Parallel/zero-span lines are empty.
+
+
+Read `examples/endpoint_arc_scene.py` for ArcBetweenPoints, signed angle/radius,
+moving endpoints and a zero-angle straight transition. Endpoint arcs reuse Arc
+and the existing partial/morph pipeline; zero-angle/coincident cases use a
+polyline. Start/end queries delegate to Mobject so analytical arc geometry does
+not fall through VMobject's corner-only getters. Keep endpoint precision checks,
+finite XY validation and less-than-full-turn limits explicit.
