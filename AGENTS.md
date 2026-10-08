@@ -441,3 +441,14 @@ Circle.surround computes the diagonal directly rather than first fitting the
 chosen dimension: vertical/horizontal line targets must not cause premature
 collapse. Preserve child identities, signed pose and target geometry. Nonuniform
 stretch flags fail explicitly until the runtime can represent family stretching.
+
+
+Read `examples/stretch_scene.py` for nonuniform XY vector-family deformation.
+Mobject.stretch copies source/target, composes every old ancestor transform,
+maps world geometry and stores identity poses relative to mapped parent origins.
+Keep object/child identities through become; preserve disconnected contours and
+pending anchors. Curved tip-bearing paths bake displayed shafts and disable the
+similarity refit after nonuniform deformation. _stretch_baked marks canonical path
+snapshots for Transform interpolation/restoration. Unsupported glyph/camera/shared
+families must fail before changing live geometry. Stretched surround follows
+native target aspect ratio then diagonal-width fitting; it can be an oval.

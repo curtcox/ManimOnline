@@ -1931,3 +1931,35 @@ Verification: all 356 Python and 78 Node tests passed. Local Pyodide playback
 showed the yellow circle following the rotated, resized and translated rectangle
 at six seconds, restored them at seven seconds and left only the black canvas
 background at nine seconds. Switching to DOT rendered Editor → Render → Preview.
+
+
+Try **Stretch nested vector shapes** (`examples/stretch_scene.py`). `stretch(factor,
+dim, about_point=..., about_edge=...)` now deforms editable XY geometry along the
+chosen screen axis, including rotated/scaled nested families, own outlines and
+real arrow-tip children. Negative factors reflect geometry; zero collapses the
+chosen axis. Original objects, ordered child identities, styles and updaters are
+retained. The operation validates a copied family before replacing live state.
+
+`stretch_to_fit_width`/`stretch_to_fit_height`, `rescale_to_fit(..., stretch=True)`,
+`replace(..., stretch=True)` and `Circle.surround(..., stretch=True)` use this path.
+Stretching a circle can produce an oval; stretched surrounding follows the target's
+aspect ratio, then fits its width to the target diagonal times buffer_factor,
+matching the implementation of Manim's Circle helper. Own analytical shapes
+materialize into editable cubics. Bounds therefore use conservative cubic control
+boxes. Straight connectors retain endpoint APIs; curved shafts bake their displayed
+geometry before tip deformation, so similarity fitting cannot undo the stretch.
+Subsequent tip replacement/removal still lacks full native path-reset semantics.
+
+Stretch-aware transforms use materialized geometry at both ends so animated
+stretching interpolates world coordinates and restoration retains the saved
+shape type. XY coordinate axes continue to map/invert points after stretching.
+Text/MathTex glyph stretching, camera-frame stretching, shared descendants under
+multiple parents and 3D remain explicit gaps; unsupported families fail without
+changing live objects. Zero-size fitting dimensions retain the existing no-op.
+
+
+Verification: all 359 Python and 78 Node tests passed. Local Pyodide playback
+showed the stretched oval, deformed rectangle and curved shaft with two stretched
+tips at six seconds, restored one analytical circle, rectangle and three arrow
+paths at seven seconds, and only the canvas background at nine seconds. Switching
+to DOT rendered Editor → Render → Preview.

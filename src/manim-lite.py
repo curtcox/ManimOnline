@@ -427,18 +427,92 @@ class Mobject:
         self._fit_dimension(dim)
         return self.get_width() if dim == 0 else self.get_height()
 
+    def stretch(self, factor, dim, *, about_point=None, about_edge=None):
+        NumberLine._real(factor,'Stretch factor')
+        self._fit_dimension(dim)
+        if about_point is not None:
+            pivot = Vector(about_point)
+        else:
+            edge = ORIGIN if about_edge is None else Vector(about_edge)
+            pivot = self.get_critical_point(edge)
+        if not all(math.isfinite(value) for value in pivot) or pivot[2]:
+            raise ValueError('Stretch pivot must be finite and in the XY plane')
+        if isinstance(self,CameraFrame):
+            raise NotImplementedError('Camera stretching is not implemented')
+        source,target = self.copy(),self.copy()
+        seen = set()
+        def mapped(point):
+            values = list(point)
+            values[dim] = pivot[dim]+(values[dim]-pivot[dim])*factor
+            if not all(math.isfinite(value) for value in values):
+                raise ValueError('Stretched geometry must be finite')
+            return Vector(values)
+        def visit(old,new,parent_world,parent_origin):
+            if id(old) in seen:
+                raise NotImplementedError('Stretching shared nested children is not implemented')
+            seen.add(id(old))
+            old._geometry_center()
+            def world(point):
+                return parent_world(old._point_to_world(Vector(point)))
+            origin = mapped(world(ORIGIN))
+            def local(point):
+                return list(mapped(world(point))-origin)
+            kind = old._type
+            snapshot = old.to_dict()
+            if kind in ('line','arrow'):
+                new.start,new.end = local(old.start),local(old.end)
+            elif kind in ('polygon','polyline'):
+                new.vertices = [local(point) for point in old.vertices]
+            elif kind in ('circle','ellipse','arc','square','rectangle','triangle','annulus','bezierpath'):
+                paths = _path_subpaths(snapshot,include_pending=False)
+                new.curves = [[local(point) for point in curve] for path in paths for curve in path]
+                new.vertices = [local(point) for point in old.vertices] if kind == 'bezierpath' else []
+                new._type = 'bezierpath'
+                new.__dict__.pop('subpath_lengths',None)
+                if len(paths)>1:
+                    new.subpath_lengths = [len(path) for path in paths]
+                # Bake the displayed shaft before deforming its tip family. A
+                # similarity refit after a nonuniform map would change the curve.
+                new.__dict__.pop('_curved_tip_path',None)
+            elif kind not in ('vgroup','mobject','valuetracker'):
+                raise NotImplementedError('Stretching requires editable vector geometry')
+            if '_curve_arc_center' in old.__dict__:
+                new._curve_arc_center = local(old._curve_arc_center)
+            new.position,new.angle,new.geometry_scale = list(origin-parent_origin),0,1
+            new._stretch_baked = True
+            for key in ('_family_pivot_cache','_sampled_geometry_center','shaft_curves','shaft_start','shaft_end'):
+                new.__dict__.pop(key,None)
+            for old_child,new_child in zip(old.children,new.children):
+                visit(old_child,new_child,world,origin)
+        visit(source,target,lambda point:point,ORIGIN)
+        return self.become(target)
+
+    def stretch_to_fit_width(self, width, **kwargs):
+        return self.rescale_to_fit(width,0,stretch=True,**kwargs)
+
+    def stretch_to_fit_height(self, height, **kwargs):
+        return self.rescale_to_fit(height,1,stretch=True,**kwargs)
+
     def rescale_to_fit(self, length, dim, stretch=False, **kwargs):
         NumberLine._real(length,'Fitted length',nonnegative=True)
         self._fit_dimension(dim)
         if not isinstance(stretch,bool):
             raise ValueError('stretch must be a boolean')
-        if stretch:
-            raise NotImplementedError('Nonuniform family stretching is not implemented')
         old_length = self.length_over_dim(dim)
         if not math.isfinite(old_length):
             raise ValueError('Existing length must be finite')
         if old_length == 0:
             return self
+        if stretch:
+            target = self.copy().stretch(1,dim)
+            old_length = target.length_over_dim(dim)
+            if old_length == 0:
+                return self
+            factor = length/old_length
+            if not math.isfinite(factor):
+                raise ValueError('Fitted scale must be finite')
+            target.stretch(factor,dim,**kwargs)
+            return self.become(target)
         factor = length/old_length
         if not math.isfinite(factor):
             raise ValueError('Fitted scale must be finite')
@@ -459,7 +533,13 @@ class Mobject:
         center = mobject.get_center()
         if not all(math.isfinite(value) for value in center):
             raise ValueError('Fit center must be finite')
-        return self.rescale_to_fit(length,dim_to_match,stretch=stretch).move_to(center)
+        if not isinstance(stretch,bool):
+            raise ValueError('stretch must be a boolean')
+        if stretch:
+            width,height = mobject.get_width(),mobject.get_height()
+            target = self.copy().stretch_to_fit_width(width).stretch_to_fit_height(height).move_to(center)
+            return self.become(target)
+        return self.rescale_to_fit(length,dim_to_match).move_to(center)
 
     def next_to(self, mobject_or_point, direction=RIGHT, buff=0.25, aligned_edge=ORIGIN):
         direction, aligned_edge = Vector(direction), Vector(aligned_edge)
@@ -1652,8 +1732,6 @@ class Circle(Arc):
         self._fit_dimension(dim_to_match)
         if not isinstance(stretch,bool):
             raise ValueError('stretch must be a boolean')
-        if stretch:
-            raise NotImplementedError('Nonuniform surrounding is not implemented')
         NumberLine._real(buffer_factor,'Circle buffer factor',nonnegative=True)
         if not mobject.get_num_points() and not mobject.children:
             raise ValueError('Cannot surround a mobject with no points or children')
@@ -1661,7 +1739,11 @@ class Circle(Arc):
         center = mobject.get_center()
         if not all(math.isfinite(value) for value in (*center,diameter)):
             raise ValueError('Surround geometry must be finite')
-        return self.scale_to_fit_width(diameter).move_to(center)
+        target = self.copy()
+        if stretch:
+            target.replace(mobject,dim_to_match,stretch=True)
+        target.scale_to_fit_width(diameter).move_to(center)
+        return self.become(target)
 
     def point_at_angle(self, angle):
         NumberLine._real(angle,'Circle point angle')
@@ -4173,10 +4255,19 @@ class Transform(Animation):
     def begin(self, scene):
         super().begin(scene)
         self._transform_plan = None
+        self._path_target = None
+        if self.mobject.__dict__.get('_stretch_baked') or self.target.__dict__.get('_stretch_baked'):
+            try:
+                start = self.mobject.copy().stretch(1,0).to_dict()
+                target = self.target.copy().stretch(1,0).to_dict()
+            except NotImplementedError:
+                pass  # Unsupported target types keep the existing fade/morph plan.
+            else:
+                self.start,self._path_target = start,target
 
     def sample(self, alpha):
         if self._transform_plan is None:
-            self._transform_plan = _transform_plan(self.start, self.target.to_dict())
+            self._transform_plan = _transform_plan(self.start, self._path_target or self.target.to_dict())
         return _sample_transform(self._transform_plan, alpha)
 
     def finish(self, scene):
@@ -4320,7 +4411,7 @@ class Animate(Transform):
     def __getattr__(self, name):
         if name.startswith('__'):
             raise AttributeError(name)
-        if name not in ('become', 'set_value', 'increment_value', 'shift', 'move_to', 'set_width', 'set_height', 'rescale_to_fit', 'scale_to_fit_width', 'scale_to_fit_height', 'replace', 'surround', 'set_length', 'move_arc_center_to', 'put_start_and_end_on', 'set_angle', 'next_to', 'arrange', 'arrange_submobjects', 'arrange_in_grid', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'pointwise_become_partial', 'set_points', 'append_points', 'clear_points', 'add_subpath', 'append_vectorized_mobject', 'start_new_path', 'close_path', 'set_points_as_corners', 'set_points_smoothly', 'make_smooth', 'make_jagged', 'change_anchor_mode', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
+        if name not in ('become', 'set_value', 'increment_value', 'shift', 'move_to', 'set_width', 'set_height', 'rescale_to_fit', 'scale_to_fit_width', 'scale_to_fit_height', 'stretch', 'stretch_to_fit_width', 'stretch_to_fit_height', 'replace', 'surround', 'set_length', 'move_arc_center_to', 'put_start_and_end_on', 'set_angle', 'next_to', 'arrange', 'arrange_submobjects', 'arrange_in_grid', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'pointwise_become_partial', 'set_points', 'append_points', 'clear_points', 'add_subpath', 'append_vectorized_mobject', 'start_new_path', 'close_path', 'set_points_as_corners', 'set_points_smoothly', 'make_smooth', 'make_jagged', 'change_anchor_mode', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
             raise NotImplementedError(f'animate.{name} is not supported yet')
         def apply(*args, **kwargs):
             getattr(self.target, name)(*args, **kwargs)

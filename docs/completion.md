@@ -195,3 +195,10 @@ geometry-preserving size controls and dynamic surrounding outlines. Regression
 coverage includes family bounds, signed transforms, child identities, atomic
 validation, animated fitting and updater playback. Nonuniform stretching, full
 3D dimensions and native world-coordinate children remain open.
+
+
+Nonuniform XY vector-family stretching now enables stretching fits, replacement
+and surrounding. Regression coverage includes nested signed poses, exact world
+point mapping, line endpoints, curved shafts/tips, coordinate conversion,
+identities, failure atomicity, animation and restoration. Glyph/camera/shared
+family stretching, 3D and native post-deformation tip reset remain open.

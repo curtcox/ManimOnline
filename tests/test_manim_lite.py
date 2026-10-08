@@ -16,6 +16,82 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_nonuniform_stretch_gallery_restores_nested_outlines(self):
+        result=json.loads(lite.render_scene((ROOT/'examples/stretch_scene.py').read_text()))
+        self.assertEqual(result['duration'],9)
+        middle=result['frames'][60]['mobjects'][0]
+        self.assertEqual(middle['children'][0]['type'],'bezierpath')
+        self.assertEqual(len(middle['children'][1]['children'][1]['children']),2)
+        restored=result['frames'][105]['mobjects'][0]
+        self.assertEqual(restored['children'][0]['type'],'circle')
+        self.assertAlmostEqual(restored['angle'],lite.PI/12)
+        self.assertAlmostEqual(restored['children'][0]['radius'],1)
+        self.assertAlmostEqual(restored['children'][1]['children'][0]['width'],1.4)
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+        sampled=render('shape = Rectangle(width=4,height=2).rotate(PI/6)\nself.play(shape.animate.stretch(2,0,about_point=ORIGIN),run_time=2,rate_func=linear)')
+        source=lite.Rectangle(width=4,height=2).rotate(lite.PI/6)
+        old=source.get_points()
+        snapshot=sampled['frames'][15]['mobjects'][0]
+        obj=lite.VMobject()
+        obj.__dict__.update(snapshot)
+        obj._type=snapshot['type']
+        obj.children=[]
+        for actual,point in zip(obj.get_points(),old):
+            self.assertPointAlmostEqual(actual,(point[0]*1.5,point[1],0))
+
+    def test_nonuniform_stretch_maps_nested_family_points_and_retains_identity(self):
+        family=lite.VGroup(lite.Circle().shift(lite.LEFT),
+                          lite.VGroup(lite.Rectangle(width=2,height=1).rotate(.4),
+                                      lite.Line(lite.LEFT,lite.RIGHT+lite.UP)).shift(lite.RIGHT))
+        family.rotate(.3).scale(-.8).shift(lite.UP)
+        def points(node,parent=lambda p:p):
+            def world(p): return parent(node._point_to_world(lite.Vector(p)))
+            own=[world(point) for curve in lite._path_curves(node.to_dict()) for point in curve] if node.has_points() else []
+            return own+[p for child in node.children for p in points(child,world)]
+        before=points(family)
+        members=family.get_family()
+        pivot=lite.Vector((1,-2,0))
+        family.stretch(-1.5,0,about_point=pivot)
+        self.assertEqual(family.get_family(),members)
+        for actual,old in zip(points(family),before):
+            self.assertPointAlmostEqual(actual,(pivot[0]+(old[0]-pivot[0])*-1.5,old[1],0))
+        axes=lite.Axes(x_range=(-2,2,1),y_range=(-2,2,1),tips=False).rotate(.3).scale(.7)
+        old=axes.c2p(1,1)
+        axes.stretch(2,0,about_point=lite.ORIGIN)
+        self.assertPointAlmostEqual(axes.c2p(1,1),(old[0]*2,old[1],0))
+        self.assertPointAlmostEqual((*axes.p2c((old[0]*2,old[1],0)),0),(1,1,0))
+        ellipse=lite.Circle().surround(lite.Rectangle(width=4,height=2),stretch=True)
+        self.assertAlmostEqual(ellipse.get_width()/ellipse.get_height(),2)
+        family.save_state()
+        saved=family.to_dict()
+        family.stretch(.3,1).restore()
+        self.assertEqual(family.to_dict(),saved)
+        self.assertIsNot(family.copy().children[0],family.children[0])
+
+    def test_nonuniform_stretch_curved_tips_and_atomic_validation(self):
+        arrow=lite.CurvedDoubleArrow(lite.LEFT*2,lite.RIGHT*2,angle=lite.PI/2)
+        own=arrow.get_points()
+        end=arrow.get_end()
+        tip=arrow.tip
+        arrow.stretch(.5,1,about_point=lite.ORIGIN)
+        self.assertIs(arrow.tip,tip)
+        for actual,old in zip(arrow.get_points(),own):
+            self.assertPointAlmostEqual(actual,(old[0],old[1]*.5,0))
+        self.assertPointAlmostEqual(arrow.get_end(),(end[0],end[1]*.5,0))
+        self.assertPointAlmostEqual(arrow.get_points()[-1],arrow._point_to_world(arrow.tip.base))
+        host=lite.VGroup(lite.Circle(),lite.Text('hello'))
+        before=host.to_dict()
+        with self.assertRaises(NotImplementedError): host.stretch(2,0)
+        self.assertEqual(host.to_dict(),before)
+        for kwargs in ({'factor':float('inf'),'dim':0},{'factor':2,'dim':2},
+                       {'factor':2,'dim':0,'about_point':lite.OUT}):
+            with self.assertRaises(ValueError): arrow.stretch(**kwargs)
+        line=lite.Line(lite.LEFT,lite.RIGHT+lite.UP).rotate(.2)
+        start,end=line.get_start_and_end()
+        line.stretch(0,0,about_point=lite.ORIGIN)
+        self.assertPointAlmostEqual(line.get_start(),(0,start[1],0))
+        self.assertPointAlmostEqual(line.get_end(),(0,end[1],0))
+
     def test_uniform_fitting_transformed_families_and_replace(self):
         shape=lite.Rectangle(width=4,height=2).rotate(.3).scale(-.8).shift(lite.UP)
         child=lite.Dot(lite.RIGHT)
@@ -41,8 +117,9 @@ class SceneTests(unittest.TestCase):
                        {'length':2,'dim':True},{'length':float('inf'),'dim':0}):
             with self.assertRaises(ValueError): shape.rescale_to_fit(**kwargs)
             self.assertEqual(shape.to_dict(),before)
-        with self.assertRaises(NotImplementedError): shape.replace(target,stretch=True)
-        self.assertEqual(shape.to_dict(),before)
+        shape.replace(target,stretch=True)
+        self.assertAlmostEqual(shape.get_width(),target.get_width())
+        self.assertAlmostEqual(shape.get_height(),target.get_height())
         collapsed=lite.Line(lite.ORIGIN,lite.ORIGIN)
         self.assertIs(collapsed.scale_to_fit_width(4),collapsed)
         with self.assertRaises(ValueError): shape.replace(lite.Group())
@@ -73,8 +150,8 @@ class SceneTests(unittest.TestCase):
         for factor in (-1,float('inf'),True):
             with self.assertRaises(ValueError): circle.surround(lite.Square(),buffer_factor=factor)
             self.assertEqual(circle.to_dict(),before)
-        with self.assertRaises(NotImplementedError): circle.surround(lite.Square(),stretch=True)
-        self.assertEqual(circle.to_dict(),before)
+        circle.surround(lite.Square(),stretch=True)
+        self.assertAlmostEqual(circle.get_width(),circle.get_height())
 
     def test_circle_surround_gallery_follows_bounds_and_cleans_up(self):
         import math
