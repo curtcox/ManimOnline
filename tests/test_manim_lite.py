@@ -16,6 +16,86 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_growth_from_point_preserves_rotation_style_and_terminal_identity(self):
+        shape = lite.Line((1, 0), (3, 0), color=lite.BLUE).scale(2).rotate(lite.PI / 2)
+        shape.shift(lite.RIGHT * 2)
+        original = shape.to_dict()
+        scene = lite.Scene()
+        scene.play(lite.GrowFromPoint(shape, (-2, 0)), run_time=2, rate_func=lite.linear)
+        first, middle = scene.frames[0]['mobjects'][0], scene.frames[15]['mobjects'][0]
+        self.assertEqual(first['geometry_scale'], 0)
+        self.assertPointAlmostEqual(lite.Vector(first['position']) + original['geometry_center'], (-2, 0, 0))
+        self.assertEqual(middle['geometry_scale'], 1)
+        self.assertPointAlmostEqual(lite.Vector(middle['position']) + original['geometry_center'], (1, 0, 0))
+        self.assertEqual(middle['angle'], original['angle'])
+        self.assertEqual(middle['color'], original['color'])
+        self.assertEqual(shape.to_dict(), original)
+        self.assertIs(scene.mobjects[0], shape)
+
+    def test_growth_center_is_resolved_after_prior_motion(self):
+        shape = lite.Arc().scale(2).shift(lite.RIGHT)
+        growth = lite.GrowFromCenter(shape)
+        shape.move_to((3, 2))
+        scene = lite.Scene()
+        scene.play(growth, run_time=2, rate_func=lite.linear)
+        for index, scale in ((0, 0), (15, 1)):
+            state = scene.frames[index]['mobjects'][0]
+            self.assertPointAlmostEqual(lite.Vector(state['position']) + state['geometry_center'], (3, 2, 0))
+            self.assertEqual(state['geometry_scale'], scale)
+
+    def test_growth_scales_group_as_a_whole_and_shrink_cleans_up_on_timeline(self):
+        group = lite.VGroup(lite.Circle().shift(lite.LEFT * 2), lite.Square().shift(lite.RIGHT * 2))
+        group.scale(0.8).rotate(lite.PI / 4).shift(lite.UP)
+        original = group.to_dict()
+        scene = lite.Scene()
+        scene.play(lite.GrowFromCenter(group), run_time=2, rate_func=lite.linear)
+        middle = scene.frames[15]['mobjects'][0]
+        self.assertEqual(middle['geometry_scale'], 0.4)
+        self.assertEqual(middle['children'], original['children'])
+        self.assertEqual(group.to_dict(), original)
+        other = lite.Dot()
+        scene.play(lite.AnimationGroup(lite.ShrinkToCenter(group, run_time=1, remover=True),
+                                       lite.GrowFromCenter(other, run_time=2)), rate_func=lite.linear)
+        self.assertEqual(len(scene.frames[45]['mobjects']), 1)
+        self.assertEqual(scene.mobjects, [other])
+        self.assertEqual(group.geometry_scale, 0)
+        self.assertEqual(group.get_center(), lite.UP)
+
+    def test_shrink_default_retains_collapsed_object_and_can_be_transformed_again(self):
+        shape = lite.Square().shift(lite.RIGHT)
+        scene = lite.Scene()
+        scene.play(lite.ShrinkToCenter(shape), run_time=2, rate_func=lite.linear)
+        self.assertEqual(scene.frames[15]['mobjects'][0]['geometry_scale'], 0.5)
+        self.assertEqual(scene.mobjects, [shape])
+        self.assertEqual(shape.geometry_scale, 0)
+        self.assertEqual(shape.get_center(), lite.RIGHT)
+        scene.play(lite.Transform(shape, lite.Circle().shift(lite.LEFT)))
+        self.assertEqual(shape._type, 'circle')
+        self.assertEqual(shape.geometry_scale, 1)
+
+    def test_growth_easing_and_unsupported_options(self):
+        result = render('self.play(GrowFromCenter(Square()), run_time=2, rate_func=lambda t: t*t)')
+        self.assertEqual(result['frames'][15]['mobjects'][0]['geometry_scale'], 0.25)
+        for point in ((float('nan'), 0), (0, float('inf'))):
+            with self.assertRaises(ValueError):
+                lite.GrowFromPoint(lite.Square(), point)
+        with self.assertRaises(NotImplementedError):
+            lite.GrowFromPoint(lite.Square(), lite.OUT)
+        for animation in (lite.GrowFromPoint(lite.Square().shift(lite.OUT), lite.ORIGIN),
+                          lite.GrowFromCenter(lite.Square().shift(lite.OUT))):
+            scene = lite.Scene()
+            with self.assertRaises(NotImplementedError):
+                scene.play(animation)
+            self.assertEqual(scene.mobjects, [])
+        with self.assertRaises(TypeError):
+            lite.GrowFromCenter(lite.Square(), point_color=lite.RED)
+
+    def test_growth_example_finishes_with_only_origin_marker(self):
+        result = json.loads(lite.render_scene((ROOT / 'examples/growth_scene.py').read_text()))
+        self.assertEqual(result['duration'], 8)
+        self.assertEqual(len(result['frames'][-1]['mobjects']), 1)
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['color'], lite.YELLOW)
+
     def test_arc_defaults_clockwise_samples_and_wraparound_bounds(self):
         arc = lite.Arc()
         self.assertPointAlmostEqual(arc.point_from_proportion(0), (1, 0, 0))

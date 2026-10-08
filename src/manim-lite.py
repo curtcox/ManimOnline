@@ -430,6 +430,54 @@ class FadeIn(Animation):
         return [result]
 
 
+class GrowFromPoint(Animation):
+    """Scale a snapshot from a fixed XY point to its original geometry."""
+    def __init__(self, mobject, point, **kwargs):
+        super().__init__(mobject, **kwargs)
+        self.point = Vector(point)
+        if not all(math.isfinite(v) for v in self.point):
+            raise ValueError('Growth point must be finite')
+        if self.point[2]:
+            raise NotImplementedError('Growth supports only the XY plane')
+
+    def begin(self, scene):
+        center = self.mobject.get_center()
+        if not all(math.isfinite(v) for v in center):
+            raise ValueError('Growth center must be finite')
+        if center[2]:
+            raise NotImplementedError('Growth supports only the XY plane')
+        super().begin(scene)
+        self.original = self.mobject.copy()
+
+    def sample(self, alpha):
+        current = self.original.copy().scale(alpha, about_point=self.point)
+        return [current.to_dict()]
+
+
+class GrowFromCenter(GrowFromPoint):
+    def __init__(self, mobject, **kwargs):
+        super().__init__(mobject, ORIGIN, **kwargs)
+
+    def begin(self, scene):
+        # Resolve the center at playback start, after any previous animations.
+        self.point = self.mobject.get_center()
+        super().begin(scene)
+
+
+class ShrinkToCenter(GrowFromCenter):
+    def __init__(self, mobject, remover=False, **kwargs):
+        super().__init__(mobject, **kwargs)
+        self.remover = remover
+
+    def sample(self, alpha):
+        return super().sample(1 - alpha)
+
+    def finish(self, scene):
+        self.mobject.scale(0)
+        if self.remover:
+            scene.remove(self.mobject)
+
+
 class Create(Animation):
     """Trace primitive outlines; groups reveal their children simultaneously."""
     def sample(self, alpha):
@@ -699,6 +747,7 @@ class Scene:
 EXPORTS = ['Scene', 'Mobject', 'Circle', 'Arc', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'VGroup', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'MoveAlongPath',
+           'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform', 'UP', 'DOWN', 'LEFT',
            'RIGHT', 'ORIGIN', 'OUT', 'IN', 'UL', 'UR', 'DL', 'DR', 'BLUE', 'RED', 'GREEN',
            'YELLOW', 'PURPLE', 'ORANGE', 'WHITE', 'BLACK', 'GRAY', 'GREY', 'PINK',

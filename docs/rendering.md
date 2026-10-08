@@ -83,6 +83,17 @@ are limited to one turn in the XY plane. Arc fill closes the chord, not a sector
 Multiple turns, num_components, sectors, and other Arc-specific APIs remain
 unsupported.
 
+`GrowFromCenter`, `GrowFromPoint`, and `ShrinkToCenter` sample uniform scaling
+from an original geometry snapshot. External-point growth moves the center
+linearly from the fixed point to its destination, preserving existing scale,
+rotation, style, and group child coordinates. Center-based growth resolves its
+pivot at playback start. Shrink leaves its live scale at zero and retains the
+object by default; `remover=True` removes it at its local timeline end.
+Group scheduling holds grown objects and
+omits completed shrink removers without mutating live objects early. Only XY
+point coordinates are supported; point_color, path_arc, and 3D growth are not.
+Text centers remain anchors without browser font metrics.
+
 Next work can add additional verified compatibility APIs, geometry-aware path
 transforms, glyph outline rendering, sequential animation composition, and an offline
 asset strategy. Keep DOT
@@ -100,6 +111,7 @@ row-to-column layout checks.
 Use `examples/staggered_scene.py` for delayed reveals and overlapping movement.
 Use `examples/path_scene.py` for transformed circular/polygon paths and line motion.
 Use `examples/arc_scene.py` for open paths, opposite sweeps, and transformed arc motion.
+Use `examples/growth_scene.py` for point/center growth and staggered shrink cleanup.
 
 ## Verification
 
@@ -122,6 +134,8 @@ independently of browser integration; report both categories separately.
 - [Manim animation composition](https://docs.manim.community/en/stable/reference/manim.animation.composition.html)
 - [Manim path movement](https://docs.manim.community/en/stable/reference/manim.animation.movement.MoveAlongPath.html)
 - [Manim circular arcs](https://docs.manim.community/en/stable/reference/manim.mobject.geometry.arc.Arc.html)
+- [Manim growth from a point](https://docs.manim.community/en/stable/reference/manim.animation.growing.GrowFromPoint.html)
+- [Manim shrinking](https://docs.manim.community/en/stable/reference/manim.animation.transform.ShrinkToCenter.html)
 - [Manim configuration](https://docs.manim.community/en/stable/guides/configuration.html)
 - [Pyodide worker guidance](https://pyodide.org/en/stable/usage/webworker.html)
 

@@ -41,6 +41,7 @@ Then open `http://localhost:8000` in your browser.
 - [Staggered scene](examples/staggered_scene.py): delayed reveals, overlapping movement, and staggered fades.
 - [Path scene](examples/path_scene.py): motion along transformed circles, polygon outlines, and lines.
 - [Arc scene](examples/arc_scene.py): open circular paths and clockwise/counterclockwise motion.
+- [Growth scene](examples/growth_scene.py): growth from a point, group growth, and staggered shrinking.
 
 ## Supported browser animation subset
 
@@ -51,7 +52,8 @@ Manim-like runtime, **not the full Manim Community engine**.
 - Shapes: `Circle`, `Arc`, `Dot`, `Square`, `Rectangle`, `Line`, `Arrow`, `Triangle`, `Polygon`,
   `Text`, and `VGroup`.
 - Scene operations: `add`, `remove`, `play`, and `wait`.
-- Animations: `Create`, `Uncreate`, `Write`, `FadeIn`, `FadeOut`, `Rotate`,
+- Animations: `Create`, `Uncreate`, `Write`, `FadeIn`, `FadeOut`, `GrowFromCenter`,
+  `GrowFromPoint`, `ShrinkToCenter`, `Rotate`,
   `Rotating`, `MoveAlongPath`, `AnimationGroup`, `LaggedStart`, `Transform`, and
   `ReplacementTransform`; chained `.animate.shift()`, `.move_to()`,
   `.set_color()`, `.set_fill()`, `.set_stroke()`, `.scale()`, `.rotate()`,
@@ -136,6 +138,17 @@ also works in animate chains. `move_to` and default scale/rotation use the
 visible bounding-box center. Arc path sampling follows its starting angle and
 sweep. Fill closes the endpoints with a chord; sectors, 3D arcs, multiple turns,
 and `num_components` are unsupported.
+
+`GrowFromCenter(object)` expands geometry from its bounding-box center;
+`GrowFromPoint(object, point)` expands from a fixed XY point while moving toward
+its original center. Both restore the original size, rotation, style, and
+position at completion. `ShrinkToCenter(object)` contracts around its center
+and leaves the object in the scene at zero scale; use `remover=True` to remove
+it at completion. These animations work on
+whole groups and accept `run_time` and `rate_func`, defaulting to one second
+with smooth easing. Growth centers are resolved when playback begins. Point
+colors, curved growth trajectories, and 3D growth are unsupported. Text uses
+its anchor as its center; normal preview stroke-width behavior still applies.
 
 Animation previews run at
 15 frames per second and are limited to 60 seconds, with a 90-second deadline
