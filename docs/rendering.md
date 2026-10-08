@@ -1195,3 +1195,35 @@ The nine-second frame removes all gradients and the bounding curve. The SVG
 export contains inline gradients and local paint references; PNG export reported
 success. Switching to DOT rendered the editor flow graph. All 268 Python and 74
 Node tests passed.
+
+
+## Dashed lines and coordinate projections
+
+DashedLine follows the [Community straight-dash convention](https://docs.manim.community/en/stable/_modules/manim/mobject/geometry/line.html):
+count is max(2, ceil(length / dash_length * dashed_ratio)), with occupied fraction
+ratio/count per dash and equal gaps between them. Dash length must be positive
+and finite; ratio is finite in [0,1], with a preflight cap of 1000 dashes. The
+class inherits Line and VGroup behavior, serializes a vgroup with actual Line
+children, and has no own path points. Start/end and first/last handles query the
+children through the parent transform. Styles propagate normally. Endpoint
+changes map the existing child endpoints by a uniform rotate/scale/shift, retaining
+individual geometry/color edits and fixed count. Collapsed lines recover from
+stored dash intervals. General curved DashedVMobject construction is still open.
+
+Line and NumberLine projection uses the infinite world-space shaft; collapsed
+shafts return the start. Axes [coordinate guides](https://docs.manim.community/en/stable/_modules/manim/mobject/graphing/coordinate_systems.html)
+project onto fully transformed axis endpoints. Vertical means from the x-axis;
+horizontal means from the y-axis, including when axes are rotated or skewed.
+get_lines_to_point returns horizontal then vertical. DashedLine is the default;
+Line or another Line-returning callable can be supplied. Configuration dictionaries
+are copied, with helper color/default white and stroke-width/default 2 overrides.
+World-space guide snapshots need regeneration when the axes or point changes.
+
+Python tests cover dash counts/occupied ratios, end handles/styles, zero spans,
+transforms, fixed-count endpoint animation, edited segments, zero-scale recovery,
+copy/restore, finite validation, caps, projection/extrapolation/collapse, skewed
+axis geometry, config isolation and gallery redraw/cleanup. Local Pyodide playback
+showed 21 dash segments and both guide endpoints meeting the marker after the
+30-degree rotation at seven seconds. The nine-second frame removed the dashes and
+marker. Switching to DOT rendered the editor flow graph. All 275 Python and 74
+Node tests passed.

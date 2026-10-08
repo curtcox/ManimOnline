@@ -14,6 +14,7 @@ const ExampleCatalog = Object.freeze([
   { id: 'flash', label: 'Traveling outline highlights', path: 'examples/passing_flash_scene.py' },
   { id: 'numberline', label: 'Follow numeric coordinates', path: 'examples/number_line_scene.py' },
   { id: 'axes', label: 'Animate Cartesian coordinates', path: 'examples/axes_scene.py' },
+  { id: 'guides', label: 'Follow dashed coordinate guides', path: 'examples/guides_scene.py' },
   { id: 'area', label: 'Fill changing graph regions', path: 'examples/area_scene.py' },
   { id: 'secant', label: 'Follow a labeled secant', path: 'examples/secant_scene.py' },
   { id: 'riemann', label: 'Refine signed area estimates', path: 'examples/riemann_scene.py' },

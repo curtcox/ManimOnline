@@ -16,6 +16,138 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_dashed_line_native_count_ratio_endpoints_handles_and_styles(self):
+        line = lite.DashedLine(color=lite.RED,stroke_width=4,stroke_opacity=.3)
+        self.assertIsInstance(line,lite.Line)
+        self.assertIsInstance(line,lite.VGroup)
+        self.assertEqual(len(line),20)
+        self.assertEqual(line._calculate_num_dashes(),20)
+        self.assertEqual(line.get_points(),[])
+        self.assertPointAlmostEqual(line.get_start(),lite.LEFT)
+        self.assertPointAlmostEqual(line.get_end(),lite.RIGHT)
+        self.assertPointAlmostEqual(line.get_first_handle(),(-1+.05/3,0,0))
+        self.assertPointAlmostEqual(line.get_last_handle(),(1-.05/3,0,0))
+        self.assertAlmostEqual(sum(child.get_length() for child in line),1)
+        for child in line:
+            self.assertEqual(child.stroke_color,lite.RED)
+            self.assertEqual(child.stroke_width,4)
+            self.assertEqual(child.stroke_opacity,.3)
+        solid = lite.DashedLine((0,0,0),(1,0,0),dash_length=.3,dashed_ratio=1)
+        self.assertEqual(len(solid),4)
+        self.assertAlmostEqual(sum(child.get_length() for child in solid),1)
+        invisible = lite.DashedLine(dashed_ratio=0)
+        self.assertEqual(len(invisible),2)
+        self.assertTrue(all(child.get_length()==0 for child in invisible))
+        self.assertEqual(len(lite.DashedLine(lite.ORIGIN,lite.ORIGIN)),2)
+
+    def test_dashed_line_transforms_endpoint_animation_and_copy_restore(self):
+        line = lite.DashedLine(dash_length=.2).rotate(.4).scale(.6).shift(lite.UP)
+        line.save_state()
+        before = line.to_dict()
+        copy = line.copy().set_color(lite.RED)
+        self.assertNotEqual(copy[0].color,line[0].color)
+        line.put_start_and_end_on((-2,1,0),(3,-1,0))
+        self.assertPointAlmostEqual(line.get_start(),(-2,1,0))
+        self.assertPointAlmostEqual(line.get_end(),(3,-1,0))
+        self.assertEqual(len(line),5)
+        for child in line:
+            a,b = child._dash_interval
+            self.assertPointAlmostEqual(line._point_to_world(child.get_start()),(-2+5*a,1-2*a,0))
+            self.assertPointAlmostEqual(line._point_to_world(child.get_end()),(-2+5*b,1-2*b,0))
+        line.restore()
+        self.assertEqual(line.to_dict(),before)
+        result = render("line = DashedLine(dash_length=.2)\nself.add(line)\nself.play(line.animate.put_start_and_end_on((0,1,0),(4,1,0)),run_time=2)")
+        midpoint = result['frames'][15]['mobjects'][0]
+        def world_endpoint(group,child,point):
+            local = lite.Vector(child[point])+lite.Vector(child['position'])
+            center = lite.Vector(group['geometry_center'])
+            return (local-center)*group['geometry_scale']+center+lite.Vector(group['position'])
+        self.assertPointAlmostEqual(world_endpoint(midpoint,midpoint['children'][0],'start'),(-.5,.5,0))
+        self.assertPointAlmostEqual(world_endpoint(midpoint,midpoint['children'][-1],'end'),(2.5,.5,0))
+
+    def test_dashed_endpoint_changes_preserve_individual_segment_edits(self):
+        line = lite.DashedLine(dash_length=.2)
+        line[2].shift(lite.UP*.2).set_color(lite.RED)
+        original = line._point_to_world(line[2].get_start())
+        line.put_start_and_end_on((0,0,0),(0,4,0))
+        point = line._point_to_world(line[2].get_start())
+        self.assertPointAlmostEqual(point,(-original[1]*2,(original[0]+1)*2,0))
+        self.assertEqual(line[2].color,lite.RED)
+        self.assertPointAlmostEqual(line.get_start(),(0,0,0))
+        self.assertPointAlmostEqual(line.get_end(),(0,4,0))
+        line.scale(0).put_start_and_end_on(lite.LEFT,lite.RIGHT)
+        self.assertPointAlmostEqual(line.get_start(),lite.LEFT)
+        self.assertPointAlmostEqual(line.get_end(),lite.RIGHT)
+
+    def test_dashed_line_validation_is_atomic_and_bounded(self):
+        for options in ({'dash_length':0},{'dash_length':float('nan')},{'dash_length':True},
+                        {'dash_length':1e-10},{'dashed_ratio':-1},{'dashed_ratio':1.1},{'dashed_ratio':True}):
+            with self.assertRaises(ValueError): lite.DashedLine(**options)
+        with self.assertRaises(ValueError): lite.DashedLine((float('inf'),0,0),lite.RIGHT)
+        with self.assertRaises(NotImplementedError): lite.DashedLine(lite.OUT,lite.RIGHT)
+        line = lite.DashedLine()
+        before = line.to_dict()
+        with self.assertRaises(ValueError): line.put_start_and_end_on((0,0,0),(float('nan'),0,0))
+        self.assertEqual(line.to_dict(),before)
+
+    def test_line_and_number_line_projection_extrapolate_and_handle_collapse(self):
+        line = lite.Line((1,2,0),(4,6,0))
+        point = lite.Vector((7,-1,0))
+        expected = lite.Vector((1,2,0))+lite.Vector((3,4,0))*(6/25)
+        self.assertPointAlmostEqual(line.get_projection(point),expected)
+        self.assertPointAlmostEqual(lite.Line(lite.ORIGIN,lite.RIGHT).get_projection((5,3,0)),(5,0,0))
+        axis = lite.NumberLine([-2,2],length=4).rotate(lite.PI/4).shift(lite.UP)
+        projected = axis.get_projection((3,0,0))
+        self.assertAlmostEqual(sum(a*b for a,b in zip(lite.Vector((3,0,0))-projected,axis.get_vector())),0)
+        axis.scale(0)
+        self.assertPointAlmostEqual(axis.get_projection((3,0,0)),axis.get_start())
+        with self.assertRaises(ValueError): line.get_projection((float('nan'),0,0))
+
+    def test_coordinate_guides_project_current_world_axes_and_keep_configuration(self):
+        axes = lite.Axes([-2,3],[-1,4],x_length=8,y_length=3).rotate(.4).scale(.7).shift(lite.RIGHT)
+        axes.y_axis.rotate(.2)
+        point = axes.c2p(1,2)
+        config = dict(dash_length=.2,dashed_ratio=.8,color=lite.RED,stroke_width=9)
+        before = axes.to_dict(),dict(config)
+        guides = axes.get_lines_to_point(point,line_config=config,color=lite.GREEN)
+        self.assertEqual(len(guides),2)
+        for guide,axis in zip(guides,(axes.y_axis,axes.x_axis)):
+            a,b = axes._point_to_world(axis.get_start()),axes._point_to_world(axis.get_end())
+            self.assertPointAlmostEqual(guide.get_start(),lite.Line(a,b).get_projection(point))
+            self.assertPointAlmostEqual(guide.get_end(),point)
+            self.assertEqual(guide[0].color,lite.GREEN)
+            self.assertEqual(guide[0].stroke_width,2)
+            self.assertAlmostEqual(sum(x*y for x,y in zip(point-guide.get_start(),b-a)),0)
+        solid = axes.get_vertical_line(point,line_func=lite.Line,color=lite.YELLOW,stroke_width=5)
+        self.assertNotIsInstance(solid,lite.DashedLine)
+        self.assertEqual(solid.stroke_width,5)
+        self.assertEqual((axes.to_dict(),config),before)
+        for index in (-1,2,True,.5):
+            with self.assertRaises(ValueError): axes.get_line_from_axis_to_point(index,point)
+        with self.assertRaises(TypeError): axes.get_vertical_line(point,line_func=1)
+        with self.assertRaises(TypeError): axes.get_vertical_line(point,line_config=[])
+        with self.assertRaises(TypeError): axes.get_vertical_line(point,line_func=lambda *args,**kwargs:lite.Circle())
+
+    def test_guides_gallery_marker_endpoints_rotation_and_cleanup(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/guides_scene.py').read_text()))
+        self.assertEqual(result['duration'],9)
+        for index in (30,74,105):
+            roots = result['frames'][index]['mobjects']
+            guides,marker = roots[2:4]
+            point = lite.Vector(marker['position'])
+            self.assertEqual(len(guides['children']),2)
+            for guide in guides['children']:
+                last = guide['children'][-1]
+                endpoint = lite.Vector(last['end'])+lite.Vector(last['position'])
+                self.assertPointAlmostEqual(endpoint,point)
+            if index == 105:
+                for guide in guides['children']:
+                    first = guide['children'][0]
+                    self.assertNotAlmostEqual(first['start'][0],first['end'][0])
+                    self.assertNotAlmostEqual(first['start'][1],first['end'][1])
+        self.assertEqual(len(result['frames'][-1]['mobjects']),2)
+        json.dumps(result,allow_nan=False)
+
     def test_area_polygon_uses_graph_points_and_exact_endpoint_providers(self):
         axes = lite.Axes([-2,2],[-1,4],x_length=8,y_length=5)
         graph = axes.plot(lambda x:x*x,x_range=[-2,2,.5])

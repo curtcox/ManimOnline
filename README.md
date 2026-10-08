@@ -930,3 +930,32 @@ always_redraw for changing bounds. Try **Fill changing graph regions**
 (`examples/area_scene.py`) for expanding bounds, gradients, a region between
 functions, transformation and cleanup. Adaptive integration and more general
 region topology remain open.
+
+
+`DashedLine(start=LEFT, end=RIGHT, dash_length=.05, dashed_ratio=.5)` creates
+individually addressable Line segments in a VGroup-compatible Line. The dash count
+is at least two, based on span, requested dash length and occupied ratio, and is
+limited to 1000. Open patterns start and end with a dash; ratios from zero to one
+are supported. Transformations and endpoint queries follow the actual child
+geometry. `get_first_handle` and `get_last_handle` query the end segments.
+Endpoint changes stretch the existing family, preserving segment edits and colors;
+regenerate the object to recompute dash count. Copies, restore, group animations,
+and per-segment styling use the existing family pipeline. General curved
+DashedVMobject construction remains open.
+
+`Line.get_projection(point)` and `NumberLine.get_projection(point)` project onto
+the infinite current world-space shaft, including beyond its endpoints. A collapsed
+shaft returns its start. Axes offers `get_vertical_line(point)` from the x-axis,
+`get_horizontal_line(point)` from the y-axis, and `get_lines_to_point(point)` in
+horizontal/vertical order. The default is DashedLine; pass `line_func=Line` for a
+solid guide. `get_line_from_axis_to_point(index, point)` accepts axis 0 or 1.
+Guides use perpendicular projection onto the current axes, including independently
+rotated shafts, rather than assuming screen vertical/horizontal directions.
+
+Use `line_config` for dash/style options; it is copied before construction.
+The helper's `color` and `stroke_width` override those entries, defaulting to white
+and 2. Guides are world-positioned independent snapshots. Use always_redraw with
+current graph/tracker inputs to follow movement; reading another object's updater
+can see its previous position when that updater runs later. Try **Follow dashed
+coordinate guides** (`examples/guides_scene.py`) for a moving point, a rotating
+coordinate frame and cleanup.

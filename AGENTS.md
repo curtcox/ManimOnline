@@ -242,3 +242,13 @@ exact provider endpoints, zero baseline and bounding-range intersection. These
 polygons bridge declared plot gaps; do not claim disconnected/singular topology.
 Validate ranges/styles before callback endpoints. SVG gradient IDs must be unique
 across shapes and frames, with local inert defs retained in SVG/PNG exports.
+
+
+Read `examples/guides_scene.py` for DashedLine and coordinate projections.
+Dash families serialize actual Line children with no hidden object aliases.
+Preserve child edits during endpoint transforms; recompute count only through
+regeneration. Preflight finite lengths/ratios and the 1000-dash cap. Orthogonal
+projections use current world shaft endpoints, including extrapolation, independent
+axis rotation and collapsed shafts. Copy guide configs before applying overrides.
+Use tracker/function inputs directly when two redraw callbacks must agree in the
+same frame; scene updater ordering can otherwise leave a one-frame lag.

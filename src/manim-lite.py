@@ -1400,6 +1400,21 @@ class Line(Mobject):
         vector = self.get_vector()
         return math.atan2(vector[1], vector[0]) if any(vector) else 0
 
+    def get_projection(self, point):
+        point,_ = Line._endpoints(point,point)
+        start,end = self.get_start_and_end()
+        vector = end-start
+        length = math.hypot(*vector)
+        if not math.isfinite(length):
+            raise ValueError('Projection line length must be finite')
+        if not length:
+            return start
+        unit = Vector(value/length for value in vector)
+        distance = sum(a*b for a,b in zip(point-start,unit))
+        result = start+unit*distance
+        Line._endpoints(result,result)
+        return result
+
     def put_start_and_end_on(self, start, end):
         start, end = self._endpoints(start, end)
         # Encode the requested endpoints in the current transform's local space.
@@ -1589,6 +1604,92 @@ class VGroup(Group):
     pass
 
 
+class DashedLine(Line,VGroup):
+    """A straight line made from individually addressable dash segments."""
+    def __init__(self, start=LEFT, end=RIGHT, dash_length=.05, dashed_ratio=.5, **kwargs):
+        start,end = Line._endpoints(start,end)
+        if isinstance(dash_length,bool) or not isinstance(dash_length,(int,float)) or not math.isfinite(dash_length) or dash_length <= 0:
+            raise ValueError('Dash length must be positive and finite')
+        if isinstance(dashed_ratio,bool) or not isinstance(dashed_ratio,(int,float)) or not math.isfinite(dashed_ratio) or not 0 <= dashed_ratio <= 1:
+            raise ValueError('Dashed ratio must be finite and between 0 and 1')
+        length = math.hypot(*(end-start))
+        count = length/dash_length*dashed_ratio
+        if not math.isfinite(count) or count > 1000:
+            raise ValueError('DashedLine supports at most 1000 dashes')
+        self.num_dashes = max(2,math.ceil(count))
+        self.dash_length,self.dashed_ratio = dash_length,dashed_ratio
+        super().__init__(start,end,**kwargs)
+        self._type = 'vgroup'
+        dash = dashed_ratio/self.num_dashes
+        gap = (1-dashed_ratio)/(self.num_dashes-1)
+        for index in range(self.num_dashes):
+            a = index*(dash+gap)
+            b = 1 if index == self.num_dashes-1 else a+dash
+            child = Line(start+(end-start)*a,start+(end-start)*b,**kwargs)
+            child._dash_interval = [a,b]
+            self.children.append(child)
+
+    def get_start(self):
+        return self._point_to_world(self.children[0].get_start()) if self.children else Line.get_start(self)
+
+    def get_end(self):
+        return self._point_to_world(self.children[-1].get_end()) if self.children else Line.get_end(self)
+
+    def get_first_handle(self):
+        child = self.children[0]
+        return self._point_to_world(child.get_start()+child.get_vector()*(1/3))
+
+    def get_last_handle(self):
+        child = self.children[-1]
+        return self._point_to_world(child.get_end()-child.get_vector()*(1/3))
+
+    def _calculate_num_dashes(self):
+        count = self.get_length()/self.dash_length*self.dashed_ratio
+        if not math.isfinite(count) or count > 1000:
+            raise ValueError('DashedLine supports at most 1000 dashes')
+        return max(2,math.ceil(count))
+
+    def put_start_and_end_on(self, start, end):
+        # Stretch the existing family; redraw is needed to recompute the count.
+        start,end = Line._endpoints(start,end)
+        old_start,old_end = self.get_start_and_end()
+        old_length,new_length = math.dist(old_start,old_end),math.dist(start,end)
+        if not all(math.isfinite(value) for value in (old_length,new_length)):
+            raise ValueError('DashedLine endpoint spans must be finite')
+        if any(not isinstance(child,Line) for child in self.children):
+            raise TypeError('DashedLine endpoint changes require Line children')
+        if old_length:
+            old_unit = Vector(value/old_length for value in old_end-old_start)
+            new_unit = Vector(value/new_length for value in end-start) if new_length else ORIGIN
+            old_normal = Vector((-old_unit[1],old_unit[0],0))
+            new_normal = Vector((-new_unit[1],new_unit[0],0))
+            ratio = new_length/old_length
+            def mapped(point):
+                delta = self._point_to_world(point)-old_start
+                along = sum(a*b for a,b in zip(delta,old_unit))*ratio
+                across = sum(a*b for a,b in zip(delta,old_normal))*ratio
+                return start+new_unit*along+new_normal*across
+            endpoints = [(mapped(child.get_start()),mapped(child.get_end())) for child in self.children]
+        else:
+            endpoints = [(start+(end-start)*child._dash_interval[0],
+                          start+(end-start)*child._dash_interval[1]) for child in self.children]
+        center,scale = (start+end)*.5,self.geometry_scale or 1
+        def local(point):
+            dx,dy,_ = point-center
+            return Vector(((dx*math.cos(self.angle)+dy*math.sin(self.angle))/scale,
+                           (-dx*math.sin(self.angle)+dy*math.cos(self.angle))/scale,0))
+        endpoints = [Line._endpoints(local(a),local(b)) for a,b in endpoints]
+        for child,(a,b) in zip(self.children,endpoints):
+            child.put_start_and_end_on(a,b)
+        self.start,self.end = list(local(start)),list(local(end))
+        self.geometry_scale = scale
+        pivot = self._geometry_center()
+        rotated = Vector((pivot[0]*math.cos(self.angle)-pivot[1]*math.sin(self.angle),
+                          pivot[0]*math.sin(self.angle)+pivot[1]*math.cos(self.angle),0))*scale
+        self.position = list(center-pivot+rotated)
+        return self
+
+
 class _SecantSlopeGroup(VGroup):
     def _component(self, role):
         for child in self.children:
@@ -1766,6 +1867,8 @@ class NumberLine(VGroup):
             raise ValueError('Cannot convert coordinates on a collapsed NumberLine')
         alpha = sum(a*(b/length) for a,b in zip(point-start,direction))/length
         return self._real(self.x_min+alpha*(self.x_max-self.x_min),'NumberLine result')
+
+    get_projection = Line.get_projection
 
     p2n = point_to_number
 
@@ -2027,6 +2130,34 @@ class Axes(VGroup):
 
     def get_axis_labels(self, x_label='x', y_label='y'):
         return VGroup(self.get_x_axis_label(x_label),self.get_y_axis_label(y_label))
+
+    def get_line_from_axis_to_point(self, index, point, line_func=DashedLine,
+                                    line_config=None, color=None, stroke_width=2):
+        if isinstance(index,bool) or not isinstance(index,int) or index not in (0,1):
+            raise ValueError('Axis index must be 0 or 1')
+        point,_ = Line._endpoints(point,point)
+        if not callable(line_func):
+            raise TypeError('Guide line_func must be callable')
+        if line_config is not None and not isinstance(line_config,dict):
+            raise TypeError('Guide line_config must be a dictionary')
+        options = dict(line_config or {})
+        options.update(color=WHITE if color is None else color,stroke_width=stroke_width)
+        Mobject._validate_width(stroke_width)
+        axis = self.get_axis(index)
+        world_axis = Line(self._point_to_world(axis.get_start()),self._point_to_world(axis.get_end()))
+        line = line_func(world_axis.get_projection(point),point,**options)
+        if not isinstance(line,Line):
+            raise TypeError('Guide line_func must return a Line')
+        return line
+
+    def get_vertical_line(self, point, **kwargs):
+        return self.get_line_from_axis_to_point(0,point,**kwargs)
+
+    def get_horizontal_line(self, point, **kwargs):
+        return self.get_line_from_axis_to_point(1,point,**kwargs)
+
+    def get_lines_to_point(self, point, **kwargs):
+        return VGroup(self.get_horizontal_line(point,**kwargs),self.get_vertical_line(point,**kwargs))
 
     def plot(self, function, x_range=None, use_vectorized=False, **kwargs):
         if not callable(function):
@@ -3378,7 +3509,7 @@ class MovingCameraScene(Scene):
     camera_class = MovingCamera
 
 
-EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'Arrow',
+EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'NumberPlane', 'ComplexPlane', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',
