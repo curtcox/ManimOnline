@@ -38,6 +38,50 @@ GREY, PINK = GRAY, '#FF69B4'
 PI, TAU, DEGREES = math.pi, math.tau, math.pi / 180
 
 
+class PreviewConfig:
+    """Validated 2D preview settings; not the full Community config object."""
+    def __init__(self, **kwargs):
+        self.pixel_width, self.pixel_height = 800, 450
+        self.frame_height, self.background_color = 9, BLACK
+        for name, value in kwargs.items():
+            setattr(self, name, value)
+
+    @property
+    def frame_width(self):
+        return self.frame_height * self.pixel_width / self.pixel_height
+
+    @frame_width.setter
+    def frame_width(self, value):
+        self.frame_height = value * self.pixel_height / self.pixel_width
+
+    def __setattr__(self, name, value):
+        if name in ('pixel_width', 'pixel_height'):
+            if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 4096:
+                raise ValueError('Pixel dimensions must be integers from 1 to 4096')
+        elif name in ('frame_width', 'frame_height'):
+            if isinstance(value, bool) or not isinstance(value, (int,float)) or not math.isfinite(value) or value <= 0:
+                raise ValueError('Frame dimensions must be positive and finite')
+        elif name == 'background_color':
+            if not isinstance(value, str) or len(value) != 7 or value[0] != '#' or any(c not in '0123456789abcdefABCDEF' for c in value[1:]):
+                raise ValueError('Background color must be a six-digit hex color')
+        else:
+            raise NotImplementedError('Unsupported preview configuration: ' + name)
+        object.__setattr__(self, name, value)
+
+    def __getitem__(self, name):
+        return getattr(self, name)
+
+    def __setitem__(self, name, value):
+        setattr(self, name, value)
+
+    def to_dict(self):
+        return {name: getattr(self, name) for name in
+                ('pixel_width','pixel_height','frame_width','frame_height','background_color')}
+
+
+config = PreviewConfig()
+
+
 class Mobject:
     def __init__(self, color=WHITE, fill_opacity=0, stroke_width=2,
                  fill_color=None, stroke_color=None, stroke_opacity=1, z_index=0, **kwargs):
@@ -1258,7 +1302,10 @@ class Succession(AnimationGroup):
 
 
 class Scene:
-    def __init__(self):
+    def __init__(self, camera_config=None):
+        self.camera = copy.deepcopy(config)
+        for name, value in (camera_config or {}).items():
+            setattr(self.camera, name, value)
         self.mobjects, self.frames = [], []
         self.foreground_mobjects = []
         self._elapsed_frames = 0
@@ -1332,7 +1379,7 @@ class Scene:
         objects = []
         for mobject in self.mobjects:
             objects.extend(overrides[mobject] if overrides and mobject in overrides else [mobject.to_dict()])
-        self.frames.append({'mobjects': objects})
+        self.frames.append({'mobjects': objects, 'camera': self.camera.to_dict()})
         if advance_time:
             self._elapsed_frames += 1
 
@@ -1400,7 +1447,7 @@ class Scene:
         return {'frames': self.frames, 'fps': FPS, 'duration': (len(self.frames)-1)/FPS}
 
 
-EXPORTS = ['Scene', 'Mobject', 'VMobject', 'CubicBezier', 'Circle', 'Arc', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
+EXPORTS = ['config', 'Scene', 'Mobject', 'VMobject', 'CubicBezier', 'Circle', 'Arc', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'MathTex', 'Group', 'VGroup', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'TransformFromCopy',
@@ -1410,7 +1457,7 @@ EXPORTS = ['Scene', 'Mobject', 'VMobject', 'CubicBezier', 'Circle', 'Arc', 'Dot'
            'linear', 'smooth', 'there_and_back', 'PI', 'TAU', 'DEGREES']
 
 
-def render_scene(source, scene_name=None):
+def _render_scene(source, scene_name=None):
     module = types.ModuleType('manim')
     module.__all__ = EXPORTS
     for name in EXPORTS:
@@ -1430,3 +1477,13 @@ def render_scene(source, scene_name=None):
     result['scene'] = name
     result['scenes'] = list(scenes)
     return json.dumps(result, allow_nan=False)
+
+
+def render_scene(source, scene_name=None):
+    global config
+    previous = config
+    config = PreviewConfig()
+    try:
+        return _render_scene(source, scene_name)
+    finally:
+        config = previous

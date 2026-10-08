@@ -482,3 +482,30 @@ Local Pyodide checks verified yellow circle/triangle with an unchanged red squar
 at one second, two children after removal at two seconds, red-square-first order
 with 90-degree parent rotation at five seconds, and no shapes after fade removal.
 The DOT gallery rendered correctly after switching.
+
+
+## 2D canvas configuration
+
+Global config exposes pixel_width, pixel_height, frame_height, frame_width, and
+background_color through attribute/dict access. It resets for each source execution
+and is restored after success or failure. Scene snapshots config at construction
+with optional camera_config overrides; self.camera supports the same properties.
+Pixel dimensions are integers 1–4096; frame sizes are positive finite units;
+background accepts six-digit hex strings. Frame width follows pixel aspect ratio,
+and setting width adjusts height. Defaults deliberately preserve the existing
+800 × 450, 16 × 9 preview rather than claiming native Manim defaults.
+
+Camera metadata is captured per frame. The renderer scales its internal geometry
+coordinates to the frame extent and output resolution, preserving shape proportions
+for consistent aspect ratios. Explicit background rectangles survive SVG export;
+PNG uses displayed SVG dimensions. The canvas gallery uses a 600 × 600 white
+background and changes it during the timeline. Frame rate, moving-camera animations,
+3D, config files and general ManimConfig semantics remain gaps. See the
+[official configuration guide](https://docs.manim.community/en/stable/guides/configuration.html)
+for the full API. Python/SVG tests cover settings, bounds/validation, frame snapshots,
+failed/successful-source isolation, aspect ratio, defaults and background geometry.
+
+Local Pyodide checks confirmed 600 × 600 SVG dimensions and a 1.5 camera scale,
+with the terminal pale background. A real PNG download was decoded as 600 × 600
+RGBA with corner pixel (232, 238, 247, 255), matching #E8EEF7. Loading the baseline
+scene restored 800 × 450 black output, and DOT rendered after switching.

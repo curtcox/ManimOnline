@@ -505,3 +505,15 @@ get_family lists the object and descendants in stable order, deduplicating share
 objects. Group accepts the runtime's supported geometry/text objects; other Manim
 object classes and scene-family restructuring remain unimplemented. The **Build
 and edit a group** example demonstrates live child editing and whole-group motion.
+
+
+The `config` object supports pixel_width/pixel_height (integer 1–4096),
+frame_height/frame_width (positive finite units), and six-digit hex background_color
+through attributes or dict-style access. Defaults retain this preview's 800 × 450,
+16 × 9 frame. Frame width follows the pixel aspect ratio; setting it adjusts frame
+height. Set config before constructing the scene; Scene snapshots its own camera,
+which supports the same properties and optional camera_config constructor overrides.
+Camera backgrounds are captured per frame. SVG/PNG exports retain the background
+and configured resolution. Config resets for every source, including after errors.
+See **Configure the canvas**. Frame rate remains 15 fps; moving cameras, 3D, config
+files, quality presets, and full ManimConfig/color semantics remain unsupported.

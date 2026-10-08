@@ -151,7 +151,7 @@ test('z_index orders leaves across nested groups and keeps ancestor geometry and
   const external = { type: 'triangle', color: '#00FF00', z_index: 0 };
   const scene = { mobjects: [group, external] };
   const before = JSON.stringify(scene);
-  const layers = renderer.render(scene).children[0].children;
+  const layers = renderer.render(scene).children[1].children;
   assert.equal(layers.length, 3);
   assert.equal(layers[0].children[0].children[0].tag, 'circle');
   assert.equal(layers[1].tag, 'polygon');
@@ -169,7 +169,7 @@ test('equal depth keeps scene/family order and changing depth changes paint orde
   const b = { type: 'square', color: '#FF0000', z_index: 0 };
   const c = { type: 'triangle', color: '#00FF00', z_index: 0 };
   const scene = { mobjects: [{ type: 'vgroup', children: [a, b] }, c] };
-  const tags = () => renderer.render(scene).children[0].children.map(el => el.tag === 'g' ? el.children[0].tag : el.tag);
+  const tags = () => renderer.render(scene).children[1].children.map(el => el.tag === 'g' ? el.children[0].tag : el.tag);
   assert.deepEqual(tags(), ['circle', 'rect', 'polygon']);
   a.z_index = 1;
   assert.deepEqual(tags(), ['rect', 'polygon', 'circle']);
@@ -216,4 +216,19 @@ test('aligned closed paths retain SVG stroke joins at their closing anchor', () 
   ], fill_opacity: 0.3 });
   assert.equal(path.getAttribute('d'), 'M 0,0 C 50,0 50,50 0,50 C -50,50 -50,0 0,0 Z');
   assert.equal(path.getAttribute('fill-opacity'), '0.3');
+});
+
+
+test('camera dimensions, frame extent and explicit background survive SVG rendering', () => {
+  const svg = renderer.render({camera:{pixel_width:600,pixel_height:600,frame_width:8,frame_height:8,background_color:'#FFFFFF'},mobjects:[{type:'circle',radius:1}]});
+  assert.equal(svg.getAttribute('viewBox'),'0 0 600 600');
+  assert.equal(svg.getAttribute('width'),'600');
+  assert.equal(svg.children[0].getAttribute('fill'),'#FFFFFF');
+  assert.equal(svg.children[0].getAttribute('data-manim-background'),'true');
+  assert.equal(svg.children[1].getAttribute('transform'),'translate(300, 300) scale(1.5, -1.5)');
+  assert.equal(svg.children[1].children[0].getAttribute('r'),'50');
+  const defaultSVG = renderer.render({mobjects:[]});
+  assert.equal(defaultSVG.children[1].getAttribute('transform'),'translate(400, 225) scale(1, -1)');
+  for(const camera of [{pixel_width:Infinity},{pixel_height:4097},{frame_height:0},{background_color:'url(bad)'}])
+    assert.throws(()=>renderer.render({camera}),/Invalid preview camera/);
 });

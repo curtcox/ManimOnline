@@ -16,6 +16,40 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_configuration_is_isolated_between_successful_and_failed_sources(self):
+        source = "from manim import *\nconfig.pixel_width=600\nconfig.pixel_height=600\nconfig.frame_width=8\nconfig['background_color']=WHITE\nclass Demo(Scene):\n    def construct(self): self.add(Circle())"
+        result = json.loads(lite.render_scene(source))
+        camera = result['frames'][0]['camera']
+        self.assertEqual(camera,dict(pixel_width=600,pixel_height=600,frame_width=8,frame_height=8,background_color=lite.WHITE))
+        with self.assertRaises(RuntimeError):
+            lite.render_scene("from manim import *\nconfig.background_color=RED\nraise RuntimeError('failed')")
+        defaults = render('self.add(Circle())')['frames'][0]['camera']
+        self.assertEqual(defaults,dict(pixel_width=800,pixel_height=450,frame_width=16,frame_height=9,background_color=lite.BLACK))
+
+    def test_camera_snapshots_preserve_background_changes_and_ignore_later_config(self):
+        result = render("self.wait(1)\nself.camera.background_color=WHITE\nconfig.background_color=RED\nself.wait(1)")
+        self.assertEqual(result['frames'][0]['camera']['background_color'],lite.BLACK)
+        self.assertEqual(result['frames'][15]['camera']['background_color'],lite.WHITE)
+        scene = lite.Scene(camera_config={'pixel_width':400,'pixel_height':600,'frame_height':12})
+        self.assertEqual(scene.camera.frame_width,8)
+        scene.camera.frame_width=4
+        self.assertEqual(scene.camera.frame_height,6)
+
+    def test_configuration_validation_and_square_gallery(self):
+        settings = lite.PreviewConfig()
+        for name,value in [('pixel_width',0),('pixel_height',4097),('pixel_width',3.5),('pixel_height',True),('frame_width',float('nan')),('frame_height',-1),('background_color','white')]:
+            before=settings.to_dict()
+            with self.assertRaises(ValueError):
+                setattr(settings,name,value)
+            self.assertEqual(settings.to_dict(),before)
+        with self.assertRaises(NotImplementedError):
+            settings.frame_rate=30
+        result=json.loads(lite.render_scene((ROOT/'examples/camera_scene.py').read_text()))
+        self.assertEqual(result['duration'],5)
+        self.assertEqual(result['frames'][0]['camera']['pixel_width'],600)
+        self.assertEqual(result['frames'][0]['camera']['frame_height'],8)
+        self.assertEqual(result['frames'][-1]['camera']['background_color'],'#E8EEF7')
+
     def test_group_construction_mutation_and_cycle_rejection_are_atomic(self):
         a,b,c = lite.Circle(),lite.Square(),lite.Triangle()
         group = lite.VGroup(a,b,a)

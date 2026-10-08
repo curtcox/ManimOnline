@@ -18,15 +18,30 @@ const ManimRenderer = {
    * @returns {SVGElement}
    */
   render(sceneData, mathGlyphs) {
+    const camera = sceneData.camera || {};
+    const width = camera.pixel_width ?? this.CANVAS_WIDTH;
+    const height = camera.pixel_height ?? this.CANVAS_HEIGHT;
+    const frameHeight = camera.frame_height ?? 9;
+    const frameWidth = camera.frame_width ?? frameHeight * width / height;
+    const background = camera.background_color ?? '#000000';
+    if (![width, height].every(n => Number.isInteger(n) && n > 0 && n <= 4096) ||
+        ![frameWidth, frameHeight].every(n => Number.isFinite(n) && n > 0) ||
+        !/^#[0-9a-f]{6}$/i.test(background)) throw new Error('Invalid preview camera settings');
     const svg = document.createElementNS(this.SVG_NS, 'svg');
-    svg.setAttribute('width', this.CANVAS_WIDTH);
-    svg.setAttribute('height', this.CANVAS_HEIGHT);
-    svg.setAttribute('viewBox', `0 0 ${this.CANVAS_WIDTH} ${this.CANVAS_HEIGHT}`);
-    svg.style.backgroundColor = '#000000';
+    svg.setAttribute('width', width);
+    svg.setAttribute('height', height);
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.style.backgroundColor = background;
 
-    // Add a group for centering (origin at center of canvas)
+    // Explicit geometry keeps the background in SVG and rasterized exports.
+    const backdrop = document.createElementNS(this.SVG_NS, 'rect');
+    backdrop.setAttribute('width', width);
+    backdrop.setAttribute('height', height);
+    backdrop.setAttribute('fill', background);
+    backdrop.setAttribute('data-manim-background', 'true');
+    svg.appendChild(backdrop);
     const mainGroup = document.createElementNS(this.SVG_NS, 'g');
-    mainGroup.setAttribute('transform', `translate(${this.CANVAS_WIDTH / 2}, ${this.CANVAS_HEIGHT / 2}) scale(1, -1)`);
+    mainGroup.setAttribute('transform', `translate(${width / 2}, ${height / 2}) scale(${width / frameWidth / this.UNIT_SCALE}, ${-height / frameHeight / this.UNIT_SCALE})`);
     svg.appendChild(mainGroup);
 
     // Sort drawable leaves globally, keeping each leaf's ancestor transforms.

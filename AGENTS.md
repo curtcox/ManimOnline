@@ -61,6 +61,10 @@ child removal/reordering, and whole-group animation. Group and VGroup share the
 existing container serialization; slices share child identities but no parent
 transforms. Do not bypass validated setters when adding family links.
 
+Read `examples/camera_scene.py` for isolated config, square preview resolution,
+per-frame backgrounds, and configured SVG/PNG export. Camera metadata is captured
+with each frame; preserve default 800 × 450 behavior and per-source reset.
+
 ## Implementation guidance
 
 - Keep the edit → render → preview loop central. Preserve DOT rendering, sharing,

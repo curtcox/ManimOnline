@@ -46,7 +46,7 @@ families, leaf wrapping, copy and sequential restoration. General Mobject family
 restructuring and disconnected subpath alignment remain open.
 
 Full Community parity additionally requires general geometry/path morphing, full scene-family
-composition and layering, camera configuration, glyph-level text/TeX
+composition and layering, moving/3D cameras (basic 2D canvas settings now have Python/SVG tests), glyph-level text/TeX
 semantics, updaters, graphing, 3D, rendering/video output, and broad API/package
 compatibility. These are not implemented or proven by the current tests. Keep
 the original requested scope open until its requirements are clarified and

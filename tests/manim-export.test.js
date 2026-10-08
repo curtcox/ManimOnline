@@ -58,3 +58,14 @@ test('Canvas and encoding failures reject without leaking snapshot URLs', async 
     assert.deepEqual(f.calls.at(-1), ['revoke', 'blob:snapshot']);
   }
 });
+
+
+test('PNG uses configured square canvas dimensions', async () => {
+  const f = fixture();
+  const result = ManimExport.png('<svg width="600" height="600"><rect fill="#FFFFFF"/></svg>',600,600,f.env);
+  f.image.onload();
+  await result;
+  assert.equal(f.canvas.width,600);
+  assert.equal(f.canvas.height,600);
+  assert.deepEqual(f.calls.find(call=>call[0]==='draw').slice(2),[0,0,600,600]);
+});

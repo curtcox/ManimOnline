@@ -790,12 +790,15 @@ class HelloWorld(Scene):
         const snapshotPlayer = player;
         const revision = renderRevision;
         snapshotPlayer.pause();
-        const source = new XMLSerializer().serializeToString(snapshotPlayer.stage.firstElementChild);
+        const snapshotSVG = snapshotPlayer.stage.firstElementChild;
+        const source = new XMLSerializer().serializeToString(snapshotSVG);
+        const pixelWidth = Number(snapshotSVG.getAttribute('width'));
+        const pixelHeight = Number(snapshotSVG.getAttribute('height'));
         exportingPNG = true;
         downloadBtn.setAttribute('aria-busy', 'true');
         exportStatus.textContent = 'Preparing PNG…';
         try {
-          const blob = await ManimExport.png(source);
+          const blob = await ManimExport.png(source, pixelWidth, pixelHeight);
           if (revision !== renderRevision || player !== snapshotPlayer) return;
           const url = URL.createObjectURL(blob);
           const link = document.createElement('a');
