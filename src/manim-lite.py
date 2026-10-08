@@ -1658,6 +1658,182 @@ class NumberLine(VGroup):
         return self._add_world_decoration(labels,'numbers')
 
 
+class Axes(VGroup):
+    """Two linear NumberLines with transform-aware XY coordinate conversion."""
+    def __init__(self, x_range=None, y_range=None, x_length=None, y_length=None,
+                 axis_config=None, x_axis_config=None, y_axis_config=None, tips=True, **kwargs):
+        if not isinstance(tips,bool):
+            raise ValueError('Axes tips must be a boolean')
+        super().__init__(**kwargs)
+        common = dict(color=self.color,stroke_color=self.stroke_color,
+                      stroke_width=self.stroke_width,stroke_opacity=self.stroke_opacity,
+                      include_tip=tips,numbers_to_exclude=[0],exclude_origin_tick=True)
+        def merge(base, options):
+            result = copy.deepcopy(base)
+            if options is not None:
+                if not isinstance(options,dict):
+                    raise TypeError('Axis configuration must be a dictionary')
+                for key,value in options.items():
+                    if isinstance(value,dict) and isinstance(result.get(key),dict):
+                        result[key] = dict(result[key],**value)
+                    else:
+                        result[key] = copy.deepcopy(value)
+            return result
+        common = merge(common,axis_config)
+        x_options = merge(common,x_axis_config)
+        y_options = merge(merge(common,dict(rotation=PI/2,label_direction=LEFT)),y_axis_config)
+        if y_range is None:
+            radius = max(1,round(config.frame_height/2))
+            y_range = [-radius,radius,1]
+        x_options['length'] = max(1,round(config.frame_width)-2) if x_length is None else x_length
+        y_options['length'] = max(1,round(config.frame_height)-2) if y_length is None else y_length
+        x_axis = NumberLine(x_range,**x_options)
+        y_axis = NumberLine(y_range,**y_options)
+        for axis, role in ((x_axis,'x'),(y_axis,'y')):
+            axis.shift(axis.n2p(self._origin_shift(axis.x_range))*(-1))
+            axis._axes_role = role
+        self.add(x_axis,y_axis)
+        self.x_range,self.y_range = x_axis.x_range[:],y_axis.x_range[:]
+        # Center the coordinate rectangle, including ranges which exclude zero.
+        middle = self.c2p((x_axis.x_min+x_axis.x_max)/2,(y_axis.x_min+y_axis.x_max)/2)
+        self.shift(middle*(-1))
+
+    @staticmethod
+    def _origin_shift(axis_range):
+        return max(axis_range[0],min(axis_range[1],0))
+
+    def _axis(self, role):
+        for child in self.children:
+            if child.__dict__.get('_axes_role') == role:
+                return child
+        raise ValueError('Axes has no ' + role + ' axis')
+
+    @property
+    def x_axis(self):
+        return self._axis('x')
+
+    @property
+    def y_axis(self):
+        return self._axis('y')
+
+    @property
+    def axes(self):
+        return VGroup(self.x_axis,self.y_axis)
+
+    def get_axes(self):
+        return self.axes
+
+    def get_axis(self, index):
+        return self.axes[index]
+
+    def get_x_axis(self):
+        return self.x_axis
+
+    def get_y_axis(self):
+        return self.y_axis
+
+    def coords_to_point(self, *coords):
+        if len(coords) == 1 and isinstance(coords[0],(list,tuple)):
+            coords = coords[0]
+            if coords and isinstance(coords[0],(list,tuple)):
+                if len(coords) > 1000:
+                    raise ValueError('Axes coordinate batches are limited to 1000 points')
+                return [self.coords_to_point(*point) for point in coords]
+        if len(coords) not in (2,3):
+            raise ValueError('Axes coordinates need x, y and optionally zero z')
+        sequences = [value for value in coords if isinstance(value,(list,tuple))]
+        if sequences:
+            count = len(sequences[0])
+            if count > 1000 or any(len(value) != count for value in sequences):
+                raise ValueError('Axes coordinate arrays need equal lengths of at most 1000')
+            return [self.coords_to_point(*(value[i] if isinstance(value,(list,tuple)) else value
+                                          for value in coords)) for i in range(count)]
+        for value in coords:
+            NumberLine._real(value,'Axes coordinate')
+        if len(coords) == 3 and coords[2] != 0:
+            raise NotImplementedError('Axes supports only the XY plane')
+        origin = self.x_axis.n2p(self._origin_shift(self.x_axis.x_range))
+        return self._point_to_world(self.x_axis.n2p(coords[0])+self.y_axis.n2p(coords[1])-origin)
+
+    c2p = coords_to_point
+
+    def get_origin(self):
+        return self.c2p(0,0)
+
+    def _basis(self):
+        # Query the nested NumberLines in Axes-local space, then apply this parent.
+        origin = self.x_axis.n2p(self._origin_shift(self.x_axis.x_range))
+        world = self._point_to_world(origin)
+        vectors = [self._point_to_world(origin+axis.get_unit_vector())-world
+                   for axis in (self.x_axis,self.y_axis)]
+        return vectors
+
+    def get_x_unit_size(self):
+        return math.hypot(*self._basis()[0])
+
+    def get_y_unit_size(self):
+        return math.hypot(*self._basis()[1])
+
+    def point_to_coords(self, point):
+        if isinstance(point,(list,tuple)) and point and isinstance(point[0],(list,tuple)):
+            if len(point) > 1000:
+                raise ValueError('Axes coordinate batches are limited to 1000 points')
+            return [self.point_to_coords(value) for value in point]
+        point = Vector(point)
+        if not all(math.isfinite(v) for v in point):
+            raise ValueError('Axes point must be finite')
+        x,y = self._basis()
+        lx,ly = math.hypot(*x),math.hypot(*y)
+        if lx == 0 or ly == 0:
+            raise ValueError('Cannot invert collapsed Axes')
+        x,y = x*(1/lx),y*(1/ly)
+        determinant = x[0]*y[1]-x[1]*y[0]
+        if abs(determinant) < 1e-12:
+            raise ValueError('Cannot invert parallel Axes')
+        offset = point-self.get_origin()
+        result = [(offset[0]*y[1]-offset[1]*y[0])/determinant/lx,
+                  (x[0]*offset[1]-x[1]*offset[0])/determinant/ly]
+        for value in result:
+            NumberLine._real(value,'Axes result')
+        return result
+
+    p2c = point_to_coords
+
+    def __matmul__(self, coords):
+        return self.c2p(coords.get_center() if isinstance(coords,Mobject) else coords)
+
+    def __rmatmul__(self, point):
+        return self.p2c(point)
+
+    def add_coordinates(self, *axes_numbers, **kwargs):
+        if len(axes_numbers) > 2:
+            raise ValueError('Axes accepts number lists for x and y only')
+        center = self._geometry_center()
+        targets = []
+        for index, axis in enumerate((self.x_axis,self.y_axis)):
+            target = axis.copy()
+            target.add_numbers(axes_numbers[index] if index < len(axes_numbers) else None,**kwargs)
+            targets.append(target)
+        # Validate both additions before mutating either live axis.
+        for axis,target in zip((self.x_axis,self.y_axis),targets):
+            axis.become(target)
+        delta = center-self._geometry_center()
+        rotated = Vector((delta[0]*math.cos(self.angle)-delta[1]*math.sin(self.angle),
+                          delta[0]*math.sin(self.angle)+delta[1]*math.cos(self.angle),0))*self.geometry_scale
+        return self.shift(delta-rotated)
+
+    def get_x_axis_label(self, label, direction=UR, buff=.1, **kwargs):
+        label = label if isinstance(label,Mobject) else MathTex(str(label))
+        return label.next_to(self._point_to_world(self.x_axis.get_end()),direction,buff,**kwargs)
+
+    def get_y_axis_label(self, label, direction=UR, buff=.1, **kwargs):
+        label = label if isinstance(label,Mobject) else MathTex(str(label))
+        return label.next_to(self._point_to_world(self.y_axis.get_end()),direction,buff,**kwargs)
+
+    def get_axis_labels(self, x_label='x', y_label='y'):
+        return VGroup(self.get_x_axis_label(x_label),self.get_y_axis_label(y_label))
+
+
 def linear(t):
     return t
 
@@ -2546,7 +2722,7 @@ class MovingCameraScene(Scene):
 
 
 EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'Arrow',
-           'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Create', 'Write', 'FadeIn',
+           'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform', 'UP', 'DOWN', 'LEFT',

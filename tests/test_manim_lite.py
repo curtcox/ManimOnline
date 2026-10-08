@@ -16,6 +16,102 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_axes_ranges_centering_and_coordinate_round_trips(self):
+        for xr,yr in (([-2,2],[-1,3]),([2,6],[4,8]),([-6,-2],[-8,-4])):
+            axes = lite.Axes(xr,yr,x_length=8,y_length=4,tips=False)
+            self.assertPointAlmostEqual(axes.c2p((xr[0]+xr[1])/2,(yr[0]+yr[1])/2),lite.ORIGIN)
+            self.assertPointAlmostEqual(axes.c2p(xr[0],yr[0]),(-4,-2,0))
+            self.assertPointAlmostEqual(axes.c2p(xr[1],yr[1]),(4,2,0))
+            axes.rotate(.4).scale(1.3).shift(lite.UP)
+            for coords in ((0,0),(-8,10),(3,2)):
+                point = axes.c2p(*coords)
+                for actual,expected in zip(axes.p2c(point),coords):
+                    self.assertAlmostEqual(actual,expected)
+                self.assertPointAlmostEqual(axes @ coords,point)
+                self.assertEqual(point @ axes,axes.p2c(point))
+            self.assertAlmostEqual(axes.get_x_unit_size(),2.6)
+            self.assertAlmostEqual(axes.get_y_unit_size(),1.3)
+            self.assertPointAlmostEqual(axes.get_origin(),axes.c2p(0,0))
+
+    def test_axes_batch_conversion_and_skewed_basis(self):
+        axes = lite.Axes([-2,2],[-2,2],x_length=4,y_length=8,tips=False,
+                         x_axis_config={'rotation':.3})
+        expected = [axes.c2p(1,3),axes.c2p(2,4)]
+        self.assertEqual(axes.c2p([[1,3],[2,4]]),expected)
+        self.assertEqual(axes.c2p([1,2],[3,4]),expected)
+        self.assertEqual(axes.c2p([1,2],3),[axes.c2p(1,3),axes.c2p(2,3)])
+        self.assertEqual(axes.c2p([1,3,0]),expected[0])
+        for point,coord in zip(expected,((1,3),(2,4))):
+            for actual,value in zip(axes.p2c(point),coord):
+                self.assertAlmostEqual(actual,value)
+        self.assertEqual(axes.p2c(expected),[axes.p2c(point) for point in expected])
+
+    def test_axes_configuration_roles_and_coordinate_labels(self):
+        common = dict(color=lite.BLUE,font_size=20,decimal_number_config={'num_decimal_places':1})
+        axes = lite.Axes([0,4],[-2,2],x_length=4,y_length=4,tips=False,axis_config=common,
+                         y_axis_config=dict(color=lite.RED,decimal_number_config={'include_sign':True}))
+        self.assertIs(axes.x_axis,axes.get_axes()[0])
+        self.assertIs(axes.y_axis,axes.get_y_axis())
+        self.assertIs(axes.x_axis,axes.get_axis(0))
+        self.assertNotIn(0,axes.x_axis.get_tick_range())
+        axes.add_coordinates([1,2],[-1,1])
+        self.assertEqual([n.text for n in axes.x_axis.numbers],['1.0','2.0'])
+        self.assertEqual([n.text for n in axes.y_axis.numbers],['-1.0','+1.0'])
+        self.assertEqual(axes.y_axis.numbers[0].color,lite.RED)
+        self.assertEqual(common['decimal_number_config'],{'num_decimal_places':1})
+        labels = axes.get_axis_labels(lite.Text('x'),lite.Text('y'))
+        self.assertEqual([m.text for m in labels],['x','y'])
+        self.assertEqual(axes.get_x_axis_label('x')._type,'mathtex')
+        json.dumps(axes.to_dict(),allow_nan=False)
+
+    def test_axes_decorations_are_atomic_and_keep_world_coordinates(self):
+        axes = lite.Axes([-3,3],[-2,2],x_length=8,y_length=4,tips=False).rotate(.6).scale(1.4).shift(lite.UP)
+        before = [axes.c2p(x,y) for x,y in ((0,0),(-3,-2),(3,2))]
+        axes.add_coordinates(font_size=24)
+        for point,coords in zip(before,((0,0),(-3,-2),(3,2))):
+            self.assertPointAlmostEqual(axes.c2p(*coords),point)
+        snapshot = axes.to_dict()
+        with self.assertRaises(ValueError): axes.add_coordinates([1],[float('nan')])
+        self.assertEqual(axes.to_dict(),snapshot)
+        copied = axes.copy().shift(lite.RIGHT)
+        copied.x_axis.numbers[0].set_color(lite.RED)
+        self.assertNotEqual(copied.x_axis.numbers[0].color,axes.x_axis.numbers[0].color)
+        self.assertPointAlmostEqual(copied.c2p(0,0),axes.c2p(0,0)+lite.RIGHT)
+
+    def test_axes_invalid_coordinates_and_collapsed_or_parallel_inverse(self):
+        for kwargs in ({'tips':1},{'x_length':0},{'y_range':[2,1]}):
+            with self.assertRaises(ValueError): lite.Axes(**kwargs)
+        with self.assertRaises(TypeError): lite.Axes(axis_config=[])
+        axes = lite.Axes(tips=False)
+        for coords in ((1,),([1,2],[1]),(True,1),(1,float('inf')),([0]*1001,[0]*1001)):
+            with self.assertRaises(ValueError): axes.c2p(*coords)
+        with self.assertRaises(NotImplementedError): axes.c2p(1,2,3)
+        with self.assertRaises(ValueError): axes.p2c([float('nan'),0])
+        with self.assertRaises(ValueError): axes.add_coordinates([1],[2],[3])
+        axes.scale(0)
+        with self.assertRaises(ValueError): axes.p2c(lite.ORIGIN)
+        axes = lite.Axes(tips=False,y_axis_config={'rotation':0})
+        with self.assertRaises(ValueError): axes.p2c(lite.ORIGIN)
+
+    def test_axes_gallery_sampled_curve_marker_and_restoration(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/axes_scene.py').read_text()))
+        self.assertEqual(result['duration'],11)
+        for index in (60,105,165):
+            objects = result['frames'][index]['mobjects']
+            axis_data = next(m for m in objects if m['type'] == 'vgroup')
+            axes = lite.Axes([-3,3],[-2,3],x_length=8,y_length=4,
+                             axis_config=dict(font_size=22,line_to_number_buff=.4)).add_coordinates()
+            axes.position,axes.angle,axes.geometry_scale = axis_data['position'],axis_data['angle'],axis_data['geometry_scale']
+            axes._sampled_geometry_center = axis_data['geometry_center']
+            value = next(m for m in objects if m['type'] == 'text')['number']
+            marker = next(m for m in objects if m['type'] == 'circle')
+            self.assertPointAlmostEqual(marker['position'],axes.c2p(value,value*value/3-1))
+            curve = next(m for m in objects if m['type'] == 'polyline')
+            self.assertPointAlmostEqual(curve['vertices'][0],axes.c2p(-3,2))
+            self.assertPointAlmostEqual(curve['vertices'][-1],axes.c2p(3,2))
+        self.assertEqual(axis_data['angle'],0)
+        self.assertEqual(axis_data['geometry_scale'],1)
+
     def test_number_line_default_range_ticks_and_numeric_labels(self):
         line = lite.NumberLine([-2,2,.5],length=8,include_numbers=True,
                                numbers_to_exclude=[0],numbers_with_elongated_ticks=[1])

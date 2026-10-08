@@ -61,8 +61,10 @@ and rectangle grids remain open.
 NumberLine now supplies linear numeric conversion, ticks, numeric labels,
 world-space extrapolation/projection and transform-aware marker updates. Python
 checks cover transformed insertion without axis drift, sampling, validation,
-length changes and restoration. Graphing still needs Axes, NumberPlane, function
-plots and broader coordinate/graph APIs.
+length changes and restoration. Axes now combines two NumberLines, with Cartesian
+conversion/inversion, batch coordinates, numeric and axis labels, transform-aware
+updater geometry and atomic coordinate-label additions. Graphing still needs
+NumberPlane, function plots and broader coordinate/graph APIs.
 
 Full Community parity additionally requires general geometry/path morphing, full scene-family
 composition and layering, 3D cameras and advanced camera APIs (2D settings, moving-camera pan/zoom and automatic bounds fitting now have Python/SVG tests), glyph-level text/TeX

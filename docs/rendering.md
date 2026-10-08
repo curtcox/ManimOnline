@@ -935,3 +935,37 @@ rotated/shrank/moved. At eleven seconds, restoration returned a horizontal line
 and the marker/readout to zero. Switching to DOT rendered the editor flow graph.
 Axes, NumberPlane, function plotting and the remaining graphing APIs are still
 implementation work.
+
+## Cartesian axes
+
+Axes builds two NumberLines using the
+[official coordinate-system API](https://docs.manim.community/en/stable/reference/manim.mobject.graphing.coordinate_systems.Axes.html).
+Shared configuration applies before per-axis overrides; numeric-format dictionaries
+merge. Defaults include tips, omit zero labels/ticks and place y labels to the
+left. The coordinate rectangle is centered, including positive-only or
+negative-only ranges. Child roles identify the actual x/y NumberLines without
+putting Mobject references into JSON or retaining stale aliases after copies.
+
+c2p composes child coordinate queries with the Axes parent transform. p2c solves
+the current XY basis, rejecting collapsed or nearly parallel axes. World unit
+sizes and the numeric origin use the same nested transforms. Lists/tuples support
+single coordinates, row batches, paired coordinate lists and scalar broadcasting;
+inverse conversion accepts points or point rows. Batches are limited to 1000.
+Nonzero z coordinates, NumPy arrays and nonlinear coordinate scales remain open.
+Child axis getters retain the existing group's local-coordinate semantics.
+
+Coordinate labels are prepared on copies of both axes before mutating either
+live axis. After insertion, parent pivot compensation preserves world geometry
+when the bounds change. Axis labels use supplied Mobjects or existing MathTex
+strings. Independent child animation, generalized family geometry, glyph bounds,
+NumberPlane and function plotting remain implementation work.
+
+Python checks cover all-sign ranges, rectangular centering, nested transforms,
+extrapolation, inversion of unequal/skewed bases, scalar/batch conversions,
+configuration isolation/merging, role identity, labels, atomic invalid additions,
+transformed insertion, copies and invalid/collapsed/parallel cases. The gallery
+explicitly samples a polyline and uses updaters to follow the current coordinate
+frame; it does not imply an Axes.plot implementation. Local Pyodide playback
+verified the marker and blue curve on rotated/scaled axes at seven seconds.
+At eleven seconds, restoration returned the frame and marker to (0,-1) in axis
+coordinates. Switching to DOT rendered the editor flow graph.

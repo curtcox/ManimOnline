@@ -744,5 +744,34 @@ metrics and native TeX label construction remain open. Ticks/labels are bounded
 to 1000 per addition. Inverse conversion and decoration insertion require a
 noncollapsed shaft. NumberLine uses the existing group renderer: animations
 target the complete line, and raw partial-curve APIs do not target its shaft.
-Logarithmic scaling, NumPy coordinate arrays, Axes and function plots remain open.
+Logarithmic scaling, NumPy coordinate arrays and function plots remain open.
 Try **Follow numeric coordinates** (`examples/number_line_scene.py`).
+
+`Axes(x_range, y_range, x_length, y_length)` combines two NumberLines into a
+linear XY coordinate system, centered on the middle of the coordinate rectangle.
+Ranges may exclude zero. `axis_config` applies to both axes; `x_axis_config` and
+`y_axis_config` override individual options, merging nested numeric formatting
+options. `tips=True` is the default; origin ticks and labels are excluded by
+default. The y-axis is vertical and its numeric labels sit to its left.
+
+`coords_to_point`/`c2p` convert numeric coordinates into current world positions;
+`point_to_coords`/`p2c` invert the current basis. Both follow the parent and child
+axis transforms, including sampled animation frames. Conversion accepts scalar
+x/y (optional zero z), a single coordinate list, batches of coordinate rows or
+paired coordinate lists with scalar broadcasting. Inverse conversion accepts
+one point or point rows. Batches are limited to 1000; collapsed or nearly parallel
+axes cannot be inverted. `axes @ coordinates` and `point @ axes` are shortcuts.
+`get_origin`, `get_x_unit_size` and `get_y_unit_size` inspect the world frame.
+
+`add_coordinates(x_numbers, y_numbers, **number_options)` adds numeric labels,
+defaulting to each axis's ticks. Both additions validate before mutation, and
+existing coordinates stay fixed on transformed axes. `get_axis_labels` returns
+positioned x/y labels; strings use MathTex and existing Mobjects can be supplied.
+`get_x_axis_label`/`get_y_axis_label` accept a direction and buffer.
+`x_axis`, `y_axis`, `axes`, `get_axes`, `get_axis`, `get_x_axis` and `get_y_axis`
+expose the actual child NumberLines. Their own geometry queries use Axes-local
+coordinates, as with existing group children; use c2p/p2c for world positions.
+Animate the complete Axes object. General NumberPlane, function plotting,
+nonlinear scaling, NumPy arrays and 3D coordinates remain open.
+Try **Animate Cartesian coordinates** (`examples/axes_scene.py`), whose sampled
+polyline and marker follow transformed axes through updaters.
