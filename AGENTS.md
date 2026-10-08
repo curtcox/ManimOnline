@@ -105,3 +105,8 @@ Read `examples/updater_scene.py` for timed callbacks, sampled-object following,
 camera tracking, and callback cleanup. Keep callbacks out of frame JSON and expose
 animation samples through original identities only for the update pass. Restore
 live animated geometry in finally; preserve source callbacks during transforms.
+
+Read `examples/value_tracker_scene.py` for shared animated values, callback ordering,
+and consecutive relative increments. Trackers participate in timeline/updater
+sampling but stay invisible in root and grouped rendering. Preserve finite real
+validation and identity for in-place arithmetic.

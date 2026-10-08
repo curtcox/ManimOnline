@@ -11,6 +11,16 @@ class Element {
 }
 global.document = { createElementNS: (_namespace, tag) => new Element(tag) };
 
+test('value trackers produce no SVG geometry even inside groups', () => {
+  const svg = renderer.render({mobjects:[{type:'vgroup', children:[
+    {type:'valuetracker',position:[2,0,0]}, {type:'circle',radius:1}
+  ]}]});
+  const shapes = svg.querySelectorAll();
+  assert.equal(shapes.filter(element => element.tag === 'circle').length, 1);
+  assert.equal(shapes.filter(element => element.tag === 'rect').length, 1);
+  assert.equal(renderer.renderMobject({type:'valuetracker'}), null);
+});
+
 test('math glyphs render with transforms, styles, and no external SVG content', () => {
   const path = new Element('path');
   path.localName = 'path';

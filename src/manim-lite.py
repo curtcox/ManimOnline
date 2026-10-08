@@ -3,6 +3,7 @@ import copy
 import inspect
 import json
 import math
+import operator
 import sys
 import types
 
@@ -469,6 +470,48 @@ class Mobject:
         result['geometry_center'] = list(self._geometry_center())
         result['children'] = [child.to_dict() for child in self.children]
         return result
+
+
+class ValueTracker(Mobject):
+    """An invisible finite real parameter, encoded in its x coordinate."""
+    def __init__(self, value=0, **kwargs):
+        super().__init__(**kwargs)
+        self._type = 'valuetracker'
+        self.set_value(value)
+
+    def get_value(self):
+        return self.position[0]
+
+    def set_value(self, value):
+        if not isinstance(value, (int, float)) or not math.isfinite(value):
+            raise ValueError('ValueTracker requires a finite real number')
+        self.position[0] = value
+        return self
+
+    def increment_value(self, d_value):
+        if not isinstance(d_value, (int, float)):
+            raise ValueError('ValueTracker increments must be real numbers')
+        return self.set_value(self.get_value() + d_value)
+
+    def __bool__(self):
+        return bool(self.get_value())
+
+
+def _tracker_arithmetic(operation, inplace=False):
+    def calculate(self, value):
+        if not isinstance(value, (int, float)):
+            raise ValueError('ValueTracker arithmetic expects a real scalar')
+        result = operation(self.get_value(), value)
+        return self.set_value(result) if inplace else ValueTracker(result)
+    return calculate
+
+
+for _name, _operation in [('add', operator.add), ('sub', operator.sub),
+                           ('mul', operator.mul), ('truediv', operator.truediv),
+                           ('floordiv', operator.floordiv), ('mod', operator.mod),
+                           ('pow', operator.pow)]:
+    setattr(ValueTracker, '__' + _name + '__', _tracker_arithmetic(_operation))
+    setattr(ValueTracker, '__i' + _name + '__', _tracker_arithmetic(_operation, True))
 
 
 class VMobject(Mobject):
@@ -1373,7 +1416,7 @@ class Animate(Transform):
     def __getattr__(self, name):
         if name.startswith('__'):
             raise AttributeError(name)
-        if name not in ('shift', 'move_to', 'set_width', 'set_height', 'move_arc_center_to', 'put_start_and_end_on', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'set_points_as_corners', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
+        if name not in ('set_value', 'increment_value', 'shift', 'move_to', 'set_width', 'set_height', 'move_arc_center_to', 'put_start_and_end_on', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'set_points_as_corners', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
             raise NotImplementedError(f'animate.{name} is not supported yet')
         def apply(*args, **kwargs):
             getattr(self.target, name)(*args, **kwargs)
@@ -1610,7 +1653,7 @@ class Scene:
             raise ValueError('Preview exceeds 60 seconds / 900 frames. Shorten the scene.')
         objects = []
         for mobject in self.mobjects:
-            if isinstance(mobject, CameraFrame):
+            if isinstance(mobject, (CameraFrame, ValueTracker)):
                 continue
             objects.extend(overrides[mobject] if overrides and mobject in overrides else [mobject.to_dict()])
         if isinstance(self.camera, MovingCamera):
@@ -1698,7 +1741,7 @@ class MovingCameraScene(Scene):
     camera_class = MovingCamera
 
 
-EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'VMobject', 'CubicBezier', 'Circle', 'Arc', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
+EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'VMobject', 'CubicBezier', 'Circle', 'Arc', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'MathTex', 'Group', 'VGroup', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'TransformFromCopy',

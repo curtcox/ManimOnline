@@ -16,6 +16,72 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_value_tracker_values_arithmetic_identity_and_validation(self):
+        tracker = lite.ValueTracker(2)
+        original = tracker
+        self.assertEqual((tracker + 3).get_value(), 5)
+        self.assertEqual(tracker.get_value(), 2)
+        tracker += 3
+        tracker *= 2
+        tracker -= 2
+        tracker /= 2
+        tracker **= 2
+        tracker //= 3
+        tracker %= 4
+        self.assertIs(tracker, original)
+        self.assertEqual(tracker.get_value(), 1)
+        self.assertFalse(lite.ValueTracker())
+        self.assertTrue(tracker)
+        for invalid in [float('inf'),float('nan'),complex(1,2),'3',lite.Circle()]:
+            with self.assertRaises(ValueError): tracker.set_value(invalid)
+            self.assertEqual(tracker.get_value(), 1)
+        with self.assertRaises(ZeroDivisionError): tracker /= 0
+        self.assertEqual(tracker.get_value(), 1)
+        tracker.save_state().increment_value(3).restore()
+        self.assertEqual(tracker.get_value(), 1)
+        tracker.copy().increment_value(9)
+        self.assertEqual(tracker.get_value(), 1)
+
+    def test_value_tracker_animation_drives_followers_and_relative_succession(self):
+        scene = lite.Scene()
+        tracker = lite.ValueTracker(0)
+        dot = lite.Dot().add_updater(lambda m:m.move_to(lite.RIGHT*tracker.get_value()))
+        scene.add(dot)
+        scene.play(tracker.animate.set_value(4),run_time=2,rate_func=lite.linear)
+        self.assertEqual(scene.frames[15]['mobjects'][0]['position'], [2,0,0])
+        self.assertTrue(all(len(f['mobjects'])==1 for f in scene.frames))
+        self.assertEqual(tracker.get_value(), 4)
+        scene.play(lite.Succession(tracker.animate.increment_value(2),tracker.animate.increment_value(2)),rate_func=lite.linear)
+        self.assertEqual(scene.frames[45]['mobjects'][0]['position'], [6,0,0])
+        self.assertEqual(dot.get_center(), lite.RIGHT*8)
+        scene.play(lite.Restore(tracker.save_state().increment_value(2)))
+        self.assertEqual(tracker.get_value(), 8)
+
+    def test_time_based_tracker_and_grouped_tracker_stay_invisible(self):
+        scene = lite.Scene()
+        tracker = lite.ValueTracker().add_updater(lambda m,dt:m.increment_value(dt))
+        dot = lite.Dot().add_updater(lambda m:m.move_to(lite.RIGHT*tracker.get_value()))
+        scene.add(tracker,dot).wait(2)
+        self.assertAlmostEqual(tracker.get_value(), 2)
+        self.assertAlmostEqual(dot.get_center()[0], 2)
+        self.assertEqual(len(scene.frames[15]['mobjects']), 1)
+        self.assertAlmostEqual(scene.frames[15]['mobjects'][0]['position'][0], 1)
+        scene.remove(tracker).wait(1)
+        self.assertAlmostEqual(tracker.get_value(), 2)
+        group = lite.Group(tracker, lite.Circle())
+        self.assertEqual(group.to_dict()['children'][0]['type'], 'valuetracker')
+
+    def test_value_tracker_gallery_keeps_connector_on_tracked_shapes(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/value_tracker_scene.py').read_text()))
+        self.assertEqual(result['duration'], 7)
+        midpoint = result['frames'][30]['mobjects']
+        self.assertEqual(len(midpoint), 3)
+        self.assertEqual(midpoint[0]['position'], [0,-1,0])
+        self.assertEqual(midpoint[1]['position'], [0,1,0])
+        self.assertEqual(midpoint[2]['start'], [0,-1,0])
+        self.assertEqual(midpoint[2]['end'], [0,1,0])
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['position'], [0,-1,0])
+
     def test_time_updaters_advance_wait_and_unanimated_play_objects(self):
         scene = lite.Scene()
         dot = lite.Dot().add_updater(lambda m, dt:m.shift(lite.RIGHT * dt))

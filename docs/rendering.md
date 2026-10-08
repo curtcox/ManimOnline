@@ -574,7 +574,7 @@ expose their more visible snapshot to queries. Transform completion/checkpoint
 restoration preserve source callback registrations. Callbacks/suspension/private
 sample state never enter JSON. Frozen earlier frames remain immutable.
 
-Scene callbacks, ValueTracker, always_redraw, custom UpdateFromFunc animations,
+Scene callbacks, always_redraw, custom UpdateFromFunc animations,
 and changing scene membership/family structure during callback execution still
 need implementation. Group children retain the existing local coordinate query
 semantics. Tests cover waits, time totals, following sampled movement, camera
@@ -584,3 +584,23 @@ cleanup, checkpoint/transform retention, and gallery terminal geometry.
 Local Pyodide gallery playback verified a centered camera at the three-second
 midpoint and a final x=2 focus. The follower ended at (2,1), while the independent
 spinner stopped at 450 degrees after callback removal. DOT rendered after switching.
+
+
+## Animated real parameters
+
+ValueTracker implements finite real get/set/increment and the scalar arithmetic
+operators, preserving identity for in-place operations. Its x coordinate encodes
+the parameter, following the [official ValueTracker API](https://docs.manim.community/en/stable/_modules/manim/mobject/value_tracker.html).
+Animate set/increment, Transform/Restore, easing and sequential stages interpolate
+through existing snapshots; updater exposure makes sampled values available to
+original callback references. Root trackers are omitted from drawable frames;
+renderer handling also omits trackers nested in a Group. Scene-added trackers can
+run timed callbacks, ordered before later dependents. Copy/checkpoints remain
+independent. Complex values, point arrays and numeric text displays remain open.
+Tests cover arithmetic/validation without partial updates, hidden output, timed
+callbacks, copy/restoration, relative succession and connector endpoints.
+
+Local Pyodide playback verified value=1 at three seconds: dot at (1,-1), square
+at (-1,1), and matching connector endpoints. Consecutive decrements ended with
+both shapes on x=0 at seven seconds, with exactly three visible shapes. DOT
+rendered after switching.

@@ -77,6 +77,7 @@ const ManimRenderer = {
    */
   renderMobject(mobject, mathGlyphs) {
     const type = mobject.type;
+    if (type === 'valuetracker') return null;
     const position = mobject.position || [0, 0, 0];
 
     let element = null;

@@ -551,6 +551,18 @@ are suspended while their animation samples; other callbacks can query sampled
 positions to follow them. Moving camera frames update even when not scene roots.
 Callbacks remain Python-only and are excluded from exported frame data. See
 **Follow objects each frame** for a spinner, follower and tracking camera.
-This adds object callbacks, not full scene updaters, always_redraw, ValueTracker,
+This adds object callbacks, not full scene updaters, always_redraw,
 UpdateFromFunc or custom animation subclasses. Crossfade queries use the more
 visible snapshot; child queries retain this runtime's existing group coordinates.
+
+
+`ValueTracker(value=0)` stores a finite real number without visible geometry.
+get_value/set_value/increment_value, scalar arithmetic and in-place arithmetic are
+supported. Use `tracker.animate.set_value(...)` or increment_value to drive other
+objects' updaters through intermediate values. Trackers are added automatically
+when animated; explicitly add a tracker whose own updater must run during waits.
+For timed dependencies, add the tracker before objects that read it. Copy,
+save_state/Restore, easing, parallel timelines and Succession use the existing
+animation pipeline. Values occupy the tracker's x coordinate. ComplexValueTracker,
+point-array access, and full numeric display classes remain unsupported. See
+**Animate a shared value** for two moving shapes and a live connector.
