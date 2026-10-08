@@ -526,7 +526,7 @@ Frame samples become camera metadata, never visible geometry; scene objects keep
 their own coordinates. Sequential and parallel animation timelines can include
 the camera. Zoom factors/extents must stay positive and finite, with XY positions.
 Setting width/height preserves aspect ratio. Rotation, 3D views, camera frame
-replacement/removal effects and updaters remain unsupported. The **Pan
+replacement/removal effects remain unsupported. The **Pan
 and zoom the view** gallery demonstrates focus changes and view restoration.
 
 
@@ -541,3 +541,16 @@ nonpositive final extents raise errors without changing the camera. Bounds use
 existing geometry queries: rotated groups/curves may include conservative extra
 space, and text/TeX glyph dimensions are not measured. Use **Fit shapes in the
 view** for animated combined framing, single-object focus, and restoration.
+
+
+Mobjects support `add_updater(callback, index=None, call_updater=False)`,
+remove_updater, clear_updaters, update, suspend_updating and resume_updating.
+Callbacks receive the object and optionally a parameter named `dt` (seconds).
+They run in scene/family order during play/wait at 15 fps. Animated object families
+are suspended while their animation samples; other callbacks can query sampled
+positions to follow them. Moving camera frames update even when not scene roots.
+Callbacks remain Python-only and are excluded from exported frame data. See
+**Follow objects each frame** for a spinner, follower and tracking camera.
+This adds object callbacks, not full scene updaters, always_redraw, ValueTracker,
+UpdateFromFunc or custom animation subclasses. Crossfade queries use the more
+visible snapshot; child queries retain this runtime's existing group coordinates.

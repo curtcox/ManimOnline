@@ -525,7 +525,7 @@ Background and configured export dimensions remain independent of focus.
 
 The API follows the basic frame usage in the
 [MovingCameraScene documentation](https://docs.manim.community/en/stable/reference/manim.scene.moving_camera_scene.MovingCameraScene.html).
-Rotation, 3D, moving camera updaters, frame replacement/removal effects
+Rotation, 3D, frame replacement/removal effects
 and full camera APIs remain unsupported. Camera frames cannot belong to display
 groups. Python tests cover intermediate pan/zoom, checkpoints, consecutive
 relative stages, parallel completion holds, clear persistence, camera overrides,
@@ -557,3 +557,30 @@ filtering, generators, invalid-input atomicity and restored checkpoints.
 Local Pyodide playback verified the combined fit at four seconds (8-unit width,
 2× zoom), single-circle focus at seven seconds (3-unit height, 3× zoom, x=-2),
 and the exact original view at nine seconds. DOT rendered after switching.
+
+
+## Mobject updaters
+
+Mobject callback management and recursive update/suspend/resume follow the
+[official updater API](https://docs.manim.community/en/stable/_modules/manim/mobject/mobject.html).
+A callback takes the object, optionally with a parameter named dt. Each timed
+operation starts with dt=0, advances at 15 fps and updates the exact terminal state.
+Shared family members update once in stable scene order. Camera frames join this
+update pass even when absent from drawable roots. Animation-owned families are
+suspended for the sampled operation; dependent callbacks see temporary sampled
+geometry through the original object identities. Geometry is restored in finally,
+including callback failure. Snapshots keep their original morph pivots. Crossfades
+expose their more visible snapshot to queries. Transform completion/checkpoint
+restoration preserve source callback registrations. Callbacks/suspension/private
+sample state never enter JSON. Frozen earlier frames remain immutable.
+
+Scene callbacks, ValueTracker, always_redraw, custom UpdateFromFunc animations,
+and changing scene membership/family structure during callback execution still
+need implementation. Group children retain the existing local coordinate query
+semantics. Tests cover waits, time totals, following sampled movement, camera
+tracking, suspension, callback order/removal, shared-family deduplication, failure
+cleanup, checkpoint/transform retention, and gallery terminal geometry.
+
+Local Pyodide gallery playback verified a centered camera at the three-second
+midpoint and a final x=2 focus. The follower ended at (2,1), while the independent
+spinner stopped at 450 degrees after callback removal. DOT rendered after switching.

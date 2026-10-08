@@ -1,5 +1,6 @@
 """Small, explicit Manim subset for SVG frame playback (not full Manim)."""
 import copy
+import inspect
 import json
 import math
 import sys
@@ -101,6 +102,8 @@ class Mobject:
         self.geometry_scale = 1
         self.angle = 0
         self.children = []
+        self.updaters = []
+        self.updating_suspended = False
         self.set_z_index(z_index)
         self._type = 'mobject'
 
@@ -115,6 +118,67 @@ class Mobject:
                 visit(child)
         visit(self)
         return result
+
+    def add_updater(self, update_function, index=None, call_updater=False):
+        if not callable(update_function):
+            raise TypeError('Updater must be callable')
+        inspect.signature(update_function)
+        if index is None:
+            self.updaters.append(update_function)
+        else:
+            self.updaters.insert(index, update_function)
+        if call_updater:
+            if 'dt' in inspect.signature(update_function).parameters:
+                update_function(self, 0)
+            else:
+                update_function(self)
+        return self
+
+    def remove_updater(self, update_function):
+        self.updaters = [u for u in self.updaters if u != update_function]
+        return self
+
+    def clear_updaters(self, recursive=True):
+        for mobject in self.get_family() if recursive else [self]:
+            mobject.updaters = []
+        return self
+
+    def get_updaters(self):
+        return self.updaters
+
+    def get_time_based_updaters(self):
+        return [u for u in self.updaters if 'dt' in inspect.signature(u).parameters]
+
+    def has_time_based_updater(self):
+        return bool(self.get_time_based_updaters())
+
+    def get_family_updaters(self):
+        return [u for m in self.get_family() for u in m.updaters]
+
+    def update(self, dt=0, recursive=True):
+        if not math.isfinite(dt) or dt < 0:
+            raise ValueError('Updater dt must be nonnegative and finite')
+        if self.updating_suspended:
+            return self
+        for updater in list(self.updaters):
+            if 'dt' in inspect.signature(updater).parameters:
+                updater(self, dt)
+            else:
+                updater(self)
+        if recursive:
+            for child in list(self.children):
+                child.update(dt)
+        return self
+
+    def suspend_updating(self, recursive=True):
+        for mobject in self.get_family() if recursive else [self]:
+            mobject.updating_suspended = True
+        return self
+
+    def resume_updating(self, recursive=True):
+        for mobject in self.get_family() if recursive else [self]:
+            mobject.updating_suspended = False
+        return self.update(0, recursive=recursive)
 
     def shift(self, direction):
         self.position = list(Vector(self.position) + direction)
@@ -188,6 +252,8 @@ class Mobject:
                 max(p[0] for p in points), max(p[1] for p in points))
 
     def _geometry_center(self):
+        if '_sampled_geometry_center' in self.__dict__:
+            return Vector(self._sampled_geometry_center)
         left, bottom, right, top = self._local_bounds()
         return Vector(((left + right) / 2, (bottom + top) / 2, 0))
 
@@ -386,7 +452,9 @@ class Mobject:
         if '_saved_state' not in self.__dict__:
             raise ValueError('Call save_state() before restoring an object')
         saved = self._saved_state
+        updaters, suspended = self.updaters, self.updating_suspended
         self.__dict__ = copy.deepcopy(saved)
+        self.updaters, self.updating_suspended = updaters, suspended
         self._saved_state = saved
         return self
 
@@ -396,7 +464,7 @@ class Mobject:
 
     def to_dict(self):
         result = copy.deepcopy({key: value for key, value in self.__dict__.items()
-                                if key not in ('_saved_state', 'children')})
+                                if key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center')})
         result['type'] = result.pop('_type')
         result['geometry_center'] = list(self._geometry_center())
         result['children'] = [child.to_dict() for child in self.children]
@@ -1161,7 +1229,9 @@ class Transform(Animation):
 
     def finish(self, scene):
         saved = self.mobject.__dict__.get('_saved_state')
+        updaters, suspended = self.mobject.updaters, self.mobject.updating_suspended
         self.mobject.__dict__ = copy.deepcopy(self.target.__dict__)
+        self.mobject.updaters, self.mobject.updating_suspended = updaters, suspended
         self.mobject.__dict__.pop('_saved_state', None)
         if saved is not None:
             self.mobject._saved_state = saved
@@ -1489,6 +1559,52 @@ class Scene:
         self.foreground_mobjects = []
         return self
 
+    def _update_mobjects(self, dt, overrides=None):
+        """Expose sampled geometry to dependent callbacks without committing animations."""
+        roots = list(self.mobjects)
+        if isinstance(self.camera, MovingCamera) and self.camera.frame not in roots:
+            roots.append(self.camera.frame)
+        if not any(m.get_family_updaters() for m in roots):
+            return
+        saved, blocked = {}, set()
+        def expose(mobject, snapshot):
+            if mobject in saved:
+                return
+            saved[mobject] = mobject.__dict__
+            mobject.__dict__ = dict(mobject.__dict__)
+            for key, value in snapshot.items():
+                if key not in ('type', 'children', 'geometry_center'):
+                    mobject.__dict__[key] = copy.deepcopy(value)
+            mobject._type = snapshot['type']
+            mobject._sampled_geometry_center = snapshot['geometry_center']
+            children = []
+            for index, child in enumerate(snapshot['children']):
+                member = mobject.children[index] if index < len(mobject.children) else Mobject()
+                expose(member, child)
+                children.append(member)
+            mobject.children = children
+        try:
+            for mobject, states in (overrides or {}).items():
+                blocked.update(mobject.get_family())
+                if states:
+                    # Crossfades have two visual objects; geometry queries use the
+                    # more visible one. Continuous morphs have a single snapshot.
+                    expose(mobject, max(states, key=lambda state:state['opacity']))
+                    blocked.update(mobject.get_family())
+            seen = set()
+            def visit(mobject):
+                if mobject in seen or mobject in blocked or mobject.updating_suspended:
+                    return
+                seen.add(mobject)
+                mobject.update(dt, recursive=False)
+                for child in list(mobject.children):
+                    visit(child)
+            for root in roots:
+                visit(root)
+        finally:
+            for mobject, state in saved.items():
+                mobject.__dict__ = state
+
     def capture(self, overrides=None, *, advance_time=True):
         if len(self.frames) >= MAX_FRAMES:
             raise ValueError('Preview exceeds 60 seconds / 900 frames. Shorten the scene.')
@@ -1527,9 +1643,11 @@ class Scene:
             overrides = {}
             for animation, duration in zip(animations, durations):
                 overrides.update(animation.states(time / duration, rate_func))
+            self._update_mobjects(0 if frame == 0 else 1 / FPS, overrides)
             self.capture(overrides)
         for animation in animations:
             animation.finish(self)
+        self._update_mobjects(1 / FPS, {m: [m.to_dict()] for a in animations for m in a.objects()})
 
     def validate(self, *animations):
         objects = [m for a in animations for m in a.objects()]
@@ -1551,8 +1669,11 @@ class Scene:
         count = math.ceil(duration * FPS)
         if count + len(self.frames) >= MAX_FRAMES:
             raise ValueError('Preview exceeds 60 seconds / 900 frames. Shorten the scene.')
-        for _ in range(count):
+        for frame in range(count):
+            self._update_mobjects(0 if frame == 0 else 1 / FPS)
             self.capture()
+        if count:
+            self._update_mobjects(1 / FPS)
 
     def setup(self):
         pass
@@ -1567,6 +1688,7 @@ class Scene:
         self.setup()
         self.construct()
         self.tear_down()
+        self._update_mobjects(0)
         # A final state is seekable without advancing the scene clock.
         self.capture(advance_time=False)
         return {'frames': self.frames, 'fps': FPS, 'duration': (len(self.frames)-1)/FPS}

@@ -16,6 +16,91 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_time_updaters_advance_wait_and_unanimated_play_objects(self):
+        scene = lite.Scene()
+        dot = lite.Dot().add_updater(lambda m, dt:m.shift(lite.RIGHT * dt))
+        scene.add(dot).wait(2)
+        self.assertAlmostEqual(dot.get_center()[0], 2)
+        self.assertAlmostEqual(scene.frames[15]['mobjects'][0]['position'][0], 1)
+        scene.play(lite.Create(lite.Circle()), run_time=1)
+        self.assertAlmostEqual(dot.get_center()[0], 3)
+        self.assertAlmostEqual(scene.frames[44]['mobjects'][0]['position'][0], 3 - 1/lite.FPS)
+        self.assertNotIn('updaters', dot.to_dict())
+
+    def test_followers_query_sampled_animation_and_camera_tracks_during_play(self):
+        scene = lite.MovingCameraScene()
+        dot = lite.Dot()
+        follower = lite.Square().add_updater(lambda m:m.move_to(dot.get_center()+lite.UP))
+        scene.camera.frame.add_updater(lambda m:m.move_to(dot))
+        dot.add_updater(lambda m, dt:m.shift(lite.DOWN * dt))
+        scene.add(dot, follower)
+        scene.play(dot.animate.shift(lite.RIGHT*4), run_time=2, rate_func=lite.linear)
+        midpoint = scene.frames[15]
+        self.assertEqual(midpoint['mobjects'][1]['position'], [2,1,0])
+        self.assertEqual(midpoint['camera']['frame_center'], [2,0,0])
+        self.assertEqual(dot.get_center(), lite.RIGHT*4)
+        self.assertEqual(follower.get_center(), lite.RIGHT*4+lite.UP)
+        self.assertEqual(scene.camera.frame_center, lite.RIGHT*4)
+        scene.wait(1)
+        self.assertAlmostEqual(dot.get_center()[1], -1)
+        self.assertAlmostEqual(scene.camera.frame_center[1], -1)
+
+    def test_updater_management_recursive_suspension_and_shared_family_dedup(self):
+        events = []
+        def first(m): events.append('first')
+        def timed(m, dt): events.append(dt)
+        child = lite.Circle().add_updater(first)
+        child.add_updater(timed, index=0, call_updater=True)
+        self.assertEqual(events, [0])
+        self.assertTrue(child.has_time_based_updater())
+        self.assertEqual(child.get_time_based_updaters(), [timed])
+        group = lite.Group(child)
+        self.assertEqual(group.get_family_updaters(), [timed, first])
+        group.suspend_updating().update(1)
+        self.assertEqual(events, [0])
+        group.resume_updating()
+        self.assertEqual(events, [0,0,'first'])
+        events.clear()
+        lite.Scene().add(group, lite.Group(child)).wait(1/lite.FPS)
+        self.assertEqual(events, [0,'first',1/lite.FPS,'first'])
+        child.remove_updater(first).remove_updater(first)
+        self.assertEqual(child.get_updaters(), [timed])
+        group.clear_updaters()
+        self.assertFalse(child.has_time_based_updater())
+        with self.assertRaises(TypeError): child.add_updater(3)
+        with self.assertRaises(ValueError): child.update(float('nan'))
+
+    def test_updater_failure_restores_live_sampled_geometry(self):
+        scene = lite.Scene()
+        circle = lite.Circle()
+        def fail(m):
+            if circle.get_center()[0] > 0: raise RuntimeError('updater failed')
+        follower = lite.Dot().add_updater(fail)
+        scene.add(circle, follower)
+        before = circle.to_dict()
+        with self.assertRaisesRegex(RuntimeError, 'updater failed'):
+            scene.play(circle.animate.shift(lite.RIGHT), rate_func=lite.linear)
+        self.assertEqual(circle.to_dict(), before)
+        self.assertNotIn('_sampled_geometry_center', circle.__dict__)
+
+    def test_transform_keeps_source_updaters_and_updater_gallery(self):
+        scene = lite.Scene()
+        source = lite.Circle()
+        updater = lambda m,dt:m.shift(lite.UP*dt)
+        source.add_updater(updater).save_state()
+        scene.play(lite.Transform(source,lite.Square().shift(lite.RIGHT)))
+        self.assertEqual(source.get_updaters(), [updater])
+        self.assertEqual(source.get_center(), lite.RIGHT)
+        source.restore()
+        self.assertEqual(source.get_updaters(), [updater])
+        result = json.loads(lite.render_scene((ROOT/'examples/updater_scene.py').read_text()))
+        self.assertEqual(result['duration'], 6)
+        midpoint = result['frames'][45]
+        self.assertAlmostEqual(midpoint['mobjects'][0]['position'][0], 0)
+        self.assertEqual(midpoint['mobjects'][1]['position'], [0,1,0])
+        self.assertEqual(midpoint['camera']['frame_center'], [0,0,0])
+        self.assertEqual(result['frames'][-1]['mobjects'][1]['position'], [2,1,0])
+
     def test_auto_zoom_fits_wide_and_tall_bounds_without_eager_animation(self):
         scene = lite.MovingCameraScene()
         camera = scene.camera

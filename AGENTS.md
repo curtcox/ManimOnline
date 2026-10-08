@@ -100,3 +100,8 @@ Read `examples/auto_zoom_scene.py` for combined camera fitting, single-object
 focus and restoration. Margin adds to the chosen full frame dimension; preserve
 inclusive visibility filtering, pre-mutation validation and deferred animation.
 Framing uses existing geometry bounds; text glyph measurements remain open.
+
+Read `examples/updater_scene.py` for timed callbacks, sampled-object following,
+camera tracking, and callback cleanup. Keep callbacks out of frame JSON and expose
+animation samples through original identities only for the update pass. Restore
+live animated geometry in finally; preserve source callbacks during transforms.

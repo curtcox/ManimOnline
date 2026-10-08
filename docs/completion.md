@@ -47,7 +47,7 @@ restructuring and disconnected subpath alignment remain open.
 
 Full Community parity additionally requires general geometry/path morphing, full scene-family
 composition and layering, 3D cameras and advanced camera APIs (2D settings, moving-camera pan/zoom and automatic bounds fitting now have Python/SVG tests), glyph-level text/TeX
-semantics, updaters, graphing, 3D, rendering/video output, and broad API/package
+semantics, broader updater/ValueTracker utilities (Mobject callbacks now implemented), graphing, 3D, rendering/video output, and broad API/package
 compatibility. These are not implemented or proven by the current tests. Keep
 the original requested scope open until its requirements are clarified and
 verified; successful individual feature commits do not close the overall goal.
