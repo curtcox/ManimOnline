@@ -20,7 +20,10 @@ Manim-lite is a compatibility subset, not the Manim Community engine.
 ## Implemented milestone and next work
 
 The first animation slice implements creation/fades, timed transforms, animate
-method chains, waits, play/pause, replay, seeking, and current-frame SVG download.
+method chains, waits, play/pause, replay, seeking, and current-frame SVG/PNG download.
+PNG snapshots pause playback and rasterize the serialized displayed frame at
+800 × 450 on black. Image loading has a ten-second deadline; snapshot URLs are
+released on success or failure, and changed-source results are discarded.
 Creation traces normalized SVG outlines and fades in their fill. Uncreate
 reverses drawing and removes the object. Group children and arrow components
 reveal simultaneously; text creation and writing use fades. Transforms between

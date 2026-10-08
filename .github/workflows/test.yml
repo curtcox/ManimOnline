@@ -24,3 +24,4 @@ jobs:
           node --check src/manim-renderer.js
           node --check src/examples.js
           node --check src/manim-math.js
+          node --check src/manim-export.js

@@ -234,8 +234,11 @@ interpolation limitations apply to this effect as well.
 
 Animation previews run at
 15 frames per second and are limited to 60 seconds, with a 90-second deadline
-for loading and execution. Editing cancels active computation. Download saves
-the current SVG frame, not a video.
+for loading and execution. Editing cancels active computation. Choose SVG or PNG
+under Frame format, then Download to save the current frame. PNG pauses playback
+at the displayed frame and exports an 800 × 450 image with a black background.
+These are still images, not video exports. SVG retains vector formula paths;
+PNG includes those paths and the browser's rendered text.
 
 Full LaTeX documents, 3D, updaters, full NumPy integration, MP4 export, and offline
 caching are not implemented. The broader examples directory includes APIs

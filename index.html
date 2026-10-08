@@ -482,6 +482,14 @@ class HelloWorld(Scene):
     <label>
       <a href="#" target="_blank" id="download">Download</a>
     </label>
+    <label class="manim-options" id="manim-export-option">
+      Frame format:
+      <select id="manim-export-format" aria-label="Frame format">
+        <option value="svg">SVG</option>
+        <option value="png">PNG</option>
+      </select>
+    </label>
+    <span id="export-status" role="status"></span>
 
     <label>
       <input type="button" value="Share" id="share">
@@ -512,6 +520,7 @@ class HelloWorld(Scene):
   <script src="src/manim-player.js?v=mathtex-1"></script>
   <script src="src/examples.js"></script>
   <script src="src/manim-math.js?v=1"></script>
+  <script src="src/manim-export.js?v=1"></script>
   <script>
     const editorElement = document.getElementById('editor');
     const reviewElement = document.getElementById('review');
@@ -526,7 +535,6 @@ class HelloWorld(Scene):
     const typeIndicator = document.getElementById('type-indicator');
     const pyodideStatus = document.getElementById('pyodide-status');
     const graphvizOptions = document.querySelector('.graphviz-options');
-    const manimOptions = document.querySelector('.manim-options');
     const sceneNameInput = document.getElementById('scene-name');
     const sceneNamesList = document.getElementById('scene-names');
 
@@ -667,6 +675,45 @@ class HelloWorld(Scene):
 
       let renderRevision = 0;
       let player = null;
+      let exportingPNG = false;
+      const frameFormat = document.getElementById('manim-export-format');
+      const exportStatus = document.getElementById('export-status');
+      downloadBtn.addEventListener('click', async event => {
+        if (currentType !== 'manim' || frameFormat.value !== 'png') return;
+        event.preventDefault();
+        if (exportingPNG) return;
+        if (!player || reviewer.classList.contains('working') || reviewer.classList.contains('error')) {
+          exportStatus.textContent = 'Render an animation before downloading a frame.';
+          return;
+        }
+        const snapshotPlayer = player;
+        const revision = renderRevision;
+        snapshotPlayer.pause();
+        const source = new XMLSerializer().serializeToString(snapshotPlayer.stage.firstElementChild);
+        exportingPNG = true;
+        downloadBtn.setAttribute('aria-busy', 'true');
+        exportStatus.textContent = 'Preparing PNG…';
+        try {
+          const blob = await ManimExport.png(source);
+          if (revision !== renderRevision || player !== snapshotPlayer) return;
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = 'manim.png';
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+          exportStatus.textContent = 'PNG downloaded.';
+        } catch (error) {
+          if (revision === renderRevision) exportStatus.textContent = error.message;
+        } finally {
+          exportingPNG = false;
+          downloadBtn.removeAttribute('aria-busy');
+          if (revision !== renderRevision) exportStatus.textContent = '';
+        }
+      });
+      frameFormat.addEventListener('change', () => { exportStatus.textContent = ''; });
       const manimClient = new ManimClient({ onStatus: text => {
         pyodideStatus.textContent = text;
         pyodideStatus.className = 'loading';
@@ -706,6 +753,7 @@ class HelloWorld(Scene):
 
       function invalidateRender() {
         renderRevision++;
+        exportStatus.textContent = '';
         if (manimClient.pending) manimClient.cancel();
         if (player) player.pause();
         reviewer.classList.remove('working');
@@ -828,7 +876,7 @@ class HelloWorld(Scene):
       }
 
       function updateTypeIndicator(type) {
-        manimOptions.classList.toggle('hidden', type !== 'manim');
+        document.querySelectorAll('.manim-options').forEach(option => option.classList.toggle('hidden', type !== 'manim'));
         currentType = type;
         typeIndicator.className = type;
 
