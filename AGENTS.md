@@ -24,7 +24,8 @@ compatibility layer, not a server running full Manim Community.
 13. `examples/growth_scene.py` for geometry growth and staggered shrink removal.
 14. `examples/style_scene.py` for independent style channels and group opacity.
 15. `examples/restore_scene.py` for checkpoint restoration and zero-size recovery.
-16. `todo/master_plan.md` and the other `todo/` documents for background plans.
+16. `examples/indicate_scene.py` for temporary highlights and staggered emphasis.
+17. `todo/master_plan.md` and the other `todo/` documents for background plans.
 
 `ace/`, `viz-global.js`, and `svg-pan-zoom.min.js` are vendored dependencies.
 Avoid editing these to implement Manim features. The Markdown files under

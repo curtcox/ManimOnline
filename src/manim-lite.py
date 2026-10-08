@@ -430,6 +430,10 @@ def smooth(t):
     return t * t * (3 - 2 * t)
 
 
+def there_and_back(t):
+    return smooth(2 * t if t <= 0.5 else 2 * (1 - t))
+
+
 def interpolate(start, end, alpha):
     if isinstance(start, (int, float)) and isinstance(end, (int, float)):
         return start + (end - start) * alpha
@@ -603,6 +607,25 @@ class Restore(Transform):
     def __init__(self, mobject, **kwargs):
         # The target is snapshotted now, as for other Transform animations.
         super().__init__(mobject, mobject.copy().restore(), **kwargs)
+
+
+class Indicate(Animation):
+    """Temporarily scale and recolor a snapshot without changing live state."""
+    def __init__(self, mobject, scale_factor=1.2, color=YELLOW,
+                 rate_func=there_and_back, **kwargs):
+        super().__init__(mobject, rate_func=rate_func, **kwargs)
+        if not math.isfinite(scale_factor) or scale_factor < 0:
+            raise ValueError('Indicate scale_factor must be nonnegative and finite')
+        self.scale_factor, self.color = scale_factor, color
+
+    def begin(self, scene):
+        super().begin(scene)
+        self.highlight = self.mobject.copy().scale(self.scale_factor).set_color(self.color).to_dict()
+
+    def sample(self, alpha):
+        if alpha == 0:
+            return [copy.deepcopy(self.start)]
+        return [interpolate(self.start, self.highlight, alpha)]
 
 
 class Rotate(Animation):
@@ -814,11 +837,11 @@ class Scene:
 EXPORTS = ['Scene', 'Mobject', 'Circle', 'Arc', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'VGroup', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'MoveAlongPath',
-           'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore',
+           'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform', 'UP', 'DOWN', 'LEFT',
            'RIGHT', 'ORIGIN', 'OUT', 'IN', 'UL', 'UR', 'DL', 'DR', 'BLUE', 'RED', 'GREEN',
            'YELLOW', 'PURPLE', 'ORANGE', 'WHITE', 'BLACK', 'GRAY', 'GREY', 'PINK',
-           'linear', 'smooth', 'PI', 'TAU', 'DEGREES']
+           'linear', 'smooth', 'there_and_back', 'PI', 'TAU', 'DEGREES']
 
 
 def render_scene(source, scene_name=None):

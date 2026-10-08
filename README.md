@@ -44,6 +44,7 @@ Then open `http://localhost:8000` in your browser.
 - [Growth scene](examples/growth_scene.py): growth from a point, group growth, and staggered shrinking.
 - [Style scene](examples/style_scene.py): independent fill/outline colors and group opacity changes.
 - [Restore scene](examples/restore_scene.py): saved geometry/styles, animated restoration, and recovery from zero size.
+- [Indicate scene](examples/indicate_scene.py): temporary highlights and staggered emphasis.
 
 ## Supported browser animation subset
 
@@ -57,7 +58,7 @@ Manim-like runtime, **not the full Manim Community engine**.
 - Animations: `Create`, `Uncreate`, `Write`, `FadeIn`, `FadeOut`, `GrowFromCenter`,
   `GrowFromPoint`, `ShrinkToCenter`, `Rotate`,
   `Rotating`, `MoveAlongPath`, `AnimationGroup`, `LaggedStart`, `Transform`, and
-  `ReplacementTransform`, and `Restore`; chained `.animate.shift()`, `.move_to()`,
+  `ReplacementTransform`, `Restore`, and `Indicate`; chained `.animate.shift()`, `.move_to()`,
   `.set_color()`, `.set_fill()`, `.set_stroke()`, `.set_opacity()`, `.scale()`, `.rotate()`,
   `.next_to()`, `.arrange()`, and `.restore()`.
 - Layout: `move_to` centers geometry on a point or another object; `next_to`
@@ -177,6 +178,19 @@ Keep working through the restored group instead of retaining old child reference
 Checkpoints do not capture scene membership or camera state and are excluded
 from frame output and SVG export. Removed objects can be reintroduced by a
 Restore animation; a direct restore does not add them to the scene.
+
+`Indicate(object, scale_factor=1.2, color=YELLOW)` temporarily scales an object
+around its center and recolors both fill and stroke. It defaults to one second
+with `there_and_back` easing: the effect peaks halfway through, then returns.
+Fill/stroke opacity and rotation are preserved. Whole groups and text are
+supported, including staggered animation groups. The live object, its children,
+and saved checkpoint remain unchanged; the original appearance is always held
+after the effect ends. Custom `rate_func` controls intermediate progress, but
+an easing that does not return to zero can jump back at completion. The exported
+`there_and_back` uses this runtime's cubic smooth curve; ordinary transforms
+still commit their destination at completion when using this rate function.
+Scale factors must be finite and nonnegative. Preview bounds and color
+interpolation limitations apply to this effect as well.
 
 Animation previews run at
 15 frames per second and are limited to 60 seconds, with a 90-second deadline

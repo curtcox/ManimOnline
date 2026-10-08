@@ -16,6 +16,60 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_indicate_peaks_and_returns_without_mutating_object_or_checkpoint(self):
+        shape = lite.Arc(fill_color=lite.BLUE, stroke_color=lite.PURPLE, fill_opacity=0.4)
+        shape.scale(2).rotate(lite.PI / 3).shift(lite.LEFT).save_state()
+        original = shape.to_dict()
+        scene = lite.Scene()
+        scene.play(lite.Indicate(shape, scale_factor=1.5), run_time=4)
+        peak = scene.frames[30]['mobjects'][0]
+        self.assertEqual(peak['geometry_scale'], 3)
+        self.assertEqual((peak['fill_color'], peak['stroke_color']), (lite.YELLOW.lower(), lite.YELLOW.lower()))
+        self.assertEqual(peak['fill_opacity'], original['fill_opacity'])
+        self.assertEqual(peak['position'], original['position'])
+        self.assertEqual(peak['angle'], original['angle'])
+        self.assertEqual(scene.frames[15], scene.frames[45])
+        self.assertEqual(shape.to_dict(), original)
+        self.assertIs(scene.mobjects[0], shape)
+        shape.shift(lite.RIGHT).restore()
+        self.assertEqual(shape.to_dict(), original)
+
+    def test_indicate_samples_current_state_and_preserves_group_child_identity(self):
+        child = lite.Circle(color=lite.GREEN)
+        group = lite.VGroup(child, lite.Square(color=lite.RED)).arrange().rotate(lite.PI / 4)
+        effect = lite.Indicate(group, color=lite.ORANGE)
+        group.shift(lite.UP)
+        original = group.to_dict()
+        scene = lite.Scene()
+        scene.play(effect, run_time=2)
+        peak = scene.frames[15]['mobjects'][0]
+        self.assertEqual(peak['geometry_scale'], 1.2)
+        self.assertEqual(peak['children'][0]['stroke_color'], lite.ORANGE.lower())
+        self.assertEqual(group.to_dict(), original)
+        self.assertIs(group.children[0], child)
+
+    def test_indicate_finished_effect_holds_original_until_longer_animation_ends(self):
+        result = render('a = Square(color=BLUE)\nb = Circle(color=RED).shift(RIGHT * 3)\nself.play(AnimationGroup(Indicate(a, run_time=2), Create(b, run_time=4)))')
+        state = result['frames'][45]['mobjects'][0]
+        self.assertEqual(state['geometry_scale'], 1)
+        self.assertEqual(state['stroke_color'], lite.BLUE)
+        self.assertEqual(result['frames'][-1]['mobjects'][0], result['frames'][0]['mobjects'][0])
+
+    def test_indicate_rate_override_and_scale_validation(self):
+        result = render('self.play(Indicate(Square(), scale_factor=2, rate_func=linear), run_time=2)')
+        self.assertEqual(result['frames'][15]['mobjects'][0]['geometry_scale'], 1.5)
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['geometry_scale'], 1)
+        self.assertEqual([lite.there_and_back(t) for t in (0, 0.25, 0.5, 0.75, 1)], [0, 0.5, 1, 0.5, 0])
+        for factor in (-1, float('nan'), float('inf')):
+            with self.assertRaises(ValueError):
+                lite.Indicate(lite.Square(), scale_factor=factor)
+
+    def test_indicate_example_restores_all_styles_and_geometry(self):
+        result = json.loads(lite.render_scene((ROOT / 'examples/indicate_scene.py').read_text()))
+        self.assertEqual(result['duration'], 9)
+        first, last = result['frames'][0]['mobjects'], result['frames'][-1]['mobjects']
+        self.assertEqual(first, last)
+
     def test_save_and_restore_are_repeatable_isolated_and_replace_the_checkpoint(self):
         shape = lite.Arc().set_fill(lite.BLUE, 0.4).set_stroke(lite.YELLOW, 4)
         original = shape.to_dict()

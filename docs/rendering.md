@@ -118,6 +118,17 @@ Camera state, scene membership, child identity preservation, and undo stacks
 are outside this API. Construct Restore after saving the intended checkpoint;
 the animation target is snapshotted at construction.
 
+`Indicate` snapshots the current object at playback start and interpolates
+toward a scaled, recolored snapshot. Its default there_and_back curve peaks at
+halfway and returns to zero. Terminal frames always hold the exact original
+state, and completion does not replace live objects or children or alter saved
+checkpoints. Existing group scheduling supports independent staggered highlights.
+Custom scale_factor/color and duration/easing are supported; factors must be
+nonnegative and finite. Custom easing that ends away from zero jumps back when
+the effect completes. The public there_and_back helper uses cubic smooth easing;
+other transform animations still commit their target at completion. This is a
+preview indication effect, not full Manim rate-function/transform semantics.
+
 Next work can add additional verified compatibility APIs, geometry-aware path
 transforms, glyph outline rendering, sequential animation composition, and an offline
 asset strategy. Keep DOT
@@ -138,6 +149,7 @@ Use `examples/arc_scene.py` for open paths, opposite sweeps, and transformed arc
 Use `examples/growth_scene.py` for point/center growth and staggered shrink cleanup.
 Use `examples/style_scene.py` for distinct fill/stroke colors and animated group opacity.
 Use `examples/restore_scene.py` for group restoration and recovery after shrinking.
+Use `examples/indicate_scene.py` for temporary size/color emphasis and staggered highlights.
 
 ## Verification
 
@@ -164,6 +176,7 @@ independently of browser integration; report both categories separately.
 - [Manim shrinking](https://docs.manim.community/en/stable/reference/manim.animation.transform.ShrinkToCenter.html)
 - [Manim vector styles](https://docs.manim.community/en/stable/reference/manim.mobject.types.vectorized_mobject.VMobject.html)
 - [Manim restoration](https://docs.manim.community/en/stable/reference/manim.animation.transform.Restore.html)
+- [Manim indication](https://docs.manim.community/en/stable/reference/manim.animation.indication.Indicate.html)
 - [Manim configuration](https://docs.manim.community/en/stable/guides/configuration.html)
 - [Pyodide worker guidance](https://pyodide.org/en/stable/usage/webworker.html)
 
