@@ -16,6 +16,69 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_line_endpoint_queries_follow_geometry_transforms(self):
+        for cls in (lite.Line, lite.Arrow):
+            line = cls((1, 1), (3, 1)).scale(-2).rotate(lite.PI / 2).shift(lite.RIGHT)
+            self.assertPointAlmostEqual(line.get_start(), (3, 3, 0))
+            self.assertPointAlmostEqual(line.get_end(), (3, -1, 0))
+            self.assertPointAlmostEqual(line.get_vector(), (0, -4, 0))
+            self.assertPointAlmostEqual(line.get_unit_vector(), (0, -1, 0))
+            self.assertAlmostEqual(line.get_angle(), -lite.PI / 2)
+            self.assertAlmostEqual(line.get_length(), 4)
+            self.assertEqual(line.get_start_and_end(), (line.get_start(), line.get_end()))
+
+    def test_endpoint_edit_preserves_styles_checkpoint_and_transforms(self):
+        line = lite.Arrow(color=lite.PURPLE, stroke_opacity=0.5).scale(2).rotate(0.7).save_state()
+        original = line.to_dict()
+        self.assertIs(line.put_start_and_end_on((-3, 1), (2, -2)), line)
+        self.assertPointAlmostEqual(line.get_start(), (-3, 1, 0))
+        self.assertPointAlmostEqual(line.get_end(), (2, -2, 0))
+        self.assertEqual((line.angle, line.geometry_scale), (0.7, 2))
+        self.assertEqual((line.stroke_color, line.stroke_opacity), (lite.PURPLE, 0.5))
+        line.restore()
+        self.assertEqual(line.to_dict(), original)
+
+    def test_animated_endpoint_edit_matches_linear_endpoint_motion(self):
+        line = lite.Line((1, 2), (4, 3)).rotate(0.8).scale(-1.5).shift(lite.LEFT)
+        old_start, old_end = line.get_start_and_end()
+        new_start, new_end = lite.Vector((-3, 1)), lite.Vector((2, -2))
+        scene = lite.Scene()
+        scene.play(line.animate.put_start_and_end_on(new_start, new_end), run_time=2, rate_func=lite.linear)
+        middle = line.copy()
+        middle.__dict__.update(scene.frames[15]['mobjects'][0])
+        self.assertPointAlmostEqual(middle.get_start(), (old_start + new_start) * 0.5)
+        self.assertPointAlmostEqual(middle.get_end(), (old_end + new_end) * 0.5)
+        self.assertPointAlmostEqual(line.get_start(), new_start)
+        self.assertPointAlmostEqual(line.get_end(), new_end)
+
+    def test_degenerate_connectors_recover_and_invalid_endpoints_fail(self):
+        line = lite.Line(lite.ORIGIN, lite.ORIGIN).scale(0).rotate(1)
+        self.assertEqual(line.get_unit_vector(), lite.ORIGIN)
+        self.assertEqual(line.get_length(), 0)
+        line.put_start_and_end_on(lite.LEFT, lite.RIGHT)
+        self.assertPointAlmostEqual(line.get_start(), lite.LEFT)
+        self.assertPointAlmostEqual(line.get_end(), lite.RIGHT)
+        line.put_start_and_end_on(lite.UP, lite.UP)
+        self.assertEqual(line.get_length(), 0)
+        original = line.to_dict()
+        for point in ((float('nan'), 0), (float('inf'), 0)):
+            with self.assertRaises(ValueError):
+                line.put_start_and_end_on(point, lite.ORIGIN)
+            with self.assertRaises(ValueError):
+                lite.Line(lite.ORIGIN, point).get_end()
+        with self.assertRaises(NotImplementedError):
+            line.put_start_and_end_on(lite.OUT, lite.ORIGIN)
+        self.assertEqual(line.to_dict(), original)
+
+    def test_connector_example_renders_restored_arrow(self):
+        result = json.loads(lite.render_scene((ROOT / 'examples/connector_scene.py').read_text()))
+        self.assertEqual(result['duration'], 8)
+        self.assertEqual([m['type'] for m in result['frames'][-1]['mobjects']], ['arrow', 'text'])
+        initial, final = result['frames'][0]['mobjects'][0], result['frames'][-1]['mobjects'][0]
+        for key in ('position', 'start', 'end', 'angle', 'geometry_scale'):
+            self.assertEqual(initial[key], final[key])
+        self.assertEqual(initial['stroke_color'].lower(), final['stroke_color'].lower())
+
     def test_transform_from_copy_preserves_identity_styles_and_checkpoints(self):
         source = lite.Square(color=lite.BLUE).shift(lite.LEFT * 2).save_state()
         target = lite.Square(color=lite.RED).shift(lite.RIGHT * 2).save_state()

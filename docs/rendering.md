@@ -137,6 +137,19 @@ independently; add them explicitly to keep them visible. Matching geometry
 interpolates, differing types crossfade, as with other transforms. Destination
 family conflicts are rejected. This does not implement full Manim path morphing.
 
+`Line` and `Arrow` expose transformed endpoints, vector, length, unit vector,
+and angle through `get_start`, `get_end`, `get_start_and_end`, `get_vector`,
+`get_length`, `get_unit_vector`, and `get_angle`. Endpoint editing via
+`put_start_and_end_on` also works in animate chains. It preserves styles,
+checkpoints, rotation, and nonzero scale; zero-scale lines recover using scale 1.
+Ordinary endpoint animations interpolate both endpoints linearly with linear
+easing. Recovery from zero scale follows the existing geometry interpolation.
+Zero-length connectors have zero unit vector and angle. Coordinates must be
+finite and in the XY plane. Queries refer to a child's coordinates within its
+parent group; they do not accumulate parent transforms. Arrow queries use the
+shaft endpoints, with the renderer's existing fixed local arrowhead. Buffers,
+curved connectors, and attachment to object boundaries remain unsupported.
+
 Next work can add additional verified compatibility APIs, geometry-aware path
 transforms, glyph outline rendering, sequential animation composition, and an offline
 asset strategy. Keep DOT
@@ -159,6 +172,7 @@ Use `examples/style_scene.py` for distinct fill/stroke colors and animated group
 Use `examples/restore_scene.py` for group restoration and recovery after shrinking.
 Use `examples/indicate_scene.py` for temporary size/color emphasis and staggered highlights.
 Use `examples/copy_scene.py` for retained originals, crossfades, and target cleanup.
+Use `examples/connector_scene.py` for endpoint motion and restored rotated arrows.
 
 ## Verification
 
@@ -187,6 +201,7 @@ independently of browser integration; report both categories separately.
 - [Manim restoration](https://docs.manim.community/en/stable/reference/manim.animation.transform.Restore.html)
 - [Manim indication](https://docs.manim.community/en/stable/reference/manim.animation.indication.Indicate.html)
 - [Manim copy transforms](https://docs.manim.community/en/stable/reference/manim.animation.transform.TransformFromCopy.html)
+- [Manim line geometry](https://docs.manim.community/en/stable/reference/manim.mobject.geometry.line.Line.html)
 - [Manim configuration](https://docs.manim.community/en/stable/guides/configuration.html)
 - [Pyodide worker guidance](https://pyodide.org/en/stable/usage/webworker.html)
 

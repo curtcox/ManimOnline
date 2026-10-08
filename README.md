@@ -46,6 +46,7 @@ Then open `http://localhost:8000` in your browser.
 - [Restore scene](examples/restore_scene.py): saved geometry/styles, animated restoration, and recovery from zero size.
 - [Indicate scene](examples/indicate_scene.py): temporary highlights and staggered emphasis.
 - [Copy scene](examples/copy_scene.py): copy transforms, retained originals, and target cleanup.
+- [Connector scene](examples/connector_scene.py): endpoint motion on a rotated arrow and checkpoint restoration.
 
 ## Supported browser animation subset
 
@@ -62,6 +63,9 @@ Manim-like runtime, **not the full Manim Community engine**.
   `ReplacementTransform`, `TransformFromCopy`, `Restore`, and `Indicate`; chained `.animate.shift()`, `.move_to()`,
   `.set_color()`, `.set_fill()`, `.set_stroke()`, `.set_opacity()`, `.scale()`, `.rotate()`,
   `.next_to()`, `.arrange()`, and `.restore()`.
+- Connectors: `Line` and `Arrow` support `get_start()`, `get_end()`,
+  `get_start_and_end()`, `get_vector()`, `get_length()`, `get_unit_vector()`,
+  `get_angle()`, and direct or animated `put_start_and_end_on(start, end)`.
 - Layout: `move_to` centers geometry on a point or another object; `next_to`
   positions shapes with `direction`, `buff`, and `aligned_edge`; `VGroup.arrange`
   creates rows or columns with optional `center=False`.
@@ -107,6 +111,12 @@ center. `Rotating` defaults to a full turn over five seconds at a constant rate;
 `angle`, `about_point`, `run_time`, and `rate_func`. `OUT` rotates counterclockwise
 and `IN` reverses it; other axes are unsupported. Unlike `.animate.rotate()`,
 these animations sample the circular trajectory at each frame.
+
+Connector endpoint queries include the line's own scale, rotation, and position.
+`put_start_and_end_on` accepts finite XY points and preserves styles and saved
+states. Zero-length and zero-scale connectors can be expanded again. Queries on
+group children use parent-local coordinates. Curved connectors, boundary
+attachments, and line buffers remain unsupported; arrows use shaft endpoints.
 
 `Dot` is a filled circle with radius 0.08 and no outline by default. Layout
 uses bounding boxes in the XY plane and a default gap of 0.25 units. Text

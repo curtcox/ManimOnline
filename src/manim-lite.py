@@ -370,6 +370,56 @@ class Line(Mobject):
         self._type = 'line'
         self.start, self.end = list(Vector(start)), list(Vector(end))
 
+    @staticmethod
+    def _endpoints(start, end):
+        start, end = Vector(start), Vector(end)
+        if not all(math.isfinite(v) for v in (*start, *end)):
+            raise ValueError('Line endpoints must be finite')
+        if start[2] or end[2]:
+            raise NotImplementedError('Line endpoints support only the XY plane')
+        return start, end
+
+    def get_start(self):
+        self._endpoints(self.start, self.end)
+        return self._point_to_world(Vector(self.start))
+
+    def get_end(self):
+        self._endpoints(self.start, self.end)
+        return self._point_to_world(Vector(self.end))
+
+    def get_start_and_end(self):
+        return self.get_start(), self.get_end()
+
+    def get_vector(self):
+        return self.get_end() - self.get_start()
+
+    def get_length(self):
+        return math.dist(self.get_start(), self.get_end())
+
+    def get_unit_vector(self):
+        length = self.get_length()
+        return self.get_vector() * (1 / length) if length else ORIGIN
+
+    def get_angle(self):
+        vector = self.get_vector()
+        return math.atan2(vector[1], vector[0]) if any(vector) else 0
+
+    def put_start_and_end_on(self, start, end):
+        start, end = self._endpoints(start, end)
+        # Encode the requested endpoints in the current transform's local space.
+        # This keeps ordinary endpoint animations linear even on rotated lines.
+        scale = self.geometry_scale or 1
+        center = (start + end) * 0.5
+        def local(point):
+            dx, dy, _ = point - center
+            return [(dx * math.cos(self.angle) + dy * math.sin(self.angle)) / scale,
+                    (-dx * math.sin(self.angle) + dy * math.cos(self.angle)) / scale, 0]
+        local_start, local_end = self._endpoints(local(start), local(end))
+        self.start, self.end = list(local_start), list(local_end)
+        self.position = list(center)
+        self.geometry_scale = scale
+        return self
+
 
 class Arrow(Line):
     def __init__(self, *args, **kwargs):
@@ -731,7 +781,7 @@ class Animate(Transform):
     def __getattr__(self, name):
         if name.startswith('__'):
             raise AttributeError(name)
-        if name not in ('shift', 'move_to', 'move_arc_center_to', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'restore', 'scale', 'rotate'):
+        if name not in ('shift', 'move_to', 'move_arc_center_to', 'put_start_and_end_on', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'restore', 'scale', 'rotate'):
             raise NotImplementedError(f'animate.{name} is not supported yet')
         def apply(*args, **kwargs):
             getattr(self.target, name)(*args, **kwargs)
