@@ -129,6 +129,14 @@ the effect completes. The public there_and_back helper uses cubic smooth easing;
 other transform animations still commit their target at completion. This is a
 preview indication effect, not full Manim rate-function/transform semantics.
 
+`TransformFromCopy` snapshots source and destination at playback start and
+animates only the destination. It adds the destination once, preserves both live
+objects and their child identities/checkpoints, and holds the destination after
+completion in longer groups. Sources are read-only references and may animate
+independently; add them explicitly to keep them visible. Matching geometry
+interpolates, differing types crossfade, as with other transforms. Destination
+family conflicts are rejected. This does not implement full Manim path morphing.
+
 Next work can add additional verified compatibility APIs, geometry-aware path
 transforms, glyph outline rendering, sequential animation composition, and an offline
 asset strategy. Keep DOT
@@ -150,6 +158,7 @@ Use `examples/growth_scene.py` for point/center growth and staggered shrink clea
 Use `examples/style_scene.py` for distinct fill/stroke colors and animated group opacity.
 Use `examples/restore_scene.py` for group restoration and recovery after shrinking.
 Use `examples/indicate_scene.py` for temporary size/color emphasis and staggered highlights.
+Use `examples/copy_scene.py` for retained originals, crossfades, and target cleanup.
 
 ## Verification
 
@@ -177,6 +186,7 @@ independently of browser integration; report both categories separately.
 - [Manim vector styles](https://docs.manim.community/en/stable/reference/manim.mobject.types.vectorized_mobject.VMobject.html)
 - [Manim restoration](https://docs.manim.community/en/stable/reference/manim.animation.transform.Restore.html)
 - [Manim indication](https://docs.manim.community/en/stable/reference/manim.animation.indication.Indicate.html)
+- [Manim copy transforms](https://docs.manim.community/en/stable/reference/manim.animation.transform.TransformFromCopy.html)
 - [Manim configuration](https://docs.manim.community/en/stable/guides/configuration.html)
 - [Pyodide worker guidance](https://pyodide.org/en/stable/usage/webworker.html)
 

@@ -45,6 +45,7 @@ Then open `http://localhost:8000` in your browser.
 - [Style scene](examples/style_scene.py): independent fill/outline colors and group opacity changes.
 - [Restore scene](examples/restore_scene.py): saved geometry/styles, animated restoration, and recovery from zero size.
 - [Indicate scene](examples/indicate_scene.py): temporary highlights and staggered emphasis.
+- [Copy scene](examples/copy_scene.py): copy transforms, retained originals, and target cleanup.
 
 ## Supported browser animation subset
 
@@ -58,7 +59,7 @@ Manim-like runtime, **not the full Manim Community engine**.
 - Animations: `Create`, `Uncreate`, `Write`, `FadeIn`, `FadeOut`, `GrowFromCenter`,
   `GrowFromPoint`, `ShrinkToCenter`, `Rotate`,
   `Rotating`, `MoveAlongPath`, `AnimationGroup`, `LaggedStart`, `Transform`, and
-  `ReplacementTransform`, `Restore`, and `Indicate`; chained `.animate.shift()`, `.move_to()`,
+  `ReplacementTransform`, `TransformFromCopy`, `Restore`, and `Indicate`; chained `.animate.shift()`, `.move_to()`,
   `.set_color()`, `.set_fill()`, `.set_stroke()`, `.set_opacity()`, `.scale()`, `.rotate()`,
   `.next_to()`, `.arrange()`, and `.restore()`.
 - Layout: `move_to` centers geometry on a point or another object; `next_to`
@@ -78,6 +79,12 @@ Manim-like runtime, **not the full Manim Community engine**.
 simultaneously. Text creation and `Write` use fades because glyph paths are not
 available in this runtime. Arrow shafts and heads reveal together. Transforms
 interpolate matching geometry and crossfade between different shape types.
+`TransformFromCopy(source, target)` animates the target from a snapshot of the
+source while preserving the source. Add the source first to keep it visible;
+only the target is automatically added. Both are snapshotted at playback start.
+The target retains its identity, children, and saved state for later animations.
+An already visible target is animated in place. Sources may animate independently;
+targets must obey the usual one-animation-per-object and group-family rules.
 While tracing, stroke widths scale with the shape and preview size so the
 drawn fraction stays accurate; completed objects use fixed-width strokes.
 Leave the Scene field empty to render the first scene defined in the source,

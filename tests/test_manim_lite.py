@@ -16,6 +16,93 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_transform_from_copy_preserves_identity_styles_and_checkpoints(self):
+        source = lite.Square(color=lite.BLUE).shift(lite.LEFT * 2).save_state()
+        target = lite.Square(color=lite.RED).shift(lite.RIGHT * 2).save_state()
+        original, destination = source.to_dict(), target.to_dict()
+        scene = lite.Scene().add(source)
+        scene.play(lite.TransformFromCopy(source, target), run_time=2, rate_func=lite.linear)
+        middle = scene.frames[15]['mobjects']
+        self.assertEqual(middle[0], original)
+        self.assertEqual(middle[1]['position'], [0, 0, 0])
+        self.assertEqual(scene.frames[0]['mobjects'], [original, original])
+        self.assertEqual(source.to_dict(), original)
+        self.assertEqual(target.to_dict(), destination)
+        self.assertEqual(scene.mobjects, [source, target])
+        source.shift(lite.UP).restore()
+        target.scale(0).restore()
+        self.assertEqual(source.to_dict(), original)
+        self.assertEqual(target.to_dict(), destination)
+        scene.play(lite.FadeOut(target))
+        self.assertEqual(scene.mobjects, [source])
+
+    def test_transform_from_copy_snapshots_at_start_and_crossfades_types(self):
+        source, target = lite.Circle(), lite.Square()
+        effect = lite.TransformFromCopy(source, target)
+        source.shift(lite.LEFT)
+        target.shift(lite.RIGHT)
+        scene = lite.Scene()
+        scene.play(effect, run_time=2, rate_func=lite.linear)
+        middle = scene.frames[15]['mobjects']
+        self.assertEqual([m['type'] for m in middle], ['circle', 'square'])
+        self.assertEqual([m['opacity'] for m in middle], [0.5, 0.5])
+        self.assertEqual(scene.mobjects, [target])
+        self.assertEqual(effect._terminal, [target.to_dict()])
+
+    def test_transform_from_copy_group_children_keep_identity(self):
+        child = lite.Circle(color=lite.BLUE)
+        source = lite.VGroup(child, lite.Square()).arrange().shift(lite.LEFT * 2)
+        target = source.copy().shift(lite.RIGHT * 4)
+        target_child = target.children[0]
+        scene = lite.Scene().add(source, target)
+        scene.play(lite.TransformFromCopy(source, target), run_time=2)
+        self.assertEqual(len(scene.mobjects), 2)
+        self.assertIs(source.children[0], child)
+        self.assertIs(target.children[0], target_child)
+        self.assertEqual(scene.frames[15]['mobjects'][1]['position'],
+                         [(a + b) / 2 for a, b in zip(source.position, target.position)])
+
+    def test_transform_from_copy_source_can_animate_while_copy_holds_terminal(self):
+        source = lite.Square().shift(lite.LEFT * 2)
+        target = lite.Square().shift(lite.RIGHT * 2)
+        scene = lite.Scene().add(source)
+        movement = source.animate.shift(lite.UP * 2)
+        movement.run_time = 4
+        scene.play(lite.AnimationGroup(
+            lite.TransformFromCopy(source, target, run_time=1),
+            movement))
+        self.assertEqual(scene.frames[45]['mobjects'][1], target.to_dict())
+        self.assertEqual(scene.frames[0]['mobjects'][1]['position'], [-2, 0, 0])
+        self.assertEqual(source.position, [-2, 2, 0])
+
+    def test_transform_from_copy_conflicts_and_invalid_objects(self):
+        source, target = lite.Square(), lite.Circle()
+        with self.assertRaises(ValueError):
+            lite.TransformFromCopy(source, source)
+        with self.assertRaises(TypeError):
+            lite.TransformFromCopy(source, 'target')
+        with self.assertRaises(ValueError):
+            lite.Scene().play(lite.TransformFromCopy(source, target), lite.FadeIn(target))
+        with self.assertRaises(NotImplementedError):
+            lite.Scene().add(lite.VGroup(target)).play(lite.TransformFromCopy(source, target))
+
+    def test_transform_from_copy_can_read_scene_added_group_child(self):
+        source, target = lite.Circle(), lite.Circle().shift(lite.RIGHT * 2)
+        group = lite.VGroup(source)
+        scene = lite.Scene().add(group)
+        scene.play(lite.TransformFromCopy(source, target))
+        self.assertEqual(scene.mobjects, [group, target])
+        self.assertIs(group.children[0], source)
+
+    def test_copy_example_renders_and_cleans_up_only_destinations(self):
+        result = json.loads(lite.render_scene((ROOT / 'examples/copy_scene.py').read_text()))
+        self.assertEqual(result['scene'], 'CopyScene')
+        self.assertEqual(result['duration'], 11)
+        final = result['frames'][-1]['mobjects']
+        self.assertEqual([m['type'] for m in final], ['square', 'text'])
+        self.assertEqual(final[0]['position'], [-3, 0, 0])
+        self.assertEqual(final[0]['fill_color'], lite.BLUE)
+
     def test_indicate_peaks_and_returns_without_mutating_object_or_checkpoint(self):
         shape = lite.Arc(fill_color=lite.BLUE, stroke_color=lite.PURPLE, fill_opacity=0.4)
         shape.scale(2).rotate(lite.PI / 3).shift(lite.LEFT).save_state()

@@ -603,6 +603,32 @@ class Transform(Animation):
             self.mobject._saved_state = saved
 
 
+class TransformFromCopy(Transform):
+    """Animate the target from a source snapshot, leaving both live objects intact."""
+    def __init__(self, mobject, target_mobject, **kwargs):
+        if not isinstance(mobject, Mobject) or not isinstance(target_mobject, Mobject):
+            raise TypeError('TransformFromCopy expects two mobjects')
+        if mobject is target_mobject:
+            raise ValueError('TransformFromCopy source and target must be different objects')
+        super().__init__(target_mobject, target_mobject, **kwargs)
+        self.source = mobject
+
+    def begin(self, scene):
+        # Only the target is animated/added. The source is a read-only snapshot,
+        # so it may also move independently or belong to a scene-added group.
+        super().begin(scene)
+        self.start = self.source.to_dict()
+        self.target = self.mobject.copy()
+
+    def sample(self, alpha):
+        if alpha == 0:
+            return [copy.deepcopy(self.start)]
+        return super().sample(alpha)
+
+    def finish(self, scene):
+        pass
+
+
 class Restore(Transform):
     def __init__(self, mobject, **kwargs):
         # The target is snapshotted now, as for other Transform animations.
@@ -837,7 +863,7 @@ class Scene:
 EXPORTS = ['Scene', 'Mobject', 'Circle', 'Arc', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'VGroup', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'MoveAlongPath',
-           'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate',
+           'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'TransformFromCopy',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform', 'UP', 'DOWN', 'LEFT',
            'RIGHT', 'ORIGIN', 'OUT', 'IN', 'UL', 'UR', 'DL', 'DR', 'BLUE', 'RED', 'GREEN',
            'YELLOW', 'PURPLE', 'ORANGE', 'WHITE', 'BLACK', 'GRAY', 'GREY', 'PINK',
