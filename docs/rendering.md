@@ -1600,8 +1600,8 @@ Row and grid layouts share temporary world-space pose composition and inverse
 translation application. The parent rotation/scale and live child references
 remain fixed, supporting animation without extra pose interpolation. Bounds
 remain conservative for curves/composite families and incomplete for glyphs;
-ordinary geometry-bearing parent layout and native world-coordinate child
-semantics remain unfinished. Rectangle internal grid-line geometry is separate.
+ordinary geometry-bearing parent layout is now supported as described below;
+native world-coordinate child semantics remain unfinished. Rectangle internal grid-line geometry is separate.
 
 Tests independently check all eight fill orders, explicit spacing, center
 preservation, inferred and incomplete grids, variable cell dimensions, aligned
@@ -1615,3 +1615,34 @@ Local Pyodide playback showed six shapes in three rows at four seconds, retainin
 18-degree orientation and 0.8 scale. The original two-row grid returned at seven
 seconds; no circles remained at nine seconds. Switching to DOT rendered the
 editor flow graph. All 325 Python and 76 Node tests passed.
+
+
+## Direct-child layout on ordinary shapes
+
+Row/grid helpers and public arrange/arrange_in_grid now live on Mobject. Group
+and VGroup inherit the same methods; ordinary geometry-bearing shapes and empty
+containers can arrange direct children. Own geometry is excluded from layout
+selection even when split/index/iteration include it. arrange_submobjects is a
+dynamic alias of arrange, with .animate support. Rotation/nonzero signed scale,
+world-space buffers, row/column options, validation and pivot compensation are
+shared with group layout.
+
+With center=False, row layout preserves the first child's world position and the
+parent's own outline. Optional centering translates the entire family. Grid
+layout preserves the family's initial center, including own geometry in that
+center, matching the common family API. Child identities/callbacks, copying and
+checkpoints survive layouts. Zero-scale families, conservative path bounds, glyph
+metrics and native recursive world-point transformations remain incomplete.
+
+Reference: [official Manim common layout and alias implementation](https://docs.manim.community/en/stable/_modules/manim/mobject/mobject.html).
+
+Tests cover rectangles, circles, VMobject paths and point-free Mobject parents
+with positive/negative transforms, own-outline and first-child invariance,
+world-space spacing, center preservation, references, copy/restore isolation,
+empty families and atomic rejection. The gallery's sampled rectangle corner
+stays aligned to its reference throughout grid/row transitions and restoration.
+
+Local Pyodide playback showed four colored child dots in a grid at four seconds,
+the restored row at seven seconds, and no rectangle/dots at nine seconds. The
+white corner reference remained aligned. Switching to DOT rendered the editor
+flow graph. All 328 Python and 76 Node tests passed.

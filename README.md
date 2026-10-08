@@ -1115,5 +1115,17 @@ starting group center, shape orientations, and live child references, including
 `.animate` and checkpoint restoration. Incomplete final rows/columns are allowed.
 
 Grid cells use screen-space bounds and have a 1000-cell limit. Zero-scale groups
-cannot be arranged; text/curve bounds retain the limits above. Layout of children
-on ordinary geometry-bearing parents remains unfinished.
+cannot be arranged; text/curve bounds retain the limits above. Layout now also applies to children on ordinary geometry-bearing parents.
+
+
+### Layout of children on shapes
+
+Try **Arrange children on a shape** (`examples/shape_layout_scene.py`).
+Mobject and ordinary shapes now inherit `arrange`, its `arrange_submobjects`
+alias, and `arrange_in_grid`. These methods lay out direct children, excluding
+the parent's own outline. Row arrangement with `center=False` keeps the first
+child and own outline fixed; centering moves the whole family. Grid arrangement
+preserves the family center. Supported rotation/nonzero signed scale, animation,
+child references, and checkpoint restoration use the same behavior as groups.
+Zero-scale families, glyph bounds, and native world-space child coordinates
+remain unfinished.

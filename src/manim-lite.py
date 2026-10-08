@@ -157,6 +157,124 @@ class Mobject:
                                   delta[0]*math.sin(self.angle)+delta[1]*math.cos(self.angle),0))*self.geometry_scale
             self.shift(transformed-delta)
 
+    def _layout_targets(self):
+        if self.geometry_scale == 0:
+            raise NotImplementedError('Cannot arrange a collapsed family')
+        self._geometry_center()
+        targets = []
+        for child in self.children:
+            target = child.copy()
+            pivot = target._geometry_center()
+            center_point = self._point_to_world(child.get_center())
+            target.position = list(center_point-pivot)
+            target.angle += self.angle
+            target.geometry_scale *= self.geometry_scale
+            targets.append(target)
+        return targets
+
+    def _apply_layout_targets(self, targets):
+        # Invert translations only; keep the parent pose for animated layouts.
+        shifts = []
+        for child,target in zip(self.children,targets):
+            delta = target.get_center()-self._point_to_world(child.get_center())
+            shifts.append(Vector((delta[0]*math.cos(self.angle)+delta[1]*math.sin(self.angle),
+                                  -delta[0]*math.sin(self.angle)+delta[1]*math.cos(self.angle),0))*(1/self.geometry_scale))
+        if any(not math.isfinite(value) for delta in shifts for value in delta):
+            raise ValueError('Layout translations must be finite')
+        for child,delta in zip(self.children,shifts):
+            child.shift(delta)
+        self._geometry_center()
+        return self
+
+    def arrange(self, direction=RIGHT, buff=0.25, center=True, aligned_edge=ORIGIN):
+        direction, aligned_edge = Vector(direction), Vector(aligned_edge)
+        if not all(math.isfinite(v) for v in (*direction,*aligned_edge,buff)):
+            raise ValueError('Layout coordinates and buffer must be finite')
+        if direction[2] or aligned_edge[2]:
+            raise NotImplementedError('Layout supports only the XY plane')
+        if direction == ORIGIN:
+            raise ValueError('Layout direction must be nonzero')
+        targets = self._layout_targets()
+        for previous,current in zip(targets,targets[1:]):
+            current.next_to(previous,direction,buff,aligned_edge)
+        self._apply_layout_targets(targets)
+        if center:
+            self.move_to(ORIGIN)
+        return self
+
+    def arrange_in_grid(self, rows=None, cols=None, buff=.25, cell_alignment=ORIGIN,
+                        row_alignments=None, col_alignments=None, row_heights=None,
+                        col_widths=None, flow_order='rd'):
+        alignment = Vector(cell_alignment)
+        if not all(math.isfinite(v) for v in alignment):
+            raise ValueError('Grid alignment must be finite')
+        if alignment[2]:
+            raise NotImplementedError('Grid layout supports only the XY plane')
+        gaps = list(buff) if isinstance(buff,(list,tuple)) else [buff,buff]
+        if len(gaps) != 2 or any(isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v) for v in gaps):
+            raise ValueError('Grid buffer needs a finite number or horizontal/vertical pair')
+        if flow_order not in ('rd','dr','ld','dl','ru','ur','lu','ul'):
+            raise ValueError('Grid flow_order must be rd, dr, ld, dl, ru, ur, lu or ul')
+        sizes = [None if row_heights is None else list(row_heights),
+                 None if col_widths is None else list(col_widths)]
+        aligns = [row_alignments,col_alignments]
+        dimensions = [rows,cols]
+        for i,chars in enumerate(('ucd','lcr')):
+            if aligns[i] is not None and (not isinstance(aligns[i],str) or any(c not in chars for c in aligns[i])):
+                raise ValueError('Invalid grid row/column alignment')
+            if dimensions[i] is None:
+                dimensions[i] = len(aligns[i]) if aligns[i] is not None else len(sizes[i]) if sizes[i] is not None else None
+            if dimensions[i] is not None and (isinstance(dimensions[i],bool) or not isinstance(dimensions[i],int) or not 1 <= dimensions[i] <= 1000):
+                raise ValueError('Grid dimensions must be integers from 1 to 1000')
+        count = len(self.children)
+        rows,cols = dimensions
+        if rows is None and cols is None:
+            cols = max(1,math.ceil(math.sqrt(count)))
+        if rows is None:
+            rows = max(1,math.ceil(count/cols))
+        if cols is None:
+            cols = max(1,math.ceil(count/rows))
+        if rows*cols < count or rows*cols > 1000:
+            raise ValueError('Grid needs enough cells and at most 1000 cells')
+        for size,align,num in zip(sizes,aligns,(rows,cols)):
+            if size is not None and len(size) != num or align is not None and len(align) != num:
+                raise ValueError('Grid row/column options must match its dimensions')
+            if size is not None and any(v is not None and (isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v) or v < 0) for v in size):
+                raise ValueError('Grid cell sizes must be nonnegative finite numbers or None')
+        targets = self._layout_targets()
+        start = self.get_center()
+        cells = []
+        for index in range(count):
+            row,col = divmod(index,cols) if flow_order[0] in 'rl' else (index%rows,index//rows)
+            if 'u' in flow_order:
+                row = rows-1-row
+            if 'l' in flow_order:
+                col = cols-1-col
+            cells.append((row,col))
+        heights,widths = [0.0]*rows,[0.0]*cols
+        for target,(row,col) in zip(targets,cells):
+            heights[row] = max(heights[row],target.get_height())
+            widths[col] = max(widths[col],target.get_width())
+        heights = [v if v is not None else measured for v,measured in zip(sizes[0] or [None]*rows,heights)]
+        widths = [v if v is not None else measured for v,measured in zip(sizes[1] or [None]*cols,widths)]
+        xs,ys = [0.0],[0.0]
+        for width in widths[:-1]:
+            xs.append(xs[-1]+width+gaps[0])
+        for height in heights[:-1]:
+            ys.append(ys[-1]-height-gaps[1])
+        if any(not math.isfinite(v) for v in (*xs,*ys,*heights,*widths)):
+            raise ValueError('Grid cell coordinates must be finite')
+        for target,(row,col) in zip(targets,cells):
+            ax = {'l':-1,'c':0,'r':1}[col_alignments[col]] if col_alignments is not None else (1 if alignment[0]>0 else -1 if alignment[0]<0 else 0)
+            ay = {'u':1,'c':0,'d':-1}[row_alignments[row]] if row_alignments is not None else (1 if alignment[1]>0 else -1 if alignment[1]<0 else 0)
+            point = Vector((xs[col]+widths[col]*(ax+1)/2,ys[row]-heights[row]*(1-ay)/2,0))
+            target.shift(point-target._critical_point(Vector((ax,ay,0))))
+        self._apply_layout_targets(targets)
+        return self.move_to(start)
+
+    def arrange_submobjects(self, *args, **kwargs):
+        return self.arrange(*args, **kwargs)
+
     def split(self):
         return ([self] if self.has_points() else []) + list(self.children)
 
@@ -1804,120 +1922,6 @@ class Group(Mobject):
     def split(self):
         return list(self.children)
 
-    def _layout_targets(self):
-        if self.geometry_scale == 0:
-            raise NotImplementedError('Cannot arrange a collapsed group')
-        self._geometry_center()
-        targets = []
-        for child in self.children:
-            target = child.copy()
-            pivot = target._geometry_center()
-            center_point = self._point_to_world(child.get_center())
-            target.position = list(center_point-pivot)
-            target.angle += self.angle
-            target.geometry_scale *= self.geometry_scale
-            targets.append(target)
-        return targets
-
-    def _apply_layout_targets(self, targets):
-        # Invert translations only; keep the parent pose for animated layouts.
-        shifts = []
-        for child,target in zip(self.children,targets):
-            delta = target.get_center()-self._point_to_world(child.get_center())
-            shifts.append(Vector((delta[0]*math.cos(self.angle)+delta[1]*math.sin(self.angle),
-                                  -delta[0]*math.sin(self.angle)+delta[1]*math.cos(self.angle),0))*(1/self.geometry_scale))
-        if any(not math.isfinite(value) for delta in shifts for value in delta):
-            raise ValueError('Layout translations must be finite')
-        for child,delta in zip(self.children,shifts):
-            child.shift(delta)
-        self._geometry_center()
-        return self
-
-    def arrange(self, direction=RIGHT, buff=0.25, center=True, aligned_edge=ORIGIN):
-        direction, aligned_edge = Vector(direction), Vector(aligned_edge)
-        if not all(math.isfinite(v) for v in (*direction,*aligned_edge,buff)):
-            raise ValueError('Layout coordinates and buffer must be finite')
-        if direction[2] or aligned_edge[2]:
-            raise NotImplementedError('Layout supports only the XY plane')
-        if direction == ORIGIN:
-            raise ValueError('Layout direction must be nonzero')
-        targets = self._layout_targets()
-        for previous,current in zip(targets,targets[1:]):
-            current.next_to(previous,direction,buff,aligned_edge)
-        self._apply_layout_targets(targets)
-        if center:
-            self.move_to(ORIGIN)
-        return self
-
-    def arrange_in_grid(self, rows=None, cols=None, buff=.25, cell_alignment=ORIGIN,
-                        row_alignments=None, col_alignments=None, row_heights=None,
-                        col_widths=None, flow_order='rd'):
-        alignment = Vector(cell_alignment)
-        if not all(math.isfinite(v) for v in alignment):
-            raise ValueError('Grid alignment must be finite')
-        if alignment[2]:
-            raise NotImplementedError('Grid layout supports only the XY plane')
-        gaps = list(buff) if isinstance(buff,(list,tuple)) else [buff,buff]
-        if len(gaps) != 2 or any(isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v) for v in gaps):
-            raise ValueError('Grid buffer needs a finite number or horizontal/vertical pair')
-        if flow_order not in ('rd','dr','ld','dl','ru','ur','lu','ul'):
-            raise ValueError('Grid flow_order must be rd, dr, ld, dl, ru, ur, lu or ul')
-        sizes = [None if row_heights is None else list(row_heights),
-                 None if col_widths is None else list(col_widths)]
-        aligns = [row_alignments,col_alignments]
-        dimensions = [rows,cols]
-        for i,chars in enumerate(('ucd','lcr')):
-            if aligns[i] is not None and (not isinstance(aligns[i],str) or any(c not in chars for c in aligns[i])):
-                raise ValueError('Invalid grid row/column alignment')
-            if dimensions[i] is None:
-                dimensions[i] = len(aligns[i]) if aligns[i] is not None else len(sizes[i]) if sizes[i] is not None else None
-            if dimensions[i] is not None and (isinstance(dimensions[i],bool) or not isinstance(dimensions[i],int) or not 1 <= dimensions[i] <= 1000):
-                raise ValueError('Grid dimensions must be integers from 1 to 1000')
-        count = len(self.children)
-        rows,cols = dimensions
-        if rows is None and cols is None:
-            cols = max(1,math.ceil(math.sqrt(count)))
-        if rows is None:
-            rows = max(1,math.ceil(count/cols))
-        if cols is None:
-            cols = max(1,math.ceil(count/rows))
-        if rows*cols < count or rows*cols > 1000:
-            raise ValueError('Grid needs enough cells and at most 1000 cells')
-        for size,align,num in zip(sizes,aligns,(rows,cols)):
-            if size is not None and len(size) != num or align is not None and len(align) != num:
-                raise ValueError('Grid row/column options must match its dimensions')
-            if size is not None and any(v is not None and (isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v) or v < 0) for v in size):
-                raise ValueError('Grid cell sizes must be nonnegative finite numbers or None')
-        targets = self._layout_targets()
-        start = self.get_center()
-        cells = []
-        for index in range(count):
-            row,col = divmod(index,cols) if flow_order[0] in 'rl' else (index%rows,index//rows)
-            if 'u' in flow_order:
-                row = rows-1-row
-            if 'l' in flow_order:
-                col = cols-1-col
-            cells.append((row,col))
-        heights,widths = [0.0]*rows,[0.0]*cols
-        for target,(row,col) in zip(targets,cells):
-            heights[row] = max(heights[row],target.get_height())
-            widths[col] = max(widths[col],target.get_width())
-        heights = [v if v is not None else measured for v,measured in zip(sizes[0] or [None]*rows,heights)]
-        widths = [v if v is not None else measured for v,measured in zip(sizes[1] or [None]*cols,widths)]
-        xs,ys = [0.0],[0.0]
-        for width in widths[:-1]:
-            xs.append(xs[-1]+width+gaps[0])
-        for height in heights[:-1]:
-            ys.append(ys[-1]-height-gaps[1])
-        if any(not math.isfinite(v) for v in (*xs,*ys,*heights,*widths)):
-            raise ValueError('Grid cell coordinates must be finite')
-        for target,(row,col) in zip(targets,cells):
-            ax = {'l':-1,'c':0,'r':1}[col_alignments[col]] if col_alignments is not None else (1 if alignment[0]>0 else -1 if alignment[0]<0 else 0)
-            ay = {'u':1,'c':0,'d':-1}[row_alignments[row]] if row_alignments is not None else (1 if alignment[1]>0 else -1 if alignment[1]<0 else 0)
-            point = Vector((xs[col]+widths[col]*(ax+1)/2,ys[row]-heights[row]*(1-ay)/2,0))
-            target.shift(point-target._critical_point(Vector((ax,ay,0))))
-        self._apply_layout_targets(targets)
-        return self.move_to(start)
 
 
 class VGroup(Group):
@@ -3749,7 +3753,7 @@ class Animate(Transform):
     def __getattr__(self, name):
         if name.startswith('__'):
             raise AttributeError(name)
-        if name not in ('become', 'set_value', 'increment_value', 'shift', 'move_to', 'set_width', 'set_height', 'set_length', 'move_arc_center_to', 'put_start_and_end_on', 'set_angle', 'next_to', 'arrange', 'arrange_in_grid', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'pointwise_become_partial', 'set_points', 'append_points', 'clear_points', 'add_subpath', 'append_vectorized_mobject', 'start_new_path', 'close_path', 'set_points_as_corners', 'set_points_smoothly', 'make_smooth', 'make_jagged', 'change_anchor_mode', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
+        if name not in ('become', 'set_value', 'increment_value', 'shift', 'move_to', 'set_width', 'set_height', 'set_length', 'move_arc_center_to', 'put_start_and_end_on', 'set_angle', 'next_to', 'arrange', 'arrange_submobjects', 'arrange_in_grid', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'pointwise_become_partial', 'set_points', 'append_points', 'clear_points', 'add_subpath', 'append_vectorized_mobject', 'start_new_path', 'close_path', 'set_points_as_corners', 'set_points_smoothly', 'make_smooth', 'make_jagged', 'change_anchor_mode', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
             raise NotImplementedError(f'animate.{name} is not supported yet')
         def apply(*args, **kwargs):
             getattr(self.target, name)(*args, **kwargs)

@@ -336,7 +336,7 @@ Native world-space child coordinates remain open.
 
 
 Read `examples/transformed_layout_scene.py` for arrangement after rotation and
-nonzero scaling. Group.arrange composes temporary world-space child poses, uses
+nonzero scaling. Mobject.arrange composes temporary world-space child poses, uses
 next_to on those copies, and inverts only the resulting translation vectors.
 Retain the live parent pose and child identities so animated layout does not
 introduce additional rotation or scale interpolation. Validate all translations
@@ -350,5 +350,13 @@ cell and row/column alignment, separate gaps and optional measured cell sizes.
 `_layout_targets` composes world poses; `_apply_layout_targets` validates and
 inverts translations for both row and grid layouts. Retain parent angle/scale,
 child identities and starting center. Validate dimensions/options before changing
-children; cap grids at 1000 cells. Ordinary-shape child layout and collapsed
-groups remain unsupported. `animate.arrange_in_grid` uses the existing morph flow.
+children; cap grids at 1000 cells. Collapsed families remain unsupported. `animate.arrange_in_grid` uses the existing morph flow.
+
+
+Read `examples/shape_layout_scene.py` for child rows/grids on transformed ordinary
+shapes, corner invariance and restoration. Layout helpers and public arrange/
+arrange_in_grid now live on Mobject; Group inherits them. Always use direct
+children, not split()/iteration, which include the own outline for ordinary
+shapes. arrange_submobjects delegates dynamically to arrange and is supported
+in .animate chains. Preserve parent outlines with center=False; optional
+centering intentionally translates the whole family. Grid preserves family center.

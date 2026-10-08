@@ -4401,6 +4401,82 @@ self.wait(1)""")
         self.assertAlmostEqual(square._bounds()[0], 0.5)
         self.assertAlmostEqual(square._bounds()[1], 0.5)
 
+    def test_shape_child_layout_preserves_own_path_and_world_spacing(self):
+        for factory in (lite.Rectangle,lite.Circle,lite.VMobject,lite.Mobject):
+            for scale in (.8,-1.2):
+                host = factory()
+                if isinstance(host,lite.VMobject):
+                    host.set_points_as_corners([lite.LEFT,lite.UP,lite.RIGHT])
+                first,second = lite.Dot(lite.LEFT*2),lite.Square(side_length=.5)
+                host.add(first,second).rotate(.4).scale(scale).shift(lite.UP)
+                points = host.get_points()
+                first_world = host._point_to_world(first.get_center())
+                self.assertIs(host.arrange_submobjects(lite.RIGHT,buff=.7,center=False),host)
+                for a,b in zip(points,host.get_points()):
+                    self.assertPointAlmostEqual(a,b)
+                self.assertPointAlmostEqual(host._point_to_world(first.get_center()),first_world)
+                def world_bounds(child):
+                    target = child.copy()
+                    center = host._point_to_world(child.get_center())
+                    target.position = list(center-target._geometry_center())
+                    target.angle += host.angle
+                    target.geometry_scale *= host.geometry_scale
+                    return target._bounds()
+                self.assertAlmostEqual(world_bounds(second)[0]-world_bounds(first)[2],.7)
+                center = host.get_center()
+                refs = list(host.children)
+                host.arrange_in_grid(rows=2,buff=.5)
+                self.assertPointAlmostEqual(host.get_center(),center)
+                self.assertEqual(host.children,refs)
+                self.assertEqual(len(host.children),2)
+                host.save_state()
+                saved = host.to_dict()
+                copied = host.copy()
+                copied.arrange()
+                self.assertEqual(host.to_dict(),saved)
+                host.arrange(lite.UP)
+                self.assertPointAlmostEqual(host.get_center(),lite.ORIGIN)
+                host.restore()
+                self.assertEqual(host.to_dict(),saved)
+
+    def test_shape_layout_rejects_invalid_options_without_mutation(self):
+        host = lite.Rectangle().add(lite.Dot(),lite.Circle()).rotate(.3)
+        saved = host.to_dict()
+        for mutate in (lambda:host.arrange_submobjects(lite.ORIGIN),
+                       lambda:host.arrange_in_grid(rows=1,cols=1),
+                       lambda:host.arrange_in_grid(col_widths=[float('inf')])):
+            with self.assertRaises(ValueError):
+                mutate()
+            self.assertEqual(host.to_dict(),saved)
+        empty = lite.Rectangle().shift(lite.RIGHT*2)
+        self.assertIs(empty.arrange_in_grid(),empty)
+        self.assertEqual(empty.get_center(),lite.RIGHT*2)
+        empty.arrange_submobjects()
+        self.assertEqual(empty.get_center(),lite.ORIGIN)
+
+    def test_shape_layout_gallery_keeps_corner_anchor_and_restores_children(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/shape_layout_scene.py').read_text()))
+        self.assertEqual(result['duration'],9)
+        for index in (30,45,60,75,90,105):
+            frame = result['frames'][index]
+            data = frame['mobjects'][0]
+            host = lite.Mobject()
+            host.__dict__.update(data)
+            host._type = data['type']
+            host._sampled_geometry_center = lite.Vector(data['geometry_center'])
+            host.children = []
+            self.assertPointAlmostEqual(host.get_start(),frame['mobjects'][1]['position'])
+            self.assertEqual(len(data['children']),4)
+            self.assertAlmostEqual(data['angle'],lite.PI/8)
+            self.assertAlmostEqual(data['geometry_scale'],.8)
+        initial,restored = [result['frames'][i]['mobjects'][0] for i in (30,105)]
+        for a,b in zip([initial]+initial['children'],[restored]+restored['children']):
+            for key in ('type','position','geometry_center','angle','geometry_scale','width','height','radius'):
+                self.assertEqual(a.get(key),b.get(key))
+        self.assertNotEqual(initial['children'][1]['position'],result['frames'][60]['mobjects'][0]['children'][1]['position'])
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+        json.dumps(result,allow_nan=False)
+
     def test_grid_gallery_frame_layout_restoration_and_cleanup(self):
         result = json.loads(lite.render_scene((ROOT/'examples/grid_layout_scene.py').read_text()))
         self.assertEqual(result['duration'],9)

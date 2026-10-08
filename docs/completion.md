@@ -136,6 +136,14 @@ Group/VGroup grid layout now supports inferred/explicit rows and columns, all
 eight flow orders, variable cell sizes, separate gaps, cell and row/column
 alignment, transformed families, animation and restoration. Python tests cover
 ordering, incomplete grids, spacing, negative scales and atomic validation; local
-Pyodide playback covers reflow/restoration/removal. Ordinary geometry-bearing
-parent layout, zero-scale layout and native world-coordinate semantics remain
-open; this does not implement Rectangle's internal grid-line geometry.
+Pyodide playback covers reflow/restoration/removal. Ordinary geometry-bearing parent layout is now supported; zero-scale layout
+and native world-coordinate semantics remain open; this does not implement Rectangle's internal grid-line geometry.
+
+
+Mobject now provides common direct-child row/grid layout and arrange_submobjects,
+including geometry-bearing parents and point-free containers. Python tests cover
+own-outline preservation without centering, world-space gaps, inherited methods,
+child identities, copying/checkpoints, atomic validation and animated frames.
+Local Pyodide playback verifies a fixed own-outline corner during grid/row changes,
+restoration and complete family removal. Zero-scale and glyph/native world-point
+semantics remain open.
