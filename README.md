@@ -438,8 +438,8 @@ corner/cubic/polygon path combinations align through subdivision as described be
 segments, their relative durations use lengths estimated with 20 intervals per
 segment. This is approximate and does not produce constant speed within a curve.
 Geometry bounds and transform pivots enclose anchors and handles, rather than
-measuring the visible curve's exact extrema. Disconnected subpaths, arbitrary shape
-alignment, smoothing, and the rest of VMobject's point-array API remain unsupported.
+measuring the visible curve's exact extrema. Arbitrary shape alignment and broader point-array semantics remain open;
+disconnected contours and smoothing are described below.
 See [Manim CubicBezier](https://docs.manim.community/en/stable/reference/manim.mobject.geometry.arc.CubicBezier.html)
 and [path sampling](https://docs.manim.community/en/stable/_modules/manim/mobject/types/vectorized_mobject.html).
 
@@ -667,7 +667,7 @@ null contours at the final endpoint when one side has fewer contours. Explicit
 contour boundaries survive intermediate coincident endpoints. Annulus participates
 with outer and reversed inner circles; other supported primitives use one contour.
 Native representations return at completion and Restore. Automatic contour
-matching, boolean geometry, smoothing and full point-array editing remain open.
+matching, boolean geometry and full point-array editing remain open.
 **Morph separate contours** follows a square ring, morphs it to Annulus, collapses
 the hole into a rounded rectangle and restores both original contours.
 
@@ -705,7 +705,7 @@ interval becomes a null curve. Disconnected contours stay separate. Full-range
 copy includes an unfinished anchor; a partial selection with no completed source
 curves leaves the receiver unchanged. **Extract and wrap curve highlights**
 shows a precise cubic highlight, a wrapped circular highlight and animated
-partial replacement. General glyph outlines and smoothing remain open.
+partial replacement. General glyph outlines remain open.
 
 `ShowPassingFlash(outline, time_width=.1)` moves an exact cubic-parameter window
 along an outline, introducing the flash and removing it when playback finishes.
@@ -744,7 +744,7 @@ metrics and native TeX label construction remain open. Ticks/labels are bounded
 to 1000 per addition. Inverse conversion and decoration insertion require a
 noncollapsed shaft. NumberLine uses the existing group renderer: animations
 target the complete line, and raw partial-curve APIs do not target its shaft.
-Logarithmic scaling, NumPy coordinate arrays and function plots remain open.
+Logarithmic scaling and full NumPy coordinate arrays remain open.
 Try **Follow numeric coordinates** (`examples/number_line_scene.py`).
 
 `Axes(x_range, y_range, x_length, y_length)` combines two NumberLines into a
@@ -771,7 +771,43 @@ positioned x/y labels; strings use MathTex and existing Mobjects can be supplied
 `x_axis`, `y_axis`, `axes`, `get_axes`, `get_axis`, `get_x_axis` and `get_y_axis`
 expose the actual child NumberLines. Their own geometry queries use Axes-local
 coordinates, as with existing group children; use c2p/p2c for world positions.
-Animate the complete Axes object. General NumberPlane, function plotting,
+Animate the complete Axes object. General NumberPlane, broader graphing APIs,
 nonlinear scaling, NumPy arrays and 3D coordinates remain open.
 Try **Animate Cartesian coordinates** (`examples/axes_scene.py`), whose sampled
 polyline and marker follow transformed axes through updaters.
+
+`Axes.plot(function, x_range=None)` samples scalar y values into the current
+world coordinate frame. Its default step is the axis tick step divided by
+`num_sampled_graph_points_per_tick` (default 10). A two-item range keeps this
+sampling density; a three-item range supplies an explicit step. Plots are
+independent geometry after construction; use `always_redraw` to follow changed
+parameters or axes. `input_to_graph_point(x, graph)`/`i2gp` evaluate the original
+scalar function at x in the current axes, independently of later graph transforms.
+`plot_parametric_curve(function, t_range=...)` maps XY coordinate functions into
+the axes. Both plotting methods return `ParametricFunction` vector paths.
+
+`ParametricFunction(function, t_range=(0,1))` samples finite XY scene points;
+two-item ranges use step .01. `FunctionGraph(function, x_range=...)` samples
+scalar y values in scene coordinates, defaults to the frame width and uses
+yellow. `get_function` returns the supplied function, and
+`get_point_from_function(t)` queries its original scene coordinates.
+`generate_points` replaces geometry with fresh function samples. Callbacks stay
+out of frame JSON. Sampling includes the exact final parameter and is bounded
+to 10001 points per object.
+
+Smoothing is enabled by default: open paths have natural endpoint conditions,
+and closed paths use periodic cubic joins. `use_smoothing=False` uses straight
+segments. `discontinuities=[...]` with `dt` excludes buffered parameter intervals
+and creates separate contours; overlapping gaps merge. Declare discontinuities
+explicitly—sampling does not detect singularities or adapt to curvature.
+Nonfinite values and nonzero z coordinates fail clearly. Vectorized callbacks,
+nonlinear scaling, color scales, implicit plots and broader graph analysis remain
+open. Existing preview size/deadline limits still apply to dense animations.
+
+VMobjects also provide `set_points_smoothly`, `make_smooth`, `make_jagged` and
+`change_anchor_mode('smooth'/'jagged')`, including `.animate`. These preserve
+contour boundaries, styles and checkpoints. Handle changes compensate for
+changed bounds so transformed anchors remain fixed during animated smoothing.
+Pending anchors are retained; smoothing targets this object's own geometry.
+Try **Plot smooth functions** (`examples/plot_scene.py`) for a changing parabola,
+tracked input, passing highlight and closed parametric loop.

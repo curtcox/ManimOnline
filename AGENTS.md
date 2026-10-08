@@ -172,12 +172,22 @@ group renderer; shaft/ticks/numbers/tip roles identify children without storing
 Mobject references in frame JSON. Conversions apply both shaft and parent
 transforms, including temporarily exposed animation samples. When adding world
 decorations, invert the parent transform and compensate for its changed bounds
-pivot; existing geometry must stay fixed. Function plotting remains open.
+pivot; existing geometry must stay fixed. Plotting is described below.
 
 Read `examples/axes_scene.py` for Cartesian conversion, numeric labels and
 coordinate-driven geometry during animation/restoration. Tag child axes instead
 of serializing object references. Compose NumberLine-local queries with the Axes
 parent transform; actual child getters retain local group semantics. Coordinate
 inversion solves the current XY basis, and label insertion compensates for the
-parent's changed bounds pivot after validating both axes. NumberPlane and native
-function plotting remain open; the example uses an explicitly sampled polyline.
+parent's changed bounds pivot after validating both axes. NumberPlane remains
+open; this example uses an explicitly sampled polyline.
+
+Read `examples/plot_scene.py` for sampled scalar/parametric plotting, dynamic
+coefficients, exact graph-input queries and closed-loop drawing. Exclude function
+providers from JSON but retain them in copied runtime objects. Validate/bound all
+sample counts before invoking callbacks, and commit generated points only after
+successful sampling. Smooth contours independently with natural open ends or a
+periodic closed system; pin rounding-close seam anchors. Preserve transforms and
+compensate changed handle bounds so animated smoothing cannot move anchors.
+Declared gaps create separate contours; do not bridge discontinuities. Sampling
+is explicit rather than adaptive, and full graphing/NumPy semantics remain open.

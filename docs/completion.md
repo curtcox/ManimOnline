@@ -53,7 +53,8 @@ Exact pointwise_become_partial/get_subcurve now support transformed geometry,
 ordered disconnected contours, closed-outline wrapping and animated replacement.
 ShowPassingFlash now travels over exact outline portions, including simultaneous
 group highlights and reusable removed objects. Broader partial-creation APIs,
-per-child passing-highlight delays and glyph geometry remain open.
+per-child passing-highlight delays and glyph geometry remain open. Smooth/jagged
+path conversion now supports open and periodic closed cubic splines.
 RoundedRectangle now uses closed cubic outlines for circular/concave corners,
 per-corner morphing, path following and restoration; general polygon rounding
 and rectangle grids remain open.
@@ -64,7 +65,9 @@ checks cover transformed insertion without axis drift, sampling, validation,
 length changes and restoration. Axes now combines two NumberLines, with Cartesian
 conversion/inversion, batch coordinates, numeric and axis labels, transform-aware
 updater geometry and atomic coordinate-label additions. Graphing still needs
-NumberPlane, function plots and broader coordinate/graph APIs.
+NumberPlane and broader coordinate/graph APIs. ParametricFunction, FunctionGraph
+and Axes plotting now support sampled XY curves, default smooth interpolation,
+declared discontinuity gaps, graph-input queries and dynamic redraw.
 
 Full Community parity additionally requires general geometry/path morphing, full scene-family
 composition and layering, 3D cameras and advanced camera APIs (2D settings, moving-camera pan/zoom and automatic bounds fitting now have Python/SVG tests), glyph-level text/TeX

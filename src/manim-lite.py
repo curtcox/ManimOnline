@@ -630,7 +630,7 @@ class Mobject:
 
     def to_dict(self):
         result = copy.deepcopy({key: value for key, value in self.__dict__.items()
-                                if key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func')})
+                                if key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function')})
         result['type'] = result.pop('_type')
         result['geometry_center'] = list(self._geometry_center())
         result['children'] = [child.to_dict() for child in self.children]
@@ -752,6 +752,46 @@ class VMobject(Mobject):
         self.__dict__.pop('subpath_lengths', None)
         return self
 
+    def change_anchor_mode(self, mode):
+        if mode not in ('smooth','jagged'):
+            raise ValueError('Anchor mode must be smooth or jagged')
+        center = self._geometry_center()
+        paths = _path_subpaths(self.to_dict(),include_pending=False)
+        curves, lengths = [], []
+        for path in paths:
+            anchors = [Vector(path[0][0])] + [Vector(curve[-1]) for curve in path]
+            new = (_smooth_path_curves(anchors) if mode == 'smooth' else
+                   [[list(a),list(a*(2/3)+b*(1/3)),list(a*(1/3)+b*(2/3)),list(b)]
+                    for a,b in zip(anchors,anchors[1:])])
+            curves.extend(new)
+            lengths.append(len(new))
+        points = self._corners([point for curve in curves for point in curve])
+        pending = (copy.deepcopy(self.vertices) if self._type == 'bezierpath' else
+                   copy.deepcopy(self.vertices) if self._type == 'polyline' and len(self.vertices) == 1 else [])
+        self.curves = [points[i:i+4] for i in range(0,len(points),4)]
+        self._type,self.vertices = 'bezierpath',pending
+        self.__dict__.pop('subpath_lengths',None)
+        self.__dict__.pop('_sampled_geometry_center',None)
+        if len(lengths) > 1:
+            self.subpath_lengths = lengths
+        # Bounds can change with new handles. Preserve the world anchors and the
+        # existing transform so animated smoothing keeps them fixed as well.
+        delta = center-self._geometry_center()
+        rotated = Vector((delta[0]*math.cos(self.angle)-delta[1]*math.sin(self.angle),
+                          delta[0]*math.sin(self.angle)+delta[1]*math.cos(self.angle),0))*self.geometry_scale
+        self.shift(delta-rotated)
+        return self
+
+    def make_smooth(self):
+        return self.change_anchor_mode('smooth')
+
+    def make_jagged(self):
+        return self.change_anchor_mode('jagged')
+
+    def set_points_smoothly(self, points):
+        target = self.copy().set_points_as_corners(points).make_smooth()
+        return self.become(target)
+
     def start_new_path(self, point):
         point = self._corners([point])[0]
         existing = self.get_points()
@@ -848,6 +888,143 @@ class VMobject(Mobject):
         if not self.vertices:
             raise ValueError('The path has no points')
         return self._point_to_world(Vector(self.vertices[-1]))
+
+
+def _smooth_path_curves(anchors):
+    """C2 cubic spline: natural open ends or a periodic closed-loop system."""
+    anchors = [Vector(point) for point in anchors]
+    count = len(anchors)-1
+    if count <= 0:
+        return []
+    if count == 1:
+        a,b = anchors
+        return [[list(a),list(a*(2/3)+b*(1/3)),list(a*(1/3)+b*(2/3)),list(b)]]
+
+    def solve(diagonal, lower, rhs):
+        diagonal,rhs = diagonal[:],rhs[:]
+        for i in range(1,count):
+            factor = lower[i-1]/diagonal[i-1]
+            diagonal[i] -= factor
+            rhs[i] = rhs[i]-rhs[i-1]*factor
+        result = [ORIGIN]*count
+        result[-1] = rhs[-1]*(1/diagonal[-1])
+        for i in range(count-2,-1,-1):
+            result[i] = (rhs[i]-result[i+1])*(1/diagonal[i])
+        return result
+
+    closed = all(abs(a-b) <= 1e-6 for a,b in zip(anchors[0],anchors[-1]))
+    if closed:
+        # Trigonometric endpoints can differ by machine rounding. A periodic
+        # contour needs one shared anchor for its spline seam and SVG closure.
+        anchors[-1] = anchors[0]
+        rhs = [anchors[i]*4+anchors[i+1]*2 for i in range(count)]
+        if count == 2:
+            handles = [(rhs[0]*4-rhs[1]*2)*(1/12),(rhs[1]*4-rhs[0]*2)*(1/12)]
+        else:
+            diagonal = [3]+[4]*(count-2)+[3]
+            y = solve(diagonal,[1]*(count-1),rhs)
+            q = solve(diagonal,[1]*(count-1),[RIGHT]+[ORIGIN]*(count-2)+[RIGHT])
+            correction = (y[0]+y[-1])*(1/(1+q[0][0]+q[-1][0]))
+            handles = [point-correction*value[0] for point,value in zip(y,q)]
+        second = [anchors[i+1]*2-handles[(i+1)%count] for i in range(count)]
+    else:
+        rhs = [anchors[0]+anchors[1]*2]
+        rhs.extend(anchors[i]*4+anchors[i+1]*2 for i in range(1,count-1))
+        rhs.append(anchors[-2]*8+anchors[-1])
+        handles = solve([2]+[4]*(count-2)+[7],[1]*(count-2)+[2],rhs)
+        second = [anchors[i+1]*2-handles[i+1] for i in range(count-1)]
+        second.append((anchors[-1]+handles[-1])*.5)
+    return [[list(a),list(h1),list(h2),list(b)] for a,h1,h2,b in
+            zip(anchors,handles,second,anchors[1:])]
+
+
+class ParametricFunction(VMobject):
+    """Finite XY samples with optional C2 smoothing and declared contour gaps."""
+    def __init__(self, function, t_range=(0,1), dt=1e-8, discontinuities=None,
+                 use_smoothing=True, use_vectorized=False, **kwargs):
+        if not callable(function):
+            raise TypeError('ParametricFunction expects a callable returning an XY point')
+        if use_vectorized:
+            raise NotImplementedError('Vectorized plotting is not implemented')
+        if not isinstance(use_smoothing,bool) or not isinstance(use_vectorized,bool):
+            raise ValueError('Plotting flags must be booleans')
+        values = self._range(t_range,.01)
+        NumberLine._real(dt,'discontinuity buffer',nonnegative=True)
+        discontinuities = sorted(set(NumberLine._numbers(discontinuities or [])))
+        super().__init__(**kwargs)
+        self._parametric_function = function
+        self.t_min,self.t_max,self.t_step = values
+        self.dt,self.discontinuities,self.use_smoothing = dt,discontinuities,use_smoothing
+        self.generate_points()
+
+    @staticmethod
+    def _range(values, step):
+        values = list(values)
+        if len(values) == 2:
+            values.append(step)
+        if len(values) != 3:
+            raise ValueError('Plot range needs [minimum, maximum, positive sample step]')
+        for value in values:
+            NumberLine._real(value,'Plot range')
+        if values[0] > values[1] or values[2] <= 0 or not math.isfinite(values[1]-values[0]):
+            raise ValueError('Plot range must increase with a positive sample step')
+        return values
+
+    def get_function(self):
+        return self._parametric_function
+
+    def get_point_from_function(self, t):
+        NumberLine._real(t,'Function input')
+        return Vector(self._corners([self._parametric_function(t)])[0])
+
+    def generate_points(self):
+        intervals,cursor = [],self.t_min
+        active = [value for value in self.discontinuities if self.t_min <= value <= self.t_max]
+        for value in active:
+            left,right = max(self.t_min,value-self.dt),min(self.t_max,value+self.dt)
+            if left > cursor:
+                intervals.append((cursor,left))
+            cursor = max(cursor,right)
+        if cursor < self.t_max or not active and cursor == self.t_max:
+            intervals.append((cursor,self.t_max))
+        # Bound all sampling before executing user functions or changing geometry.
+        counts = []
+        for start,end in intervals:
+            size = (end-start)/self.t_step
+            if not math.isfinite(size) or size > 10000:
+                raise ValueError('Plots are limited to 10001 sampled points')
+            counts.append(math.ceil(size))
+        if sum(count+1 for count in counts) > 10001:
+            raise ValueError('Plots are limited to 10001 sampled points')
+        curves,lengths,pending = [],[],[]
+        for (start,end),count in zip(intervals,counts):
+            times = [start+i*self.t_step for i in range(count) if start+i*self.t_step < end]+[end]
+            anchors = [self.get_point_from_function(t) for t in times]
+            if len(anchors) == 1:
+                pending = [list(anchors[0])]
+                continue
+            new = (_smooth_path_curves(anchors) if self.use_smoothing else
+                   [[list(a),list(a*(2/3)+b*(1/3)),list(a*(1/3)+b*(2/3)),list(b)]
+                    for a,b in zip(anchors,anchors[1:])])
+            curves.extend(new)
+            lengths.append(len(new))
+        VMobject.set_points(self,[point for curve in curves for point in curve]+pending)
+        if len(lengths) > 1:
+            self.subpath_lengths = lengths
+        return self
+
+
+class FunctionGraph(ParametricFunction):
+    def __init__(self, function, x_range=None, color=YELLOW, **kwargs):
+        if not callable(function):
+            raise TypeError('FunctionGraph expects a scalar function')
+        values = (-config.frame_width/2,config.frame_width/2) if x_range is None else x_range
+        self.underlying_function = function
+        self.x_range = self._range(values,.01)
+        super().__init__(lambda t: (t,function(t),0),t_range=self.x_range,color=color,**kwargs)
+
+    def get_function(self):
+        return self.underlying_function
 
 
 class TracedPath(VMobject):
@@ -1694,6 +1871,7 @@ class Axes(VGroup):
             axis._axes_role = role
         self.add(x_axis,y_axis)
         self.x_range,self.y_range = x_axis.x_range[:],y_axis.x_range[:]
+        self.num_sampled_graph_points_per_tick = 10
         # Center the coordinate rectangle, including ranges which exclude zero.
         middle = self.c2p((x_axis.x_min+x_axis.x_max)/2,(y_axis.x_min+y_axis.x_max)/2)
         self.shift(middle*(-1))
@@ -1832,6 +2010,34 @@ class Axes(VGroup):
 
     def get_axis_labels(self, x_label='x', y_label='y'):
         return VGroup(self.get_x_axis_label(x_label),self.get_y_axis_label(y_label))
+
+    def plot(self, function, x_range=None, use_vectorized=False, **kwargs):
+        if not callable(function):
+            raise TypeError('Axes.plot expects a scalar function')
+        values = self.x_range[:] if x_range is None else list(x_range)
+        density = NumberLine._real(self.num_sampled_graph_points_per_tick,'Plot samples per tick',positive=True)
+        step = self.x_range[2]/density
+        if x_range is None:
+            values[2] = step
+        values = ParametricFunction._range(values,step)
+        graph = ParametricFunction(lambda t: self.c2p(t,function(t)),t_range=values,
+                                   use_vectorized=use_vectorized,**kwargs)
+        graph.underlying_function = function
+        return graph
+
+    def plot_parametric_curve(self, function, **kwargs):
+        if not callable(function):
+            raise TypeError('Parametric plotting expects a callable returning XY coordinates')
+        return ParametricFunction(lambda t: self.c2p(function(t)),**kwargs)
+
+    def input_to_graph_point(self, x, graph):
+        NumberLine._real(x,'Graph input')
+        function = getattr(graph,'underlying_function',None)
+        if not isinstance(graph,Mobject) or not callable(function):
+            raise TypeError('Graph input queries need a scalar plotted function')
+        return self.c2p(x,function(x))
+
+    i2gp = input_to_graph_point
 
 
 def linear(t):
@@ -2396,7 +2602,7 @@ class Animate(Transform):
     def __getattr__(self, name):
         if name.startswith('__'):
             raise AttributeError(name)
-        if name not in ('become', 'set_value', 'increment_value', 'shift', 'move_to', 'set_width', 'set_height', 'set_length', 'move_arc_center_to', 'put_start_and_end_on', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'pointwise_become_partial', 'set_points', 'append_points', 'clear_points', 'add_subpath', 'append_vectorized_mobject', 'start_new_path', 'close_path', 'set_points_as_corners', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
+        if name not in ('become', 'set_value', 'increment_value', 'shift', 'move_to', 'set_width', 'set_height', 'set_length', 'move_arc_center_to', 'put_start_and_end_on', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'pointwise_become_partial', 'set_points', 'append_points', 'clear_points', 'add_subpath', 'append_vectorized_mobject', 'start_new_path', 'close_path', 'set_points_as_corners', 'set_points_smoothly', 'make_smooth', 'make_jagged', 'change_anchor_mode', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
             raise NotImplementedError(f'animate.{name} is not supported yet')
         def apply(*args, **kwargs):
             getattr(self.target, name)(*args, **kwargs)
@@ -2721,7 +2927,7 @@ class MovingCameraScene(Scene):
     camera_class = MovingCamera
 
 
-EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'Arrow',
+EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',

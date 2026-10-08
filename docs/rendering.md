@@ -83,8 +83,8 @@ geometry transforms, with exact endpoints for straight-edged paths. Create and
 Uncreate trace the whole connected stroke. Styles, checkpoints, depth/group
 ordering, transforms, and MoveAlongPath use the existing pipeline. Same-count
 vertex lists interpolate; different-count corner paths/polygons now align through
-cubic subdivision as described below. Connected cubic handles are supported below; smoothing/multiple paths and
-arbitrary shape alignment remain open.
+cubic subdivision as described below. Connected cubic handles, separate contours and smoothing are supported below;
+arbitrary shape alignment remains open.
 
 Tests cover construction, extension, reversal, validation without partial edits,
 empty/degenerate/closed paths, transformed endpoint queries, movement, tracing,
@@ -387,7 +387,7 @@ straight cubics; replacement/reversal and animated operations preserve the API.
 Sampling partitions by approximate curve lengths (20 intervals) and uses each
 curve's parameter, with exact endpoints. Bounds enclose control points. Matching
 curve counts interpolate; unequal connected paths align through subdivision. General alignment,
-smoothing and full point-array APIs remain gaps. Separate contours are described below.
+full point-array semantics remain gaps. Separate contours and smoothing are described below.
 
 Python/SVG tests cover finite XY validation, exact transformed endpoints, cubic
 midpoints, mixed segment allocation, reversal, matching/unequal-count transforms,
@@ -798,7 +798,7 @@ the native strategy. Annulus converts into outer and reversed inner circles.
 Matching annuli retain analytical radius interpolation. All native target/checkpoint
 representations return at completion. This supports nested family morphs through
 the existing transform plan; automatic contour correspondence, boolean geometry,
-smoothing and general point-array APIs remain open.
+general point-array semantics remain open.
 
 Tests cover pending anchors, atomic validation, independent queries, closure,
 reversal/copy/checkpoints, gap-free length sampling, equal-total/different-contour
@@ -864,7 +864,7 @@ Tests cover exact cubic parameter correspondence after transforms, source/copy
 independence, receiver styles, unequal straight segment lengths, boundary null
 curves, disconnected/self partial replacement, ring endpoints, closure/wrapping,
 clamping/invalid/empty inputs and gallery cleanup. This supplies partial geometry;
-broader partial-creation animations, smoothing and glyph outlines
+broader partial-creation animations and glyph outlines
 remain implementation work.
 
 Local Pyodide playback verified the yellow exact cubic portion and a blue
@@ -933,7 +933,7 @@ restoration, animated resizing and dependent marker sampling. Local Pyodide
 playback verified the marker at the tracked numeric position while the shaft
 rotated/shrank/moved. At eleven seconds, restoration returned a horizontal line
 and the marker/readout to zero. Switching to DOT rendered the editor flow graph.
-Axes, NumberPlane, function plotting and the remaining graphing APIs are still
+NumberPlane and broader graphing APIs are still
 implementation work.
 
 ## Cartesian axes
@@ -958,7 +958,7 @@ Coordinate labels are prepared on copies of both axes before mutating either
 live axis. After insertion, parent pivot compensation preserves world geometry
 when the bounds change. Axis labels use supplied Mobjects or existing MathTex
 strings. Independent child animation, generalized family geometry, glyph bounds,
-NumberPlane and function plotting remain implementation work.
+NumberPlane and broader graphing APIs remain implementation work.
 
 Python checks cover all-sign ranges, rectangular centering, nested transforms,
 extrapolation, inversion of unequal/skewed bases, scalar/batch conversions,
@@ -969,3 +969,43 @@ frame; it does not imply an Axes.plot implementation. Local Pyodide playback
 verified the marker and blue curve on rotated/scaled axes at seven seconds.
 At eleven seconds, restoration returned the frame and marker to (0,-1) in axis
 coordinates. Switching to DOT rendered the editor flow graph.
+
+## Function plotting and smooth paths
+
+ParametricFunction samples finite XY scene points, FunctionGraph wraps scalar y
+functions, and Axes.plot/plot_parametric_curve map functions through the current
+Cartesian frame. This follows the
+[official function API](https://docs.manim.community/en/stable/reference/manim.mobject.graphing.functions.ParametricFunction.html)
+and [Axes plotting](https://docs.manim.community/en/stable/_modules/manim/mobject/graphing/coordinate_systems.html).
+Two-item parametric ranges default to .01; Axes uses ten samples per tick unless
+an explicit step or num_sampled_graph_points_per_tick changes the density.
+Exact final parameters are included. Sampling is bounded to 10001 points before
+callbacks run; invalid output never partially replaces existing geometry.
+Providers remain runtime-only and are excluded from frame JSON.
+
+Default smooth interpolation uses C2 cubic splines, with natural open endpoints
+and a periodic closed system. The pure-Python tridiagonal solver avoids a new
+NumPy/SciPy runtime dependency. The closed solve uses a rank-one correction;
+rounding-close endpoints share a seam anchor so SVG closes the contour. See the
+[official spline equations](https://docs.manim.community/en/stable/_modules/manim/utils/bezier.html).
+VMobject smooth/jagged conversion operates contour by contour, retains pending
+anchors and compensates changed handle bounds while preserving its transform.
+Thus interpolating handles during animated smoothing keeps world anchors fixed.
+
+Declared discontinuities exclude buffered intervals; overlapping gaps merge.
+Each remaining interval samples independently with no connecting segment.
+Nonfinite samples and non-XY geometry fail explicitly. Scalar graph input
+queries evaluate the original function in the current axes, rather than moving
+with independent graph transforms. Fresh plots are independent geometry;
+always_redraw regenerates them when their parameters or frame change.
+Vectorized callbacks, adaptive sampling, nonlinear/color scales, implicit plots,
+NumberPlane and broader graph analysis remain open.
+
+Tests cover exact open handles, periodic first/second derivative continuity,
+degenerate loops, contour/style/checkpoint preservation, animated transformed
+anchors, endpoint sampling, discontinuity exclusion/merging, bounded validation,
+atomic regeneration, standalone graphs, axis mapping/density and runtime-only
+callbacks. Local Pyodide rendered the changing parabola, tracked marker, yellow
+passing highlight and a closed 32-cubic red loop. At eleven seconds only the
+axes and final blue 40-cubic plot remained. Switching to DOT rendered the editor
+flow graph.

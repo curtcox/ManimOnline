@@ -16,6 +16,159 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_open_smoothing_exact_handles_and_c2_joins(self):
+        path = lite.VMobject().set_points_smoothly([(0,0),(1,1),(2,0)])
+        expected = [[(0,0),(1/3,.5),(2/3,1),(1,1)],[(1,1),(4/3,1),(5/3,.5),(2,0)]]
+        for actual,curve in zip(path.curves,expected):
+            for point,target in zip(actual,curve):
+                self.assertPointAlmostEqual(point,target)
+        a,b = [[lite.Vector(p) for p in curve] for curve in path.curves]
+        self.assertPointAlmostEqual(a[3]-a[2],b[1]-b[0])
+        self.assertPointAlmostEqual(a[3]-a[2]*2+a[1],b[0]-b[1]*2+b[2])
+        self.assertPointAlmostEqual(a[0]-a[1]*2+a[2],lite.ORIGIN)
+        self.assertPointAlmostEqual(b[1]-b[2]*2+b[3],lite.ORIGIN)
+
+    def test_closed_smoothing_periodic_joins_and_two_curve_loop(self):
+        path = lite.VMobject().set_points_smoothly([lite.RIGHT,lite.UP,lite.LEFT,lite.DOWN,lite.RIGHT])
+        self.assertPointAlmostEqual(path.curves[0][1],(1,.5,0))
+        curves = [[lite.Vector(p) for p in curve] for curve in path.curves]
+        for a,b in zip(curves,curves[1:]+curves[:1]):
+            self.assertPointAlmostEqual(a[3]-a[2],b[1]-b[0])
+            self.assertPointAlmostEqual(a[3]-a[2]*2+a[1],b[0]-b[1]*2+b[2])
+        path.set_points_smoothly([lite.LEFT,lite.RIGHT,lite.LEFT])
+        self.assertPointAlmostEqual(path.curves[0][1],lite.LEFT)
+        self.assertPointAlmostEqual(path.curves[0][2],lite.RIGHT)
+
+    def test_smoothing_transformed_subpaths_styles_checkpoint_and_jagged(self):
+        path = lite.VMobject(color=lite.BLUE).set_points_as_corners([lite.LEFT,lite.UP,lite.RIGHT])
+        path.start_new_path((3,0)).add_points_as_corners([(4,1),(5,0)])
+        path.start_new_path((6,0)).rotate(.4).scale(1.5).shift(lite.UP).save_state()
+        before = path.to_dict()
+        anchors = [[points[0],points[3],points[7]] for points in path.get_subpaths()]
+        pending = path.get_points()[-1]
+        path.make_smooth()
+        self.assertEqual(path.subpath_lengths,[2,2])
+        self.assertPointAlmostEqual(path.get_points()[-1],pending)
+        self.assertEqual(path.color,lite.BLUE)
+        for points,expected in zip(path.get_subpaths(),anchors):
+            for point,target in zip((points[0],points[3],points[7]),expected):
+                self.assertPointAlmostEqual(point,target)
+        path.make_jagged()
+        for curve in path.curves:
+            a,b = lite.Vector(curve[0]),lite.Vector(curve[3])
+            self.assertPointAlmostEqual(curve[1],a*(2/3)+b*(1/3))
+        path.restore()
+        self.assertEqual(path.to_dict(),before)
+        with self.assertRaises(ValueError): path.change_anchor_mode('sharp')
+        with self.assertRaises(ValueError): path.set_points_smoothly([(float('nan'),0)])
+        self.assertEqual(path.to_dict(),before)
+        lite.VMobject().make_smooth()
+
+    def test_parametric_sampling_endpoints_function_and_serialization(self):
+        seen = []
+        def function(t):
+            seen.append(t)
+            return (t,t*t)
+        graph = lite.ParametricFunction(function,t_range=[0,1,.3],use_smoothing=False)
+        self.assertEqual(seen,[0,.3,.6,.8999999999999999,1])
+        self.assertEqual(len(graph.curves),4)
+        self.assertPointAlmostEqual(graph.get_end(),(1,1,0))
+        self.assertIs(graph.get_function(),function)
+        self.assertPointAlmostEqual(graph.get_point_from_function(.5),(.5,.25,0))
+        self.assertNotIn('_parametric_function',graph.to_dict())
+        json.dumps(graph.to_dict(),allow_nan=False)
+        graph.shift(lite.UP).generate_points()
+        self.assertPointAlmostEqual(graph.get_start(),lite.ORIGIN)
+        singleton = lite.ParametricFunction(function,t_range=[.5,.5],discontinuities=[2])
+        self.assertEqual(singleton.get_num_points(),1)
+
+    def test_parametric_discontinuities_do_not_connect_or_evaluate_singularities(self):
+        seen = []
+        def function(t):
+            seen.append(t)
+            return (t,1/t)
+        graph = lite.ParametricFunction(function,t_range=[-1,1,.2],discontinuities=[0,0,4],dt=.1)
+        paths = graph.get_subpaths()
+        self.assertEqual(len(paths),2)
+        self.assertTrue(all(abs(t) >= .1 for t in seen))
+        self.assertPointAlmostEqual(paths[0][-1],(-.1,-10,0))
+        self.assertPointAlmostEqual(paths[1][0],(.1,10,0))
+        self.assertEqual(graph.subpath_lengths,[5,5])
+        graph = lite.ParametricFunction(lambda t:(t,0),t_range=[0,1,.1],discontinuities=[.4,.5],dt=.2)
+        self.assertEqual(len(graph.get_subpaths()),2)
+        graph = lite.ParametricFunction(lambda t:(t,0),t_range=[0,1],discontinuities=[.5],dt=1)
+        self.assertEqual(graph.get_num_points(),0)
+
+    def test_function_graph_and_axes_plot_defaults_transform_and_input_queries(self):
+        function = lambda x:x*x
+        standalone = lite.FunctionGraph(function,x_range=[-1,1,.5])
+        self.assertIs(standalone.get_function(),function)
+        self.assertEqual(standalone.color,lite.YELLOW)
+        axes = lite.Axes([-2,2,1],[-1,3],x_length=6,y_length=4).rotate(.4).shift(lite.UP)
+        graph = axes.plot(function)
+        self.assertEqual(len(graph.curves),40)
+        self.assertPointAlmostEqual(graph.get_start(),axes.c2p(-2,4))
+        self.assertPointAlmostEqual(axes.i2gp(.5,graph),axes.c2p(.5,.25))
+        self.assertEqual(len(axes.plot(function,x_range=[-1,1]).curves),20)
+        self.assertEqual(len(axes.plot(function,x_range=[-1,1,.5]).curves),4)
+        parametric = axes.plot_parametric_curve(lambda t:(t,t*t),t_range=[0,1,.25])
+        self.assertPointAlmostEqual(parametric.get_end(),axes.c2p(1,1))
+        self.assertNotIn('underlying_function',graph.to_dict())
+        copied = graph.copy()
+        self.assertIs(copied.underlying_function,function)
+        json.dumps(copied.to_dict(),allow_nan=False)
+        with self.assertRaises(TypeError): axes.i2gp(0,lite.Circle())
+        self.assertGreater(lite.FunctionGraph(function).get_num_curves(),0)
+        axes.num_sampled_graph_points_per_tick = 5
+        self.assertEqual(len(axes.plot(function).curves),20)
+
+    def test_plot_sampling_validation_limits_and_atomic_regeneration(self):
+        called = []
+        for values in ((0,1,0),(1,0),(0,float('inf')),(0,1,1e-9)):
+            with self.assertRaises(ValueError): lite.ParametricFunction(lambda t:called.append(t),t_range=values)
+        self.assertEqual(called,[])
+        with self.assertRaises(TypeError): lite.ParametricFunction(2)
+        with self.assertRaises(NotImplementedError): lite.ParametricFunction(lambda t:(t,0),use_vectorized=True)
+        with self.assertRaises(NotImplementedError): lite.ParametricFunction(lambda t:(t,0,1))
+        with self.assertRaises(ValueError): lite.ParametricFunction(lambda t:(t,float('nan')))
+        with self.assertRaises(ValueError): lite.ParametricFunction(lambda t:(t,0),dt=-1)
+        graph = lite.ParametricFunction(lambda t:(t,0),t_range=[0,1,.5])
+        before = graph.to_dict()
+        graph._parametric_function = lambda t:(t,float('inf'))
+        with self.assertRaises(ValueError): graph.generate_points()
+        self.assertEqual(graph.to_dict(),before)
+
+    def test_plot_gallery_dynamic_function_closed_loop_and_cleanup(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/plot_scene.py').read_text()))
+        self.assertEqual(result['duration'],11)
+        middle = result['frames'][120]['mobjects']
+        curves = [m for m in middle if m['type'] == 'bezierpath']
+        self.assertEqual(len(curves),3)
+        self.assertEqual(len(next(m for m in curves if m['stroke_color'].upper() == lite.BLUE)['curves']),40)
+        loop = next(m for m in curves if m['stroke_color'].upper() == lite.RED)
+        self.assertEqual(len(loop['curves']),32)
+        self.assertEqual(loop['curves'][0][0],loop['curves'][-1][-1])
+        final = result['frames'][-1]['mobjects']
+        self.assertEqual(len(final),2)
+        graph = next(m for m in final if m['type'] == 'bezierpath')
+        self.assertPointAlmostEqual(graph['curves'][0][0],(-4,-.12,0))
+
+    def test_animated_smoothing_keeps_transformed_anchors_fixed(self):
+        path = lite.VMobject().set_points_as_corners([(-2,0),(-1,2),(1,-1),(2,0)]).rotate(.6).scale(1.5).shift(lite.UP)
+        expected = [path._point_to_world(lite.Vector(p)) for p in path.vertices]
+        scene = lite.Scene().add(path)
+        scene.play(path.animate.make_smooth(),run_time=1,rate_func=lite.linear)
+        for index in (0,7,14):
+            data = scene.frames[index]['mobjects'][0]
+            current = path.copy()
+            current.position,current.angle,current.geometry_scale = data['position'],data['angle'],data['geometry_scale']
+            current.curves,current.vertices,current._type = data['curves'],[],data['type']
+            current._sampled_geometry_center = data['geometry_center']
+            anchors = [current._point_to_world(lite.Vector(curve[0])) for curve in current.curves]
+            anchors.append(current.get_end())
+            for actual,target in zip(anchors,expected):
+                self.assertPointAlmostEqual(actual,target)
+
     def test_axes_ranges_centering_and_coordinate_round_trips(self):
         for xr,yr in (([-2,2],[-1,3]),([2,6],[4,8]),([-6,-2],[-8,-4])):
             axes = lite.Axes(xr,yr,x_length=8,y_length=4,tips=False)
