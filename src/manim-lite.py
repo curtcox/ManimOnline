@@ -940,6 +940,35 @@ class Scene:
         self.mobjects = [m for m in self.mobjects if m not in mobjects]
         return self
 
+    def _ordered_roots(self, mobjects):
+        if any(not isinstance(m, Mobject) for m in mobjects):
+            raise TypeError('Scene ordering expects Mobjects')
+        roots = list(dict.fromkeys(mobjects))
+        def family(m):
+            return [m] + [member for child in m.children for member in family(child)]
+        # Reject unsupported family restructuring before changing the scene.
+        for root in self.mobjects + roots:
+            for obj in roots:
+                if obj is not root and (obj in family(root) or root in family(obj)):
+                    raise NotImplementedError('Reorder whole scene groups, not individual group children')
+        return roots
+
+    def bring_to_front(self, *mobjects):
+        roots = self._ordered_roots(mobjects)
+        self.remove(*roots)
+        self.add(*roots)
+        return self
+
+    def bring_to_back(self, *mobjects):
+        roots = self._ordered_roots(mobjects)
+        self.remove(*roots)
+        self.mobjects = roots + self.mobjects
+        return self
+
+    def clear(self):
+        self.mobjects = []
+        return self
+
     def capture(self, overrides=None):
         if len(self.frames) >= MAX_FRAMES:
             raise ValueError('Preview exceeds 60 seconds / 900 frames. Shorten the scene.')

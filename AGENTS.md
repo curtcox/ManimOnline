@@ -38,7 +38,8 @@ compatibility layer, not a server running full Manim Community.
 19. `examples/math_scene.py` for formula rendering and changed-formula crossfades.
 20. `examples/succession_scene.py` for consecutive repeated-object animations and cleanup.
 21. `examples/layer_scene.py` for global depth ordering across transformed groups.
-22. `todo/master_plan.md` and the other `todo/` documents for background plans.
+22. `examples/order_scene.py` for root reordering, clearing, and reintroducing objects.
+23. `todo/master_plan.md` and the other `todo/` documents for background plans.
     `docs/completion.md` tracks the remaining acceptance gates.
 
 `ace/`, `viz-global.js`, and `svg-pan-zoom.min.js` are vendored dependencies.

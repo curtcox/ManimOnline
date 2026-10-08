@@ -10,6 +10,7 @@ const ExampleCatalog = Object.freeze([
   { id: 'path', label: 'Follow a path', path: 'examples/path_scene.py' },
   { id: 'arc', label: 'Circular arcs', path: 'examples/arc_scene.py' },
   { id: 'growth', label: 'Grow and shrink', path: 'examples/growth_scene.py' },
+  { id: 'order', label: 'Reorder and clear a scene', path: 'examples/order_scene.py' },
   { id: 'layers', label: 'Layer overlapping shapes', path: 'examples/layer_scene.py' },
   { id: 'style', label: 'Fill and outline styles', path: 'examples/style_scene.py' },
   { id: 'restore', label: 'Save and restore', path: 'examples/restore_scene.py' },

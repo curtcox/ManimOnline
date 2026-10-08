@@ -26,7 +26,9 @@ stage starts, relative operations, replacement, removal, nested groups, checkpoi
 and terminal holds. Browser gallery playback verified accumulated rotation and
 final removal, plus Graphviz after switching. Global numeric depth ordering now has Python/SVG tests and real Pyodide browser
 checks across transformed groups, including animated crossings and restoration.
-Foreground APIs and broader family composition remain implementation work.
+Root bring-to-front/back and clear/reintroduction now have Python tests and
+Pyodide browser playback checks. Foreground APIs and broader family composition
+remain implementation work.
 
 Full Community parity additionally requires geometry/path morphing, full scene-family
 composition and layering, camera configuration, glyph-level text/TeX

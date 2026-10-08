@@ -42,6 +42,22 @@ blue/red/yellow order at three seconds, restored order at the end, and unchanged
 group scale/translation. MathTex still produced vector paths, and DOT rendered
 when switching afterward. See `examples/layer_scene.py`.
 
+## Scene display controls
+
+`bring_to_front` and `bring_to_back` reorder scene roots in argument order,
+deduplicating repeated inputs and introducing absent objects. Whole groups retain
+their geometry and identity; depth values are unchanged and still take priority.
+`clear()` removes roots while keeping previous frames and reusable object state.
+Nested family restructuring is explicitly rejected before any scene mutation.
+These methods follow the [Scene display API](https://docs.manim.community/en/stable/reference/manim.scene.scene.Scene.html)
+for supported roots; foreground lists and child restructuring are not implemented.
+
+Python tests cover identity, ordering, new roots, empty calls, animation ties,
+clear/reintroduction, checkpoints, invalid family operations, and gallery timing.
+Local Pyodide browser checks verified the group's move forward before rotation,
+move back afterward, blank frame at four seconds, and reintroduced title at the
+end. DOT rendered after switching. See `examples/order_scene.py`.
+
 ## Implemented milestone and next work
 
 The first animation slice implements creation/fades, timed transforms, animate

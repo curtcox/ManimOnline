@@ -72,6 +72,7 @@ Then open `http://localhost:8000` in your browser.
 - [Path scene](examples/path_scene.py): motion along transformed circles, polygon outlines, and lines.
 - [Arc scene](examples/arc_scene.py): open circular paths and clockwise/counterclockwise motion.
 - [Growth scene](examples/growth_scene.py): growth from a point, group growth, and staggered shrinking.
+- [Scene order](examples/order_scene.py): reorder whole groups, clear the display, and reuse objects.
 - [Layer scene](examples/layer_scene.py): animated depth changes across transformed groups.
 - [Style scene](examples/style_scene.py): independent fill/outline colors and group opacity changes.
 - [Restore scene](examples/restore_scene.py): saved geometry/styles, animated restoration, and recovery from zero size.
@@ -294,7 +295,15 @@ changing only a container's depth does not change its children. Animated depth
 changes, copies, transforms, and Restore preserve these values. SVG/PNG snapshots
 use the same paint order as the displayed frame. This follows the
 [Manim depth-setting API](https://docs.manim.community/en/stable/reference/manim.mobject.mobject.Mobject.html#manim.mobject.mobject.Mobject.set_z_index).
-Foreground-object APIs and scene-family restructuring remain unsupported.
+`Scene.bring_to_front(*objects)` and `bring_to_back(*objects)` reorder whole
+scene roots, including entire groups, in argument order and add absent roots.
+Repeated arguments appear once. They keep geometry and depth unchanged, so
+`z_index` takes priority over insertion order. `Scene.clear()` removes displayed
+objects without changing their state or deleting earlier frames; the same objects
+can be added or animated again. Ordering a child of an added group or a group
+containing independently added children requires family restructuring and reports
+an explicit error before changing the scene. Foreground-object APIs and broader
+scene-family restructuring remain unsupported.
 
 ## Offline use
 

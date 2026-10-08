@@ -16,6 +16,66 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_order_gallery_reorders_groups_clears_and_reintroduces_title(self):
+        result = json.loads(lite.render_scene((ROOT / 'examples/order_scene.py').read_text()))
+        self.assertEqual(result['duration'], 7)
+        self.assertEqual([m['type'] for m in result['frames'][0]['mobjects']], ['vgroup', 'circle', 'text'])
+        self.assertEqual([m['type'] for m in result['frames'][15]['mobjects']], ['circle', 'text', 'vgroup'])
+        self.assertEqual([m['type'] for m in result['frames'][45]['mobjects']], ['vgroup', 'circle', 'text'])
+        self.assertEqual(result['frames'][60]['mobjects'], [])
+        self.assertEqual(result['frames'][75]['mobjects'][0]['opacity'], 0)
+        self.assertEqual([m['type'] for m in result['frames'][-1]['mobjects']], ['text'])
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['text'], 'Scene draw order')
+
+    def test_scene_ordering_preserves_identity_geometry_and_argument_order(self):
+        a, b, c, d = lite.Circle(), lite.Square(), lite.Dot(), lite.Triangle()
+        scene = lite.Scene().add(a, b, c)
+        before = [m.to_dict() for m in (a, b, c, d)]
+        self.assertIs(scene.bring_to_front(a, b, a), scene)
+        self.assertEqual(scene.mobjects, [c, a, b])
+        self.assertIs(scene.bring_to_back(d, b), scene)
+        self.assertEqual(scene.mobjects, [d, b, c, a])
+        scene.bring_to_front().bring_to_back()
+        self.assertEqual(scene.mobjects, [d, b, c, a])
+        self.assertEqual([m.to_dict() for m in (a, b, c, d)], before)
+
+    def test_reordered_roots_keep_paint_ties_during_animation(self):
+        result = render('a = Circle(color=BLUE)\nb = Square(color=RED)\nself.add(a, b)\nself.wait(1)\nself.bring_to_front(a)\nself.play(Rotate(a, PI), run_time=1)\nself.bring_to_back(a)\nself.wait(1)')
+        for index, colors in ((0, [lite.BLUE, lite.RED]), (15, [lite.RED, lite.BLUE]), (29, [lite.RED, lite.BLUE]), (30, [lite.BLUE, lite.RED])):
+            self.assertEqual([m['color'] for m in result['frames'][index]['mobjects']], colors)
+
+    def test_clear_keeps_previous_frames_and_objects_can_be_reintroduced(self):
+        scene = lite.Scene()
+        a = lite.Square().shift(lite.RIGHT).save_state()
+        before = a.to_dict()
+        scene.add(a).wait(1)
+        self.assertIs(scene.clear(), scene)
+        self.assertEqual(scene.mobjects, [])
+        self.assertEqual(len(scene.frames[0]['mobjects']), 1)
+        scene.wait(1)
+        self.assertEqual(scene.frames[15]['mobjects'], [])
+        scene.play(lite.FadeIn(a))
+        self.assertEqual(a.to_dict(), before)
+        self.assertEqual(scene.mobjects, [a])
+        self.assertIn('_saved_state', a.__dict__)
+        self.assertEqual(render('self.add(Circle())\nself.wait(1)\nself.clear()')['frames'][-1]['mobjects'], [])
+
+    def test_ordering_rejects_family_restructuring_without_partial_changes(self):
+        child = lite.Circle()
+        group = lite.VGroup(child)
+        other = lite.Dot()
+        scene = lite.Scene().add(group, other)
+        for method in (scene.bring_to_front, scene.bring_to_back):
+            with self.assertRaisesRegex(NotImplementedError, 'whole scene groups'):
+                method(other, child)
+            self.assertEqual(scene.mobjects, [group, other])
+            with self.assertRaisesRegex(TypeError, 'Mobjects'):
+                method(1)
+        scene = lite.Scene().add(child)
+        with self.assertRaises(NotImplementedError):
+            scene.bring_to_front(group)
+        self.assertEqual(scene.mobjects, [child])
+
     def test_layer_gallery_preserves_geometry_and_restores_individual_depths(self):
         result = json.loads(lite.render_scene((ROOT / 'examples/layer_scene.py').read_text()))
         self.assertEqual(result['duration'], 7)
