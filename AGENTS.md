@@ -16,7 +16,8 @@ compatibility layer, not a server running full Manim Community.
 5. `src/manim-renderer.js`, `src/manim-player.js`, and `src/detector.js`.
 6. `docs/rendering.md` for current gaps and next milestones.
 7. `examples/multiple_scenes.py` for selection and geometry transform checks.
-8. `todo/master_plan.md` and the other `todo/` documents for background plans.
+8. `examples/creation_and_rotation.py` for stroke creation and orbital motion.
+9. `todo/master_plan.md` and the other `todo/` documents for background plans.
 
 `ace/`, `viz-global.js`, and `svg-pan-zoom.min.js` are vendored dependencies.
 Avoid editing these to implement Manim features. The Markdown files under

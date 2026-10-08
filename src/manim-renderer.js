@@ -48,9 +48,6 @@ const ManimRenderer = {
   renderMobject(mobject) {
     const type = mobject.type;
     const position = mobject.position || [0, 0, 0];
-    const color = mobject.color || '#FFFFFF';
-    const fillOpacity = mobject.fill_opacity !== undefined ? mobject.fill_opacity : 1;
-    const strokeWidth = mobject.stroke_width ?? 2;
 
     let element = null;
 
@@ -90,7 +87,19 @@ const ManimRenderer = {
     if (element) {
       element.setAttribute('opacity', mobject.opacity ?? 1);
       for (const leaf of [element, ...element.querySelectorAll('*')]) {
-        leaf.setAttribute('vector-effect', 'non-scaling-stroke');
+        leaf.setAttribute('vector-effect', leaf.getAttribute('stroke-dasharray') ? 'none' : 'non-scaling-stroke');
+      }
+    }
+
+    if (element && mobject.draw_progress !== undefined) {
+      const progress = Math.max(0, Math.min(1, mobject.draw_progress));
+      for (const path of [element, ...element.querySelectorAll('line, path')]) {
+        // Normalized dashes must scale with the path, including preview resizing.
+        // A non-scaling stroke makes the visible fraction depend on viewport size.
+        path.setAttribute('vector-effect', 'none');
+        path.setAttribute('pathLength', 1);
+        path.setAttribute('stroke-dasharray', '1 1');
+        path.setAttribute('stroke-dashoffset', 1 - progress);
       }
     }
 

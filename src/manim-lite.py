@@ -29,6 +29,7 @@ class Vector(tuple):
 UP, DOWN = Vector((0, 1, 0)), Vector((0, -1, 0))
 LEFT, RIGHT = Vector((-1, 0, 0)), Vector((1, 0, 0))
 ORIGIN = Vector((0, 0, 0))
+OUT, IN = Vector((0, 0, 1)), Vector((0, 0, -1))
 UL, UR, DL, DR = UP + LEFT, UP + RIGHT, DOWN + LEFT, DOWN + RIGHT
 BLUE, RED, GREEN = '#58C4DD', '#FC6255', '#83C167'
 YELLOW, PURPLE, ORANGE = '#FFFF00', '#9A72AC', '#FF8C00'
@@ -271,11 +272,33 @@ class FadeIn(Animation):
         return [result]
 
 
-# Creation and writing currently use an opacity reveal, not stroke tracing.
-class Create(FadeIn):
-    pass
+class Create(Animation):
+    """Trace primitive outlines; groups reveal their children simultaneously."""
+    def sample(self, alpha):
+        result = copy.deepcopy(self.start)
+        progress = max(0, min(1, alpha))
+        def reveal(data):
+            if data['type'] == 'vgroup':
+                for child in data['children']:
+                    reveal(child)
+            elif data['type'] == 'text':
+                data['opacity'] *= progress
+            else:
+                data['draw_progress'] = progress
+                data['fill_opacity'] *= progress
+        reveal(result)
+        return [result]
 
 
+class Uncreate(Create):
+    def sample(self, alpha):
+        return super().sample(1 - alpha)
+
+    def finish(self, scene):
+        scene.remove(self.mobject)
+
+
+# Text glyph path tracing is not implemented; Write remains an opacity reveal.
 class Write(FadeIn):
     pass
 
@@ -307,6 +330,39 @@ class Transform(Animation):
 
     def finish(self, scene):
         self.mobject.__dict__ = copy.deepcopy(self.target.__dict__)
+
+
+class Rotate(Animation):
+    """Sample a rigid rotation from the original object rather than its endpoints."""
+    def __init__(self, mobject, angle=PI, axis=OUT, about_point=None, **kwargs):
+        super().__init__(mobject, **kwargs)
+        if not math.isfinite(angle):
+            raise ValueError('Rotation angle must be finite')
+        axis = Vector(axis)
+        if axis not in (OUT, IN):
+            raise NotImplementedError('Only 2D rotation about OUT or IN is supported')
+        self.angle = angle if axis == OUT else -angle
+        self.about_point = Vector(about_point) if about_point is not None else None
+
+    def begin(self, scene):
+        super().begin(scene)
+        self.original = self.mobject.copy()
+
+    def sample(self, alpha):
+        current = self.original.copy()
+        current.rotate(self.angle * alpha, about_point=self.about_point)
+        return [current.to_dict()]
+
+    def finish(self, scene):
+        final = self.original.copy().rotate(self.angle, about_point=self.about_point)
+        self.mobject.__dict__ = copy.deepcopy(final.__dict__)
+
+
+class Rotating(Rotate):
+    def __init__(self, mobject, angle=TAU, axis=OUT, about_point=None,
+                 run_time=5, rate_func=linear, **kwargs):
+        super().__init__(mobject, angle, axis, about_point,
+                         run_time=run_time, rate_func=rate_func, **kwargs)
 
 
 class ReplacementTransform(Transform):
@@ -398,8 +454,8 @@ class Scene:
 
 EXPORTS = ['Scene', 'Mobject', 'Circle', 'Square', 'Rectangle', 'Line', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'VGroup', 'Create', 'Write', 'FadeIn',
-           'FadeOut', 'Transform', 'ReplacementTransform', 'UP', 'DOWN', 'LEFT',
-           'RIGHT', 'ORIGIN', 'UL', 'UR', 'DL', 'DR', 'BLUE', 'RED', 'GREEN',
+           'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform', 'UP', 'DOWN', 'LEFT',
+           'RIGHT', 'ORIGIN', 'OUT', 'IN', 'UL', 'UR', 'DL', 'DR', 'BLUE', 'RED', 'GREEN',
            'YELLOW', 'PURPLE', 'ORANGE', 'WHITE', 'BLACK', 'GRAY', 'GREY', 'PINK',
            'linear', 'smooth', 'PI', 'TAU', 'DEGREES']
 

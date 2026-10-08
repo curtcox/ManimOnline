@@ -19,9 +19,63 @@ class SceneTests(unittest.TestCase):
     def test_baseline_animation(self):
         result = json.loads(lite.render_scene((ROOT / 'examples/minimal_scene.py').read_text()))
         self.assertEqual(result['scene'], 'MinimalScene')
-        self.assertEqual(result['frames'][0]['mobjects'][0]['opacity'], 0)
+        self.assertEqual(result['frames'][0]['mobjects'][0]['draw_progress'], 0)
         self.assertEqual(result['frames'][-1]['mobjects'][0]['type'], 'square')
         self.assertGreater(len(result['frames']), 30)
+
+    def test_create_traces_outline_and_preserves_final_style(self):
+        result = render('self.play(Create(Square(fill_opacity=0.8)), run_time=2, rate_func=linear)')
+        middle = result['frames'][15]['mobjects'][0]
+        self.assertEqual(middle['draw_progress'], 0.5)
+        self.assertEqual(middle['fill_opacity'], 0.4)
+        self.assertEqual(middle['opacity'], 1)
+        final = result['frames'][-1]['mobjects'][0]
+        self.assertNotIn('draw_progress', final)
+        self.assertEqual(final['fill_opacity'], 0.8)
+
+    def test_create_group_and_text_fallback(self):
+        result = render('self.play(Create(VGroup(Circle(), VGroup(Text("Title"), Square()))), run_time=2, rate_func=linear)')
+        group = result['frames'][15]['mobjects'][0]
+        self.assertEqual(group['children'][0]['draw_progress'], 0.5)
+        nested = group['children'][1]['children']
+        self.assertEqual(nested[0]['opacity'], 0.5)
+        self.assertEqual(nested[1]['draw_progress'], 0.5)
+
+    def test_uncreate_reverses_drawing_and_removes_the_object(self):
+        result = render('c = Circle()\nself.add(c)\nself.play(Uncreate(c), run_time=2, rate_func=linear)')
+        self.assertEqual(result['frames'][0]['mobjects'][0]['draw_progress'], 1)
+        self.assertEqual(result['frames'][15]['mobjects'][0]['draw_progress'], 0.5)
+        self.assertEqual(result['frames'][-1]['mobjects'], [])
+
+    def test_rotate_keeps_orbital_radius_at_intermediate_frames(self):
+        result = render('s = Square(side_length=0.5).shift(RIGHT * 2)\nself.play(Rotate(s, PI, about_point=ORIGIN), run_time=2, rate_func=linear)')
+        for frame in result['frames']:
+            x, y, _ = frame['mobjects'][0]['position']
+            self.assertAlmostEqual(x*x + y*y, 4)
+        middle = result['frames'][15]['mobjects'][0]
+        self.assertAlmostEqual(middle['position'][0], 0)
+        self.assertAlmostEqual(middle['position'][1], 2)
+        self.assertAlmostEqual(middle['angle'], lite.PI / 2)
+        self.assertAlmostEqual(result['frames'][-1]['mobjects'][0]['position'][0], -2)
+
+    def test_rotation_defaults_clockwise_axis_and_followup_animation(self):
+        result = render('s = Square().shift(RIGHT)\nself.play(Rotating(s, axis=IN, about_point=ORIGIN))\nself.play(s.animate.shift(RIGHT))')
+        self.assertEqual(result['duration'], 6)
+        quarter = result['frames'][15]['mobjects'][0]
+        self.assertLess(quarter['position'][1], 0)
+        final = result['frames'][-1]['mobjects'][0]
+        self.assertAlmostEqual(final['position'][0], 2)
+        self.assertAlmostEqual(final['angle'], -lite.TAU)
+        self.assertEqual(lite.Rotate(lite.Square()).run_time, 1)
+        self.assertEqual(lite.Rotate(lite.Square()).angle, lite.PI)
+
+    def test_rotation_about_own_center_and_rejects_3d_axis(self):
+        result = render('s = Square().shift(RIGHT * 2)\nself.play(Rotate(s, TAU), run_time=2)')
+        self.assertEqual(result['frames'][15]['mobjects'][0]['position'], [2, 0, 0])
+        with self.assertRaisesRegex(NotImplementedError, '2D rotation'):
+            render('self.play(Rotate(Square(), axis=UP))')
+        with self.assertRaises(ValueError):
+            lite.Rotate(lite.Square(), float('inf'))
 
     def test_direction_math_and_animate(self):
         result = render('c = Circle().shift(LEFT * 2)\nself.add(c)\nself.play(c.animate.shift(RIGHT * 4), run_time=2, rate_func=linear)')

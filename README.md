@@ -36,6 +36,7 @@ Then open `http://localhost:8000` in your browser.
 - [Rendering roadmap](docs/rendering.md): current limitations and next milestones.
 - [Minimal scene](examples/minimal_scene.py): baseline animation input.
 - [Multiple scenes](examples/multiple_scenes.py): scene selection, scale, and rotation.
+- [Creation and rotation](examples/creation_and_rotation.py): outline drawing and a circular orbit.
 
 ## Supported browser animation subset
 
@@ -46,7 +47,8 @@ Manim-like runtime, **not the full Manim Community engine**.
 - Shapes: `Circle`, `Square`, `Rectangle`, `Line`, `Arrow`, `Triangle`, `Polygon`,
   `Text`, and `VGroup`.
 - Scene operations: `add`, `remove`, `play`, and `wait`.
-- Animations: `Create`, `Write`, `FadeIn`, `FadeOut`, `Transform`, and
+- Animations: `Create`, `Uncreate`, `Write`, `FadeIn`, `FadeOut`, `Rotate`,
+  `Rotating`, `Transform`, and
   `ReplacementTransform`; chained `.animate.shift()`, `.move_to()`,
   `.set_color()`, `.set_fill()`, `.set_stroke()`, `.scale()`, and `.rotate()`.
 - Geometry: uniform scaling, 2D rotation in radians, optional `about_point`,
@@ -55,8 +57,13 @@ Manim-like runtime, **not the full Manim Community engine**.
 - Directions support vector addition/subtraction and scalar multiplication,
   such as `RIGHT * 2`.
 
-`Create` and `Write` currently reveal objects by fading them in. Transforms
+`Create` progressively traces primitive shape outlines and fades in their fill;
+`Uncreate` reverses that draw and removes the object. Groups reveal all children
+simultaneously. Text creation and `Write` use fades because glyph paths are not
+available in this runtime. Arrow shafts and heads reveal together. Transforms
 interpolate matching geometry and crossfade between different shape types.
+While tracing, stroke widths scale with the shape and preview size so the
+drawn fraction stays accurate; completed objects use fixed-width strokes.
 Leave the Scene field empty to render the first scene defined in the source,
 or enter a class name to choose another. Successful renders suggest the scene
 names in that file. Press Enter to render immediately; editing the field also
@@ -69,6 +76,14 @@ child bounds; text is center anchored without full font metrics. Animation
 chains interpolate transform values, and an external rotation pivot moves the
 center between endpoints rather than following a circular arc. These are
 preview semantics, not full Manim geometry behavior.
+
+Use `Rotate(object, angle=PI, about_point=ORIGIN)` for rigid circular motion
+around an external pivot, or omit `about_point` to rotate around the object's
+center. `Rotating` defaults to a full turn over five seconds at a constant rate;
+`Rotate` defaults to a half turn over one second with smooth easing. Both accept
+`angle`, `about_point`, `run_time`, and `rate_func`. `OUT` rotates counterclockwise
+and `IN` reverses it; other axes are unsupported. Unlike `.animate.rotate()`,
+these animations sample the circular trajectory at each frame.
 
 Animation previews run at
 15 frames per second and are limited to 60 seconds, with a 90-second deadline
@@ -90,7 +105,8 @@ node --test tests/*.test.js
 
 Serve the site locally to check actual Pyodide loading and browser playback.
 Check the default animation, replay/seek, scene selection and URL reload,
-animated scale/rotation, a source edit, invalid Python, and
+animated scale/rotation, outline drawing and erasure, an orbit, a source edit,
+invalid Python, and
 switching to `digraph { a -> b }`. These unit tests cover the compatibility
 runtime and worker lifecycle; they do not substitute for browser checks.
 

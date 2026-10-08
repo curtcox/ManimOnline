@@ -21,7 +21,12 @@ Manim-lite is a compatibility subset, not the Manim Community engine.
 
 The first animation slice implements creation/fades, timed transforms, animate
 method chains, waits, play/pause, replay, seeking, and current-frame SVG download.
-Creation/writing use fades; transforms between different shape types crossfade.
+Creation traces normalized SVG outlines and fades in their fill. Uncreate
+reverses drawing and removes the object. Group children and arrow components
+reveal simultaneously; text creation and writing use fades. Transforms between
+different shape types crossfade.
+Tracing uses scaling strokes for accurate path fractions at any preview size;
+completed objects return to non-scaling strokes.
 The Scene field selects a source-defined class and defaults to the first one.
 Successful renders return scene names for suggestions, and URL/shared links
 preserve selection with the `scene` query parameter. Missing selections fail
@@ -31,15 +36,20 @@ Uniform scale and 2D rotation are serialized as SVG transforms around geometry
 centers. They support direct calls and animation chains, with explicit external
 pivots. Group centers use child bounds, and text uses its anchor without full
 font metrics. External-pivot animations interpolate center positions between
-endpoints; rigid orbital motion is not implemented. Full Manim semantics are
-not implied.
+endpoints. `Rotate` and `Rotating` instead sample rigid rotations from the
+original state at each frame and preserve orbital radius around an explicit
+pivot. Only the XY plane with OUT/IN axes is supported. Full Manim semantics
+are not implied.
 
 Next work can add additional verified compatibility APIs, geometry-aware path
-transforms, rigid rotation animations, and an offline asset strategy. Keep DOT
+transforms, glyph outline rendering, staggered animation timing, and an offline
+asset strategy. Keep DOT
 rendering, sharing, and static SVG/PNG export working as these features evolve.
 
 Use `examples/minimal_scene.py` as a baseline and `examples/multiple_scenes.py`
-for scene selection with animated scale and rotation. Broader examples under `examples/`
+for scene selection with animated scale and rotation.
+`examples/creation_and_rotation.py` demonstrates stroke creation, an orbit, and
+erasure. Broader examples under `examples/`
 are feature references, not an acceptance claim. Document unsupported APIs and
 limits on duration/frame count. MP4 export, LaTeX, 3D, arbitrary dependencies,
 updaters, and offline caching remain future work unless separately implemented.
@@ -47,7 +57,7 @@ updaters, and offline caching remain future work unless separately implemented.
 ## Verification
 
 Check initial Pyodide loading, scene selection and URL reload, scale/rotation,
-a visible animation, seeking/replay, source edits,
+partial outline drawing, erasure, orbital motion, seeking/replay, source edits,
 syntax errors, missing scenes, and a runaway loop timeout. Ensure a new source
 cannot select a scene class left behind by an older render. Check DOT rendering
 and export after switching away from Manim. Run tests for timing and frame state
@@ -56,6 +66,8 @@ independently of browser integration; report both categories separately.
 ## References
 
 - [Manim quickstart](https://docs.manim.community/en/stable/tutorials/quickstart.html)
+- [Manim creation animation](https://docs.manim.community/en/stable/reference/manim.animation.creation.Create.html)
+- [Manim rotation animation](https://docs.manim.community/en/stable/reference/manim.animation.rotation.Rotate.html)
 - [Manim configuration](https://docs.manim.community/en/stable/guides/configuration.html)
 - [Pyodide worker guidance](https://pyodide.org/en/stable/usage/webworker.html)
 
