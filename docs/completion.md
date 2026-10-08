@@ -103,3 +103,9 @@ layout and general geometry-bearing families remain open.
 ArcBetweenPoints now supplies signed minor/major endpoint arcs, signed-radius
 construction, moving endpoints and straight-path transitions. Full 3D arc and
 curved-arrow families remain open.
+
+
+ArcPolygon and ArcPolygonFromArcs now compose closed cubic outlines and retained
+arc children, with gap bridges, per-edge styles and filled morphing. Rendering,
+Create and Transform now include own geometry and descendants. Child-union bounds,
+automatic edge correspondence and general scene restructuring remain open.

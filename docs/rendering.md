@@ -1368,3 +1368,44 @@ Local Pyodide playback verified both oppositely directed arcs at five seconds,
 the yellow straight chord at seven seconds and removal of both paths at nine
 seconds. The DOT gallery still rendered the editor flow graph. All 295 Python
 and 74 Node tests passed for this change.
+
+
+## Arc polygons and geometry-bearing families
+
+ArcPolygon now builds a closed cubic outline from two to 256 finite XY vertices,
+with shared angle/radius defaults or a shared/per-edge configuration dictionary.
+ArcPolygonFromArcs accepts up to 256 Arc-family objects, preserving references to
+them as children while copying their world-space curves into its own outline.
+Inter-arc gaps and closure receive straight cubic segments. Joins within 1e-9
+world units are snapped to avoid accidental separate contours caused by circular
+endpoint roundoff. Empty input to ArcPolygonFromArcs produces an empty path.
+`.arcs` reflects current children, so copying, become and restoration avoid stale
+aliases. Existing child edits do not regenerate the copied outline, matching its
+construction-time nature; use redraw to regenerate it. Parent styling applies
+to the polygon; edge config or existing arcs preserve independent edge styling.
+
+The SVG layer collector now paints non-group objects' own geometry and their
+children. Child branches inherit the ancestor's transform and opacity without
+repainting its path or overriding child styles. Both own geometry and descendants
+participate in global numeric depth sorting. Create now reveals own geometry and
+children together. Transform plans align the own path and child family separately,
+allowing filled curved polygons to morph with visible colored edges. Arc polygon
+children are converted to parent-local cubic snapshots before alignment so their
+interpolation follows the copied outline rather than separate analytical circle
+parameters. Their
+independent curve subdivision can differ for unrelated shapes; automatic edge
+correspondence, child-union geometry bounds and arbitrary scene restructuring
+remain open. Child queries retain the runtime's local-to-parent convention.
+
+Python checks cover closure, straight gap bridges, transformed input snapshots,
+config/source isolation, copied child aliases, restoration, creation, morphs,
+input validation and gallery cleanup. Renderer checks cover all paths, independent
+styles, ancestor transforms/opacity and depth ordering across an outside shape.
+
+Reference: [official Manim arc polygon implementation](https://docs.manim.community/en/stable/_modules/manim/mobject/geometry/arc.html).
+
+Local Pyodide playback verified the blue closed fill and three colored arcs at
+two seconds. At six seconds the fill remained closed and each edge used two
+cubic segments aligned with the six-segment outline. All paths disappeared at
+nine seconds, and switching to DOT rendered the editor flow graph. All 299
+Python and 75 Node tests passed.

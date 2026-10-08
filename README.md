@@ -1038,3 +1038,17 @@ arc; its magnitude must be at least half the endpoint distance. Angle zero makes
 a straight path and coincident endpoints collapse to a point. Use `always_redraw`
 for changing endpoints or bend. Full turns and unresolvable extreme floating-point
 geometry are rejected; arbitrary 3D arcs and curved arrow tips remain open.
+
+
+### Polygons with curved edges
+
+Try **Morph polygons with curved edges** (`examples/arc_polygon_scene.py`).
+`ArcPolygon(*vertices, angle=PI/4, radius=None, arc_config=None)` closes a path
+with endpoint arcs; `arc_config` accepts one shared dictionary or one dictionary
+per edge. `ArcPolygonFromArcs(*arcs)` copies a closed outline from existing arcs,
+joining gaps and the last endpoint with straight segments. Both retain defining
+arcs as children, available through `.arcs`, with independent colors and strokes.
+The renderer now paints geometry-bearing families' own paths and child geometry,
+including global depth ordering and creation. Parent transforms use the existing
+local-child coordinate convention. Outline and child morphs are aligned
+independently; automatic matching of unrelated edges remains unfinished.

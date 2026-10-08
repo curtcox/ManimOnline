@@ -1725,6 +1725,68 @@ class VGroup(Group):
     pass
 
 
+class ArcPolygonFromArcs(VMobject):
+    """Closed cubic outline with independently styled defining arc children."""
+    _validate_children = Group._validate_children
+    add = Group.add
+
+    def __init__(self, *arcs, **kwargs):
+        if len(arcs) > 256 or any(not isinstance(arc,Arc) for arc in arcs):
+            raise ValueError('Arc polygon needs at most 256 Arc objects')
+        super().__init__(**kwargs)
+        curves = []
+        for arc in arcs:
+            points = arc.get_points()
+            if len(points)%4:
+                raise ValueError('Arc polygon needs complete arc curves')
+            incoming = [points[index:index+4] for index in range(0,len(points),4)]
+            if not incoming:
+                continue
+            if curves:
+                self._connect(curves,incoming[0][0])
+                incoming[0][0] = curves[-1][-1][:]
+            curves.extend(incoming)
+        if curves:
+            self._connect(curves,curves[0][0])
+            curves[-1][-1] = curves[0][0][:]
+        self.set_points([point for curve in curves for point in curve])
+        self.add(*arcs)
+        self._arc_polygon_outline = True
+
+    @staticmethod
+    def _connect(curves, end):
+        start,end = Vector(curves[-1][-1]),Vector(end)
+        if math.dist(start,end) <= 1e-9:
+            curves[-1][-1] = list(end)
+        else:
+            curves.append([list(start),list(start+(end-start)*(1/3)),
+                           list(start+(end-start)*(2/3)),list(end)])
+
+    @property
+    def arcs(self):
+        return self.children
+
+
+class ArcPolygon(ArcPolygonFromArcs):
+    def __init__(self, *vertices, angle=PI/4, radius=None, arc_config=None, **kwargs):
+        vertices = VMobject._corners(vertices)
+        if not 2 <= len(vertices) <= 256:
+            raise ValueError('Arc polygon requires 2 to 256 vertices')
+        if arc_config is None:
+            options = {'angle':angle} if radius is None else {'radius':radius}
+            configs = [options]*len(vertices)
+        elif isinstance(arc_config,dict):
+            configs = [arc_config]*len(vertices)
+        elif isinstance(arc_config,(list,tuple)) and len(arc_config)==len(vertices) and all(
+                isinstance(options,dict) for options in arc_config):
+            configs = arc_config
+        else:
+            raise ValueError('Arc configuration needs a dictionary or one dictionary per edge')
+        arcs = [ArcBetweenPoints(start,vertices[(index+1)%len(vertices)],**dict(configs[index]))
+                for index,start in enumerate(vertices)]
+        super().__init__(*arcs,**kwargs)
+
+
 class Elbow(VMobject):
     """An open two-segment corner, rotated about the origin."""
     def __init__(self, width=.2, angle=0, **kwargs):
@@ -3111,6 +3173,28 @@ def _transform_plan(start, target):
         start.pop('children')
         target.pop('children')
         return ('group', start, target, children)
+    if start.get('children') or target.get('children'):
+        own_start,own_target = copy.deepcopy(start),copy.deepcopy(target)
+        own_start['children'],own_target['children'] = [],[]
+        first,last = VGroup().to_dict(),VGroup().to_dict()
+        first['children'],last['children'] = start['children'],target['children']
+        if start.get('_arc_polygon_outline') or target.get('_arc_polygon_outline'):
+            def outline(snapshot):
+                source = Mobject()
+                source.__dict__.update(copy.deepcopy(snapshot))
+                source._type = snapshot['type']
+                source.children = []
+                source._sampled_geometry_center = Vector(snapshot['geometry_center'])
+                points = source.get_points()
+                result = copy.deepcopy(snapshot)
+                result.update(type='bezierpath',curves=[points[i:i+4] for i in range(0,len(points),4)],
+                              vertices=[],position=list(ORIGIN),angle=0,geometry_scale=1,
+                              geometry_center=list(ORIGIN))
+                return result
+            first['children'] = [outline(child) for child in first['children']]
+            last['children'] = [outline(child) for child in last['children']]
+        return ('family' ,start,target,[_transform_plan(own_start,own_target),
+                                      _transform_plan(first,last)])
     aligned = _align_path_snapshots(start, target)
     if aligned:
         return ('interpolate', *aligned, [])
@@ -3125,6 +3209,11 @@ def _transform_plan(start, target):
 
 def _sample_transform(plan, alpha):
     kind, start, target, children = plan
+    if kind == 'family':
+        own = _sample_transform(children[0],alpha)
+        members = _sample_transform(children[1],alpha)[0]['children']
+        own[0]['children'] = members
+        return own
     if kind == 'fade':
         first, last = copy.deepcopy(start), copy.deepcopy(target)
         first['opacity'] *= 1 - alpha
@@ -3239,6 +3328,9 @@ class Create(Animation):
             else:
                 data['draw_progress'] = progress
                 data['fill_opacity'] *= progress
+            if data['type'] != 'vgroup':
+                for child in data.get('children',[]):
+                    reveal(child)
         reveal(result)
         return [result]
 
@@ -3793,7 +3885,7 @@ class MovingCameraScene(Scene):
     camera_class = MovingCamera
 
 
-EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'Arrow',
+EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'NumberPlane', 'ComplexPlane', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',

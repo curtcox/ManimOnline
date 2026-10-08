@@ -54,11 +54,14 @@ const ManimRenderer = {
       if (mobject.type === 'vgroup') {
         for (const child of mobject.children || []) collect(child, [...ancestors, mobject]);
       } else {
-        let branch = mobject;
+        let branch = { ...mobject, children: [] };
         for (let i = ancestors.length - 1; i >= 0; i--) {
           branch = { ...ancestors[i], children: [branch] };
         }
         layers.push({ branch, z: mobject.z_index ?? 0 });
+        // Geometry-bearing families paint their own path and their descendants.
+        const parent = { ...mobject, type: 'vgroup' };
+        for (const child of mobject.children || []) collect(child, [...ancestors, parent]);
       }
     };
     for (const mobject of sceneData.mobjects || []) collect(mobject);

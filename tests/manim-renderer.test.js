@@ -337,3 +337,23 @@ test('gradient validation rejects unsafe colors and a single stop keeps a solid 
   assert.equal(polygon.tag,'polygon');
   assert.equal(polygon.getAttribute('fill'),'#123456');
 });
+
+test('geometry-bearing families paint own path and globally sorted transformed children', () => {
+  const svg = renderer.render({mobjects:[{
+    type:'bezierpath',curves:[[[0,0],[1,0],[1,1],[0,0]]],
+    fill_color:'#0000FF',fill_opacity:.4,stroke_width:0,position:[2,1,0],
+    geometry_center:[.5,.5,0],angle:.3,geometry_scale:2,opacity:.5,z_index:1,
+    children:[{type:'arc',radius:1,start_angle:0,arc_angle:1,
+               color:'#FFFF00',z_index:-1},
+              {type:'arc',radius:1,start_angle:1,arc_angle:1,
+               color:'#FF0000',z_index:3}]
+  },{type:'circle',radius:.2,color:'#FFFFFF',z_index:2}]});
+  const paths = svg.querySelectorAll().filter(node=>node.tag==='path');
+  assert.equal(paths.length,3);
+  assert.deepEqual(paths.map(node=>node.getAttribute('stroke')),['#FFFF00','#FFFFFF','#FF0000']);
+  assert.equal(paths[1].getAttribute('fill'),'#0000FF');
+  const positioned = svg.querySelectorAll().filter(node=>node.getAttribute('transform')?.includes('translate(100, 50)'));
+  assert.equal(positioned.length,3);
+  assert.equal(positioned[0].getAttribute('opacity'),'0.5');
+  assert.equal(paths[0].getAttribute('opacity'),'1');
+});

@@ -287,3 +287,13 @@ and the existing partial/morph pipeline; zero-angle/coincident cases use a
 polyline. Start/end queries delegate to Mobject so analytical arc geometry does
 not fall through VMobject's corner-only getters. Keep endpoint precision checks,
 finite XY validation and less-than-full-turn limits explicit.
+
+
+Read `examples/arc_polygon_scene.py` for ArcPolygon, ArcPolygonFromArcs, filled
+closed outlines, independent edge styles and geometry-bearing families. `.arcs`
+is a property of children, avoiding stale runtime aliases after copy/become.
+The closed outline is copied at construction; editing a child does not rebuild
+it. The SVG collector now paints own geometry plus descendants, preserving
+ancestor transforms/opacity and global leaf depth. Create traverses both own
+paths and children. Transform plans independently align both portions. Preserve
+DOT and ordinary VGroup behavior when extending this shared path.

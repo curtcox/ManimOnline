@@ -16,6 +16,72 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_arc_polygon_closed_outline_styles_configs_and_copy(self):
+        vertices = [(-1,0,0),(1,0,0),(0,2,0)]
+        configs = [{'angle':lite.PI/3,'color':lite.RED},
+                   {'angle':0,'color':lite.GREEN},{'radius':-2,'color':lite.YELLOW}]
+        original = lite.copy.deepcopy(configs)
+        polygon = lite.ArcPolygon(*vertices,arc_config=configs,color=lite.BLUE,fill_opacity=.4)
+        self.assertTrue(polygon.is_closed())
+        self.assertEqual(len(polygon.arcs),3)
+        self.assertEqual([arc.color for arc in polygon.arcs],[lite.RED,lite.GREEN,lite.YELLOW])
+        self.assertEqual(configs,original)
+        self.assertEqual(polygon.fill_color,lite.BLUE)
+        self.assertEqual(len(polygon.get_subpaths()),1)
+        copied = polygon.copy()
+        self.assertIs(copied.arcs[0],copied.children[0])
+        self.assertIsNot(copied.arcs[0],polygon.arcs[0])
+        copied.become(lite.ArcPolygon(*vertices,angle=0))
+        self.assertIs(copied.arcs[0],copied.children[0])
+        self.assertTrue(copied.is_closed())
+        json.dumps(polygon.to_dict(),allow_nan=False)
+
+    def test_arc_polygon_from_arcs_gaps_transformed_sources_and_isolation(self):
+        a = lite.ArcBetweenPoints((-1,0,0),(1,0,0),angle=lite.PI/2).rotate(.3).shift(lite.UP)
+        b = lite.ArcBetweenPoints((2,0,0),(0,2,0),angle=0)
+        before = [a.to_dict(),b.to_dict()]
+        polygon = lite.ArcPolygonFromArcs(a,b)
+        self.assertIs(polygon.arcs[0],a)
+        self.assertTrue(polygon.is_closed())
+        self.assertEqual(len(polygon.get_subpaths()),1)
+        self.assertPointAlmostEqual(polygon.get_start(),a.get_start())
+        self.assertEqual(len(polygon.curves),a.get_num_curves()+b.get_num_curves()+2)
+        self.assertEqual([a.to_dict(),b.to_dict()],before)
+        polygon.save_state().rotate(.5).scale(1.5).shift(lite.LEFT)
+        self.assertEqual([a.to_dict(),b.to_dict()],before)
+        polygon.restore()
+        self.assertTrue(polygon.is_closed())
+        self.assertEqual(polygon.position,[0,0,0])
+        self.assertEqual(lite.ArcPolygonFromArcs().get_points(),[])
+
+    def test_arc_polygon_creation_and_morph_include_own_path_and_children(self):
+        result = render("p = ArcPolygon((-1,0),(1,0),(0,2),angle=PI/3,fill_opacity=.5)\nself.play(Create(p),run_time=1)\nself.play(Transform(p,ArcPolygon((-1,0),(1,0),(0,2),angle=0,fill_opacity=.8)),run_time=2)")
+        created = result['frames'][7]['mobjects'][0]
+        self.assertGreater(created['draw_progress'],0)
+        self.assertLess(created['fill_opacity'],.5)
+        self.assertTrue(all(arc['draw_progress']==created['draw_progress'] for arc in created['children']))
+        middle = result['frames'][30]['mobjects'][0]
+        self.assertEqual(middle['type'],'bezierpath')
+        self.assertEqual(len(middle['children']),3)
+        self.assertTrue(all(arc['type']=='bezierpath' for arc in middle['children']))
+        edge_curves = [curve for arc in middle['children'] for curve in arc['curves']]
+        for own,edge in zip(middle['curves'],edge_curves):
+            for a,b in zip(own,edge):
+                self.assertPointAlmostEqual(a,b)
+        self.assertEqual(len(result['frames'][-1]['mobjects'][0]['children']),3)
+
+    def test_arc_polygon_validation_and_gallery_cleanup(self):
+        for options in ({'arc_config':[{}]},{'arc_config':[{},None,{}]},
+                        {'arc_config':'invalid'},{'radius':.1}):
+            with self.assertRaises(ValueError): lite.ArcPolygon((-1,0),(1,0),(0,2),**options)
+        with self.assertRaises(ValueError): lite.ArcPolygon((0,0))
+        with self.assertRaises(ValueError): lite.ArcPolygonFromArcs(lite.Line())
+        result = json.loads(lite.render_scene((ROOT/'examples/arc_polygon_scene.py').read_text()))
+        self.assertEqual(result['duration'],9)
+        self.assertEqual(len(result['frames'][105]['mobjects'][0]['children']),3)
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+        json.dumps(result,allow_nan=False)
+
     def test_endpoint_arc_signed_sweep_radius_and_endpoints(self):
         for sweep in (lite.PI/2,-lite.PI/2,lite.PI*1.5,-lite.PI*1.5):
             arc = lite.ArcBetweenPoints(lite.LEFT,lite.RIGHT,angle=sweep)
