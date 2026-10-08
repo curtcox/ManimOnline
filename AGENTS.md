@@ -252,3 +252,13 @@ projections use current world shaft endpoints, including extrapolation, independ
 axis rotation and collapsed shafts. Copy guide configs before applying overrides.
 Use tracker/function inputs directly when two redraw callbacks must agree in the
 same frame; scene updater ordering can otherwise leave a one-frame lag.
+
+
+Read `examples/dashed_paths_scene.py` for DashedVMobject, periodic phase, approximate
+arc-length spacing and parameter spacing. Preserve exact cubic cuts and separate
+contours; length lookup excludes contour jumps. Bound requested counts and sampled
+lookup work before constructing children. Keep styles on independent copied
+subcurves, with no stored source aliases or lookup tables in JSON. Closed full
+coverage and open shifted-end clipping need explicit edge-case tests. A Line
+converted to a cubic subcurve must query its actual path endpoints. Arrow tips,
+glyph geometry and general geometry-bearing source families remain open.

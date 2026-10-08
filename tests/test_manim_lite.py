@@ -16,6 +16,131 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_dashed_vmobject_open_pattern_style_endpoints_and_source_isolation(self):
+        source = lite.Line((0,0,0),(4,0,0),color=lite.RED,stroke_width=5,stroke_opacity=.3)
+        before = source.to_dict()
+        dashes = lite.DashedVMobject(source,num_dashes=4,dashed_ratio=.5)
+        self.assertIsInstance(dashes,lite.VMobject)
+        self.assertIsInstance(dashes,lite.VGroup)
+        self.assertEqual(len(dashes),4)
+        self.assertEqual(dashes.get_points(),[])
+        self.assertPointAlmostEqual(dashes[0].get_start(),(0,0,0))
+        self.assertPointAlmostEqual(dashes[-1].get_end(),(4,0,0))
+        self.assertAlmostEqual(sum(child.get_arc_length() for child in dashes),2)
+        for child in dashes:
+            self.assertEqual(child.stroke_color,lite.RED)
+            self.assertEqual(child.stroke_width,5)
+            self.assertEqual(child.stroke_opacity,.3)
+        dashes[0].set_color(lite.BLUE)
+        self.assertEqual(source.to_dict(),before)
+        self.assertEqual(len(lite.DashedVMobject(source,num_dashes=0)),0)
+        one = lite.DashedVMobject(source,num_dashes=1,dashed_ratio=.4)
+        self.assertPointAlmostEqual(one[0].get_end(),(1.6,0,0))
+        solid = lite.DashedVMobject(source,num_dashes=4,dashed_ratio=1)
+        self.assertAlmostEqual(sum(child.get_arc_length() for child in solid),4)
+
+    def test_dashed_vmobject_equal_length_and_legacy_parameter_spacing(self):
+        source = lite.VMobject().set_points_as_corners([(0,0,0),(1,0,0),(10,0,0)])
+        measured = lite.DashedVMobject(source,num_dashes=4,dashed_ratio=.5)
+        legacy = lite.DashedVMobject(source,num_dashes=4,dashed_ratio=.5,equal_lengths=False)
+        lengths = [child.get_arc_length(30) for child in measured]
+        for length in lengths:
+            self.assertAlmostEqual(length,1.25)
+        unequal = [child.get_arc_length(30) for child in legacy]
+        self.assertGreater(max(unequal),min(unequal)*5)
+        self.assertAlmostEqual(source.get_arc_length(),10)
+        curved = lite.CubicBezier((0,0,0),(.2,5,0),(8,-3,0),(10,0,0))
+        equal = lite.DashedVMobject(curved,num_dashes=4,dashed_ratio=.6)
+        unequal_curve = lite.DashedVMobject(curved,num_dashes=4,dashed_ratio=.6,equal_lengths=False)
+        exact_lengths = [child.get_arc_length(200) for child in equal]
+        expected = curved.get_arc_length(200)*.6/4
+        for length in exact_lengths:
+            self.assertAlmostEqual(length,expected,delta=.035)
+        legacy_lengths = [child.get_arc_length(200) for child in unequal_curve]
+        self.assertGreater(max(legacy_lengths)-min(legacy_lengths),.1)
+
+        circle = lite.Circle(radius=2)
+        self.assertAlmostEqual(circle.get_arc_length(100),4*lite.PI,delta=.002)
+        self.assertEqual(lite.VMobject().get_arc_length(),0)
+
+    def test_dashed_vmobject_closed_wrap_offsets_and_full_coverage(self):
+        source = lite.Circle(radius=1.3,color=lite.GREEN).rotate(.4).shift(lite.RIGHT)
+        before = source.to_dict()
+        dashes = lite.DashedVMobject(source,num_dashes=4,dashed_ratio=.8,dash_offset=.9,equal_lengths=False)
+        wrapped = [child for child in dashes if child._dash_interval[0] > child._dash_interval[1]]
+        self.assertEqual(len(wrapped),1)
+        child = wrapped[0]
+        a,b = child._dash_interval
+        self.assertEqual(child.get_points(),source.get_subcurve(a,b).get_points())
+        for offset in (0,.1,.5):
+            full = lite.DashedVMobject(source,num_dashes=1,dashed_ratio=1,dash_offset=offset)
+            self.assertEqual(len(full),1)
+            self.assertAlmostEqual(full[0].get_arc_length(100),source.get_arc_length(100),delta=.002)
+            self.assertPointAlmostEqual(full[0].get_start(),full[0].get_end())
+        negative = lite.DashedVMobject(source,num_dashes=4,dash_offset=-.1)
+        positive = lite.DashedVMobject(source,num_dashes=4,dash_offset=.9)
+        self.assertEqual([child.get_points() for child in negative],[child.get_points() for child in positive])
+        self.assertEqual(source.to_dict(),before)
+
+    def test_dashed_vmobject_open_phase_clipping_and_overflow(self):
+        source = lite.Line((0,0,0),(10,0,0))
+        shifted = lite.DashedVMobject(source,num_dashes=3,dashed_ratio=.5,dash_offset=.9)
+        self.assertEqual(len(shifted),3)
+        self.assertPointAlmostEqual(shifted[-1].get_start(),(0,0,0))
+        self.assertPointAlmostEqual(shifted[-1].get_end(),(1.25,0,0))
+        single = lite.DashedVMobject(source,num_dashes=1,dashed_ratio=.7,dash_offset=.5)
+        self.assertPointAlmostEqual(single[0].get_start(),(5,0,0))
+        self.assertPointAlmostEqual(single[0].get_end(),(10,0,0))
+        zero = lite.DashedVMobject(source,num_dashes=4,dashed_ratio=0)
+        self.assertTrue(all(child.get_arc_length()==0 for child in zero))
+
+    def test_dashed_vmobject_disconnected_paths_and_transform_restore(self):
+        source = lite.VMobject().set_points_as_corners([(0,0,0),(1,0,0)])
+        source.start_new_path((5,0,0)).add_line_to((6,0,0))
+        dashes = lite.DashedVMobject(source,num_dashes=1,dashed_ratio=1)
+        self.assertEqual(len(dashes[0].get_subpaths()),2)
+        self.assertAlmostEqual(dashes[0].get_arc_length(),2)
+        before = dashes.to_dict()
+        copied = dashes.copy().set_color(lite.YELLOW)
+        self.assertEqual(dashes.to_dict(),before)
+        self.assertNotEqual(copied.to_dict(),before)
+        dashes.save_state().rotate(.3).scale(.7).shift(lite.UP).restore()
+        self.assertEqual(dashes.to_dict(),before)
+        json.dumps(dashes.to_dict(),allow_nan=False)
+        collapsed = lite.DashedVMobject(lite.Circle(radius=0),num_dashes=3)
+        self.assertTrue(all(child.get_arc_length()==0 for child in collapsed))
+
+    def test_dashed_vmobject_validation_and_arc_length_limits(self):
+        source = lite.Circle()
+        before = source.to_dict()
+        for options in ({'num_dashes':True},{'num_dashes':-1},{'num_dashes':1001},
+                        {'num_dashes':1.5},{'dashed_ratio':float('nan')},
+                        {'dashed_ratio':-1},{'dash_offset':float('inf')},
+                        {'dash_offset':True},{'equal_lengths':1}):
+            with self.assertRaises(ValueError): lite.DashedVMobject(source,**options)
+        with self.assertRaises(TypeError): lite.DashedVMobject(lite.Text('glyphs'))
+        with self.assertRaises(TypeError): lite.DashedVMobject(lite.VGroup(source))
+        self.assertEqual(source.to_dict(),before)
+        for samples in (1,1001,True,2.5):
+            with self.assertRaises(ValueError): source.get_arc_length(samples)
+        huge = lite.VMobject().set_points_as_corners([(index,0,0) for index in range(202)])
+        with self.assertRaises(ValueError): huge.get_arc_length(1000)
+
+    def test_dashed_paths_gallery_phase_spacing_density_and_cleanup(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/dashed_paths_scene.py').read_text()))
+        self.assertEqual(result['duration'],9)
+        early = result['frames'][30]['mobjects']
+        shifted = result['frames'][74]['mobjects']
+        denser = result['frames'][105]['mobjects']
+        self.assertEqual([len(root['children']) for root in early[2:5]],[12,8,8])
+        self.assertNotEqual(early[2]['children'][0]['curves'],shifted[2]['children'][0]['curves'])
+        self.assertTrue(early[3]['equal_lengths'])
+        self.assertFalse(early[4]['equal_lengths'])
+        self.assertEqual(len(denser[3]['children']),16)
+        self.assertTrue(all(child['stroke_color']==lite.RED for child in denser[3]['children']))
+        self.assertEqual(len(result['frames'][-1]['mobjects']),2)
+        json.dumps(result,allow_nan=False)
+
     def test_dashed_line_native_count_ratio_endpoints_handles_and_styles(self):
         line = lite.DashedLine(color=lite.RED,stroke_width=4,stroke_opacity=.3)
         self.assertIsInstance(line,lite.Line)

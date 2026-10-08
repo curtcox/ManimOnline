@@ -79,8 +79,10 @@ polygons now add changing bounds and gradients between curves, with browser
 playback and export checks. Disconnected region topology and adaptive/symbolic
 analysis remain open. DashedLine now adds individual straight dash families,
 endpoint transforms and orthogonal coordinate guides, with frame and browser
-checks for moving markers and rotating axes. General curved DashedVMobject
-construction remains open.
+checks for moving markers and rotating axes. DashedVMobject now adds exact cubic
+subcurves, approximate equal-length/parameter spacing, phase wrapping, clipping
+and disconnected contours, with gallery frame and browser checks. Arrow tips,
+glyph paths and general geometry-bearing source families remain open.
 
 Full Community parity additionally requires general geometry/path morphing, full scene-family
 composition and layering, 3D cameras and advanced camera APIs (2D settings, moving-camera pan/zoom and automatic bounds fitting now have Python/SVG tests), glyph-level text/TeX

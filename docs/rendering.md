@@ -1208,7 +1208,7 @@ children, and has no own path points. Start/end and first/last handles query the
 children through the parent transform. Styles propagate normally. Endpoint
 changes map the existing child endpoints by a uniform rotate/scale/shift, retaining
 individual geometry/color edits and fixed count. Collapsed lines recover from
-stored dash intervals. General curved DashedVMobject construction is still open.
+stored dash intervals. Curved DashedVMobject construction is described below.
 
 Line and NumberLine projection uses the infinite world-space shaft; collapsed
 shafts return the start. Axes [coordinate guides](https://docs.manim.community/en/stable/_modules/manim/mobject/graphing/coordinate_systems.html)
@@ -1227,3 +1227,42 @@ showed 21 dash segments and both guide endpoints meeting the marker after the
 30-degree rotation at seven seconds. The nine-second frame removed the dashes and
 marker. Switching to DOT rendered the editor flow graph. All 275 Python and 74
 Node tests passed.
+
+
+## Curved dashed geometry
+
+DashedVMobject follows the [Community spacing/phase API](https://docs.manim.community/en/stable/_modules/manim/mobject/types/vectorized_mobject.html)
+for supported XY outlines. It creates actual copied subcurve children, preserving
+source styles without mutation. Requested counts are integers from 0 to 1000;
+ratios are finite in [0,1], offset is finite, and spacing flags are boolean.
+Zero count returns an empty group. Closed curves have equal numbers of dashes and
+gaps; open curves end with a dash at zero phase. Offset wraps modulo one period,
+with open end clipping or a new beginning piece when the pattern overflows.
+Closed seam cuts use the existing exact wrapped get_subcurve implementation.
+One-dash full coverage remains a full closed path at arbitrary phase, handling
+the otherwise ambiguous equal start/end parameters explicitly.
+
+Equal-length spacing samples 20 pieces per cubic and inverts cumulative distance
+with a binary lookup, then uses exact parameter subdivision. Legacy parameter
+spacing skips that inversion. Curve-length lookup resets at each cubic, so contour
+gaps do not add phantom distance. The resulting parts retain separate contours.
+Lookup work caps at 200000 segments. get_arc_length uses the same finite sampling
+helper with a configurable 2–1000 points per curve, default 10. Constant curves
+measure exactly zero. Arc length is approximate, not analytic or adaptive.
+
+The container has VMobject and VGroup behavior but no own points; it stores no
+source aliases or lookup arrays. Copies, checkpoints, family styles, redraw,
+creation, group morphing and removal use the existing pipeline. Source Line copies
+converted to cubic paths now read actual path endpoints. Source callback copying
+uses existing subcurve semantics. Arrow tips, glyphs and general geometry-bearing
+source families are unsupported and remain completion gates.
+
+Tests cover native open spacing, source styles/isolation, both spacing modes on
+unequal straight segments and curved cubics, circle measurement, closed phase
+wrap/full coverage, signed offsets, open clipping/reappearance, zero ratios/counts,
+collapsed outlines, disconnected contours, transforms/copies/restoration, limits
+and gallery phase/refinement/cleanup. Local Pyodide playback verified twelve ring
+dashes and eight equal-length dashes at two seconds, changed phase before five
+seconds, and sixteen refined red dashes at seven seconds. The final nine-second
+frame retained only reference geometry and labels. Switching to DOT rendered the
+editor flow graph. All 282 Python and 74 Node tests passed.

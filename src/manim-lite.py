@@ -1,4 +1,5 @@
 """Small, explicit Manim subset for SVG frame playback (not full Manim)."""
+import bisect
 import copy
 import inspect
 import json
@@ -277,6 +278,10 @@ class Mobject:
             if self._type == 'bezierpath':
                 points += self.vertices
         return [list(self._point_to_world(Vector(point))) for point in points]
+
+    def get_arc_length(self, sample_points_per_curve=10):
+        lengths,_ = _curve_length_data(self,sample_points_per_curve)
+        return lengths[-1]
 
     def get_num_points(self):
         return len(self.get_points())
@@ -939,6 +944,31 @@ def _smooth_path_curves(anchors):
             zip(anchors,handles,second,anchors[1:])]
 
 
+def _curve_length_data(mobject, samples):
+    if isinstance(samples,bool) or not isinstance(samples,int) or not 2 <= samples <= 1000:
+        raise ValueError('Curve length samples must be an integer from 2 to 1000')
+    points = mobject.get_points()
+    count = len(points)//4
+    if count*(samples-1) > 200000:
+        raise ValueError('Curve length lookup supports at most 200000 segments')
+    lengths,parameters = [0.0],[0.0]
+    total = 0.0
+    for index in range(count):
+        curve = points[index*4:index*4+4]
+        previous = Vector(curve[0])
+        constant = all(point == curve[0] for point in curve[1:])
+        for step in range(1,samples):
+            alpha = step/(samples-1)
+            point = previous if constant else VMobject._bezier_point(curve,alpha)
+            total += math.dist(previous,point)
+            if not math.isfinite(total):
+                raise ValueError('Curve arc length must be finite')
+            lengths.append(total)
+            parameters.append((index+alpha)/count)
+            previous = point
+    return lengths,parameters
+
+
 class ParametricFunction(VMobject):
     """Finite XY samples with optional C2 smoothing and declared contour gaps."""
     def __init__(self, function, t_range=(0,1), dt=1e-8, discontinuities=None,
@@ -1376,10 +1406,14 @@ class Line(Mobject):
         return start, end
 
     def get_start(self):
+        if self._type not in ('line','arrow','vgroup'):
+            return Mobject.get_start(self)
         self._endpoints(self.start, self.end)
         return self._point_to_world(Vector(self.start))
 
     def get_end(self):
+        if self._type not in ('line','arrow','vgroup'):
+            return Mobject.get_end(self)
         self._endpoints(self.start, self.end)
         return self._point_to_world(Vector(self.end))
 
@@ -1602,6 +1636,80 @@ class Group(Mobject):
 class VGroup(Group):
     """Container for the supported vector/text geometry in this runtime."""
     pass
+
+
+class DashedVMobject(VMobject,VGroup):
+    """Independent exact cubic dashes, spaced by approximate length or parameter."""
+    def __init__(self, vmobject, num_dashes=15, dashed_ratio=.5, dash_offset=0,
+                 color=WHITE, equal_lengths=True, **kwargs):
+        if not isinstance(vmobject,Mobject) or vmobject._type not in (
+                'polyline','polygon','bezierpath','circle','arc','ellipse',
+                'square','rectangle','triangle','line','annulus'):
+            raise TypeError('DashedVMobject needs a supported vector outline')
+        if isinstance(num_dashes,bool) or not isinstance(num_dashes,int) or not 0 <= num_dashes <= 1000:
+            raise ValueError('Dash count must be an integer from 0 to 1000')
+        if isinstance(dashed_ratio,bool) or not isinstance(dashed_ratio,(int,float)) or not math.isfinite(dashed_ratio) or not 0 <= dashed_ratio <= 1:
+            raise ValueError('Dashed ratio must be finite and between 0 and 1')
+        if isinstance(dash_offset,bool) or not isinstance(dash_offset,(int,float)) or not math.isfinite(dash_offset):
+            raise ValueError('Dash offset must be finite')
+        if not isinstance(equal_lengths,bool):
+            raise ValueError('Equal lengths must be a boolean')
+        super().__init__(color=color,**kwargs)
+        self._type = 'vgroup'
+        self.num_dashes,self.dashed_ratio = num_dashes,dashed_ratio
+        self.dash_offset,self.equal_lengths = dash_offset,equal_lengths
+        # Children retain source styling, like Community's copied subcurves.
+        for name in ('color','fill_color','stroke_color','fill_opacity','stroke_opacity','stroke_width'):
+            setattr(self,name,copy.deepcopy(getattr(vmobject,name)))
+        if not num_dashes:
+            return
+        source = vmobject.copy()
+        closed = source.is_closed()
+        dash = dashed_ratio/num_dashes
+        gap = ((1-dashed_ratio)/num_dashes if closed else
+               1-dashed_ratio if num_dashes == 1 else (1-dashed_ratio)/(num_dashes-1))
+        period = dash+gap
+        phase = (dash_offset % 1)*period
+        intervals = []
+        for index in range(num_dashes):
+            a = index*period+phase
+            b = a+dash
+            if closed:
+                start,end = a % 1,b % 1
+                if b == 1:
+                    end = 1
+                intervals.append((start,end,dash == 1))
+            else:
+                if a <= 1:
+                    intervals.append((a,min(1,b),False))
+                if b > 1+gap:
+                    intervals.append((0,min(1,b-(1+gap)),False))
+        if equal_lengths:
+            lengths,parameters = _curve_length_data(source,21)
+            def parameter(alpha):
+                if alpha <= 0 or not lengths[-1]:
+                    return 0
+                if alpha >= 1:
+                    return 1
+                distance = alpha*lengths[-1]
+                index = min(bisect.bisect_right(lengths,distance)-1,len(lengths)-2)
+                span = lengths[index+1]-lengths[index]
+                fraction = (distance-lengths[index])/span if span else 0
+                return parameters[index]+(parameters[index+1]-parameters[index])*fraction
+        else:
+            def parameter(alpha):
+                return alpha
+        for start,end,whole in intervals:
+            a,b = parameter(start),parameter(end)
+            if whole and a:
+                child = source.get_subcurve(a,1)
+                VMobject.append_vectorized_mobject(child,source.get_subcurve(0,a))
+            elif whole:
+                child = source.get_subcurve(0,1)
+            else:
+                child = source.get_subcurve(a,b)
+            child._dash_interval = [a,b]
+            self.children.append(child)
 
 
 class DashedLine(Line,VGroup):
@@ -3509,7 +3617,7 @@ class MovingCameraScene(Scene):
     camera_class = MovingCamera
 
 
-EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'Arrow',
+EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'NumberPlane', 'ComplexPlane', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',

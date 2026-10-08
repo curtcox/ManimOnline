@@ -940,8 +940,7 @@ are supported. Transformations and endpoint queries follow the actual child
 geometry. `get_first_handle` and `get_last_handle` query the end segments.
 Endpoint changes stretch the existing family, preserving segment edits and colors;
 regenerate the object to recompute dash count. Copies, restore, group animations,
-and per-segment styling use the existing family pipeline. General curved
-DashedVMobject construction remains open.
+and per-segment styling use the existing family pipeline. Curved DashedVMobject construction is described below.
 
 `Line.get_projection(point)` and `NumberLine.get_projection(point)` project onto
 the infinite current world-space shaft, including beyond its endpoints. A collapsed
@@ -959,3 +958,30 @@ current graph/tracker inputs to follow movement; reading another object's update
 can see its previous position when that updater runs later. Try **Follow dashed
 coordinate guides** (`examples/guides_scene.py`) for a moving point, a rotating
 coordinate frame and cleanup.
+
+
+`DashedVMobject(outline, num_dashes=15, dashed_ratio=.5, dash_offset=0,
+equal_lengths=True)` creates independent cubic subcurves in a VMobject with
+VGroup behavior. It supports the current line, polygon, circle, ellipse, arc,
+ring and VMobject paths. Source styling and world geometry are copied; use
+`set_color` on the source or result to choose dash colors. The source is unchanged.
+Counts are integers from 0 to 1000; zero returns an empty group. Ratios range from
+zero to one. Negative/positive phase offsets wrap modulo one pattern period.
+
+Open patterns start and end with a dash at zero phase; shifted end pieces are
+clipped or reappear at the beginning. A shifted open pattern can have one extra
+piece. Closed patterns wrap exactly through the seam, including full coverage
+with one dash. Equal-length spacing uses a 20-segment-per-cubic distance lookup;
+`equal_lengths=False` divides the curve parameter instead. Cuts use exact cubic
+subdivision, but length spacing is approximate. Disconnected contours keep their
+separate paths and do not add gap distance to the length calculation.
+
+`Mobject.get_arc_length(sample_points_per_curve=10)` measures its own path using
+straight sampling pieces. The sample count is an integer from 2 to 1000, with a
+200000-segment lookup cap. Containers without their own points return zero.
+Dashes are independent snapshots; regenerate them to follow changing geometry or
+phase. Copies, restore, group morphs and creation/removal use the existing family
+pipeline. Arrow tips, glyph paths and general geometry-bearing families remain
+open. Try **Dash curved paths and shift their phase**
+(`examples/dashed_paths_scene.py`) for a wrapped ring, both spacing modes and
+animated refinement.
