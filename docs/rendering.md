@@ -596,7 +596,7 @@ through existing snapshots; updater exposure makes sampled values available to
 original callback references. Root trackers are omitted from drawable frames;
 renderer handling also omits trackers nested in a Group. Scene-added trackers can
 run timed callbacks, ordered before later dependents. Copy/checkpoints remain
-independent. Complex values, point arrays and numeric text displays remain open.
+independent. Complex values, point arrays and glyph-level numeric text semantics remain open.
 Tests cover arithmetic/validation without partial updates, hidden output, timed
 callbacks, copy/restoration, relative succession and connector endpoints.
 
@@ -632,3 +632,28 @@ at four seconds while the group continues shrinking. After resumption the circle
 ends at radius 1, and the group's square stays frozen at side .5 after callback
 removal. SVG dimensions were 75/50 pixels at four seconds and 50/25 at the end.
 DOT rendered after switching.
+
+
+## Numeric text labels
+
+DecimalNumber and Integer render finite real values as existing SVG text. Their
+get/set/increment methods follow the [official numeric API](https://docs.manim.community/en/stable/_modules/manim/mobject/text/numbers.html)
+for fixed precision, signs, comma grouping, ellipsis and plain unit suffixes.
+Integer defaults to zero decimal places and rounds its getter. Negative rounded
+zero suppresses the minus sign. Precision is bounded to 0–12 and unit strings to
+256 characters; invalid values fail before changing an existing label.
+
+Numeric snapshots interpolate the real value and regenerate formatted text,
+keeping formatting settings discrete. Direct animate, relative Succession and
+Restore therefore show intermediate numbers. Tracker-driven callbacks update
+labels at sampled positions while preserving styling and earlier frame snapshots.
+Labels can become plain Text or other supported geometry without stale numeric
+serialization. Tests cover formatting, integer ties, validation, copy/checkpoints,
+intermediate values, restoration, source replacement and the gallery.
+
+Text remains centered with browser font metrics. Native digit families, edge_to_fix,
+glyph bounds/indexing, complex values, TeX units and Variable remain open.
+
+Local Pyodide gallery playback verified +1.00 and 1 at three seconds, the direct
+numeric animation at 1,750 points after five seconds, and restoration to 1,000
+points at the end. Graphviz rendered after switching.

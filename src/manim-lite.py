@@ -61,7 +61,7 @@ class PreviewConfig:
             if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 4096:
                 raise ValueError('Pixel dimensions must be integers from 1 to 4096')
         elif name in ('frame_width', 'frame_height'):
-            if isinstance(value, bool) or not isinstance(value, (int,float)) or not math.isfinite(value) or value <= 0:
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
                 raise ValueError('Frame dimensions must be positive and finite')
         elif name == 'background_color':
             if not isinstance(value, str) or len(value) != 7 or value[0] != '#' or any(c not in '0123456789abcdefABCDEF' for c in value[1:]):
@@ -898,6 +898,63 @@ class Text(Mobject):
         self._type, self.text, self.font_size = 'text', str(text), font_size
 
 
+def _number_text(number, options):
+    if not isinstance(number, (int, float)) or not math.isfinite(number):
+        raise ValueError('Numeric labels require a finite real value')
+    precision = options['num_decimal_places']
+    spec = ('+' if options['include_sign'] else '') + (',' if options['group_with_commas'] else '')
+    text = format(number, spec + '.' + str(precision) + 'f')
+    if text.startswith('-') and all(c in '0,.' for c in text[1:]):
+        text = ('+' if options['include_sign'] else '') + text[1:]
+    return text + ('…' if options['show_ellipsis'] else '') + (options['unit'] or '')
+
+
+class DecimalNumber(Text):
+    """A finite real numeric label using the preview's centered SVG text."""
+    def __init__(self, number=0, num_decimal_places=2, include_sign=False,
+                 group_with_commas=True, show_ellipsis=False, unit=None, font_size=48, **kwargs):
+        if (isinstance(num_decimal_places, bool) or not isinstance(num_decimal_places, int) or
+                not 0 <= num_decimal_places <= 12):
+            raise ValueError('num_decimal_places must be an integer from 0 to 12')
+        if not all(isinstance(v, bool) for v in (include_sign, group_with_commas, show_ellipsis)):
+            raise ValueError('Numeric formatting flags must be booleans')
+        if unit is not None and (not isinstance(unit, str) or len(unit) > 256):
+            raise ValueError('Numeric unit must be a string of at most 256 characters')
+        if not isinstance(font_size, (int, float)) or not math.isfinite(font_size) or font_size <= 0:
+            raise ValueError('Numeric font size must be positive and finite')
+        options = dict(num_decimal_places=num_decimal_places, include_sign=include_sign,
+                       group_with_commas=group_with_commas, show_ellipsis=show_ellipsis, unit=unit)
+        super().__init__(_number_text(number, options), font_size=font_size, **kwargs)
+        self.number, self._number_format = number, options
+
+    def get_value(self):
+        return self.number
+
+    def set_value(self, number):
+        text = _number_text(number, self._number_format)
+        self.number, self.text = number, text
+        return self
+
+    def increment_value(self, delta_t=1):
+        if not isinstance(delta_t,(int, float)):
+            raise ValueError('Numeric increments must be real values')
+        return self.set_value(self.get_value() + delta_t)
+
+    def to_dict(self):
+        result = super().to_dict()
+        if result['type'] == 'text' and '_number_format' in result:
+            result['text'] = _number_text(self.number, self._number_format)
+        return result
+
+
+class Integer(DecimalNumber):
+    def __init__(self, number=0, num_decimal_places=0, **kwargs):
+        super().__init__(number, num_decimal_places=num_decimal_places, **kwargs)
+
+    def get_value(self):
+        return int(round(self.number))
+
+
 class MathTex(Text):
     """A single formula rendered as SVG paths by the browser's math backend."""
     def __init__(self, *tex_strings, arg_separator=' ', font_size=48, **kwargs):
@@ -1004,8 +1061,13 @@ def interpolate(start, end, alpha):
     if isinstance(start, list) and isinstance(end, list) and len(start) == len(end):
         return [interpolate(a, b, alpha) for a, b in zip(start, end)]
     if isinstance(start, dict) and isinstance(end, dict):
-        return {key: interpolate(value, end.get(key, value), alpha)
-                for key, value in start.items()}
+        result = {key: interpolate(value, end.get(key, value), alpha)
+                  for key, value in start.items()}
+        if start.get('type') == end.get('type') == 'text' and '_number_format' in start and '_number_format' in end:
+            # Formatting switches discretely; only the real value interpolates.
+            result['_number_format'] = copy.deepcopy(end['_number_format'] if alpha >= 1 else start['_number_format'])
+            result['text'] = _number_text(result['number'], result['_number_format'])
+        return result
     if isinstance(start, str) and isinstance(end, str) and start.startswith('#') and end.startswith('#') and len(start) == len(end) == 7:
         try:
             channels = [round(int(start[i:i+2], 16) * (1-alpha) + int(end[i:i+2], 16) * alpha) for i in (1, 3, 5)]
@@ -1787,7 +1849,7 @@ class MovingCameraScene(Scene):
 
 
 EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'CubicBezier', 'Circle', 'Arc', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
-           'Triangle', 'Polygon', 'Text', 'MathTex', 'Group', 'VGroup', 'Create', 'Write', 'FadeIn',
+           'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'TransformFromCopy',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform', 'UP', 'DOWN', 'LEFT',

@@ -16,6 +16,74 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_numeric_label_formatting_and_integer_rounding(self):
+        self.assertEqual(lite.DecimalNumber().text, '0.00')
+        number = lite.DecimalNumber(1234.125, num_decimal_places=3, include_sign=True,
+                                    show_ellipsis=True, unit=' kg')
+        self.assertEqual(number.text, '+1,234.125… kg')
+        number.set_value(-.0001)
+        self.assertEqual(number.text, '+0.000… kg')
+        self.assertEqual(lite.DecimalNumber(-0.0).text, '0.00')
+        self.assertEqual(lite.DecimalNumber(1234, group_with_commas=False).text, '1234.00')
+        for value, expected in [(2.5, 2), (3.5, 4), (-2.5, -2)]:
+            integer = lite.Integer(value)
+            self.assertEqual(integer.get_value(), expected)
+            self.assertEqual(integer.text, str(expected))
+
+    def test_numeric_validation_is_atomic_and_copies_are_independent(self):
+        number = lite.DecimalNumber(1).shift(lite.RIGHT).set_color(lite.BLUE).save_state()
+        before = number.to_dict()
+        for invalid in [float('nan'), float('inf'), '2', complex(1, 2)]:
+            with self.assertRaises(ValueError): number.set_value(invalid)
+            with self.assertRaises(ValueError): number.increment_value(invalid)
+            self.assertEqual(number.to_dict(), before)
+        for options in [dict(num_decimal_places=-1), dict(num_decimal_places=13),
+                        dict(num_decimal_places=2.5), dict(num_decimal_places=True),
+                        dict(include_sign=1), dict(unit=3), dict(unit='x'*257),
+                        dict(font_size=0), dict(font_size=float('nan'))]:
+            with self.assertRaises(ValueError): lite.DecimalNumber(**options)
+        clone = number.copy().increment_value(3)
+        self.assertEqual(number.get_value(), 1)
+        self.assertEqual(clone.get_value(), 4)
+        number.set_value(9).restore()
+        self.assertEqual(number.get_value(), 1)
+        self.assertEqual(number.get_center(), lite.RIGHT)
+        self.assertEqual(number.color, lite.BLUE)
+
+    def test_numeric_animation_formats_intermediate_values_and_restoration(self):
+        result = render("""number = DecimalNumber(0).save_state()
+self.add(number)
+self.play(number.animate.set_value(4), run_time=2, rate_func=linear)
+self.play(Succession(number.animate.increment_value(1), number.animate.increment_value(1)))
+self.play(Restore(number), run_time=2, rate_func=linear)""")
+        self.assertEqual(result['frames'][15]['mobjects'][0]['text'], '2.00')
+        self.assertEqual(result['frames'][60]['mobjects'][0]['text'], '6.00')
+        self.assertEqual(result['frames'][75]['mobjects'][0]['text'], '3.00')
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['text'], '0.00')
+
+    def test_numeric_labels_can_become_plain_text_or_geometry(self):
+        number = lite.DecimalNumber(3)
+        number.become(lite.Text('done'))
+        self.assertEqual(number.to_dict()['text'], 'done')
+        number.become(lite.Circle())
+        self.assertEqual(number.to_dict()['type'], 'circle')
+        result = render("""number = DecimalNumber(3)
+self.add(number)
+self.play(Transform(number, Text('done')))
+self.wait(1)""")
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['text'], 'done')
+
+    def test_numeric_gallery_updaters_follow_samples_and_keep_old_frames(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/numeric_scene.py').read_text()))
+        self.assertEqual(result['duration'], 9)
+        middle = result['frames'][45]['mobjects']
+        self.assertEqual(middle[1]['text'], '+1.00')
+        self.assertEqual(middle[1]['position'], [1, 1, 0])
+        self.assertEqual(middle[2]['text'], '1')
+        self.assertEqual(result['frames'][75]['mobjects'][3]['text'], '1,750 points')
+        self.assertEqual(result['frames'][-1]['mobjects'][3]['text'], '1,000 points')
+        self.assertEqual(result['frames'][0]['mobjects'][1]['text'], '-2.00')
+
     def test_become_keeps_identity_callbacks_checkpoint_and_independent_target(self):
         source = lite.Circle().save_state()
         callback = lambda m:m.set_color(lite.GREEN)

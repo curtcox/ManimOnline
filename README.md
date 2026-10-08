@@ -564,7 +564,7 @@ when animated; explicitly add a tracker whose own updater must run during waits.
 For timed dependencies, add the tracker before objects that read it. Copy,
 save_state/Restore, easing, parallel timelines and Succession use the existing
 animation pipeline. Values occupy the tracker's x coordinate. ComplexValueTracker,
-point-array access, and full numeric display classes remain unsupported. See
+point-array access, and glyph-level numeric display semantics remain unsupported. See
 **Animate a shared value** for two moving shapes and a live connector.
 
 
@@ -578,3 +578,16 @@ their redraw updates but factory closures still refer to the original variables.
 The Python class does not change when becoming a different shape. Optional native
 become fitting/stretch arguments and general scene restructuring remain unsupported.
 See **Rebuild shapes each frame** for changing dimensions, suspension and freezing.
+
+
+`DecimalNumber(number=0)` and `Integer(number=0)` display finite real values
+using centered SVG text. get_value/set_value/increment_value and animated value
+changes are supported; updaters can read a ValueTracker to display each sampled
+value. DecimalNumber defaults to two decimal places; Integer defaults to zero
+and rounds get_value to the nearest integer (ties to even). Formatting options
+include num_decimal_places (0–12), include_sign, group_with_commas,
+show_ellipsis and a plain-text unit suffix. Updates preserve position, scale,
+style and callbacks. Copy, checkpoints and Restore use the existing pipeline.
+Native TeX digit families, measured glyph bounds, edge_to_fix, digit indexing,
+complex values and Variable remain open. See **Show changing numbers** for live
+tracker labels, direct numeric animation and restoration.

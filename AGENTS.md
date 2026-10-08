@@ -115,3 +115,8 @@ Read `examples/redraw_scene.py` for factory-driven geometry, suspension/resumpti
 and freezing callbacks. become must preserve source callbacks/checkpoints and
 independent target geometry. Redraw copies update the callback argument; do not
 capture a fixed original object in the regeneration callback.
+
+Read `examples/numeric_scene.py` for DecimalNumber/Integer tracker labels,
+formatted intermediate animation values and restoration. Numeric labels use
+centered SVG Text, not native TeX digit families. Keep formatting options
+independent of numeric interpolation and preserve atomic finite-value validation.
