@@ -96,8 +96,9 @@ verified; successful individual feature commits do not close the overall goal.
 
 
 Angle, RightAngle and Elbow now add signed quadrant-selected marks, optional dots,
-construction-time queries and moving-line redraw. Native Angle own-point/family
-layout and general geometry-bearing families remain open.
+construction-time queries and moving-line redraw. Angle now owns its editable
+cubic path with the optional dot child, with own-point queries and restored
+path/dot morphing. General non-group slicing and mutable NumPy points remain open.
 
 
 ArcBetweenPoints now supplies signed minor/major endpoint arcs, signed-radius

@@ -1315,11 +1315,10 @@ radii and dot distances must be finite and nonnegative. RightAngle makes an
 elbow between the selected rays, including nonperpendicular inputs; it does not
 assert perpendicularity. Standalone Elbow rotates about the origin.
 
-The arc/corner and optional independently colored dot are actual display-group
-children, so creation, opacity, transformations, copying, redraw and removal use
-the established group pipeline. This differs from native Angle's own path with
-a dot submobject. Native own-point queries, slicing/family layout and general
-geometry-bearing family compatibility remain open. `get_lines` preserves the
+Angle now stores its own cubic arc/corner outline, with the optional dot as a
+child, matching native own-path/dot structure. Creation, opacity, transforms,
+copy, redraw and removal use geometry-bearing family support. Native mutable
+NumPy points and general non-group slicing/family semantics remain open. `get_lines` preserves the
 source references; they are omitted from frame JSON. `get_value` returns the
 construction-time signed sweep in radians or degrees (including elbow marks).
 The mark is a snapshot: use `always_redraw` for line motion. Dot placement follows
@@ -1409,3 +1408,26 @@ two seconds. At six seconds the fill remained closed and each edge used two
 cubic segments aligned with the six-segment outline. All paths disappeared at
 nine seconds, and switching to DOT rendered the editor flow graph. All 299
 Python and 75 Node tests passed.
+
+
+## Editable angle paths
+
+Angle is now a VMobject with its own cubic arc/corner path, rather than a VGroup
+with a separate geometry child. `get_points`, endpoint/proportion queries,
+reversal, partial extraction and point replacement operate on that own path.
+Only the independently colored dot is a child. `.lines` exposes the defining
+line references, also returned by `get_lines`; those references stay out of
+frame JSON. Parallel/zero-span angles remain empty paths. Dot geometry is not
+included in own point arrays. Existing `get_subcurve` copies may retain the dot
+child; use the extracted points in a fresh VMobject for an outline-only highlight.
+
+The new gallery moves a marker along the dotted angle, morphs the angle into a
+right corner (removing its dot), restores the checkpoint including its dot, and
+removes the marks. Python checks cover the own-path/family structure, construction
+queries, transformed endpoints, reversal, restored geometry, copied point edits,
+partial length, JSON isolation and gallery restoration/cleanup.
+
+Local Pyodide playback verified a red two-segment corner at seven seconds and
+the restored yellow arc/green dot at eight seconds. Both angle and moving marker
+were absent at ten seconds. Switching to DOT rendered the editor flow graph.
+All 301 Python and 75 Node tests passed.

@@ -1800,8 +1800,10 @@ class Elbow(VMobject):
         self.rotate(angle, about_point=ORIGIN)
 
 
-class Angle(VMobject, VGroup):
-    """A snapshot angle marker; arc/corner and optional dot are separate children."""
+class Angle(VMobject):
+    """A snapshot arc/corner path, with the optional dot as a child."""
+    _validate_children = Group._validate_children
+    add = Group.add
     def __init__(self, line1, line2, radius=None, quadrant=(1,1),
                  other_angle=False, dot=False, dot_radius=None, dot_distance=.55,
                  dot_color=WHITE, elbow=False, **kwargs):
@@ -1819,7 +1821,7 @@ class Angle(VMobject, VGroup):
         if dot_distance is None:
             raise ValueError('Dot distance must be finite')
         super().__init__(**kwargs)
-        self._type = 'vgroup'
+        self.set_points([])
         self._angle_lines = (line1,line2)
         self.quadrant, self.elbow, self.angle_value = tuple(quadrant), elbow, 0
         a,b = Line._endpoints(line1.get_start(),line1.get_end())
@@ -1850,7 +1852,7 @@ class Angle(VMobject, VGroup):
         else:
             mark = Arc(radius=radius,start_angle=start,angle=self.angle_value,
                        arc_center=intersection,**kwargs)
-        self.add(mark)
+        self.set_points(mark.get_points())
         if dot and not elbow:
             offset = mark.get_center()-intersection
             span = math.hypot(*offset)
@@ -1858,8 +1860,12 @@ class Angle(VMobject, VGroup):
                 value/span for value in offset)*(radius*dot_distance)
             self.add(Dot(anchor,radius=radius/10 if dot_radius is None else dot_radius,color=dot_color))
 
+    @property
+    def lines(self):
+        return self._angle_lines
+
     def get_lines(self):
-        return VGroup(*self._angle_lines)
+        return VGroup(*self.lines)
 
     def get_value(self, degrees=False):
         return self.angle_value/DEGREES if degrees else self.angle_value

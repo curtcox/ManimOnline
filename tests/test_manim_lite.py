@@ -140,6 +140,46 @@ class SceneTests(unittest.TestCase):
         self.assertEqual(len(result['frames'][-1]['mobjects']),2)
         json.dumps(result,allow_nan=False)
 
+    def test_angle_own_path_queries_edits_transforms_and_restoration(self):
+        angle = lite.Angle(lite.Line(lite.ORIGIN,lite.RIGHT),
+                           lite.Line(lite.ORIGIN,lite.UP),radius=1,dot=True)
+        self.assertIsInstance(angle,lite.VMobject)
+        self.assertNotIsInstance(angle,lite.VGroup)
+        self.assertEqual(len(angle.get_family()),2)
+        self.assertEqual(len(angle.lines),2)
+        self.assertEqual(angle.get_num_curves(),2)
+        self.assertPointAlmostEqual(angle.point_from_proportion(.5),(2**-.5,2**-.5,0))
+        points = angle.get_points()
+        before = angle.to_dict()
+        angle.save_state().rotate(lite.PI/2,about_point=lite.ORIGIN).shift(lite.RIGHT)
+        self.assertPointAlmostEqual(angle.get_start(),(1,1,0))
+        self.assertPointAlmostEqual(angle.get_end(),(0,0,0))
+        angle.reverse_direction()
+        self.assertPointAlmostEqual(angle.get_start(),(0,0,0))
+        angle.restore()
+        self.assertEqual(angle.to_dict(),before)
+        partial = angle.get_subcurve(.25,.75)
+        self.assertLess(partial.get_arc_length(),angle.get_arc_length())
+        edited = angle.copy().set_points_as_corners([lite.ORIGIN,lite.RIGHT,lite.UP])
+        self.assertEqual(edited._type,'polyline')
+        self.assertEqual(angle.get_points(),points)
+        self.assertEqual(len(edited.children),1)
+        json.dumps(edited.to_dict(),allow_nan=False)
+
+    def test_angle_path_gallery_corner_morph_restore_and_cleanup(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/angle_path_scene.py').read_text()))
+        self.assertEqual(result['duration'],10)
+        original = result['frames'][30]['mobjects'][2]
+        corner = result['frames'][105]['mobjects'][2]
+        restored = result['frames'][120]['mobjects'][2]
+        self.assertEqual(original['type'],'bezierpath')
+        self.assertEqual(len(original['children']),1)
+        self.assertTrue(all(child['opacity']==0 for child in corner['children']))
+        self.assertEqual(restored['curves'],original['curves'])
+        self.assertEqual(restored['children'],original['children'])
+        self.assertEqual(len(result['frames'][-1]['mobjects']),1)
+        json.dumps(result,allow_nan=False)
+
     def test_angle_signed_sweeps_quadrants_and_auto_radius(self):
         first = lite.Line(lite.LEFT,lite.RIGHT)
         second = lite.Line(lite.DOWN,lite.UP)
@@ -160,9 +200,10 @@ class SceneTests(unittest.TestCase):
         b = lite.Line((1,2,0),(1,4,0))
         before = [a.to_dict(),b.to_dict()]
         angle = lite.Angle(a,b,radius=1,dot=True,dot_radius=.12,dot_color=lite.RED,color=lite.YELLOW)
-        self.assertEqual(len(angle.children),2)
-        arc,dot = angle.children
-        self.assertPointAlmostEqual(arc.get_arc_center(),(1,2,0))
+        self.assertEqual(len(angle.children),1)
+        dot = angle.children[0]
+        self.assertPointAlmostEqual(angle.get_start(),(2,2,0))
+        self.assertPointAlmostEqual(angle.get_end(),(1,3,0))
         self.assertPointAlmostEqual(dot.get_center(),(1+.55/2**.5,2+.55/2**.5,0))
         self.assertEqual(dot.color,lite.RED)
         self.assertEqual(dot.radius,.12)
@@ -172,8 +213,8 @@ class SceneTests(unittest.TestCase):
         self.assertEqual([a.to_dict(),b.to_dict()],before)
         self.assertNotEqual(copied.to_dict(),angle.to_dict())
         corner = lite.RightAngle(a,b,length=.5,color=lite.GREEN)
-        self.assertPointAlmostEqual(corner.children[0].get_start(),(1.5,2,0))
-        self.assertPointAlmostEqual(corner.children[0].get_end(),(1,2.5,0))
+        self.assertPointAlmostEqual(corner.get_start(),(1.5,2,0))
+        self.assertPointAlmostEqual(corner.get_end(),(1,2.5,0))
         self.assertAlmostEqual(corner.get_value(degrees=True),90)
         elbow = lite.Elbow(width=2,angle=lite.PI/2)
         self.assertPointAlmostEqual(elbow.get_start(),(-2,0,0))
@@ -205,8 +246,8 @@ class SceneTests(unittest.TestCase):
         self.assertAlmostEqual(first[4]['angle_value'],lite.PI/6)
         self.assertAlmostEqual(end[4]['angle_value'],lite.PI/2)
         self.assertAlmostEqual(end[7]['angle_value'],-3*lite.PI/2)
-        self.assertEqual(len(end[4]['children']),2)
-        self.assertNotEqual(first[4]['children'][1]['position'],end[4]['children'][1]['position'])
+        self.assertEqual(len(end[4]['children']),1)
+        self.assertNotEqual(first[4]['children'][0]['position'],end[4]['children'][0]['position'])
         self.assertEqual(end[5]['text'],'90')
         self.assertEqual(len(result['frames'][-1]['mobjects']),4)
         json.dumps(result,allow_nan=False)

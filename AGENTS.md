@@ -274,8 +274,8 @@ NumberLine's existing positive-length contract and the animated set_angle entry.
 
 
 Read `examples/angle_scene.py` for signed Angle sweeps, quadrant selection,
-optional dots, RightAngle and Elbow. Angle uses an explicit display group with
-separate geometry children; native own-path/submobject layout is not supported.
+optional dots, RightAngle and Elbow. Angle owns its cubic arc/corner path with
+only the dot as a child, using geometry-bearing family rendering.
 `get_value` stores the construction-time sweep. Rebuild with `always_redraw` for
 moving lines. Defining line references are excluded from frame JSON; preserve
 that isolation when extending serialization. Parallel/zero-span lines are empty.
@@ -297,3 +297,10 @@ it. The SVG collector now paints own geometry plus descendants, preserving
 ancestor transforms/opacity and global leaf depth. Create traverses both own
 paths and children. Transform plans independently align both portions. Preserve
 DOT and ordinary VGroup behavior when extending this shared path.
+
+
+Read `examples/angle_path_scene.py` for own-path queries, movement, dotted-angle
+to corner morphs and restoration. Defining line references are exposed via
+`.lines`/`get_lines` but excluded from frame JSON. Keep the own path independent
+of dot geometry when editing or extracting points. General non-group family
+slicing and mutable NumPy point arrays are still open.

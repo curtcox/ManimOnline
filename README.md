@@ -1022,8 +1022,8 @@ corner. `Angle` supports quadrant signs, signed clockwise/counterclockwise sweep
 automatic or explicit radius, dots and `from_three_points`. `RightAngle` builds
 an elbow mark; `Elbow` also works as an independent path. Parallel or zero-length
 lines produce an empty angle. Use `always_redraw` to follow moving lines.
-Angle marks are display groups containing an arc/corner and optional dot;
-they do not expose native Angle point-array/family layout. `get_value` is the
+Angle now stores its own arc/corner path and only the optional dot as a child.
+Its path supports point queries, edits, reversal and partial extraction. `get_value` is the
 construction-time angle, and `get_lines` returns the defining lines. Full Manim
 Community compatibility remains unfinished.
 
@@ -1052,3 +1052,9 @@ The renderer now paints geometry-bearing families' own paths and child geometry,
 including global depth ordering and creation. Parent transforms use the existing
 local-child coordinate convention. Outline and child morphs are aligned
 independently; automatic matching of unrelated edges remains unfinished.
+
+
+Try **Follow and restore an editable angle path**
+(`examples/angle_path_scene.py`) for movement along the angle, morphing into a
+corner, and restoration of the original path and dot. Mutable NumPy point-array
+attributes and general non-group family slicing remain unfinished.
