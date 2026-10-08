@@ -16,6 +16,94 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_area_polygon_uses_graph_points_and_exact_endpoint_providers(self):
+        axes = lite.Axes([-2,2],[-1,4],x_length=8,y_length=5)
+        graph = axes.plot(lambda x:x*x,x_range=[-2,2,.5])
+        before = graph.to_dict(),axes.to_dict()
+        area = axes.get_area(graph,[-.7,1.3],color=lite.RED,opacity=.4,stroke_width=0)
+        self.assertIsInstance(area,lite.Polygon)
+        self.assertPointAlmostEqual(area.vertices[0],axes.c2p(-.7,0))
+        self.assertPointAlmostEqual(area.vertices[1],axes.i2gp(-.7,graph))
+        self.assertPointAlmostEqual(area.vertices[-2],axes.i2gp(1.3,graph))
+        self.assertPointAlmostEqual(area.vertices[-1],axes.c2p(1.3,0))
+        interior = [point for point in graph.get_points() if -.7 <= axes.p2c(point)[0] <= 1.3]
+        self.assertEqual(area.vertices[2:-2],interior)
+        self.assertEqual(area.fill_color,lite.RED)
+        self.assertEqual(area.fill_opacity,.4)
+        self.assertEqual(area.stroke_opacity,.4)
+        self.assertEqual((graph.to_dict(),axes.to_dict()),before)
+        default = axes.get_area(graph)
+        self.assertPointAlmostEqual(default.vertices[0],axes.c2p(-2,0))
+        self.assertPointAlmostEqual(default.vertices[-1],axes.c2p(2,0))
+        self.assertEqual(default.fill_color,[lite.BLUE,lite.GREEN])
+
+    def test_area_between_curves_clamps_range_and_reverses_boundary(self):
+        axes = lite.Axes([-2,2],[-2,3],x_length=4,y_length=5)
+        graph = axes.plot(lambda x:x*x,x_range=[-2,2,.5])
+        other = axes.plot(lambda x:x,x_range=[-.5,1,.25])
+        area = axes.get_area(graph,[-1,1.5],bounded_graph=other)
+        self.assertPointAlmostEqual(area.vertices[0],axes.i2gp(-.5,graph))
+        self.assertPointAlmostEqual(area.vertices[-1],axes.i2gp(-.5,other))
+        expected = []
+        for curve in (graph,other):
+            points = [list(axes.i2gp(-.5,curve))]
+            points += [point for point in curve.get_points() if -.5 <= axes.p2c(point)[0] <= 1]
+            points += [list(axes.i2gp(1,curve))]
+            expected.append(points)
+        self.assertEqual(area.vertices,expected[0]+expected[1][::-1])
+        with self.assertRaises(ValueError): axes.get_area(graph,[1.1,1.5],bounded_graph=other)
+        zero = axes.get_area(graph,[1,1],bounded_graph=other,color=[lite.RED])
+        self.assertEqual(zero.color,lite.RED)
+        self.assertTrue(all(abs(axes.p2c(point)[0]-1)<1e-9 for point in zero.vertices))
+
+    def test_area_transformed_geometry_negative_baseline_and_independent_copy(self):
+        axes = lite.Axes([-2,2],[1,4],x_length=6,y_length=3).rotate(.4).scale(.7).shift(lite.RIGHT)
+        graph = axes.plot(lambda x:-x*x,x_range=[-2,2,.5])
+        area = axes.get_area(graph,[-1,1],color=[lite.RED,lite.BLUE,lite.GREEN])
+        self.assertPointAlmostEqual(area.vertices[0],axes.c2p(-1,0))
+        self.assertPointAlmostEqual(area.vertices[1],axes.c2p(-1,-1))
+        self.assertPointAlmostEqual(area.vertices[-2],axes.c2p(1,-1))
+        before = area.to_dict()
+        copy = area.copy().set_fill(lite.YELLOW).shift(lite.UP)
+        self.assertEqual(area.to_dict(),before)
+        self.assertNotEqual(copy.to_dict(),before)
+        area.save_state().scale(0).restore()
+        self.assertEqual(area.to_dict(),before)
+        json.dumps(area.to_dict(),allow_nan=False)
+
+    def test_area_validation_precedes_provider_calls_and_preserves_sources(self):
+        axes = lite.Axes()
+        calls = []
+        graph = axes.plot(lambda x:calls.append(x) or x*x)
+        calls.clear()
+        before = graph.to_dict()
+        for options in ({'x_range':[1,0]},{'x_range':[0,1,.1]},
+                        {'x_range':[0,float('inf')]},{'x_range':[False,1]},
+                        {'color':[]},{'color':['red']},{'color':[lite.RED]*65},
+                        {'opacity':2},{'stroke_width':-1}):
+            with self.assertRaises(ValueError): axes.get_area(graph,**options)
+        with self.assertRaises(NotImplementedError): axes.get_area(graph,unsupported=True)
+        with self.assertRaises(TypeError): axes.get_area(lite.Circle())
+        with self.assertRaises(TypeError): axes.get_area(graph,bounded_graph=lite.Circle())
+        self.assertEqual(calls,[])
+        self.assertEqual(graph.to_dict(),before)
+        graph._parametric_function = lambda x:(x,float('nan'),0)
+        with self.assertRaises(ValueError): axes.get_area(graph)
+
+    def test_area_gallery_dynamic_range_gradient_transform_and_removal(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/area_scene.py').read_text()))
+        self.assertEqual(result['duration'],9)
+        early = result['frames'][30]['mobjects'][2]
+        expanded = result['frames'][74]['mobjects'][2]
+        between = result['frames'][105]['mobjects'][2]
+        self.assertGreater(len(expanded['vertices']),len(early['vertices']))
+        self.assertEqual(expanded['fill_color'],[lite.BLUE,lite.GREEN])
+        self.assertEqual(between['fill_color'],[lite.RED,lite.YELLOW])
+        self.assertEqual(between['z_index'],-1)
+        self.assertEqual(len(result['frames'][105]['mobjects']),4)
+        self.assertEqual(len(result['frames'][-1]['mobjects']),2)
+        json.dumps(result,allow_nan=False)
+
     def test_secant_group_world_lines_default_interval_and_extended_length(self):
         axes = lite.Axes([-2,2],[-2,4],x_length=8,y_length=6)
         graph = axes.plot(lambda x:x*x)

@@ -224,7 +224,7 @@ transforms and a bounding function. Keep Rectangle identities while serializing
 four polygon corners in the current axes basis. Preflight ranges, counts and
 styles before callback sampling; no source graph/axis mutation. Preserve native
 open partition ends, left-input bounding baselines and signed color inversion.
-Cell colors support hex gradients; continuous area fills remain open.
+Cell colors support hex gradients; continuous regions are described below.
 
 
 Read `examples/secant_scene.py` for interval refinement and moving labeled secants.
@@ -234,3 +234,11 @@ Supplied label Mobjects are copied. Font shrink/spacing uses explicit estimates;
 do not claim measured glyph layout. None/zero dx defaults to a tenth of the range;
 negative intervals reverse sides, and zero changes collapse labels. Use redraw
 for changing inputs; check final removal and both MathTex labels in Pyodide.
+
+
+Read `examples/area_scene.py` for get_area, moving integration bounds and gradient
+fills between curves. Keep Community's sampled control-point Polygon convention,
+exact provider endpoints, zero baseline and bounding-range intersection. These
+polygons bridge declared plot gaps; do not claim disconnected/singular topology.
+Validate ranges/styles before callback endpoints. SVG gradient IDs must be unique
+across shapes and frames, with local inert defs retained in SVG/PNG exports.

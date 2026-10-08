@@ -875,7 +875,7 @@ integration; results depend on step size, resolution and floating-point precisio
 
 Try **Follow a tangent and derivative** (`examples/calculus_scene.py`) for a sine
 curve, its numerical derivative, an integrated approximation and a moving tangent
-with a slope readout. Continuous area fills and secant groups remain open.
+with a slope readout. Labeled secants and continuous graph regions are described below.
 
 
 `get_riemann_rectangles(graph, x_range=None, dx=.1)` builds a VGroup of Rectangle
@@ -895,8 +895,7 @@ scale must be positive and finite; groups are limited to 1000 cells before
 providers are called. These are independent snapshots; regenerate them to follow
 changing functions or axes. Declared plot gaps do not suppress cell sampling.
 Try **Refine signed area estimates** (`examples/riemann_scene.py`) for refinement
-and the region between two functions. General Manim color objects and continuous
-area fills remain open.
+and the region between two functions. Color types beyond hex strings remain open.
 
 
 `Axes.get_secant_slope_group(x, graph, dx=None)` draws horizontal dx and vertical
@@ -910,3 +909,24 @@ changes even on rotated axes, following the Community convention. Labels shrink
 to fit both changes; font sizes use estimates rather than measured glyph bounds,
 and a zero change collapses labels. Regenerate groups with always_redraw to
 follow changed inputs. Try **Follow a labeled secant** (`examples/secant_scene.py`).
+
+
+`Axes.get_area(graph, x_range=None, color=(BLUE, GREEN), opacity=.3)` returns a
+Polygon filling the region between a plotted curve and numeric y=0. Pass a second
+curve as `bounded_graph` to fill between curves. The default range is the primary
+plot's range; a bounding curve clips that interval to its own range and rejects
+nonoverlapping ranges. Explicit ranges need exactly two finite nondecreasing values.
+Endpoint functions are evaluated exactly, while interior vertices come from the
+existing plotted anchors and control points, following Community's polygon
+construction. Independent graph transforms affect those interior points; redraw
+the plots and regions together when changing axes. Declared plot gaps are joined
+by the polygon, so this helper does not split singular/disconnected regions.
+
+Use a hex color or up to 64 hex gradient stops. Gradients run left to right in
+the polygon's local bounding box, with self-contained SVG paint definitions that
+survive SVG/PNG export. Opacity controls fill and border; pass `stroke_width=0`
+for a borderless region. Regions are independent snapshots and can use
+always_redraw for changing bounds. Try **Fill changing graph regions**
+(`examples/area_scene.py`) for expanding bounds, gradients, a region between
+functions, transformation and cleanup. Adaptive integration and more general
+region topology remain open.

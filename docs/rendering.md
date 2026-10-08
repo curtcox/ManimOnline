@@ -1094,7 +1094,7 @@ provider closures stay out of frame JSON and retain normal copy behavior.
 
 Both plotting helpers default to the axes' range. Declared plot discontinuities
 split result contours but do not skip singularities inside an integration
-interval. Vectorized functions, symbolic/adaptive calculus, continuous area fills remain open. Python tests cover numeric coordinates,
+interval. Vectorized functions and symbolic/adaptive calculus remain open. Python tests cover numeric coordinates,
 signed dx, transformed/scaled frames, derivative samples, signed integrals,
 intercepts, convergence, provider isolation and invalid inputs. The gallery
 combines sine, its derivative, recovered sine, a moving tangent and numeric slope.
@@ -1124,7 +1124,7 @@ Hex gradients use up to 64 stops; signed negative heights invert RGB channels.
 Fill opacity, border width/color and blended borders are supported. Groups cap at
 1000 cells. Cells are independent snapshots; changing axes/functions requires
 regeneration. Plot discontinuities do not suppress sampling. General color
-objects and continuous area fills remain open.
+objects remain open; continuous polygons are described below.
 
 Tests cover sampling choices, signed/unsigned colors, gradients, blended strokes,
 Rectangle identity, open last intervals, bounded/default ranges, clamped origins,
@@ -1162,3 +1162,36 @@ Local Pyodide playback verified both formula labels and the three colored lines
 at two seconds, interval refinement at five seconds, input motion at seven seconds,
 and removal at nine seconds. Switching to DOT rendered the editor flow graph.
 All 263 Python and 72 Node tests passed.
+
+
+## Continuous graph regions
+
+Axes.get_area follows the [Community area construction](https://docs.manim.community/en/stable/_modules/manim/mobject/graphing/coordinate_systems.html):
+endpoint provider evaluations enclose existing plotted points inside the selected
+numeric interval. These include cubic control points and become Polygon vertices,
+rather than a resampled smooth boundary. The unbounded baseline is numeric zero,
+including when zero lies outside the displayed y range. A bounding graph contributes
+its reversed boundary and clips the selected interval to its parameter range;
+nonoverlapping ranges fail. Explicit primary ranges may extrapolate endpoint
+providers beyond the plot range, as in Community. Degenerate intervals are finite
+but have zero filled area. Plot gaps are bridged by polygon edges.
+
+Styles and ranges validate before endpoint calls, without source mutation. A hex
+color or 1–64 hex stops gives solid paint or a left-to-right SVG bounding-box
+gradient. This is an SVG approximation of Community shading. Separate fill/stroke
+paint servers have unique IDs across frames/shapes, are wrapped with their geometry
+under the same transform, and remain inline for export. Opacity controls both
+channels; geometry bounds, copies, restoration, ordinary morphing and redraw use
+the existing pipeline. Broader color objects and disconnected/singular regions
+remain open.
+
+Tests cover exact endpoints/interior points, defaults, bounded intersection and
+reversal, zero and negative areas, transformed axes, styles, source isolation,
+validation before callbacks, dynamic bounds, gradient morphing and removal. SVG
+tests verify multiple stops, independent borders, unique IDs, transforms and
+invalid-color rejection. Local Pyodide playback verified the expanded blue/green
+region at 4.9 seconds and red/yellow region between curves at seven seconds.
+The nine-second frame removes all gradients and the bounding curve. The SVG
+export contains inline gradients and local paint references; PNG export reported
+success. Switching to DOT rendered the editor flow graph. All 268 Python and 74
+Node tests passed.

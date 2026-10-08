@@ -133,16 +133,42 @@ const ManimRenderer = {
         return null;
     }
 
+    let paintDefs = null;
+    const paint = color => {
+      if (!Array.isArray(color)) return color;
+      if (!color.length || color.length > 64 || !color.every(stop => /^#[0-9a-f]{6}$/i.test(stop))) {
+        throw new Error('Gradient colors require 1 to 64 six-digit hex colors');
+      }
+      if (color.length === 1) return color[0];
+      paintDefs ||= document.createElementNS(this.SVG_NS, 'defs');
+      const gradient = document.createElementNS(this.SVG_NS, 'linearGradient');
+      const id = `manim-gradient-${this._gradientSerial = (this._gradientSerial || 0) + 1}`;
+      gradient.setAttribute('id', id);
+      gradient.setAttribute('x1', '0%');
+      gradient.setAttribute('y1', '0%');
+      gradient.setAttribute('x2', '100%');
+      gradient.setAttribute('y2', '0%');
+      color.forEach((stopColor, index) => {
+        const stop = document.createElementNS(this.SVG_NS, 'stop');
+        stop.setAttribute('offset', `${100 * index / (color.length - 1)}%`);
+        stop.setAttribute('stop-color', stopColor);
+        gradient.appendChild(stop);
+      });
+      paintDefs.appendChild(gradient);
+      return `url(#${id})`;
+    };
     if (element) {
       element.setAttribute('opacity', mobject.opacity ?? 1);
       // Group styles live on each child, avoiding compounded group opacity.
       if (type !== 'vgroup') {
+        const fill = paint(mobject.fill_color ?? mobject.color ?? '#FFFFFF');
+        const stroke = paint(mobject.stroke_color ?? mobject.color ?? '#FFFFFF');
         for (const leaf of [element, ...element.querySelectorAll('*')]) {
           if (leaf.getAttribute('fill') && leaf.getAttribute('fill') !== 'none') {
-            leaf.setAttribute('fill', mobject.fill_color ?? mobject.color ?? '#FFFFFF');
+            leaf.setAttribute('fill', fill);
           }
           if (leaf.getAttribute('stroke')) {
-            leaf.setAttribute('stroke', mobject.stroke_color ?? mobject.color ?? '#FFFFFF');
+            leaf.setAttribute('stroke', stroke);
             leaf.setAttribute('stroke-opacity', mobject.stroke_opacity ?? 1);
           }
         }
@@ -164,6 +190,12 @@ const ManimRenderer = {
       }
     }
 
+    if (element && paintDefs) {
+      const wrapper = document.createElementNS(this.SVG_NS, 'g');
+      wrapper.appendChild(paintDefs);
+      wrapper.appendChild(element);
+      element = wrapper;
+    }
     if (element && position) {
       const x = position[0] * this.UNIT_SCALE;
       const y = position[1] * this.UNIT_SCALE;

@@ -306,3 +306,34 @@ test('annulus uses opposite closed subpaths without radial connectors', () => {
   assert.equal(ring.getAttribute('fill-opacity'), '0.4');
   assert.equal(ring.getAttribute('stroke-dashoffset'), '0.5');
 });
+
+
+test('area gradient fills and borders use self-contained unique SVG paint servers', () => {
+  const data = {type:'polygon', vertices:[[0,0],[2,0],[2,2]],
+    fill_color:['#FF0000','#00FF00','#0000FF'], stroke_color:['#FFFFFF','#000000'],
+    fill_opacity:.4, stroke_opacity:.3, stroke_width:2, position:[1,2,0],angle:.5};
+  const one = renderer.renderMobject(data);
+  const gradients = one.querySelectorAll().filter(e => e.tag === 'linearGradient');
+  assert.equal(gradients.length,2);
+  const polygon = one.children.find(e => e.tag === 'polygon');
+  assert.equal(polygon.getAttribute('fill'),`url(#${gradients[0].getAttribute('id')})`);
+  assert.equal(polygon.getAttribute('stroke'),`url(#${gradients[1].getAttribute('id')})`);
+  assert.deepEqual(gradients[0].children.map(e=>e.getAttribute('offset')),['0%','50%','100%']);
+  assert.deepEqual(gradients[0].children.map(e=>e.getAttribute('stop-color')),data.fill_color);
+  assert.equal(polygon.getAttribute('fill-opacity'),'0.4');
+  assert.equal(polygon.getAttribute('stroke-opacity'),'0.3');
+  assert.match(one.getAttribute('transform'),/translate\(50, 100\).*rotate/);
+  const two = renderer.renderMobject(data);
+  const ids = two.querySelectorAll().filter(e=>e.tag==='linearGradient').map(e=>e.getAttribute('id'));
+  assert.ok(ids.every(id=>!gradients.some(e=>e.getAttribute('id')===id)));
+  assert.deepEqual(data.fill_color,['#FF0000','#00FF00','#0000FF']);
+});
+
+test('gradient validation rejects unsafe colors and a single stop keeps a solid paint', () => {
+  for (const color of [[],['url(https://example.com/paint)'],['red'],Array(65).fill('#FFFFFF')]) {
+    assert.throws(()=>renderer.renderMobject({type:'polygon',fill_color:color}),/Gradient colors/);
+  }
+  const polygon = renderer.renderMobject({type:'polygon',fill_color:['#123456']});
+  assert.equal(polygon.tag,'polygon');
+  assert.equal(polygon.getAttribute('fill'),'#123456');
+});

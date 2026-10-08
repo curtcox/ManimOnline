@@ -2183,6 +2183,43 @@ class Axes(VGroup):
             rectangles.add(Rectangle().become(outline))
         return rectangles
 
+    def get_area(self, graph, x_range=None, color=(BLUE,GREEN), opacity=.3,
+                 bounded_graph=None, **kwargs):
+        graphs = [graph] if bounded_graph is None else [graph,bounded_graph]
+        for curve in graphs:
+            if not isinstance(curve,ParametricFunction):
+                raise TypeError('Area boundaries must be plotted parametric graphs')
+        values = [graph.t_min,graph.t_max] if x_range is None else list(x_range)
+        if len(values) != 2:
+            raise ValueError('Area x_range needs exactly two values')
+        low,high,_ = ParametricFunction._range(values,1)
+        if bounded_graph is not None:
+            if bounded_graph.t_min > high or bounded_graph.t_max < low:
+                raise ValueError('Area and bounding graph ranges do not overlap')
+            low,high = max(low,bounded_graph.t_min),min(high,bounded_graph.t_max)
+        Mobject._validate_opacity(opacity)
+        palette = list(color) if isinstance(color,(list,tuple)) else [color]
+        if not 1 <= len(palette) <= 64 or any(
+                not isinstance(value,str) or len(value) != 7 or value[0] != '#' or
+                any(char not in '0123456789abcdefABCDEF' for char in value[1:])
+                for value in palette):
+            raise ValueError('Area colors need 1 to 64 six-digit hex colors')
+        # Validate styles before invoking either boundary provider.
+        area = Polygon(**kwargs)
+        boundaries = []
+        for curve in graphs:
+            points = [Vector(point) for point in curve.get_points()
+                      if low <= self.p2c(point)[0] <= high]
+            boundaries.append([curve.get_point_from_function(low),*points,
+                               curve.get_point_from_function(high)])
+        if bounded_graph is None:
+            points = [self.c2p(low,0),*boundaries[0],self.c2p(high,0)]
+        else:
+            points = boundaries[0]+list(reversed(boundaries[1]))
+        # Keep the Community Polygon convention, including sampled control points.
+        area.vertices = [list(point) for point in points]
+        return area.set_opacity(opacity).set_color(palette if len(palette)>1 else palette[0])
+
     def get_secant_slope_group(self, x, graph, dx=None, dx_line_color=YELLOW,
                                 dy_line_color=None, dx_label=None, dy_label=None,
                                 include_secant_line=True, secant_line_color=GREEN,

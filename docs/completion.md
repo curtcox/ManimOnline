@@ -75,7 +75,9 @@ tangent queries, derivative plots and signed trapezoid antiderivative plots now
 cover initial calculus APIs. Riemann rectangles now add signed/gradient cells,
 refinement and bounding functions. Secant groups now add labeled horizontal/
 vertical changes and an extended line, including dynamic redraw. Continuous area
-fills and adaptive/symbolic analysis remain open.
+polygons now add changing bounds and gradients between curves, with browser
+playback and export checks. Disconnected region topology and adaptive/symbolic
+analysis remain open.
 
 Full Community parity additionally requires general geometry/path morphing, full scene-family
 composition and layering, 3D cameras and advanced camera APIs (2D settings, moving-camera pan/zoom and automatic bounds fitting now have Python/SVG tests), glyph-level text/TeX
