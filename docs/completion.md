@@ -70,7 +70,10 @@ and nonlinear transform preparation remain open. ComplexPlane now maps complex
 values through the XY frame, provides imaginary labels and preserves conjugate
 marker alignment during sampled transforms. Complex function warping remains open. ParametricFunction, FunctionGraph
 and Axes plotting now support sampled XY curves, default smooth interpolation,
-declared discontinuity gaps, graph-input queries and dynamic redraw.
+declared discontinuity gaps, graph-input queries and dynamic redraw. Numerical
+tangent queries, derivative plots and signed trapezoid antiderivative plots now
+cover initial calculus APIs; area fills, Riemann rectangles, secant groups and
+adaptive/symbolic analysis remain open.
 
 Full Community parity additionally requires general geometry/path morphing, full scene-family
 composition and layering, 3D cameras and advanced camera APIs (2D settings, moving-camera pan/zoom and automatic bounds fitting now have Python/SVG tests), glyph-level text/TeX

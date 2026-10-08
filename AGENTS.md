@@ -208,3 +208,12 @@ unattached `_coordinate_labels` aliases from JSON; attached label getters find
 role-tagged children so become/copy/restore cannot leave stale object references.
 Keep per-label formatting options independent so imaginary units do not leak
 onto real labels. Nonlinear complex warping remains open.
+
+
+Read `examples/calculus_scene.py` for coordinate-relative graph queries, numerical
+slopes, derivative/integral plots and a moving tangent/readout. Finite differences
+operate in numeric coordinates, independently of axis pose. Reject a dx that
+cannot change the input instead of silently reporting a zero slope. Numerical
+integration uses signed trapezoids from zero and validates every scalar/result.
+Plot count validation must still happen before invoking providers. Plotting gaps
+do not remove integral-domain singularities; adaptive/symbolic calculus remains open.

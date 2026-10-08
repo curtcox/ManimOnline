@@ -2031,14 +2031,70 @@ class Axes(VGroup):
             raise TypeError('Parametric plotting expects a callable returning XY coordinates')
         return ParametricFunction(lambda t: self.c2p(function(t)),**kwargs)
 
-    def input_to_graph_point(self, x, graph):
-        NumberLine._real(x,'Graph input')
+    @staticmethod
+    def _scalar_graph_function(graph):
         function = getattr(graph,'underlying_function',None)
         if not isinstance(graph,Mobject) or not callable(function):
-            raise TypeError('Graph input queries need a scalar plotted function')
-        return self.c2p(x,function(x))
+            raise TypeError('Graph queries need a scalar plotted function')
+        return function
+
+    def input_to_graph_coords(self, x, graph):
+        NumberLine._real(x,'Graph input')
+        y = self._scalar_graph_function(graph)(x)
+        NumberLine._real(y,'Graph output')
+        return x,y
+
+    i2gc = input_to_graph_coords
+
+    def input_to_graph_point(self, x, graph):
+        return self.c2p(*self.input_to_graph_coords(x,graph))
 
     i2gp = input_to_graph_point
+
+    def _tangent_difference(self, x, graph, dx):
+        NumberLine._real(dx,'Tangent dx')
+        if dx == 0:
+            raise ValueError('Tangent dx must be nonzero')
+        x0,y0 = self.i2gc(x,graph)
+        x1 = x0+dx
+        NumberLine._real(x1,'Tangent sample')
+        if x1 == x0:
+            raise ValueError('Tangent dx is too small to change this input')
+        _,y1 = self.i2gc(x1,graph)
+        delta = y1-y0
+        NumberLine._real(delta,'Tangent difference')
+        return x1-x0,delta
+
+    def angle_of_tangent(self, x, graph, dx=1e-8):
+        dx,dy = self._tangent_difference(x,graph,dx)
+        return math.atan2(dy,dx)
+
+    def slope_of_tangent(self, x, graph, dx=1e-8):
+        dx,dy = self._tangent_difference(x,graph,dx)
+        return NumberLine._real(dy/dx,'Tangent slope')
+
+    def plot_derivative_graph(self, graph, color=GREEN, **kwargs):
+        self._scalar_graph_function(graph)
+        return self.plot(lambda x:self.slope_of_tangent(x,graph),color=color,**kwargs)
+
+    def plot_antiderivative_graph(self, graph, y_intercept=0, samples=50,
+                                  use_vectorized=False, **kwargs):
+        function = self._scalar_graph_function(graph)
+        NumberLine._real(y_intercept,'Antiderivative intercept')
+        if isinstance(samples,bool) or not isinstance(samples,int) or not 2 <= samples <= 10000:
+            raise ValueError('Antiderivative samples must be an integer from 2 to 10000')
+        def integral(x):
+            values = [NumberLine._real(function(x*(index/(samples-1))),'Integral sample')
+                      for index in range(samples)]
+            step = x/(samples-1)
+            terms = [NumberLine._real((a*.5+b*.5)*step,'Integral interval')
+                     for a,b in zip(values,values[1:])]
+            try:
+                result = math.fsum(terms)+y_intercept
+            except OverflowError as error:
+                raise ValueError('Integral result must be finite') from error
+            return NumberLine._real(result,'Integral result')
+        return self.plot(integral,use_vectorized=use_vectorized,**kwargs)
 
 
 class NumberPlane(Axes):

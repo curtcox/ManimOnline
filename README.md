@@ -853,3 +853,26 @@ Try **Animate complex coordinates** (`examples/complex_scene.py`) for a complex
 value and its conjugate following a rotating plane. Complex function application,
 nonlinear warping, complex ValueTracker values and native TeX digit families
 remain open.
+
+
+Graph calculus uses scalar function providers. `input_to_graph_coords`/`i2gc`
+return `(x, f(x))` in numeric coordinates. `angle_of_tangent(x, graph, dx=1e-8)`
+and `slope_of_tangent` use a forward finite difference, with angles and slopes
+measured in numeric coordinates, independent of the axes' world rotation or
+unequal scale. dx must be finite and nonzero and must change the floating-point
+input; negative dx reverses the returned angle's direction.
+
+`plot_derivative_graph(graph, color=GREEN, **plot_options)` samples numerical
+slopes into a new plot. `plot_antiderivative_graph(graph, y_intercept=0, samples=50,
+**plot_options)` integrates the original scalar provider from zero to each input
+using evenly spaced trapezoids. Negative inputs use signed intervals; samples
+must be an integer between 2 and 10000. Both default to the axes' plotting range
+and accept ordinary plotting options, including declared gaps. Vectorized function
+execution remains unsupported. Integration evaluates the entire interval from
+zero, so declared plotting gaps do not avoid singularities inside that interval.
+These numerical helpers do not perform symbolic differentiation or adaptive
+integration; results depend on step size, resolution and floating-point precision.
+
+Try **Follow a tangent and derivative** (`examples/calculus_scene.py`) for a sine
+curve, its numerical derivative, an integrated approximation and a moving tangent
+with a slope readout. Area fills, Riemann rectangles and secant groups remain open.

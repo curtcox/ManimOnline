@@ -1072,3 +1072,35 @@ plane at seven seconds, then restored the yellow point to 2i and green point to
 -2i at eleven seconds. Imaginary axis labels rendered as numeric SVG text and
 switching to DOT rendered the editor flow graph. All 247 Python and 72 Node
 tests passed for this update.
+
+
+## Numerical graph calculus
+
+The scalar graph-query foundation now includes input_to_graph_coords/i2gc,
+angle_of_tangent, slope_of_tangent, plot_derivative_graph and
+plot_antiderivative_graph, following the
+[official coordinate-system calculus API](https://docs.manim.community/en/stable/_modules/manim/mobject/graphing/coordinate_systems.html).
+Queries validate finite real input/output. Forward differences use the actual
+representable input increment (default requested dx=1e-8), reject zero or
+unrepresentable increments, and return numeric-coordinate slope/angle. They do
+not change with world rotation or unequal axis scale.
+
+Derivative plots sample those slopes. Antiderivative plots evaluate the original
+scalar provider on evenly spaced signed intervals from zero, then sum trapezoid
+areas and add y_intercept. Sample count is bounded to 2–10000; all intermediate
+values and results must remain finite. Ordinary plot preflight still bounds
+geometry counts before invoking callbacks. No graph/source mutation occurs;
+provider closures stay out of frame JSON and retain normal copy behavior.
+
+Both plotting helpers default to the axes' range. Declared plot discontinuities
+split result contours but do not skip singularities inside an integration
+interval. Vectorized functions, symbolic/adaptive calculus, area fills, Riemann
+rectangles and secant groups remain open. Python tests cover numeric coordinates,
+signed dx, transformed/scaled frames, derivative samples, signed integrals,
+intercepts, convergence, provider isolation and invalid inputs. The gallery
+combines sine, its derivative, recovered sine, a moving tangent and numeric slope.
+
+Local Pyodide playback verified three 40-cubic plotted curves, a tangent touching
+the origin at five seconds and a 1.00 slope readout. The final nine-second frame
+retained the curves and removed the tangent/marker/readout. Switching to DOT
+rendered the editor flow graph. All 252 Python and 72 Node tests passed.

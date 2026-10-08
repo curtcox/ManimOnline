@@ -16,6 +16,91 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_tangent_queries_use_numeric_coordinates_under_axis_transforms(self):
+        axes = lite.Axes([-3,3],[-2,4],x_length=12,y_length=3)
+        graph = axes.plot(lambda x:x*x,x_range=[-2,2,.2])
+        self.assertEqual(axes.i2gc(1.5,graph),(1.5,2.25))
+        for dx in (.1,-.1,1e-8):
+            expected = 2*1.5+dx
+            self.assertAlmostEqual(axes.slope_of_tangent(1.5,graph,dx=dx),expected,places=6)
+        angle = axes.angle_of_tangent(1.5,graph,dx=.1)
+        self.assertAlmostEqual(angle,lite.math.atan2(3.1,1))
+        axes.rotate(.7).scale(1.3).shift(lite.UP)
+        graph.shift(lite.RIGHT).rotate(.4)
+        self.assertEqual(axes.input_to_graph_coords(1.5,graph),(1.5,2.25))
+        self.assertAlmostEqual(axes.angle_of_tangent(1.5,graph,dx=.1),angle)
+        self.assertPointAlmostEqual(axes.i2gp(1.5,graph),axes.c2p(1.5,2.25))
+
+    def test_derivative_graph_samples_function_and_retains_query_provider(self):
+        axes = lite.NumberPlane([-2,2],[-3,3],x_length=4,y_length=6).rotate(.4)
+        graph = axes.plot(lambda x:x*x)
+        before = graph.to_dict()
+        derivative = axes.plot_derivative_graph(graph,x_range=[-2,2,.2])
+        self.assertEqual(derivative.color,lite.GREEN)
+        self.assertEqual(len(derivative.curves),20)
+        for x in (-2,-.5,0,.5,2):
+            self.assertAlmostEqual(axes.i2gc(x,derivative)[1],2*x,places=6)
+            self.assertPointAlmostEqual(axes.i2gp(x,derivative),axes.c2p(x,2*x))
+        copied = derivative.copy()
+        self.assertIs(copied.underlying_function,derivative.underlying_function)
+        self.assertEqual(graph.to_dict(),before)
+        json.dumps(copied.to_dict(),allow_nan=False)
+
+    def test_antiderivative_trapezoids_signed_inputs_and_intercept(self):
+        axes = lite.Axes([-2,2],[-3,3])
+        graph = axes.plot(lambda x:2*x)
+        integral = axes.plot_antiderivative_graph(graph,y_intercept=-1,samples=5,x_range=[-2,2,.5],color=lite.RED)
+        for x in (-2,-1,0,1,2): self.assertAlmostEqual(axes.i2gc(x,integral)[1],x*x-1)
+        self.assertEqual(integral.color,lite.RED)
+        quadratic = axes.plot(lambda x:x*x)
+        coarse = axes.plot_antiderivative_graph(quadratic,samples=2,x_range=[0,1,1])
+        fine = axes.plot_antiderivative_graph(quadratic,samples=101,x_range=[0,1,1])
+        self.assertAlmostEqual(axes.i2gc(1,coarse)[1],.5)
+        self.assertAlmostEqual(axes.i2gc(-1,fine)[1],-(1/3+1/60000))
+        self.assertLess(abs(axes.i2gc(1,fine)[1]-1/3),abs(.5-1/3))
+        json.dumps(integral.to_dict(),allow_nan=False)
+
+    def test_graph_analysis_validation_and_provider_limits(self):
+        axes = lite.Axes()
+        graph = axes.plot(lambda x:x*x)
+        for dx in (0,True,float('nan'),float('inf')):
+            with self.assertRaises(ValueError): axes.slope_of_tangent(1,graph,dx=dx)
+        with self.assertRaises(ValueError): axes.slope_of_tangent(1e20,graph)
+        for operation in (lambda:axes.i2gc(0,lite.Circle()),
+                          lambda:axes.plot_derivative_graph(lite.Circle()),
+                          lambda:axes.plot_antiderivative_graph(lite.Circle())):
+            with self.assertRaises(TypeError): operation()
+        for samples in (0,1,True,2.5,10001):
+            with self.assertRaises(ValueError): axes.plot_antiderivative_graph(graph,samples=samples)
+        with self.assertRaises(ValueError): axes.plot_antiderivative_graph(graph,y_intercept=float('inf'))
+        called = []
+        graph.underlying_function = lambda x:called.append(x) or x
+        with self.assertRaises(ValueError): axes.plot_derivative_graph(graph,x_range=[0,1,1e-6])
+        with self.assertRaises(NotImplementedError): axes.plot_antiderivative_graph(graph,use_vectorized=True)
+        self.assertEqual(called,[])
+        graph.underlying_function = lambda x:float('inf')
+        with self.assertRaises(ValueError): axes.i2gc(0,graph)
+        with self.assertRaises(ValueError): axes.plot_antiderivative_graph(graph,x_range=[0,1,1])
+
+    def test_calculus_gallery_tangent_and_numerical_integral(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/calculus_scene.py').read_text()))
+        self.assertEqual(result['duration'],9)
+        for index,x in ((45,-2),(75,0),(105,2)):
+            objects = result['frames'][index]['mobjects']
+            self.assertEqual(len(objects),7)
+            marker,line,readout = objects[-3:]
+            self.assertPointAlmostEqual(marker['position'],(x*4/3,lite.math.sin(x),0))
+            tangent = lite.Line()
+            for attr in ('position','angle','geometry_scale','start','end'):
+                setattr(tangent,attr,line[attr])
+            self.assertPointAlmostEqual((tangent.get_start()+tangent.get_end())*.5,marker['position'])
+            self.assertAlmostEqual(readout['number'],lite.math.cos(x),places=6)
+        final = result['frames'][-1]['mobjects']
+        self.assertEqual(len(final),4)
+        self.assertEqual([mob['stroke_color'] for mob in final[1:]],[lite.BLUE,lite.GREEN,lite.RED])
+        self.assertAlmostEqual(final[2]['curves'][-1][-1][1],lite.math.cos(3),places=6)
+        self.assertAlmostEqual(final[3]['curves'][-1][-1][1],lite.math.sin(3),delta=.005)
+
     def test_complex_plane_round_trip_transformed_and_nonzero_ranges(self):
         for xr,yr in (([-3,3],[-2,2]),([2,6],[-4,-1])):
             plane = lite.ComplexPlane(x_range=xr,y_range=yr,x_length=8,y_length=4)
