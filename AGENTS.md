@@ -302,5 +302,17 @@ DOT and ordinary VGroup behavior when extending this shared path.
 Read `examples/angle_path_scene.py` for own-path queries, movement, dotted-angle
 to corner morphs and restoration. Defining line references are exposed via
 `.lines`/`get_lines` but excluded from frame JSON. Keep the own path independent
-of dot geometry when editing or extracting points. General non-group family
-slicing and mutable NumPy point arrays are still open.
+of dot geometry when editing or extracting points. Mutable NumPy point arrays and glyph-level family geometry are still open.
+
+
+Read `examples/shape_family_scene.py` for common Mobject child mutation, nested
+geometry-bearing families, late attachment, removal and restoration. Common child
+validation/mutators now live on Mobject. Group retains child-only indexing;
+ordinary geometry-bearing objects split/index themselves before their children.
+Point extraction governs family_members_with_points and own-member inclusion;
+glyph-level families remain unsupported. Empty Mobject roots are invisible but
+render descendants. Preserve cycle/camera-frame checks and snapshot isolation.
+
+Transform completion now uses become to preserve ordered source-child identities
+and callbacks. Keep that behavior: later remove(original_child) must work after
+parent animations. has_no_points and get_group_class accompany family slicing.

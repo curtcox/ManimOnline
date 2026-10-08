@@ -1056,5 +1056,18 @@ independently; automatic matching of unrelated edges remains unfinished.
 
 Try **Follow and restore an editable angle path**
 (`examples/angle_path_scene.py`) for movement along the angle, morphing into a
-corner, and restoration of the original path and dot. Mutable NumPy point-array
-attributes and general non-group family slicing remain unfinished.
+corner, and restoration of the original path and dot. Mutable NumPy point-array attributes and glyph-level family geometry remain unfinished.
+
+
+### Children on ordinary shapes
+
+Try **Attach and restore children on shapes** (`examples/shape_family_scene.py`).
+Mobject and ordinary shapes now support `add`, `add_to_back`, `remove` and
+`submobjects` assignment, with duplicate removal and cycle checks. A shape's
+`split`, iteration, indexing and slices include the shape itself before its
+children when it has an extractable path. `family_members_with_points` filters
+recursive families by actual supported geometry. Shapes still render their own
+outline while hosting children; empty base Mobject containers render descendants.
+Children use local-to-parent coordinates. Bounds that combine a shape's own
+outline with externally placed children, glyph-level families and general scene
+restructuring remain unfinished.

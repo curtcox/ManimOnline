@@ -357,3 +357,10 @@ test('geometry-bearing families paint own path and globally sorted transformed c
   assert.equal(positioned[0].getAttribute('opacity'),'0.5');
   assert.equal(paths[0].getAttribute('opacity'),'1');
 });
+
+test('a point-free base mobject renders its descendants with its transform', () => {
+  const svg = renderer.render({mobjects:[{type:'mobject',position:[1,2,0],
+    children:[{type:'circle',radius:1,color:'#FFFF00'}]}]});
+  assert.equal(svg.querySelectorAll().filter(node=>node.tag==='circle').length,1);
+  assert.ok(svg.querySelectorAll().some(node=>node.getAttribute('transform')?.startsWith('translate(50, 100) ')));
+});

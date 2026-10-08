@@ -1318,7 +1318,7 @@ assert perpendicularity. Standalone Elbow rotates about the origin.
 Angle now stores its own cubic arc/corner outline, with the optional dot as a
 child, matching native own-path/dot structure. Creation, opacity, transforms,
 copy, redraw and removal use geometry-bearing family support. Native mutable
-NumPy points and general non-group slicing/family semantics remain open. `get_lines` preserves the
+NumPy points and glyph-level family semantics remain open. `get_lines` preserves the
 source references; they are omitted from frame JSON. `get_value` returns the
 construction-time signed sweep in radians or degrees (including elbow marks).
 The mark is a snapshot: use `always_redraw` for line motion. Dot placement follows
@@ -1431,3 +1431,45 @@ Local Pyodide playback verified a red two-segment corner at seven seconds and
 the restored yellow arc/green dot at eight seconds. Both angle and moving marker
 were absent at ten seconds. Switching to DOT rendered the editor flow graph.
 All 301 Python and 75 Node tests passed.
+
+
+## Common Mobject family API
+
+Child validation, add/add_to_back/remove and submobjects replacement now belong
+to Mobject, so ordinary shapes and paths can retain child geometry without a
+special group wrapper. Mutation preserves identity, removes duplicate references,
+checks full descendant cycles and excludes camera frames from display families.
+Invalid batches do not partially change children. Angle and arc polygons inherit
+the common API rather than borrowing Group's methods.
+
+For non-group objects with extractable points, split/iteration/indexing include
+self first and then direct children. Slices share those references in a fresh
+neutral Group/VGroup. Empty paths and base Mobject containers index children only;
+Group/VGroup retain their existing child-only behavior. `family_members_with_points`
+filters the deduplicated recursive family by supported own-path geometry. Text,
+MathTex and Arrow point extraction is still incomplete, so these queries do not
+claim native glyph/tip families. Empty base Mobject containers have no SVG shape
+but their descendants inherit their pose and opacity.
+
+The gallery creates a rectangle and attached dots, rotates/translates it, adds a
+nested circle/dot, removes one dot, restores the checkpoint and removes the
+family. Python checks cover mutation ordering, duplicates, atomic rejection,
+cycle/camera exclusion, self inclusion, reverse slices, identity sharing, family
+filters, copy/restore, callbacks, serialization and gallery timing. Renderer
+checks cover point-free containers and inherited translation. Own-plus-child
+union bounds and general scene restructuring remain open.
+
+Reference: [official Manim Mobject implementation](https://docs.manim.community/en/stable/_modules/manim/mobject/mobject.html).
+
+Transform completion now delegates to identity-preserving become, retaining
+ordered live child references, child callbacks and checkpoints. Previously the
+terminal replacement silently copied children, breaking later removal through
+a saved child reference. Tests explicitly cover that reference/removal behavior
+and replacement with a differently shaped family.
+
+Local Pyodide playback verified the rectangle with a nested red circle/white dot
+and two colored child dots at four seconds. Removal through the original yellow
+dot reference left three circles at five seconds; restoration returned exactly
+the original yellow/green dots at eight seconds. No child circles remained at
+ten seconds. Switching to DOT rendered the editor flow graph. All 306 Python
+and 76 Node tests passed.

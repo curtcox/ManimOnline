@@ -98,7 +98,7 @@ verified; successful individual feature commits do not close the overall goal.
 Angle, RightAngle and Elbow now add signed quadrant-selected marks, optional dots,
 construction-time queries and moving-line redraw. Angle now owns its editable
 cubic path with the optional dot child, with own-point queries and restored
-path/dot morphing. General non-group slicing and mutable NumPy points remain open.
+path/dot morphing. Mutable NumPy points and glyph-level family semantics remain open.
 
 
 ArcBetweenPoints now supplies signed minor/major endpoint arcs, signed-radius
@@ -110,3 +110,9 @@ ArcPolygon and ArcPolygonFromArcs now compose closed cubic outlines and retained
 arc children, with gap bridges, per-edge styles and filled morphing. Rendering,
 Create and Transform now include own geometry and descendants. Child-union bounds,
 automatic edge correspondence and general scene restructuring remain open.
+
+
+Common Mobject child mutation and self-inclusive split/index/slice APIs now support
+ordinary geometry-bearing shapes, with recursive point-family filtering and
+point-free container rendering. Glyph/tip point families, own-plus-child union
+bounds and general scene restructuring remain open.

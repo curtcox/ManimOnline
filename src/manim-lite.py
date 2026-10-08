@@ -110,6 +110,63 @@ class Mobject:
         self.set_z_index(z_index)
         self._type = 'mobject'
 
+    def _validate_children(self, mobjects):
+        if any(not isinstance(m, Mobject) for m in mobjects):
+            raise TypeError('Mobject children must be Mobjects')
+        if any(isinstance(member, CameraFrame) for m in mobjects for member in m.get_family()):
+            raise ValueError('Camera frames cannot be children of a display family')
+        if any(self in m.get_family() for m in mobjects):
+            raise ValueError('A mobject cannot contain itself or create a family cycle')
+
+    @property
+    def submobjects(self):
+        return self.children
+
+    @submobjects.setter
+    def submobjects(self, mobjects):
+        mobjects = list(mobjects)
+        self._validate_children(mobjects)
+        self.children = list(dict.fromkeys(mobjects))
+
+    def add(self, *mobjects):
+        self._validate_children(mobjects)
+        unique = list(dict.fromkeys(mobjects))
+        self.children = [m for m in self.children if m not in unique] + unique
+        return self
+
+    def add_to_back(self, *mobjects):
+        self._validate_children(mobjects)
+        unique = list(dict.fromkeys(mobjects))
+        self.children = unique + [m for m in self.children if m not in unique]
+        return self
+
+    def remove(self, *mobjects):
+        if any(not isinstance(m, Mobject) for m in mobjects):
+            raise TypeError('Mobject removal expects Mobjects')
+        self.children = [m for m in self.children if m not in mobjects]
+        return self
+
+    def split(self):
+        return ([self] if self.has_points() else []) + list(self.children)
+
+    def __iter__(self):
+        return iter(self.split())
+
+    def __len__(self):
+        return len(self.children) + int(self.has_points())
+
+    def __getitem__(self, value):
+        members = self.split()
+        if isinstance(value,slice):
+            return self.get_group_class()(*members[value])
+        return members[value]
+
+    def get_group_class(self):
+        return Group if self._type in ('mobject','valuetracker') else VGroup
+
+    def family_members_with_points(self):
+        return [member for member in self.get_family() if member.has_points()]
+
     def get_family(self, recurse=True):
         result, seen = [], set()
         def visit(mobject):
@@ -288,6 +345,9 @@ class Mobject:
 
     def has_points(self):
         return self.get_num_points() > 0
+
+    def has_no_points(self):
+        return not self.has_points()
 
     def get_num_curves(self):
         return self.get_num_points() // 4
@@ -1657,41 +1717,8 @@ class Group(Mobject):
         self._type = 'vgroup'
         self.add(*mobjects)
 
-    def _validate_children(self, mobjects):
-        if any(not isinstance(m, Mobject) for m in mobjects):
-            raise TypeError('Group children must be Mobjects')
-        if any(isinstance(member, CameraFrame) for m in mobjects for member in m.get_family()):
-            raise ValueError('Camera frames cannot be children of a display group')
-        if any(self in m.get_family() for m in mobjects):
-            raise ValueError('A group cannot contain itself or create a family cycle')
-
-    @property
-    def submobjects(self):
-        return self.children
-
-    @submobjects.setter
-    def submobjects(self, mobjects):
-        mobjects = list(mobjects)
-        self._validate_children(mobjects)
-        self.children = list(dict.fromkeys(mobjects))
-
-    def add(self, *mobjects):
-        self._validate_children(mobjects)
-        unique = list(dict.fromkeys(mobjects))
-        self.children = [m for m in self.children if m not in unique] + unique
-        return self
-
-    def add_to_back(self, *mobjects):
-        self._validate_children(mobjects)
-        unique = list(dict.fromkeys(mobjects))
-        self.children = unique + [m for m in self.children if m not in unique]
-        return self
-
-    def remove(self, *mobjects):
-        if any(not isinstance(m, Mobject) for m in mobjects):
-            raise TypeError('Group removal expects Mobjects')
-        self.children = [m for m in self.children if m not in mobjects]
-        return self
+    def get_group_class(self):
+        return VGroup if isinstance(self,VGroup) else Group
 
     def __iter__(self):
         return iter(self.children)
@@ -1727,8 +1754,6 @@ class VGroup(Group):
 
 class ArcPolygonFromArcs(VMobject):
     """Closed cubic outline with independently styled defining arc children."""
-    _validate_children = Group._validate_children
-    add = Group.add
 
     def __init__(self, *arcs, **kwargs):
         if len(arcs) > 256 or any(not isinstance(arc,Arc) for arc in arcs):
@@ -1802,8 +1827,6 @@ class Elbow(VMobject):
 
 class Angle(VMobject):
     """A snapshot arc/corner path, with the optional dot as a child."""
-    _validate_children = Group._validate_children
-    add = Group.add
     def __init__(self, line1, line2, radius=None, quadrant=(1,1),
                  other_angle=False, dot=False, dot_radius=None, dot_distance=.55,
                  dot_color=WHITE, elbow=False, **kwargs):
@@ -3421,13 +3444,8 @@ class Transform(Animation):
         return _sample_transform(self._transform_plan, alpha)
 
     def finish(self, scene):
-        saved = self.mobject.__dict__.get('_saved_state')
-        updaters, suspended = self.mobject.updaters, self.mobject.updating_suspended
-        self.mobject.__dict__ = copy.deepcopy(self.target.__dict__)
-        self.mobject.updaters, self.mobject.updating_suspended = updaters, suspended
-        self.mobject.__dict__.pop('_saved_state', None)
-        if saved is not None:
-            self.mobject._saved_state = saved
+        # Preserve source and ordered child identities, callbacks and checkpoints.
+        self.mobject.become(self.target)
 
 
 class TransformFromCopy(Transform):

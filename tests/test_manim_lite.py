@@ -16,6 +16,104 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_shape_family_mutation_order_duplicates_and_atomic_validation(self):
+        parent = lite.Circle()
+        a,b = lite.Dot(),lite.Square()
+        parent.add(a,b,a)
+        self.assertEqual(parent.children,[a,b])
+        parent.add(a)
+        self.assertEqual(parent.children,[b,a])
+        parent.add_to_back(a)
+        self.assertEqual(parent.children,[a,b])
+        self.assertIs(parent.submobjects,parent.children)
+        before = parent.to_dict()
+        for operation in (lambda:parent.add(b,3),lambda:parent.add(parent),
+                          lambda:parent.add(lite.Group(parent)),
+                          lambda:parent.add(lite.CameraFrame()),
+                          lambda:parent.remove(a,3)):
+            with self.assertRaises((ValueError,TypeError)): operation()
+            self.assertEqual(parent.to_dict(),before)
+        parent.submobjects = [b,b,a]
+        self.assertEqual(parent.children,[b,a])
+        self.assertIs(parent.remove(a),parent)
+        self.assertEqual(parent.children,[b])
+
+    def test_shape_family_split_index_slice_and_point_members(self):
+        angle = lite.Angle(lite.Line(lite.ORIGIN,lite.RIGHT),lite.Line(lite.ORIGIN,lite.UP),dot=True)
+        dot = angle.children[0]
+        self.assertEqual(angle.split(),[angle,dot])
+        self.assertEqual(list(angle),[angle,dot])
+        self.assertEqual(len(angle),2)
+        self.assertIs(angle[0],angle)
+        self.assertIs(angle[-1],dot)
+        self.assertIsInstance(angle[:1],lite.VGroup)
+        self.assertIs(angle[1:][0],dot)
+        self.assertEqual(angle[::-1].children,[dot,angle])
+        self.assertEqual(angle.family_members_with_points(),[angle,dot])
+        container = lite.Mobject().add(angle)
+        self.assertEqual(container.split(),[angle])
+        self.assertTrue(container.has_no_points())
+        self.assertFalse(angle.has_no_points())
+        self.assertIs(lite.Group().get_group_class(),lite.Group)
+        self.assertIs(lite.VGroup().get_group_class(),lite.VGroup)
+        self.assertEqual(container.family_members_with_points(),[angle,dot])
+        self.assertIsInstance(container[:],lite.Group)
+        circle = lite.Circle().add(dot)
+        self.assertIsInstance(circle[:1],lite.VGroup)
+        self.assertIs(circle[:1][0],circle)
+        with self.assertRaises(IndexError): _ = angle[2]
+
+    def test_shape_family_copy_restore_serialization_and_updaters(self):
+        host = lite.Rectangle().add(lite.Circle().add(lite.Dot()))
+        before = host.to_dict()
+        host.save_state()
+        copied = host.copy()
+        self.assertIsNot(copied.children[0],host.children[0])
+        calls = []
+        copied.children[0].add_updater(lambda child:calls.append(child))
+        copied.update(.1)
+        self.assertEqual(calls,[copied.children[0]])
+        host.remove(host.children[0]).add(lite.Square())
+        host.restore()
+        self.assertEqual(host.to_dict(),before)
+        self.assertEqual(len(host.get_family()),3)
+        json.dumps(host.to_dict(),allow_nan=False)
+
+    def test_transform_preserves_live_child_references_for_later_mutation(self):
+        left,right = lite.Dot(lite.LEFT),lite.Dot(lite.RIGHT)
+        host = lite.Rectangle().add(left,right).save_state()
+        calls = []
+        left.add_updater(lambda child:calls.append(child))
+        scene = lite.Scene()
+        scene.add(host)
+        scene.play(host.animate.rotate(.4),run_time=.2)
+        self.assertIs(host.children[0],left)
+        self.assertIs(host.children[1],right)
+        self.assertTrue(left.get_updaters())
+        host.remove(left)
+        self.assertEqual(host.children,[right])
+        host.restore()
+        self.assertEqual(len(host.children),2)
+        scene.play(lite.Transform(host,lite.Circle().add(lite.Square())),run_time=.2)
+        self.assertEqual(host._type,'circle')
+        self.assertEqual(len(host.children),1)
+
+    def test_shape_family_gallery_late_children_removal_restore_and_cleanup(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/shape_family_scene.py').read_text()))
+        self.assertEqual(result['duration'],10)
+        added = result['frames'][60]['mobjects'][0]
+        removed = result['frames'][75]['mobjects'][0]
+        restored = result['frames'][120]['mobjects'][0]
+        self.assertEqual(len(added['children']),3)
+        self.assertEqual(added['children'][0]['type'],'circle')
+        self.assertEqual(len(added['children'][0]['children']),1)
+        self.assertEqual(len(removed['children']),2)
+        self.assertEqual(restored['angle'],0)
+        self.assertEqual(restored['position'],[0,0,0])
+        self.assertEqual([child['color'] for child in restored['children']],[lite.YELLOW,lite.GREEN])
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+        json.dumps(result,allow_nan=False)
+
     def test_arc_polygon_closed_outline_styles_configs_and_copy(self):
         vertices = [(-1,0,0),(1,0,0),(0,2,0)]
         configs = [{'angle':lite.PI/3,'color':lite.RED},
