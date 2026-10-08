@@ -29,7 +29,9 @@ checks across transformed groups, including animated crossings and restoration.
 Root bring-to-front/back and clear/reintroduction now have Python tests and
 Pyodide browser playback checks. Foreground root APIs now have ordering, release, removal, and atomic validation
 tests and local Pyodide checks for promotion, release, transformed group painting,
-and cleanup. Broader family composition remains implementation work. Scene lifecycle hooks and elapsed sampled time
+and cleanup. Group/VGroup composition, indexing/slicing, and family queries now have atomic
+validation and frame tests; general geometry-bearing families and scene
+restructuring remain implementation work. Scene lifecycle hooks and elapsed sampled time
 have Python tests and Pyodide browser checks, including teardown animation.
 
 Corner-path VMobjects now have Python/SVG tests and Pyodide checks for tracing,

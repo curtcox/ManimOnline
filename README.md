@@ -493,3 +493,15 @@ interpolated, and completion/restoration keeps the native target representation.
 Child identities are copied at completion as before; scene-added child animation,
 arbitrary Mobject families, automatic correspondence, and disconnected paths
 remain open. See **Morph nested groups** in the gallery.
+
+
+Group and VGroup support child add/remove/add_to_back, indexing (including negative
+indices), slicing, iteration, len, split, and a shared submobjects list. Additions
+deduplicate objects and reject non-Mobjects or cycles before mutation. Re-adding a
+child moves it to the end; add_to_back moves it to the beginning. Slices return a
+neutral container referencing the same children, so styling a selection changes
+those live objects. Slices do not inherit the original parent's transforms.
+get_family lists the object and descendants in stable order, deduplicating shared
+objects. Group accepts the runtime's supported geometry/text objects; other Manim
+object classes and scene-family restructuring remain unimplemented. The **Build
+and edit a group** example demonstrates live child editing and whole-group motion.

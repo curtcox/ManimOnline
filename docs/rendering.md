@@ -453,3 +453,32 @@ Local Pyodide browser checks showed four continuously morphed paths at three
 seconds, with full opacity on original children and half opacity on the two
 inserted duplicates. At eight seconds the blue circle and yellow square were
 restored; the terminal frame retained only the title. DOT rendered after switching.
+
+
+## Group composition and selection
+
+Group and VGroup use the existing container renderer and permit the runtime's
+supported geometry/text children. Constructors, add, add_to_back, and submobjects
+assignment validate all inputs and reject cycles before mutation. Duplicate
+children are ignored. Re-add moves a child to the end, while add_to_back places
+selected children first. Remove affects only immediate children. Indexing, negative
+indices, slices, iteration, len and split expose immediate children. A slice is a
+neutral Group/VGroup referencing the same objects, without parent transforms;
+copy remains deep and retains shared aliases within the copied family. get_family
+returns stable, deduplicated descendants including self. These behaviors follow
+the [Manim family API](https://docs.manim.community/en/stable/_modules/manim/mobject/mobject.html)
+for supported containers. VGroup currently also accepts the supported text classes.
+
+Python checks cover validation without partial edits, direct/indirect cycles,
+deduplication, reordering/removal, shared slice styling, empty/reversed slices,
+family traversal, independent copies, and preserved previous frames. The family
+gallery edits a scene-added group and then rotates/removes it as a whole. Individual
+child animation within a scene-added group remains explicitly rejected. Generic
+geometry-bearing Mobject child composition and automatic scene restructuring
+still need implementation. Mutating the returned list directly bypasses validation;
+use group methods or the submobjects setter to change family links.
+
+Local Pyodide checks verified yellow circle/triangle with an unchanged red square
+at one second, two children after removal at two seconds, red-square-first order
+with 90-degree parent rotation at five seconds, and no shapes after fade removal.
+The DOT gallery rendered correctly after switching.

@@ -56,6 +56,11 @@ Read `examples/group_morph_scene.py` for recursive family morphing, unequal chil
 counts, restoration, and removal. Alignment is snapshot-only; live children keep
 existing completion/copy semantics.
 
+Read `examples/group_family_scene.py` for indexing/slices, validated composition,
+child removal/reordering, and whole-group animation. Group and VGroup share the
+existing container serialization; slices share child identities but no parent
+transforms. Do not bypass validated setters when adding family links.
+
 ## Implementation guidance
 
 - Keep the edit → render → preview loop central. Preserve DOT rendering, sharing,

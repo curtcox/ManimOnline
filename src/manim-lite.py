@@ -60,6 +60,18 @@ class Mobject:
         self.set_z_index(z_index)
         self._type = 'mobject'
 
+    def get_family(self, recurse=True):
+        result, seen = [], set()
+        def visit(mobject):
+            if id(mobject) in seen:
+                return
+            seen.add(id(mobject))
+            result.append(mobject)
+            for child in mobject.children:
+                visit(child)
+        visit(self)
+        return result
+
     def shift(self, direction):
         self.position = list(Vector(self.position) + direction)
         return self
@@ -588,17 +600,60 @@ class MathTex(Text):
         self._type = 'mathtex'
 
 
-class VGroup(Mobject):
+class Group(Mobject):
     def __init__(self, *mobjects, **kwargs):
         super().__init__(**kwargs)
-        self._type, self.children = 'vgroup', list(mobjects)
+        self._type = 'vgroup'
+        self.add(*mobjects)
+
+    def _validate_children(self, mobjects):
+        if any(not isinstance(m, Mobject) for m in mobjects):
+            raise TypeError('Group children must be Mobjects')
+        if any(self in m.get_family() for m in mobjects):
+            raise ValueError('A group cannot contain itself or create a family cycle')
+
+    @property
+    def submobjects(self):
+        return self.children
+
+    @submobjects.setter
+    def submobjects(self, mobjects):
+        mobjects = list(mobjects)
+        self._validate_children(mobjects)
+        self.children = list(dict.fromkeys(mobjects))
 
     def add(self, *mobjects):
-        self.children.extend(mobjects)
+        self._validate_children(mobjects)
+        unique = list(dict.fromkeys(mobjects))
+        self.children = [m for m in self.children if m not in unique] + unique
+        return self
+
+    def add_to_back(self, *mobjects):
+        self._validate_children(mobjects)
+        unique = list(dict.fromkeys(mobjects))
+        self.children = unique + [m for m in self.children if m not in unique]
+        return self
+
+    def remove(self, *mobjects):
+        if any(not isinstance(m, Mobject) for m in mobjects):
+            raise TypeError('Group removal expects Mobjects')
+        self.children = [m for m in self.children if m not in mobjects]
         return self
 
     def __iter__(self):
         return iter(self.children)
+
+    def __len__(self):
+        return len(self.children)
+
+    def __getitem__(self, value):
+        if isinstance(value, slice):
+            group_class = VGroup if isinstance(self, VGroup) else Group
+            return group_class(*self.children[value])
+        return self.children[value]
+
+    def split(self):
+        return list(self.children)
 
     def arrange(self, direction=RIGHT, buff=0.25, center=True, aligned_edge=ORIGIN):
         if self.geometry_scale != 1 or self.angle != 0:
@@ -610,6 +665,11 @@ class VGroup(Mobject):
         if center:
             self.move_to(ORIGIN)
         return self
+
+
+class VGroup(Group):
+    """Container for the supported vector/text geometry in this runtime."""
+    pass
 
 
 def linear(t):
@@ -1341,7 +1401,7 @@ class Scene:
 
 
 EXPORTS = ['Scene', 'Mobject', 'VMobject', 'CubicBezier', 'Circle', 'Arc', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
-           'Triangle', 'Polygon', 'Text', 'MathTex', 'VGroup', 'Create', 'Write', 'FadeIn',
+           'Triangle', 'Polygon', 'Text', 'MathTex', 'Group', 'VGroup', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'TransformFromCopy',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform', 'UP', 'DOWN', 'LEFT',

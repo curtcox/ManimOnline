@@ -16,6 +16,71 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_group_construction_mutation_and_cycle_rejection_are_atomic(self):
+        a,b,c = lite.Circle(),lite.Square(),lite.Triangle()
+        group = lite.VGroup(a,b,a)
+        self.assertEqual(group.children,[a,b])
+        group.add(c,a,a)
+        self.assertEqual(group.children,[b,c,a])
+        group.add_to_back(a,b,a)
+        self.assertEqual(group.children,[a,b,c])
+        group.remove(b,b)
+        self.assertEqual(group.children,[a,c])
+        parent = lite.Group(group)
+        for operation in (lambda: group.add(b,3),lambda: group.add(b,group),
+                          lambda: group.add_to_back(b,parent),lambda: group.remove(a,3)):
+            with self.assertRaises((TypeError,ValueError)):
+                operation()
+            self.assertEqual(group.children,[a,c])
+        with self.assertRaises(TypeError):
+            lite.Group(a,'invalid')
+        with self.assertRaises(ValueError):
+            group.submobjects = [b,parent]
+        self.assertEqual(group.children,[a,c])
+        group.submobjects = [b,b,a]
+        self.assertIs(group.submobjects,group.children)
+        self.assertEqual(group.children,[b,a])
+
+    def test_group_index_slices_share_objects_and_have_neutral_transforms(self):
+        children = [lite.Circle(),lite.Square(),lite.Triangle()]
+        group = lite.VGroup(*children).shift(lite.RIGHT).rotate(.3).scale(2)
+        self.assertEqual(len(group),3)
+        self.assertIs(group[-1],children[-1])
+        self.assertEqual(list(group),children)
+        self.assertEqual(group.split(),children)
+        section = group[::-2]
+        self.assertIsInstance(section,lite.VGroup)
+        self.assertEqual(section.children,[children[2],children[0]])
+        self.assertEqual(section.position,[0,0,0])
+        self.assertEqual(section.geometry_scale,1)
+        self.assertEqual(section.angle,0)
+        section[0].set_color(lite.RED)
+        self.assertEqual(group[2].color,lite.RED)
+        self.assertEqual(len(group[5:]),0)
+        self.assertIsInstance(lite.Group(*children)[:2],lite.Group)
+        with self.assertRaises(IndexError):
+            group[3]
+
+    def test_family_queries_deduplicate_shared_members_and_copies_are_independent(self):
+        a,b = lite.Circle(),lite.Square()
+        inner = lite.VGroup(a,b)
+        outer = lite.Group(inner,a)
+        self.assertEqual(outer.get_family(),[outer,inner,a,b])
+        copied = outer.copy()
+        self.assertIs(copied[0][0],copied[1])
+        self.assertIsNot(copied[1],a)
+        copied[1].set_color(lite.GREEN)
+        self.assertNotEqual(a.color,lite.GREEN)
+        self.assertEqual(a.get_family(),[a])
+
+    def test_group_mutations_preserve_previous_frames_and_gallery_cleanup(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/group_family_scene.py').read_text()))
+        self.assertEqual(result['duration'],7)
+        self.assertEqual(len(result['frames'][0]['mobjects'][1]['children']),3)
+        self.assertEqual(len(result['frames'][30]['mobjects'][1]['children']),2)
+        self.assertEqual(len(result['frames'][45]['mobjects'][1]['children']),3)
+        self.assertEqual(len(result['frames'][-1]['mobjects']),1)
+
     def test_group_transform_recursively_morphs_children_and_retains_pivots(self):
         source = lite.VGroup(lite.Circle().shift(lite.LEFT),
                             lite.VGroup(lite.Square().shift(lite.RIGHT))).scale(1.4).rotate(.3)
