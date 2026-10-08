@@ -875,4 +875,25 @@ integration; results depend on step size, resolution and floating-point precisio
 
 Try **Follow a tangent and derivative** (`examples/calculus_scene.py`) for a sine
 curve, its numerical derivative, an integrated approximation and a moving tangent
-with a slope readout. Area fills, Riemann rectangles and secant groups remain open.
+with a slope readout. Continuous area fills and secant groups remain open.
+
+
+`get_riemann_rectangles(graph, x_range=None, dx=.1)` builds a VGroup of Rectangle
+objects with polygon geometry. Cells follow the axes' XY basis, including world
+rotation or unequal scale. Samples may be `left`, `right` or `center`; rectangles
+start at each partition input and the last interval may extend beyond the upper
+bound. A third x_range item is ignored in favor of dx. `width_scale_factor=1.001`
+overlaps adjacent cells slightly; the chosen sample stays within each cell.
+
+Without a range, cells use the graph's parameter bounds, or their intersection
+with `bounded_graph`. A bounding function's baseline is evaluated at the left
+partition input; otherwise the baseline is zero clamped into the y range.
+`show_signed_area=True` inverts fill colors below the baseline. `color` accepts a
+single six-digit hex color or up to 64 gradient stops. `fill_opacity`,
+`stroke_color`, `stroke_width` and `blend=True` control cell styling. dx and width
+scale must be positive and finite; groups are limited to 1000 cells before
+providers are called. These are independent snapshots; regenerate them to follow
+changing functions or axes. Declared plot gaps do not suppress cell sampling.
+Try **Refine signed area estimates** (`examples/riemann_scene.py`) for refinement
+and the region between two functions. General Manim color objects and continuous
+area fills remain open.

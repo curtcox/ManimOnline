@@ -72,7 +72,8 @@ marker alignment during sampled transforms. Complex function warping remains ope
 and Axes plotting now support sampled XY curves, default smooth interpolation,
 declared discontinuity gaps, graph-input queries and dynamic redraw. Numerical
 tangent queries, derivative plots and signed trapezoid antiderivative plots now
-cover initial calculus APIs; area fills, Riemann rectangles, secant groups and
+cover initial calculus APIs. Riemann rectangles now add signed/gradient cells,
+refinement and bounding functions; continuous area fills, secant groups and
 adaptive/symbolic analysis remain open.
 
 Full Community parity additionally requires general geometry/path morphing, full scene-family

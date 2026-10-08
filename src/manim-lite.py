@@ -2096,6 +2096,77 @@ class Axes(VGroup):
             return NumberLine._real(result,'Integral result')
         return self.plot(integral,use_vectorized=use_vectorized,**kwargs)
 
+    def get_riemann_rectangles(self, graph, x_range=None, dx=.1, input_sample_type='left',
+                               stroke_width=1, stroke_color=BLACK, fill_opacity=1,
+                               color=(BLUE,GREEN), show_signed_area=True, bounded_graph=None,
+                               blend=False, width_scale_factor=1.001):
+        self._scalar_graph_function(graph)
+        if bounded_graph is not None:
+            self._scalar_graph_function(bounded_graph)
+        NumberLine._real(dx,'Riemann dx',positive=True)
+        NumberLine._real(width_scale_factor,'Rectangle width scale',positive=True)
+        Mobject._validate_width(stroke_width)
+        Mobject._validate_opacity(fill_opacity)
+        if not isinstance(show_signed_area,bool) or not isinstance(blend,bool):
+            raise ValueError('Riemann area and blend flags must be booleans')
+        if input_sample_type not in ('left','right','center'):
+            raise ValueError('Riemann input_sample_type must be left, right or center')
+        if x_range is None:
+            low,high = graph.t_min,graph.t_max
+            if bounded_graph is not None:
+                low,high = max(low,bounded_graph.t_min),min(high,bounded_graph.t_max)
+            values = [low,high]
+        else:
+            values = list(x_range)
+            if len(values) not in (2,3):
+                raise ValueError('Riemann x_range needs two or three values')
+        low,high,_ = ParametricFunction._range([*values[:2],dx],dx)
+        count = (high-low)/dx
+        if not math.isfinite(count) or count > 1000:
+            raise ValueError('Riemann groups are limited to 1000 rectangles')
+        count = math.ceil(count)
+        palette = list(color) if isinstance(color,(list,tuple)) else [color]
+        if not palette or len(palette) > 64:
+            raise ValueError('Riemann colors need between 1 and 64 colors')
+        def channels(value):
+            if not isinstance(value,str) or len(value) != 7 or value[0] != '#':
+                raise ValueError('Riemann colors must be six-digit hex colors')
+            try:
+                return [int(value[index:index+2],16) for index in (1,3,5)]
+            except ValueError as error:
+                raise ValueError('Riemann colors must be six-digit hex colors') from error
+        stops = [channels(value) for value in palette]
+        channels(stroke_color)
+        rectangles = VGroup()
+        fraction = {'left':0,'center':.5,'right':1}[input_sample_type]
+        for index in range(count):
+            x = low+index*dx
+            if x >= high:
+                break
+            right = x+max(width_scale_factor,fraction)*dx
+            sample = x+fraction*dx
+            NumberLine._real(right,'Rectangle endpoint')
+            if right == x or fraction and sample == x:
+                raise ValueError('Riemann dx is too small to change this input')
+            top = self.i2gc(sample,graph)[1]
+            baseline = (self._origin_shift(self.y_range) if bounded_graph is None else
+                        self.i2gc(x,bounded_graph)[1])
+            location = (len(stops)-1)*index/max(1,count-1)
+            stop = min(len(stops)-1,math.floor(location))
+            alpha = location-stop
+            rgb = [round(a+(b-a)*alpha) for a,b in zip(stops[stop],stops[min(stop+1,len(stops)-1)])]
+            if show_signed_area and top < baseline:
+                rgb = [255-value for value in rgb]
+            fill = '#' + ''.join(f'{value:02X}' for value in rgb)
+            bottom,upper = min(baseline,top),max(baseline,top)
+            # Keep Rectangle identity but use four XY corners for transformed axes.
+            outline = Polygon(self.c2p(right,upper),self.c2p(x,upper),
+                              self.c2p(x,bottom),self.c2p(right,bottom),
+                              color=fill,fill_opacity=fill_opacity,
+                              stroke_color=fill if blend else stroke_color,stroke_width=stroke_width)
+            rectangles.add(Rectangle().become(outline))
+        return rectangles
+
 
 class NumberPlane(Axes):
     """A linear Cartesian grid using the same local coordinates as its axes."""

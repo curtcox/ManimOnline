@@ -14,6 +14,7 @@ const ExampleCatalog = Object.freeze([
   { id: 'flash', label: 'Traveling outline highlights', path: 'examples/passing_flash_scene.py' },
   { id: 'numberline', label: 'Follow numeric coordinates', path: 'examples/number_line_scene.py' },
   { id: 'axes', label: 'Animate Cartesian coordinates', path: 'examples/axes_scene.py' },
+  { id: 'riemann', label: 'Refine signed area estimates', path: 'examples/riemann_scene.py' },
   { id: 'calculus', label: 'Follow a tangent and derivative', path: 'examples/calculus_scene.py' },
   { id: 'complex', label: 'Animate complex coordinates', path: 'examples/complex_scene.py' },
   { id: 'plane', label: 'Move a Cartesian grid', path: 'examples/plane_scene.py' },

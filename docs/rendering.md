@@ -1094,8 +1094,7 @@ provider closures stay out of frame JSON and retain normal copy behavior.
 
 Both plotting helpers default to the axes' range. Declared plot discontinuities
 split result contours but do not skip singularities inside an integration
-interval. Vectorized functions, symbolic/adaptive calculus, area fills, Riemann
-rectangles and secant groups remain open. Python tests cover numeric coordinates,
+interval. Vectorized functions, symbolic/adaptive calculus, continuous area fills and secant groups remain open. Python tests cover numeric coordinates,
 signed dx, transformed/scaled frames, derivative samples, signed integrals,
 intercepts, convergence, provider isolation and invalid inputs. The gallery
 combines sine, its derivative, recovered sine, a moving tangent and numeric slope.
@@ -1104,3 +1103,36 @@ Local Pyodide playback verified three 40-cubic plotted curves, a tangent touchin
 the origin at five seconds and a 1.00 slope readout. The final nine-second frame
 retained the curves and removed the tangent/marker/readout. Switching to DOT
 rendered the editor flow graph. All 252 Python and 72 Node tests passed.
+
+
+## Riemann area estimates
+
+get_riemann_rectangles follows the sampling, default range, signed coloring and
+bounding-baseline behavior of the
+[official Riemann API](https://docs.manim.community/en/stable/_modules/manim/mobject/graphing/coordinate_systems.html).
+Partitions exclude the upper starting input, but the final rectangle may extend
+past the requested end. dx overrides a third range item. Sampling is left/right/
+center; a bounding provider uses the left input for the baseline, otherwise zero
+is clamped into the y range. Default bounds come from the graph or the intersection
+of two graphs. Invalid ranges/counts/styles fail before invoking callbacks.
+
+Rectangle instances retain their class identity and serialize four polygon
+corners, so cells follow the current XY basis rather than a world-aligned bounding
+box. This intentionally preserves coordinate geometry on transformed axes.
+Positive width scale includes the chosen sample, with default slight overlap.
+Hex gradients use up to 64 stops; signed negative heights invert RGB channels.
+Fill opacity, border width/color and blended borders are supported. Groups cap at
+1000 cells. Cells are independent snapshots; changing axes/functions requires
+regeneration. Plot discontinuities do not suppress sampling. General color
+objects and continuous area fills remain open.
+
+Tests cover sampling choices, signed/unsigned colors, gradients, blended strokes,
+Rectangle identity, open last intervals, bounded/default ranges, clamped origins,
+transformed corners, source isolation, copies/restoration, validation and gallery
+refinement/cleanup. The gallery refines eight signed cells to 32, transforms them
+into 16 cells between two functions, then removes the cells and bounding curve.
+
+Local Pyodide playback verified 32 refined cells before four seconds and 16
+signed cells between the parabola and line at six seconds. The final eight-second
+frame removed the cells and bounding curve. Switching to DOT rendered the editor
+flow graph. All 258 Python and 72 Node tests passed.

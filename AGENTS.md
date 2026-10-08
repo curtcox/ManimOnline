@@ -217,3 +217,11 @@ cannot change the input instead of silently reporting a zero slope. Numerical
 integration uses signed trapezoids from zero and validates every scalar/result.
 Plot count validation must still happen before invoking providers. Plotting gaps
 do not remove integral-domain singularities; adaptive/symbolic calculus remains open.
+
+
+Read `examples/riemann_scene.py` for signed Riemann cells, coarse/fine group
+transforms and a bounding function. Keep Rectangle identities while serializing
+four polygon corners in the current axes basis. Preflight ranges, counts and
+styles before callback sampling; no source graph/axis mutation. Preserve native
+open partition ends, left-input bounding baselines and signed color inversion.
+Cell colors support hex gradients; continuous area fills remain open.

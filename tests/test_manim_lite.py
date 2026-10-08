@@ -16,6 +16,103 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_riemann_sampling_signed_colors_gradient_and_rectangle_identity(self):
+        axes = lite.Axes([-2,2],[-2,2],x_length=4,y_length=4)
+        graph = axes.plot(lambda x:x)
+        rectangles = axes.get_riemann_rectangles(graph,x_range=[-1,1,99],dx=.5,
+                    input_sample_type='center',color=[lite.BLUE,lite.GREEN],width_scale_factor=1)
+        self.assertEqual(len(rectangles),4)
+        self.assertTrue(all(isinstance(rect,lite.Rectangle) for rect in rectangles))
+        for rectangle,x in zip(rectangles,(-1,-.5,0,.5)):
+            self.assertPointAlmostEqual(rectangle.vertices[0],axes.c2p(x+.5,max(0,x+.25)))
+            self.assertPointAlmostEqual(rectangle.vertices[2],axes.c2p(x,min(0,x+.25)))
+        self.assertEqual(rectangles[0].fill_color,'#A73B22')
+        self.assertEqual(rectangles[-1].fill_color,lite.GREEN)
+        self.assertEqual(rectangles[1].fill_color,'#993C49')
+        blended = axes.get_riemann_rectangles(graph,x_range=[-1,0],dx=.5,color=lite.YELLOW,blend=True)
+        self.assertEqual(blended[0].fill_color,'#0000FF')
+        self.assertEqual(blended[0].stroke_color,blended[0].fill_color)
+        unsigned = axes.get_riemann_rectangles(graph,x_range=[-1,0],dx=.5,color=lite.YELLOW,show_signed_area=False)
+        self.assertEqual(unsigned[0].fill_color,lite.YELLOW)
+        json.dumps(rectangles.to_dict(),allow_nan=False)
+
+    def test_riemann_left_right_center_and_open_last_interval(self):
+        axes = lite.Axes([0,2],[-1,3])
+        graph = axes.plot(lambda x:x*x)
+        for kind,offset in (('left',0),('center',.5),('right',1)):
+            rectangles = axes.get_riemann_rectangles(graph,x_range=[0,1],dx=.4,input_sample_type=kind,width_scale_factor=1)
+            self.assertEqual(len(rectangles),3)
+            for index,rect in enumerate(rectangles):
+                x = index*.4
+                top = axes.p2c(lite.Vector(rect.vertices[0]))
+                self.assertAlmostEqual(top[0],x+.4)
+                self.assertAlmostEqual(top[1],(x+offset*.4)**2)
+        empty = axes.get_riemann_rectangles(graph,x_range=[1,1])
+        self.assertEqual(len(empty),0)
+        # A requested narrower width still contains the chosen right sample.
+        narrow = axes.get_riemann_rectangles(graph,x_range=[0,1],dx=1,input_sample_type='right',width_scale_factor=.5)
+        self.assertAlmostEqual(axes.p2c(lite.Vector(narrow[0].vertices[0]))[0],1)
+
+    def test_riemann_between_graphs_default_intersection_and_clamped_baseline(self):
+        axes = lite.NumberPlane([0,4],[1,4],x_length=4,y_length=3)
+        graph = axes.plot(lambda x:2,x_range=[0,3,.5])
+        other = axes.plot(lambda x:1+x*.25,x_range=[1,4,.5])
+        cells = axes.get_riemann_rectangles(graph,bounded_graph=other,dx=1,input_sample_type='right',width_scale_factor=1)
+        self.assertEqual(len(cells),2)
+        self.assertPointAlmostEqual(cells[0].vertices[2],axes.c2p(1,1.25))
+        baseline = axes.get_riemann_rectangles(graph,x_range=[0,1],dx=1,width_scale_factor=1)
+        self.assertPointAlmostEqual(baseline[0].vertices[2],axes.c2p(0,1))
+        graph.underlying_function = lambda x:x
+        sampled = axes.get_riemann_rectangles(graph,bounded_graph=other,x_range=[1,2],dx=1,
+                                              input_sample_type='center',width_scale_factor=1)
+        self.assertPointAlmostEqual(sampled[0].vertices[0],axes.c2p(2,1.5))
+        self.assertPointAlmostEqual(sampled[0].vertices[2],axes.c2p(1,1.25))
+
+    def test_riemann_transformed_axes_coordinates_copies_and_source_isolation(self):
+        axes = lite.Axes([-2,2],[-2,2],x_length=8,y_length=4).rotate(.7).scale(1.2).shift(lite.UP)
+        graph = axes.plot(lambda x:x*x-1)
+        before = graph.to_dict(),axes.to_dict()
+        cells = axes.get_riemann_rectangles(graph,x_range=[-1,1],dx=.5,width_scale_factor=1)
+        for rect,x in zip(cells,(-1,-.5,0,.5)):
+            self.assertPointAlmostEqual(rect.vertices[2],axes.c2p(x,x*x-1))
+        clone = cells.copy().set_color(lite.RED)
+        self.assertNotEqual(clone[0].fill_color,cells[0].fill_color)
+        self.assertEqual((graph.to_dict(),axes.to_dict()),before)
+        cells.save_state().shift(lite.RIGHT).restore()
+        self.assertPointAlmostEqual(cells[0].vertices[2],axes.c2p(-1,0))
+
+    def test_riemann_validation_precedes_callbacks_and_rejects_invalid_results(self):
+        axes = lite.Axes()
+        graph = axes.plot(lambda x:x)
+        called = []
+        graph.underlying_function = lambda x:called.append(x) or x
+        for options in ({'dx':0},{'dx':True},{'dx':float('inf')},{'dx':1e-6,'x_range':[0,1]},
+                        {'color':[]},{'color':'red'},{'stroke_color':'invalid'},
+                        {'input_sample_type':'middle'},{'blend':1},{'show_signed_area':1},
+                        {'stroke_width':-1},{'fill_opacity':2},{'width_scale_factor':0},
+                        {'x_range':[0,1,2,3]}):
+            with self.assertRaises(ValueError): axes.get_riemann_rectangles(graph,**options)
+        self.assertEqual(called,[])
+        with self.assertRaises(TypeError): axes.get_riemann_rectangles(lite.Circle())
+        with self.assertRaises(TypeError): axes.get_riemann_rectangles(graph,bounded_graph=lite.Circle())
+        graph.underlying_function = lambda x:float('nan')
+        with self.assertRaises(ValueError): axes.get_riemann_rectangles(graph,x_range=[0,1],dx=.5)
+
+    def test_riemann_gallery_refinement_between_functions_and_cleanup(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/riemann_scene.py').read_text()))
+        self.assertEqual(result['duration'],8)
+        coarse = result['frames'][15]['mobjects'][2]
+        fine = result['frames'][59]['mobjects'][2]
+        between = result['frames'][90]['mobjects'][2]
+        self.assertEqual(len(coarse['children']),8)
+        self.assertEqual(len(fine['children']),32)
+        self.assertEqual(len(between['children']),16)
+        self.assertEqual(len(result['frames'][-1]['mobjects']),2)
+        colors = [child['fill_color'] for child in between['children']]
+        self.assertIn(lite.BLUE,colors)
+        self.assertIn(lite.GREEN,colors)
+        self.assertTrue(any(color.startswith('#9') for color in colors))
+
     def test_tangent_queries_use_numeric_coordinates_under_axis_transforms(self):
         axes = lite.Axes([-3,3],[-2,4],x_length=12,y_length=3)
         graph = axes.plot(lambda x:x*x,x_range=[-2,2,.2])
