@@ -428,6 +428,13 @@ class HelloWorld(Scene):
   <div id="splitter"></div>
   <div id="options">
     <span id="type-indicator" class="manim">Manim</span>
+    <label>Renderer:
+      <select id="renderer-mode" aria-label="Renderer">
+        <option value="auto">Auto</option>
+        <option value="manim">Manim</option>
+        <option value="graphviz">Graphviz</option>
+      </select>
+    </label>
     <span id="pyodide-status" class="hidden">Python loading...</span>
 
     <label>Example:
@@ -516,7 +523,8 @@ class HelloWorld(Scene):
     crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script src="viz-global.js"></script>
   <script src="svg-pan-zoom.min.js" type="text/javascript" charset="utf-8"></script>
-  <script src="src/detector.js"></script>
+  <script src="src/detector.js?v=2"></script>
+  <script src="src/render-scheduler.js?v=1"></script>
   <script src="src/manim-renderer.js?v=mathtex-1"></script>
   <script src="src/manim-client.js"></script>
   <script src="src/manim-player.js?v=mathtex-1"></script>
@@ -667,7 +675,6 @@ class HelloWorld(Scene):
         scale = window.devicePixelRatio || 1,
         downloadBtn = document.getElementById("download"),
         editor = ace.edit("editor"),
-        lastHD = -1,
         parser = new DOMParser(),
         formatEl = document.querySelector("#format select"),
         engineEl = document.querySelector("#engine select"),
@@ -678,6 +685,7 @@ class HelloWorld(Scene):
 
       let renderRevision = 0;
       let player = null;
+      const rendererMode = document.getElementById('renderer-mode');
       let exportingPNG = false;
       const frameFormat = document.getElementById('manim-export-format');
       const exportStatus = document.getElementById('export-status');
@@ -753,8 +761,6 @@ class HelloWorld(Scene):
           }
           history.replaceState(null, '', url);
           editor.getSession().setValue(source);
-          clearTimeout(lastHD);
-          clearTimeout(detectionTimer);
           render();
         }
       });
@@ -770,9 +776,18 @@ class HelloWorld(Scene):
         pyodideStatus.className = 'hidden';
       }
 
-      // Debounce timer for detection
-      let detectionTimer = -1;
-      const DEBOUNCE_DELAY = 1000; // 1 second as per master plan
+      const scheduler = new RenderScheduler({ detect: detectAndUpdateType, render });
+      rendererMode.addEventListener('change', () => {
+        exampleLoader.cancel();
+        const url = new URL(location.href);
+        // Preserve the latest edits even when the previous render failed.
+        for (const parameter of ['raw', 'compressed', 'url']) url.searchParams.delete(parameter);
+        url.hash = encodeURIComponent(editor.getSession().getDocument().getValue());
+        if (rendererMode.value === 'auto') url.searchParams.delete('type');
+        else url.searchParams.set('type', rendererMode.value === 'graphviz' ? 'dot' : 'manim');
+        history.replaceState(null, '', url);
+        render();
+      });
 
       function show_status(text, hide) {
         hide = hide || 0;
@@ -875,6 +890,7 @@ class HelloWorld(Scene):
 
         // Check URL override first
         const urlType = ContentDetector.getTypeFromURL();
+        rendererMode.value = urlType || 'auto';
         if (urlType) {
           updateTypeIndicator(urlType);
           return urlType;
@@ -906,6 +922,7 @@ class HelloWorld(Scene):
 
       // Unified render function
       async function render() {
+        scheduler.cancel();
         clearError();
         invalidateRender();
         const type = detectAndUpdateType();
@@ -1102,16 +1119,7 @@ class HelloWorld(Scene):
         exampleLoader.cancel();
         invalidateRender();
         sceneNamesList.replaceChildren();
-        clearTimeout(lastHD);
-        clearTimeout(detectionTimer);
-
-        // Detect type with shorter delay for UI update
-        detectionTimer = setTimeout(() => {
-          detectAndUpdateType();
-        }, 300);
-
-        // Render with full debounce delay
-        lastHD = setTimeout(render, DEBOUNCE_DELAY);
+        scheduler.schedule();
       });
 
       window.onpopstate = function (event) {
@@ -1123,11 +1131,10 @@ class HelloWorld(Scene):
       sceneNameInput.addEventListener('input', () => {
         exampleLoader.cancel();
         invalidateRender();
-        clearTimeout(lastHD);
-        lastHD = setTimeout(render, DEBOUNCE_DELAY);
+        scheduler.schedule({ detect: false });
       });
       sceneNameInput.addEventListener('keydown', event => {
-        if (event.key === 'Enter') { clearTimeout(lastHD); render(); }
+        if (event.key === 'Enter') render();
       });
       formatEl.addEventListener("change", render);
       engineEl.addEventListener("change", render);

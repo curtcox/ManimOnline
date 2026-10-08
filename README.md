@@ -8,6 +8,7 @@ A web-based editor that supports both Graphviz DOT language diagrams and Manim P
 - **Manim-lite animations**: In-browser Python execution with SVG frame playback, play/pause, replay, and seeking
 - **Examples**: Load supported animation examples or a Graphviz diagram directly into the editor
 - **Auto-Detection**: Automatically detects whether input is DOT or Manim Python
+- **Renderer selection**: Choose Auto, Manim, or Graphviz when detection is ambiguous
 - **URL Sharing**: Share diagrams via URL parameters
 - **Export**: Download diagrams as SVG or PNG
 
@@ -23,6 +24,14 @@ as usual. Loading clears any earlier scene selection and URL input override.
 If you edit while an example is loading, your newer edits are kept. Loading
 errors leave the current code intact. The gallery uses bundled supported scenes;
 it does not imply support for every Manim API in the broader example documents.
+
+The **Renderer** selector defaults to Auto. It ignores strings and comments when
+detecting source, so diagram labels and Python docstrings do not choose the
+renderer. Choose Manim or Graphviz to override detection; the choice stays in the
+URL and shared links. Choose Auto to remove the override. Loading an example
+also restores Auto. Detection updates after 300 ms of quiet; rendering starts
+after one second. Changing the renderer or pressing Enter in the scene field
+renders immediately and cancels scheduled work for earlier edits.
 
 ## Development
 

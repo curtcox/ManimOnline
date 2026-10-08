@@ -33,6 +33,16 @@ repaired online, with a recovery page for incomplete offline navigation. Externa
 source URLs, arbitrary packages, and sharing-service responses are not cached.
 Local-server shutdown/reload verified gallery MathTex and DOT rendering; full
 internet-disconnection and cache-eviction checks across browsers remain open.
+
+The Renderer selector supports Auto, Manim, and Graphviz. Overrides use the
+existing `type` URL parameter and are preserved on reload and in links. Gallery
+loading clears an override. Automatic detection strips quoted literals and
+comments before scoring, avoiding language keywords inside scene text/labels.
+`RenderScheduler` updates detection after 300 ms and starts rendering after
+one second of quiet. Explicit rendering cancels both timers, and revision guards
+discard callbacks already queued for superseded edits. Browser checks covered
+manual selection/reload, forced-renderer errors, Auto recovery, literal filtering,
+and gallery reset. Sharing-service responses remain a separate acceptance gate.
 Creation traces normalized SVG outlines and fades in their fill. Uncreate
 reverses drawing and removes the object. Group children and arrow components
 reveal simultaneously; text creation and writing use fades. Transforms between

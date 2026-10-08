@@ -14,8 +14,10 @@ const ContentDetector = {
       return { type: 'unknown', confidence: 0, reason: 'Empty input' };
     }
 
-    const dotScore = this.scoreDot(code);
-    const manimScore = this.scoreManim(code);
+    // Labels, docstrings, and comments describe content; they do not select its renderer.
+    const executable = this.stripLiterals(code);
+    const dotScore = this.scoreDot(executable);
+    const manimScore = this.scoreManim(executable);
 
     if (dotScore.score > manimScore.score && dotScore.score > 0) {
       return {
@@ -36,6 +38,31 @@ const ContentDetector = {
     return { type: 'unknown', confidence: 0, reason: 'No clear indicators' };
   },
 
+  stripLiterals(code) {
+    let result = '', index = 0;
+    const blank = text => text.replace(/[^\n\r]/g, ' ');
+    while (index < code.length) {
+      const start = index;
+      const char = code[index];
+      if (char === '"' || char === "'") {
+        const quote = code.slice(index, index + 3) === char.repeat(3) ? char.repeat(3) : char;
+        index += quote.length;
+        while (index < code.length) {
+          if (code[index] === '\\') { index += 2; continue; }
+          if (code.slice(index, index + quote.length) === quote) { index += quote.length; break; }
+          index++;
+        }
+      } else if (char === '#' || code.slice(index, index + 2) === '//') {
+        while (index < code.length && code[index] !== '\n') index++;
+      } else if (code.slice(index, index + 2) === '/*') {
+        const end = code.indexOf('*/', index + 2);
+        index = end < 0 ? code.length : end + 2;
+      } else { result += char; index++; continue; }
+      result += blank(code.slice(start, index));
+    }
+    return result;
+  },
+
   /**
    * Score code for DOT language indicators
    */
@@ -44,7 +71,7 @@ const ContentDetector = {
     const reasons = [];
 
     // Strong indicators
-    if (/\b(di)?graph\s+(\w+\s*)?\{/.test(code)) {
+    if (/^\s*(?:strict\s+)?(?:di)?graph\b\s*(?:\w+\s*)?\{/i.test(code)) {
       score += 10;
       reasons.push('graph/digraph keyword');
     }
@@ -195,8 +222,8 @@ const ContentDetector = {
   /**
    * Check if URL has type override
    */
-  getTypeFromURL() {
-    const params = new URLSearchParams(window.location.search);
+  getTypeFromURL(search = window.location.search) {
+    const params = new URLSearchParams(search);
     const type = params.get('type');
     if (type === 'dot' || type === 'graphviz') {
       return 'graphviz';
