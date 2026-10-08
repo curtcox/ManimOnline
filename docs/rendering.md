@@ -50,7 +50,7 @@ their geometry and identity; depth values are unchanged and still take priority.
 `clear()` removes roots while keeping previous frames and reusable object state.
 Nested family restructuring is explicitly rejected before any scene mutation.
 These methods follow the [Scene display API](https://docs.manim.community/en/stable/reference/manim.scene.scene.Scene.html)
-for supported roots; foreground lists and child restructuring are not implemented.
+for supported roots; child restructuring is not implemented.
 
 Python tests cover identity, ordering, new roots, empty calls, animation ties,
 clear/reintroduction, checkpoints, invalid family operations, and gallery timing.
@@ -359,3 +359,21 @@ If full Manim Community rendering becomes a requirement, revisit runtime
 feasibility. A server design must isolate arbitrary submitted Python, enforce
 resource limits, disable unwanted host/network access, and clean up per-job
 artifacts. Do not execute user scenes in a web server process.
+
+## Foreground roots
+
+Scene add/remove_foreground_mobject(s) APIs maintain a separate foreground list.
+Adding roots or preparing animations keeps foreground roots last for equal-depth
+painting; numeric z_index still wins across all drawable leaves. Whole VGroups
+retain their geometry transforms and opacity. Re-adding foreground roots reorders
+that list. Releasing a designation keeps the root visible. Remove, FadeOut,
+ReplacementTransform, and clear remove membership; bring_to_front preserves it
+and bring_to_back releases it. Family restructuring is still explicitly rejected.
+The grouped overlay gallery covers promotion, release, rotation, fade removal,
+and clear/reintroduction. Python checks cover ordering, atomic rejection, cleanup,
+and sequential animations; SVG depth sorting is shared with normal roots.
+
+Local Pyodide browser checks confirmed the yellow grouped overlay paints after
+the blue square, the released overlay paints before the red square, and promotion
+restores its visibility during rotation. The clear interval is empty and the
+terminal frame contains only the title. DOT rendered after switching.

@@ -41,7 +41,8 @@ compatibility layer, not a server running full Manim Community.
 22. `examples/order_scene.py` for root reordering, clearing, and reintroducing objects.
 23. `examples/lifecycle_scene.py` for setup, teardown, and sampled scene time.
 24. `examples/corner_path_scene.py` for straight-segment VMobject tracing and deformation.
-25. `todo/master_plan.md` and the other `todo/` documents for background plans.
+25. `examples/foreground_scene.py` for grouped foreground overlays, release, and cleanup.
+26. `todo/master_plan.md` and the other `todo/` documents for background plans.
     `docs/completion.md` tracks the remaining acceptance gates.
 
 `ace/`, `viz-global.js`, and `svg-pan-zoom.min.js` are vendored dependencies.

@@ -16,6 +16,76 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_foreground_roots_stay_after_later_additions_and_animations(self):
+        a, b, c = lite.Circle(), lite.Square(), lite.Dot()
+        scene = lite.Scene().add(a)
+        self.assertIs(scene.add_foreground_mobject(b), scene)
+        scene.add(c, b).play(lite.Rotate(a, lite.PI))
+        self.assertEqual(scene.mobjects, [a, c, b])
+        self.assertEqual(scene.foreground_mobjects, [b])
+        self.assertEqual([m['type'] for m in scene.frames[0]['mobjects']], ['circle', 'circle', 'square'])
+        self.assertIs(scene.bring_to_front(b), scene)
+        self.assertEqual(scene.foreground_mobjects, [b])
+
+    def test_foreground_readdition_is_stable_and_keeps_identity(self):
+        a, b, c = lite.Circle(), lite.Square(), lite.Dot()
+        scene = lite.Scene().add(c)
+        before = [m.to_dict() for m in (a, b)]
+        self.assertIs(scene.add_foreground_mobjects(a, b, a), scene)
+        self.assertEqual(scene.mobjects, [c, a, b])
+        scene.add_foreground_mobject(a)
+        self.assertEqual(scene.mobjects, [c, b, a])
+        self.assertEqual(scene.foreground_mobjects, [b, a])
+        self.assertEqual([m.to_dict() for m in (a, b)], before)
+
+    def test_releasing_foreground_keeps_visible_object_and_allows_later_cover(self):
+        a, b = lite.Circle(), lite.Square()
+        scene = lite.Scene().add_foreground_mobject(a)
+        self.assertIs(scene.remove_foreground_mobject(a), scene)
+        self.assertEqual(scene.mobjects, [a])
+        self.assertEqual(scene.foreground_mobjects, [])
+        scene.add(b)
+        self.assertEqual(scene.mobjects, [a, b])
+        self.assertIs(scene.remove_foreground_mobjects(a, b), scene)
+        self.assertEqual(scene.mobjects, [a, b])
+
+    def test_removal_back_order_and_clear_release_foreground_membership(self):
+        a, b = lite.Circle(), lite.Square()
+        scene = lite.Scene().add(b).add_foreground_mobject(a)
+        scene.bring_to_back(a)
+        self.assertEqual(scene.mobjects, [a, b])
+        self.assertEqual(scene.foreground_mobjects, [])
+        scene.add_foreground_mobject(a).remove(a).add(a)
+        self.assertEqual(scene.foreground_mobjects, [])
+        scene.add_foreground_mobject(a).clear().add(b)
+        self.assertEqual(scene.mobjects, [b])
+        self.assertEqual(scene.foreground_mobjects, [])
+
+    def test_foreground_fade_and_replacement_remove_membership(self):
+        for animation in ('FadeOut(a)', 'ReplacementTransform(a, b)', 'Succession(Rotate(a, PI), FadeOut(a))'):
+            result = render('a = Circle()\nb = Square()\nself.add_foreground_mobject(a)\nself.play(' + animation + ')\nassert self.foreground_mobjects == []\nself.add(b)')
+            self.assertEqual([m['type'] for m in result['frames'][-1]['mobjects']], ['square'])
+
+    def test_foreground_family_validation_is_atomic(self):
+        child = lite.Circle()
+        group, other = lite.VGroup(child), lite.Dot()
+        scene = lite.Scene().add(group).add_foreground_mobject(other)
+        for method in (scene.add_foreground_mobjects, scene.remove_foreground_mobjects):
+            for args, error in (((other, child), NotImplementedError), ((other, 1), TypeError)):
+                with self.assertRaises(error):
+                    method(*args)
+                self.assertEqual(scene.mobjects, [group, other])
+                self.assertEqual(scene.foreground_mobjects, [other])
+
+    def test_foreground_gallery_preserves_group_then_releases_cleans_and_clears(self):
+        result = json.loads(lite.render_scene((ROOT / 'examples/foreground_scene.py').read_text()))
+        self.assertEqual(result['duration'], 8)
+        self.assertEqual([m['type'] for m in result['frames'][30]['mobjects']], ['text', 'square', 'vgroup'])
+        self.assertEqual([m['type'] for m in result['frames'][45]['mobjects']], ['text', 'square', 'vgroup', 'square'])
+        self.assertEqual([m['type'] for m in result['frames'][60]['mobjects']], ['text', 'square', 'square', 'vgroup'])
+        self.assertEqual([m['type'] for m in result['frames'][90]['mobjects']], [])
+        self.assertEqual([m['text'] for m in result['frames'][-1]['mobjects']], ['Foreground overlay'])
+
     def test_closed_corner_paths_follow_return_to_start_and_restore_reversed_geometry(self):
         path = lite.VMobject().set_points_as_corners([lite.ORIGIN, lite.RIGHT, lite.UR, lite.ORIGIN]).save_state()
         self.assertEqual(path.get_start(), path.get_end())

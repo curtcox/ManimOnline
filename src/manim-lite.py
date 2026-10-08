@@ -978,6 +978,7 @@ class Succession(AnimationGroup):
 class Scene:
     def __init__(self):
         self.mobjects, self.frames = [], []
+        self.foreground_mobjects = []
         self._elapsed_frames = 0
 
     @property
@@ -988,11 +989,29 @@ class Scene:
         for mobject in mobjects:
             if mobject not in self.mobjects:
                 self.mobjects.append(mobject)
+        self.mobjects = [m for m in self.mobjects if m not in self.foreground_mobjects] + self.foreground_mobjects
         return self
 
     def remove(self, *mobjects):
         self.mobjects = [m for m in self.mobjects if m not in mobjects]
+        self.foreground_mobjects = [m for m in self.foreground_mobjects if m not in mobjects]
         return self
+
+    def add_foreground_mobjects(self, *mobjects):
+        roots = self._ordered_roots(mobjects)
+        self.foreground_mobjects = [m for m in self.foreground_mobjects if m not in roots] + roots
+        return self.add(*roots)
+
+    def add_foreground_mobject(self, mobject):
+        return self.add_foreground_mobjects(mobject)
+
+    def remove_foreground_mobjects(self, *mobjects):
+        roots = self._ordered_roots(mobjects)
+        self.foreground_mobjects = [m for m in self.foreground_mobjects if m not in roots]
+        return self
+
+    def remove_foreground_mobject(self, mobject):
+        return self.remove_foreground_mobjects(mobject)
 
     def _ordered_roots(self, mobjects):
         if any(not isinstance(m, Mobject) for m in mobjects):
@@ -1009,7 +1028,8 @@ class Scene:
 
     def bring_to_front(self, *mobjects):
         roots = self._ordered_roots(mobjects)
-        self.remove(*roots)
+        # Moving a root forward preserves its foreground membership.
+        self.mobjects = [m for m in self.mobjects if m not in roots]
         self.add(*roots)
         return self
 
@@ -1021,6 +1041,7 @@ class Scene:
 
     def clear(self):
         self.mobjects = []
+        self.foreground_mobjects = []
         return self
 
     def capture(self, overrides=None, *, advance_time=True):

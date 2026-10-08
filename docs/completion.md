@@ -27,8 +27,9 @@ and terminal holds. Browser gallery playback verified accumulated rotation and
 final removal, plus Graphviz after switching. Global numeric depth ordering now has Python/SVG tests and real Pyodide browser
 checks across transformed groups, including animated crossings and restoration.
 Root bring-to-front/back and clear/reintroduction now have Python tests and
-Pyodide browser playback checks. Foreground APIs and broader family composition
-remain implementation work. Scene lifecycle hooks and elapsed sampled time
+Pyodide browser playback checks. Foreground root APIs now have ordering, release, removal, and atomic validation
+tests and local Pyodide checks for promotion, release, transformed group painting,
+and cleanup. Broader family composition remains implementation work. Scene lifecycle hooks and elapsed sampled time
 have Python tests and Pyodide browser checks, including teardown animation.
 
 Corner-path VMobjects now have Python/SVG tests and Pyodide checks for tracing,

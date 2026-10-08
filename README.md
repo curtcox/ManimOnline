@@ -74,6 +74,7 @@ Then open `http://localhost:8000` in your browser.
 - [Growth scene](examples/growth_scene.py): growth from a point, group growth, and staggered shrinking.
 - [Corner paths](examples/corner_path_scene.py): trace, follow, and deform a connected path.
 - [Scene lifecycle](examples/lifecycle_scene.py): setup-created objects, scene time, and teardown animation.
+- [Foreground scene](examples/foreground_scene.py): keep a grouped overlay above later additions and release it.
 - [Scene order](examples/order_scene.py): reorder whole groups, clear the display, and reuse objects.
 - [Layer scene](examples/layer_scene.py): animated depth changes across transformed groups.
 - [Style scene](examples/style_scene.py): independent fill/outline colors and group opacity changes.
@@ -304,8 +305,20 @@ Repeated arguments appear once. They keep geometry and depth unchanged, so
 objects without changing their state or deleting earlier frames; the same objects
 can be added or animated again. Ordering a child of an added group or a group
 containing independently added children requires family restructuring and reports
-an explicit error before changing the scene. Foreground-object APIs and broader
-scene-family restructuring remain unsupported.
+an explicit error before changing the scene. Broader scene-family restructuring
+remains unsupported.
+
+`add_foreground_mobject(object)` and `add_foreground_mobjects(*objects)` add whole
+roots to `foreground_mobjects` and the scene. Foreground roots stay after ordinary
+roots as later objects and animations are added, so they cover equal-depth objects.
+Re-adding foreground roots moves them to the end of the foreground list, in argument
+order; duplicates appear once. Numeric `z_index` still takes priority, including
+across children of foreground groups. `remove_foreground_mobject(object)` and the
+plural form release the foreground designation while keeping the object visible.
+Later additions can then cover it. `remove`, fade/removal animations, and `clear`
+remove foreground membership too. `bring_to_front` preserves membership;
+`bring_to_back` releases it. Child/group restructuring is rejected atomically.
+See the [Manim Scene API](https://docs.manim.community/en/stable/reference/manim.scene.scene.Scene.html).
 
 Scenes may override `setup()` and `tear_down()`. The runtime calls setup before
 construct and teardown afterward; all three hooks can add objects, play

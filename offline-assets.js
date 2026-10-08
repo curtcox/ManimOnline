@@ -1,6 +1,6 @@
 /** Exact offline dependencies. Bump VERSION whenever any listed local file changes. */
 const OfflineAssets = {
-  VERSION: 'manimonline-offline-v15',
+  VERSION: 'manimonline-offline-v16',
   local: [
     'index.html', 'ace/ace.js', 'ace/theme-twilight.js', 'ace/mode-python.js', 'ace/mode-dot.js',
     'viz-global.js', 'svg-pan-zoom.min.js', 'src/detector.js', 'src/render-scheduler.js', 'src/unified-worker.js',
@@ -10,7 +10,7 @@ const OfflineAssets = {
     'examples/creation_and_rotation.py', 'examples/layout_scene.py', 'examples/staggered_scene.py',
     'examples/succession_scene.py',
     'examples/corner_path_scene.py', 'examples/path_scene.py', 'examples/arc_scene.py', 'examples/growth_scene.py',
-    'examples/lifecycle_scene.py', 'examples/order_scene.py', 'examples/layer_scene.py', 'examples/style_scene.py', 'examples/restore_scene.py', 'examples/indicate_scene.py',
+    'examples/foreground_scene.py', 'examples/lifecycle_scene.py', 'examples/order_scene.py', 'examples/layer_scene.py', 'examples/style_scene.py', 'examples/restore_scene.py', 'examples/indicate_scene.py',
     'examples/copy_scene.py', 'examples/connector_scene.py', 'examples/basic_graph.dot'
   ],
   remote: [

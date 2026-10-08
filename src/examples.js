@@ -12,6 +12,7 @@ const ExampleCatalog = Object.freeze([
   { id: 'arc', label: 'Circular arcs', path: 'examples/arc_scene.py' },
   { id: 'growth', label: 'Grow and shrink', path: 'examples/growth_scene.py' },
   { id: 'lifecycle', label: 'Scene setup and time', path: 'examples/lifecycle_scene.py' },
+  { id: 'foreground', label: 'Keep an overlay in front', path: 'examples/foreground_scene.py' },
   { id: 'order', label: 'Reorder and clear a scene', path: 'examples/order_scene.py' },
   { id: 'layers', label: 'Layer overlapping shapes', path: 'examples/layer_scene.py' },
   { id: 'style', label: 'Fill and outline styles', path: 'examples/style_scene.py' },
