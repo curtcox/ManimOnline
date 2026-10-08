@@ -16,6 +16,94 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_point_mapping_gallery_warps_connector_and_restores(self):
+        result=json.loads(lite.render_scene((ROOT/'examples/point_map_scene.py').read_text()))
+        self.assertEqual(result['duration'],11)
+        transformed=result['frames'][90]['mobjects'][0]
+        arrow=transformed['children'][-1]
+        self.assertEqual(arrow['type'],'bezierpath')
+        self.assertEqual(len(arrow['children']),2)
+        curve=arrow['curves'][0]
+        self.assertNotAlmostEqual(curve[1][1],curve[0][1]+(curve[-1][1]-curve[0][1])/3)
+        restored=result['frames'][135]['mobjects'][0]
+        self.assertEqual(restored['children'][1]['type'],'circle')
+        self.assertEqual(restored['children'][2]['type'],'square')
+        self.assertEqual(restored['children'][-1]['type'],'arrow')
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+
+    def test_matrix_mapping_world_coordinates_nested_families_and_pivots(self):
+        family=lite.VGroup(lite.Rectangle(width=2,height=1).rotate(.3),
+                          lite.Circle().shift(lite.RIGHT*2)).rotate(.4).scale(-.8).shift(lite.UP)
+        def points(node,parent=lambda p:p):
+            def world(p): return parent(node._point_to_world(lite.Vector(p)))
+            own=[world(p) for curve in lite._path_curves(node.to_dict()) for p in curve] if node.has_points() else []
+            return own+[p for child in node.children for p in points(child,world)]
+        old=points(family)
+        members=family.get_family()
+        family.apply_matrix([[1,.4],[-.2,1]])
+        self.assertEqual(family.get_family(),members)
+        for actual,point in zip(points(family),old):
+            self.assertPointAlmostEqual(actual,(point[0]+.4*point[1],point[1]-.2*point[0],0))
+        line=lite.Line(lite.LEFT,lite.RIGHT+lite.UP)
+        edge=line.get_left()
+        start,end=line.get_start_and_end()
+        line.apply_matrix([[2]],about_edge=lite.LEFT)
+        self.assertPointAlmostEqual(line.get_start(),(edge[0]+2*(start[0]-edge[0]),start[1],0))
+        self.assertPointAlmostEqual(line.get_end(),(edge[0]+2*(end[0]-edge[0]),end[1],0))
+        line.apply_matrix([[0,-1,0],[1,0,0],[0,0,1]])
+        self.assertPointAlmostEqual(line.get_start(),(-start[1],edge[0]+2*(start[0]-edge[0]),0))
+
+    def test_function_mapping_controls_contours_and_atomic_failure(self):
+        line=lite.Line((1,1,0),(3,1,0)).rotate(.2)
+        old=line.get_points()
+        line.apply_function(lambda p:(p[0],p[1]+p[0]**2,0))
+        self.assertEqual(line._type,'bezierpath')
+        for actual,point in zip(line.get_points(),old):
+            self.assertPointAlmostEqual(actual,(point[0],point[1]+point[0]**2,0))
+        polygon=lite.Polygon((1,1,0),(3,1,0),(2,2,0))
+        old=polygon.get_points()
+        polygon.apply_function(lambda p:(p[0],p[1]+p[0]**2,0))
+        for actual,point in zip(polygon.get_points(),old):
+            self.assertPointAlmostEqual(actual,(point[0],point[1]+point[0]**2,0))
+        # Only actual geometry points reach user callbacks, not the container origin.
+        safe=lite.VGroup(lite.Line((1,1,0),(2,1,0)))
+        safe.apply_function(lambda p:(1/p[0],p[1],0))
+        ring=lite.Annulus(inner_radius=.5,outer_radius=1)
+        ring.apply_complex_function(lambda z:z*(1+1j))
+        self.assertEqual(len(ring.get_subpaths()),2)
+        self.assertTrue(all(path[0]==path[-1] for path in ring.get_subpaths()))
+        before=ring.to_dict()
+        for matrix in ([],[[1,2],[3]],[[float('inf')]],[[True]]):
+            with self.assertRaises(ValueError): ring.apply_matrix(matrix)
+            self.assertEqual(ring.to_dict(),before)
+        with self.assertRaises(NotImplementedError): ring.apply_matrix([[1,0],[0,1],[1,0]])
+        for function in (lambda p:(float('nan'),0),lambda p:[],lambda p:(1,2,3,4)):
+            with self.assertRaises(ValueError): ring.apply_function(function)
+            self.assertEqual(ring.to_dict(),before)
+        with self.assertRaises(NotImplementedError): ring.apply_function(lambda p:lite.OUT)
+        self.assertEqual(ring.to_dict(),before)
+        with self.assertRaises(TypeError): ring.apply_function(2)
+        with self.assertRaises(TypeError): ring.apply_complex_function(2)
+
+    def test_complex_mapping_pivots_and_linear_animated_controls(self):
+        path=lite.Circle(radius=1).shift(lite.RIGHT*2).rotate(.2)
+        old=path.get_points()
+        pivot=lite.Vector((1,1,0))
+        path.apply_complex_function(lambda z:z*z,about_point=pivot)
+        for actual,point in zip(path.get_points(),old):
+            value=complex(point[0]-1,point[1]-1)**2
+            self.assertPointAlmostEqual(actual,(value.real+1,value.imag+1,0))
+        path.save_state()
+        before=path.to_dict()
+        path.apply_matrix([[1,.5],[0,1]]).restore()
+        self.assertEqual(path.to_dict(),before)
+        result=render('line = Line((1,1,0),(3,1,0))\nself.play(line.animate.apply_function(lambda p:(p[0],p[1]+p[0]**2,0)),run_time=2,rate_func=linear)')
+        middle=result['frames'][15]['mobjects'][0]
+        for control in middle['curves'][0]:
+            # Geometry is stored relative to the retained line origin.
+            point=lite.Vector(control)+lite.Vector(middle['position'])
+            self.assertAlmostEqual(point[1],1+.5*point[0]**2)
+
     def test_nonuniform_stretch_gallery_restores_nested_outlines(self):
         result=json.loads(lite.render_scene((ROOT/'examples/stretch_scene.py').read_text()))
         self.assertEqual(result['duration'],9)

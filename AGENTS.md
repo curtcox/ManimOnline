@@ -452,3 +452,14 @@ similarity refit after nonuniform deformation. _stretch_baked marks canonical pa
 snapshots for Transform interpolation/restoration. Unsupported glyph/camera/shared
 families must fail before changing live geometry. Stretched surround follows
 native target aspect ratio then diagonal-width fitting; it can be an oval.
+
+
+Read `examples/point_map_scene.py` for matrix/point/complex maps. _apply_xy_map is
+shared with stretch; linear maps keep straight/polyline/polygon types, nonlinear
+maps materialize their cubic controls. Do not map just polygon vertices and discard
+warped handles. Nonlinear callback traversal must not evaluate synthetic container
+origins, which may lie outside the callback domain. Matrix/function defaults are
+ORIGIN; stretch defaults to the family center. Explicit real arrow children allow
+Arrow-to-cubic alignment; legacy snapshots without explicit_tips retain their
+prior morph behavior. Post-warp endpoint/tip edits and analytical centers remain
+implementation work; native NumPy and 3D are not supplied by these APIs.

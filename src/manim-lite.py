@@ -430,44 +430,92 @@ class Mobject:
     def stretch(self, factor, dim, *, about_point=None, about_edge=None):
         NumberLine._real(factor,'Stretch factor')
         self._fit_dimension(dim)
+        def function(point):
+            values = list(point)
+            values[dim] *= factor
+            return values
+        return self._apply_xy_map(function,about_point,about_edge,linear=True)
+
+    def apply_matrix(self, matrix, *, about_point=None, about_edge=None):
+        rows = [list(row) for row in matrix]
+        if not rows or len(rows)>3 or not rows[0] or len(rows[0])>3 or any(len(row)!=len(rows[0]) for row in rows):
+            raise ValueError('Matrix needs a rectangular block of one to three rows and columns')
+        full = [[1 if i==j else 0 for j in range(3)] for i in range(3)]
+        for i,row in enumerate(rows):
+            for j,value in enumerate(row):
+                NumberLine._real(value,'Matrix entry')
+                full[i][j] = value
+        if full[2][0] or full[2][1]:
+            raise NotImplementedError('Matrices must preserve the XY plane')
+        if about_point is None and about_edge is None:
+            about_point = ORIGIN
+        return self._apply_xy_map(lambda point:[sum(a*b for a,b in zip(row,point)) for row in full],
+                                  about_point,about_edge,linear=True)
+
+    def apply_function(self, function, *, about_point=None, about_edge=None):
+        if not callable(function):
+            raise TypeError('apply_function expects a callable point map')
+        if about_point is None and about_edge is None:
+            about_point = ORIGIN
+        return self._apply_xy_map(function,about_point,about_edge)
+
+    def apply_complex_function(self, function, *, about_point=None, about_edge=None):
+        if not callable(function):
+            raise TypeError('apply_complex_function expects a callable complex map')
+        def point_map(point):
+            value = complex(function(complex(point[0],point[1])))
+            return (value.real,value.imag,point[2])
+        return self.apply_function(point_map,about_point=about_point,about_edge=about_edge)
+
+    def _apply_xy_map(self, function, about_point=None, about_edge=None, *, linear=False):
         if about_point is not None:
             pivot = Vector(about_point)
         else:
             edge = ORIGIN if about_edge is None else Vector(about_edge)
             pivot = self.get_critical_point(edge)
         if not all(math.isfinite(value) for value in pivot) or pivot[2]:
-            raise ValueError('Stretch pivot must be finite and in the XY plane')
+            raise ValueError('Point-map pivot must be finite and in the XY plane')
         if isinstance(self,CameraFrame):
-            raise NotImplementedError('Camera stretching is not implemented')
+            raise NotImplementedError('Camera point mapping is not implemented')
         source,target = self.copy(),self.copy()
         seen = set()
         def mapped(point):
-            values = list(point)
-            values[dim] = pivot[dim]+(values[dim]-pivot[dim])*factor
-            if not all(math.isfinite(value) for value in values):
-                raise ValueError('Stretched geometry must be finite')
-            return Vector(values)
+            values = list(function(Vector(point)-pivot))
+            if len(values) not in (2,3):
+                raise ValueError('Point maps must return two or three coordinates')
+            for value in values:
+                NumberLine._real(value,'Mapped coordinate')
+            result = Vector(values)+pivot
+            if result[2]:
+                raise NotImplementedError('Point maps must preserve the XY plane')
+            if not all(math.isfinite(value) for value in result):
+                raise ValueError('Mapped geometry must be finite')
+            return result
         def visit(old,new,parent_world,parent_origin):
             if id(old) in seen:
-                raise NotImplementedError('Stretching shared nested children is not implemented')
+                raise NotImplementedError('Mapping shared nested children is not implemented')
             seen.add(id(old))
             old._geometry_center()
             def world(point):
                 return parent_world(old._point_to_world(Vector(point)))
-            origin = mapped(world(ORIGIN))
+            origin = mapped(world(ORIGIN)) if linear else world(ORIGIN)
             def local(point):
                 return list(mapped(world(point))-origin)
             kind = old._type
             snapshot = old.to_dict()
-            if kind in ('line','arrow'):
+            if kind in ('line','arrow') and linear:
                 new.start,new.end = local(old.start),local(old.end)
-            elif kind in ('polygon','polyline'):
+            elif kind in ('polygon','polyline') and linear:
                 new.vertices = [local(point) for point in old.vertices]
-            elif kind in ('circle','ellipse','arc','square','rectangle','triangle','annulus','bezierpath'):
+            elif kind in ('circle','ellipse','arc','square','rectangle','triangle','annulus','bezierpath','line','arrow','polygon','polyline'):
                 paths = _path_subpaths(snapshot,include_pending=False)
                 new.curves = [[local(point) for point in curve] for path in paths for curve in path]
-                new.vertices = [local(point) for point in old.vertices] if kind == 'bezierpath' else []
+                pending = (old.vertices if kind == 'bezierpath' else
+                           old.vertices if kind == 'polyline' and len(old.vertices)==1 else [])
+                new.vertices = [local(point) for point in pending]
                 new._type = 'bezierpath'
+                if kind in ('line','arrow'):
+                    new.start,new.end = local(old.start),local(old.end)
                 new.__dict__.pop('subpath_lengths',None)
                 if len(paths)>1:
                     new.subpath_lengths = [len(path) for path in paths]
@@ -475,9 +523,10 @@ class Mobject:
                 # similarity refit after a nonuniform map would change the curve.
                 new.__dict__.pop('_curved_tip_path',None)
             elif kind not in ('vgroup','mobject','valuetracker'):
-                raise NotImplementedError('Stretching requires editable vector geometry')
+                raise NotImplementedError('Point mapping requires editable vector geometry')
             if '_curve_arc_center' in old.__dict__:
-                new._curve_arc_center = local(old._curve_arc_center)
+                new._curve_arc_center = (local(old._curve_arc_center) if linear else
+                                         list(world(old._curve_arc_center)-origin))
             new.position,new.angle,new.geometry_scale = list(origin-parent_origin),0,1
             new._stretch_baked = True
             for key in ('_family_pivot_cache','_sampled_geometry_center','shaft_curves','shaft_start','shaft_end'):
@@ -3949,7 +3998,9 @@ def _path_subpaths(snapshot, include_pending=True):
 
 def _align_path_snapshots(start, target):
     path_types = ('polyline', 'polygon', 'bezierpath', 'circle', 'arc', 'ellipse',
-                  'square', 'rectangle', 'triangle', 'line', 'annulus')
+                  'square', 'rectangle', 'triangle', 'line', 'arrow', 'annulus')
+    if any(snapshot['type']=='arrow' and not snapshot.get('explicit_tips') for snapshot in (start,target)):
+        return None
     if start['type'] not in path_types or target['type'] not in path_types:
         return None
     if start['type'] == target['type'] and start['type'] not in ('polyline', 'polygon', 'bezierpath'):
@@ -4411,7 +4462,7 @@ class Animate(Transform):
     def __getattr__(self, name):
         if name.startswith('__'):
             raise AttributeError(name)
-        if name not in ('become', 'set_value', 'increment_value', 'shift', 'move_to', 'set_width', 'set_height', 'rescale_to_fit', 'scale_to_fit_width', 'scale_to_fit_height', 'stretch', 'stretch_to_fit_width', 'stretch_to_fit_height', 'replace', 'surround', 'set_length', 'move_arc_center_to', 'put_start_and_end_on', 'set_angle', 'next_to', 'arrange', 'arrange_submobjects', 'arrange_in_grid', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'pointwise_become_partial', 'set_points', 'append_points', 'clear_points', 'add_subpath', 'append_vectorized_mobject', 'start_new_path', 'close_path', 'set_points_as_corners', 'set_points_smoothly', 'make_smooth', 'make_jagged', 'change_anchor_mode', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
+        if name not in ('become', 'set_value', 'increment_value', 'shift', 'move_to', 'set_width', 'set_height', 'rescale_to_fit', 'scale_to_fit_width', 'scale_to_fit_height', 'stretch', 'apply_matrix', 'apply_function', 'apply_complex_function', 'stretch_to_fit_width', 'stretch_to_fit_height', 'replace', 'surround', 'set_length', 'move_arc_center_to', 'put_start_and_end_on', 'set_angle', 'next_to', 'arrange', 'arrange_submobjects', 'arrange_in_grid', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'pointwise_become_partial', 'set_points', 'append_points', 'clear_points', 'add_subpath', 'append_vectorized_mobject', 'start_new_path', 'close_path', 'set_points_as_corners', 'set_points_smoothly', 'make_smooth', 'make_jagged', 'change_anchor_mode', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
             raise NotImplementedError(f'animate.{name} is not supported yet')
         def apply(*args, **kwargs):
             getattr(self.target, name)(*args, **kwargs)

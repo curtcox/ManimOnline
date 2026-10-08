@@ -202,3 +202,11 @@ and surrounding. Regression coverage includes nested signed poses, exact world
 point mapping, line endpoints, curved shafts/tips, coordinate conversion,
 identities, failure atomicity, animation and restoration. Glyph/camera/shared
 family stretching, 3D and native post-deformation tip reset remain open.
+
+
+Matrix, point and complex-function maps now share vector-family traversal, preserve
+separate contours and bend cubic controls during nonlinear deformation. Regression
+coverage verifies exact transformed controls, pivots, nested identities, callback
+domain/validation, animated interpolation, restoration and tip-bearing connectors.
+Adaptive nonlinear preparation/inversion, glyph/camera/shared-family mapping,
+native NumPy, 3D and post-warp analytical/mutation APIs remain open.

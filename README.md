@@ -1274,3 +1274,27 @@ shape type. XY coordinate axes continue to map/invert points after stretching.
 Text/MathTex glyph stretching, camera-frame stretching, shared descendants under
 multiple parents and 3D remain explicit gaps; unsupported families fail without
 changing live objects. Zero-size fitting dimensions retain the existing no-op.
+
+
+Try **Shear and warp vector shapes** (`examples/point_map_scene.py`). `apply_matrix`
+now applies finite matrix blocks of one to three rows/columns, embedded in a 3D
+identity matrix as in Manim. The result must preserve the XY plane. A 3 × 3 input
+is a spatial matrix, not a homogeneous translation matrix. `apply_function`
+maps each XY anchor/control point, while `apply_complex_function` maps x + iy and
+returns its real/imaginary coordinates. These APIs default to the screen origin;
+explicit about_point/about_edge select another pivot. Stretch retains its center
+default and shares the same family traversal.
+
+Mappings compose existing parent transforms, preserve object/child identities,
+styles, pending anchors and disconnected contours, and validate a copied family
+before replacing live state. Nonlinear maps convert polygon edges and straight
+connectors to cubic paths so their control points can bend. Matrix maps keep
+straight endpoints. Animated maps interpolate mapped world geometry, and Restore
+returns the saved types. Nonlinear mapping transforms control points; it is not
+adaptive resampling of the entire continuous curve. User callbacks receive actual
+path coordinates, not synthetic container origins.
+
+Glyph/camera/shared-family mapping, arbitrary 3D, native NumPy arrays, adaptive
+nonlinear preparation, post-warp connector/tip mutations and analytical arc-center
+queries after nonlinear deformation remain unfinished. Coordinate helper inversion
+does not become a general nonlinear inverse merely because its outline is warped.
