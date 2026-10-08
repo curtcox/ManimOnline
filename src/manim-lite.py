@@ -256,6 +256,9 @@ class VGroup(Mobject):
         self.children.extend(mobjects)
         return self
 
+    def __iter__(self):
+        return iter(self.children)
+
     def arrange(self, direction=RIGHT, buff=0.25, center=True, aligned_edge=ORIGIN):
         if self.geometry_scale != 1 or self.angle != 0:
             raise NotImplementedError('Arrange the group before scaling or rotating it')
@@ -306,6 +309,24 @@ class Animation:
 
     def finish(self, scene):
         pass
+
+    def objects(self):
+        return [self.mobject]
+
+    def prepare(self, scene):
+        self.begin(scene)
+        # Compute the held terminal frame without changing the live scene early.
+        terminal = copy.deepcopy(self)
+        staging = Scene().add(terminal.mobject)
+        terminal.finish(staging)
+        self._terminal = [m.to_dict() for m in staging.mobjects]
+
+    def states(self, alpha, rate_func=None):
+        if alpha >= 1:
+            result = self._terminal
+        else:
+            result = self.sample((rate_func or self.rate_func)(max(0, alpha)))
+        return {self.mobject: result}
 
 
 class FadeIn(Animation):
@@ -417,18 +438,69 @@ class ReplacementTransform(Transform):
         scene.remove(self.mobject)
         scene.add(self.replacement)
 
+    def objects(self):
+        return [self.mobject, self.replacement]
+
 
 class Animate(Transform):
     def __init__(self, mobject):
         super().__init__(mobject, mobject)
 
     def __getattr__(self, name):
+        if name.startswith('__'):
+            raise AttributeError(name)
         if name not in ('shift', 'move_to', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'scale', 'rotate'):
             raise NotImplementedError(f'animate.{name} is not supported yet')
         def apply(*args, **kwargs):
             getattr(self.target, name)(*args, **kwargs)
             return self
         return apply
+
+
+class AnimationGroup:
+    """Combine independent animations on a timeline, optionally overlapping."""
+    def __init__(self, *animations, lag_ratio=0, run_time=None, rate_func=linear):
+        if not animations or any(not isinstance(a, (Animation, AnimationGroup)) for a in animations):
+            raise TypeError('AnimationGroup expects at least one supported animation')
+        if not math.isfinite(lag_ratio) or lag_ratio < 0:
+            raise ValueError('lag_ratio must be nonnegative and finite')
+        self.animations, self.rate_func = animations, rate_func
+        self.timings = []
+        start = 0
+        for animation in animations:
+            if not math.isfinite(animation.run_time) or animation.run_time <= 0:
+                raise ValueError('Animation run_time must be positive and finite')
+            self.timings.append((start, animation.run_time))
+            start += lag_ratio * animation.run_time
+        self.natural_duration = max(start + duration for start, duration in self.timings)
+        if not math.isfinite(self.natural_duration):
+            raise ValueError('Animation timeline duration must be finite')
+        self.run_time = self.natural_duration if run_time is None else run_time
+        if not math.isfinite(self.run_time) or self.run_time <= 0:
+            raise ValueError('Animation run_time must be positive and finite')
+
+    def objects(self):
+        return [m for animation in self.animations for m in animation.objects()]
+
+    def prepare(self, scene):
+        for animation in self.animations:
+            animation.prepare(scene)
+
+    def states(self, alpha, rate_func=None):
+        time = (rate_func or self.rate_func)(max(0, min(1, alpha))) * self.natural_duration
+        result = {}
+        for animation, (start, duration) in zip(self.animations, self.timings):
+            result.update(animation.states((time - start) / duration))
+        return result
+
+    def finish(self, scene):
+        for animation in self.animations:
+            animation.finish(scene)
+
+
+class LaggedStart(AnimationGroup):
+    def __init__(self, *animations, lag_ratio=0.05, **kwargs):
+        super().__init__(*animations, lag_ratio=lag_ratio, **kwargs)
 
 
 class Scene:
@@ -456,10 +528,20 @@ class Scene:
     def play(self, *animations, run_time=None, rate_func=None, **kwargs):
         if kwargs:
             raise NotImplementedError('Unsupported play options: ' + ', '.join(kwargs))
-        if not animations or any(not isinstance(a, Animation) for a in animations):
+        if not animations or any(not isinstance(a, (Animation, AnimationGroup)) for a in animations):
             raise TypeError('play() expects supported animations such as Create or Transform')
-        if len({id(a.mobject) for a in animations}) != len(animations):
+        objects = [m for a in animations for m in a.objects()]
+        def family(mobject):
+            return [mobject] + [m for child in mobject.children for m in family(child)]
+        members = [m for obj in objects for m in family(obj)]
+        if len({id(m) for m in members}) != len(members):
             raise ValueError('Use one animation per object in each play() call')
+        for root in self.mobjects:
+            for obj in objects:
+                if obj is not root and obj in family(root):
+                    raise NotImplementedError('Animate the whole scene-added group, not an individual child')
+                if root is not obj and root in family(obj):
+                    raise NotImplementedError('Remove scene-added children before animating their containing group')
         durations = [a.run_time if run_time is None else run_time for a in animations]
         if any(not math.isfinite(d) or d <= 0 for d in durations):
             raise ValueError('Animation run_time must be positive and finite')
@@ -467,11 +549,12 @@ class Scene:
         if count + len(self.frames) >= MAX_FRAMES:
             raise ValueError('Preview exceeds 60 seconds / 900 frames. Shorten the scene.')
         for animation in animations:
-            animation.begin(self)
+            animation.prepare(self)
         for frame in range(count):
             time = frame / FPS
-            overrides = {a.mobject: a.sample((rate_func or a.rate_func)(min(1, time / duration)))
-                         for a, duration in zip(animations, durations)}
+            overrides = {}
+            for animation, duration in zip(animations, durations):
+                overrides.update(animation.states(time / duration, rate_func))
             self.capture(overrides)
         for animation in animations:
             animation.finish(self)
@@ -497,6 +580,7 @@ class Scene:
 
 EXPORTS = ['Scene', 'Mobject', 'Circle', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'VGroup', 'Create', 'Write', 'FadeIn',
+           'AnimationGroup', 'LaggedStart',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform', 'UP', 'DOWN', 'LEFT',
            'RIGHT', 'ORIGIN', 'OUT', 'IN', 'UL', 'UR', 'DL', 'DR', 'BLUE', 'RED', 'GREEN',
            'YELLOW', 'PURPLE', 'ORANGE', 'WHITE', 'BLACK', 'GRAY', 'GREY', 'PINK',

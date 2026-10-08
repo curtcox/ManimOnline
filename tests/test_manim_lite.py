@@ -16,6 +16,88 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_lagged_start_delays_reveals_and_rescales_duration(self):
+        result = render('dots = VGroup(Dot(LEFT), Dot(), Dot(RIGHT))\nself.play(LaggedStart(*[FadeIn(d, rate_func=linear) for d in dots], lag_ratio=0.5), run_time=4)')
+        self.assertEqual(result['duration'], 4)
+        quarter = result['frames'][15]['mobjects']
+        self.assertEqual([m['opacity'] for m in quarter], [0.5, 0, 0])
+        middle = result['frames'][30]['mobjects']
+        self.assertEqual([m['opacity'] for m in middle], [1, 0.5, 0])
+        self.assertEqual([m['opacity'] for m in result['frames'][-1]['mobjects']], [1, 1, 1])
+        self.assertAlmostEqual(lite.LaggedStart(lite.FadeIn(lite.Dot()), lite.FadeIn(lite.Dot())).run_time, 1.05)
+
+    def test_parallel_group_uses_longest_end_and_removes_finished_fades(self):
+        result = render('a, b = Dot(), Dot(RIGHT)\nself.add(a, b)\nself.play(AnimationGroup(a.animate.shift(UP), FadeOut(b), lag_ratio=0.1, run_time=10))')
+        # Equal child times give a natural length of 1.1, stretched to ten seconds.
+        self.assertEqual(result['duration'], 10)
+        self.assertEqual(result['frames'][145]['mobjects'][0]['position'], [0, 1, 0])
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['position'], [0, 1, 0])
+        result = render('a, b = Dot(), Dot(RIGHT)\nself.play(AnimationGroup(Rotate(a, run_time=10), FadeOut(b, run_time=1), lag_ratio=0.1))')
+        self.assertEqual(result['duration'], 10)
+        self.assertEqual(len(result['frames'][30]['mobjects']), 1)
+
+    def test_nested_groups_and_group_easing_preserve_child_timing(self):
+        result = render('a, b, c = Dot(LEFT), Dot(), Dot(RIGHT)\nself.play(AnimationGroup(LaggedStart(FadeIn(a, rate_func=linear), FadeIn(b, rate_func=linear), lag_ratio=1, run_time=4), FadeIn(c, run_time=2, rate_func=linear), lag_ratio=1))')
+        self.assertEqual(result['duration'], 6)
+        self.assertEqual([m['opacity'] for m in result['frames'][30]['mobjects']], [1, 0, 0])
+        self.assertEqual([m['opacity'] for m in result['frames'][75]['mobjects']], [1, 1, 0.5])
+        result = render('self.play(LaggedStart(FadeIn(Dot(LEFT), rate_func=linear), FadeIn(Dot(RIGHT), rate_func=linear), lag_ratio=1, run_time=4, rate_func=smooth))')
+        self.assertAlmostEqual(result['frames'][15]['mobjects'][0]['opacity'], 0.3125)
+
+    def test_group_holds_completed_creation_and_replacement_then_cleans_up(self):
+        result = render('a, b, c = Circle(), Square().shift(RIGHT), Dot(UP)\nself.play(AnimationGroup(ReplacementTransform(a, b), Create(c, run_time=2)))\nself.play(b.animate.shift(UP))')
+        middle = result['frames'][15]['mobjects']
+        self.assertEqual(middle[0]['type'], 'square')
+        self.assertEqual(middle[0]['position'], [1, 0, 0])
+        final = result['frames'][-1]['mobjects']
+        self.assertEqual(len(final), 2)
+        self.assertNotIn('draw_progress', final[0])
+        square = next(m for m in final if m['type'] == 'square')
+        self.assertEqual(square['position'], [1, 1, 0])
+
+    def test_group_rejects_conflicts_invalid_timing_and_excess_duration(self):
+        for body in ('d = Dot()\nself.play(LaggedStart(FadeIn(d), FadeOut(d), lag_ratio=1))',
+                     'd = Dot()\nself.play(AnimationGroup(FadeIn(d)), FadeOut(d))',
+                     'd = Dot()\nself.play(FadeIn(VGroup(d)), FadeOut(d))',
+                     'a, b = Dot(), Square()\nself.play(ReplacementTransform(a, b), FadeIn(b))'):
+            with self.assertRaisesRegex(ValueError, 'one animation'):
+                render(body)
+        with self.assertRaisesRegex(NotImplementedError, 'whole scene-added group'):
+            render('d = Dot()\nself.add(VGroup(d))\nself.play(FadeIn(d))')
+        for kwargs in ({'lag_ratio': -1}, {'lag_ratio': float('inf')}, {'run_time': 0}):
+            with self.assertRaises(ValueError):
+                lite.AnimationGroup(lite.FadeIn(lite.Dot()), **kwargs)
+        with self.assertRaises(TypeError):
+            lite.AnimationGroup()
+        with self.assertRaisesRegex(ValueError, 'timeline duration'):
+            lite.AnimationGroup(lite.FadeIn(lite.Dot(), run_time=2),
+                                lite.FadeIn(lite.Dot()), lag_ratio=1e308, run_time=1)
+        with self.assertRaisesRegex(ValueError, '60 seconds'):
+            render('self.play(LaggedStart(FadeIn(Dot()), FadeIn(Dot()), lag_ratio=1), run_time=61)')
+
+    def test_existing_composition_examples_render(self):
+        for path in ('animation-group', 'lagged-start'):
+            text = (ROOT / 'examples/anim' / (path + '.md')).read_text()
+            source = text.split('```py\n')[1].split('```')[0]
+            result = json.loads(lite.render_scene(source))
+            self.assertEqual(len(result['frames'][-1]['mobjects']), 3)
+
+    def test_staggered_example_finishes_empty_and_group_limit_is_exact(self):
+        result = json.loads(lite.render_scene((ROOT / 'examples/staggered_scene.py').read_text()))
+        self.assertEqual(result['duration'], 10)
+        self.assertEqual(len(result['frames'][120]['mobjects']), 2)
+        self.assertEqual(result['frames'][-1]['mobjects'], [])
+        result = render('self.play(LaggedStart(FadeIn(Dot(LEFT)), FadeIn(Dot(RIGHT))), run_time=60)')
+        self.assertEqual(len(result['frames']), 901)
+        self.assertEqual(result['duration'], 60)
+
+    def test_parallel_group_defaults_and_play_easing_override(self):
+        result = render('self.play(AnimationGroup(FadeIn(Dot(LEFT), run_time=1, rate_func=linear), FadeIn(Dot(RIGHT), run_time=2, rate_func=linear)))')
+        self.assertEqual(result['duration'], 2)
+        self.assertEqual([m['opacity'] for m in result['frames'][15]['mobjects']], [1, 0.5])
+        result = render('self.play(LaggedStart(FadeIn(Dot(LEFT), rate_func=linear), FadeIn(Dot(RIGHT), rate_func=linear), lag_ratio=1, run_time=4, rate_func=smooth), rate_func=linear)')
+        self.assertEqual(result['frames'][15]['mobjects'][0]['opacity'], 0.5)
+
     def test_dot_defaults_position_and_style_overrides(self):
         dot = lite.Dot(lite.RIGHT * 2)
         self.assertEqual(dot.get_center(), (2, 0, 0))

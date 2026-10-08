@@ -50,8 +50,20 @@ an already scaled or rotated group is explicitly unsupported. Child coordinates
 are local to their group. Bounds do not include text metrics, arrowheads, or
 stroke thickness; rotated polygon/line bounds are conservative.
 
+`AnimationGroup` and `LaggedStart` schedule independent child animations with
+overlap, nesting, and optional timeline rescaling. The next child starts after
+the previous duration multiplied by lag_ratio; the latest end determines the
+natural duration. Group easing maps timeline time, while child easing maps local
+progress. Completed animations hold terminal frames (or disappear for removers)
+until final live-object cleanup. Each leaf snapshots its terminal state without
+mutating the live scene early. Conflicting object families are rejected, as is
+animating an individual child of a scene-added group. `VGroup` iteration permits
+building child animation lists before adding those children independently.
+`Succession`, repeated-object sequences, and automatic scene-family restructuring
+remain unsupported.
+
 Next work can add additional verified compatibility APIs, geometry-aware path
-transforms, glyph outline rendering, staggered animation timing, and an offline
+transforms, glyph outline rendering, sequential animation composition, and an offline
 asset strategy. Keep DOT
 rendering, sharing, and static SVG/PNG export working as these features evolve.
 
@@ -64,12 +76,14 @@ limits on duration/frame count. MP4 export, LaTeX, 3D, arbitrary dependencies,
 updaters, and offline caching remain future work unless separately implemented.
 Use `examples/layout_scene.py` for shape spacing, dot positioning, and animated
 row-to-column layout checks.
+Use `examples/staggered_scene.py` for delayed reveals and overlapping movement.
 
 ## Verification
 
 Check initial Pyodide loading, scene selection and URL reload, scale/rotation,
 partial outline drawing, erasure, orbital motion, seeking/replay, source edits,
 relative positioning and animated arrangements,
+staggered starts and completed fades,
 syntax errors, missing scenes, and a runaway loop timeout. Ensure a new source
 cannot select a scene class left behind by an older render. Check DOT rendering
 and export after switching away from Manim. Run tests for timing and frame state
@@ -81,6 +95,7 @@ independently of browser integration; report both categories separately.
 - [Manim creation animation](https://docs.manim.community/en/stable/reference/manim.animation.creation.Create.html)
 - [Manim rotation animation](https://docs.manim.community/en/stable/reference/manim.animation.rotation.Rotate.html)
 - [Manim positioning methods](https://docs.manim.community/en/stable/reference/manim.mobject.mobject.Mobject.html)
+- [Manim animation composition](https://docs.manim.community/en/stable/reference/manim.animation.composition.html)
 - [Manim configuration](https://docs.manim.community/en/stable/guides/configuration.html)
 - [Pyodide worker guidance](https://pyodide.org/en/stable/usage/webworker.html)
 

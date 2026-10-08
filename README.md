@@ -38,6 +38,7 @@ Then open `http://localhost:8000` in your browser.
 - [Multiple scenes](examples/multiple_scenes.py): scene selection, scale, and rotation.
 - [Creation and rotation](examples/creation_and_rotation.py): outline drawing and a circular orbit.
 - [Layout scene](examples/layout_scene.py): shape spacing and animated row-to-column arrangement.
+- [Staggered scene](examples/staggered_scene.py): delayed reveals, overlapping movement, and staggered fades.
 
 ## Supported browser animation subset
 
@@ -49,7 +50,7 @@ Manim-like runtime, **not the full Manim Community engine**.
   `Text`, and `VGroup`.
 - Scene operations: `add`, `remove`, `play`, and `wait`.
 - Animations: `Create`, `Uncreate`, `Write`, `FadeIn`, `FadeOut`, `Rotate`,
-  `Rotating`, `Transform`, and
+  `Rotating`, `AnimationGroup`, `LaggedStart`, `Transform`, and
   `ReplacementTransform`; chained `.animate.shift()`, `.move_to()`,
   `.set_color()`, `.set_fill()`, `.set_stroke()`, `.scale()`, `.rotate()`,
   `.next_to()`, and `.arrange()`.
@@ -58,7 +59,8 @@ Manim-like runtime, **not the full Manim Community engine**.
   creates rows or columns with optional `center=False`.
 - Geometry: uniform scaling, 2D rotation in radians, optional `about_point`,
   `get_center()`, and `PI`, `TAU`, and `DEGREES` constants.
-- Timing: `run_time`, `linear`/`smooth` rate functions, and simultaneous animations.
+- Timing: `run_time`, `linear`/`smooth` rate functions, simultaneous animations,
+  and nested animation groups with staggered starts.
 - Directions support vector addition/subtraction and scalar multiplication,
   such as `RIGHT * 2`.
 
@@ -98,6 +100,17 @@ thickness do not contribute to spacing. Arrange groups before scaling or
 rotating them, then apply the group transform. Group children use local
 coordinates; placing a child independently does not resolve its parent's
 transforms. Animated layouts interpolate child positions between arrangements.
+
+`AnimationGroup` starts its children together by default; `LaggedStart` defaults
+to `lag_ratio=0.05`. Each next child starts after the previous child's duration
+times `lag_ratio`. The natural group duration is the latest child end time.
+Group `run_time` (or `play(..., run_time=...)`) rescales the timeline while
+preserving overlap. Group easing changes timeline progress; child easing changes
+each animation's progress. Groups may nest, and `VGroup` is iterable for building
+animation lists. Use independent objects: repeated objects, parent/child overlap,
+and animating a child inside a scene-added group are unsupported. Animate the
+whole added group or keep its children as separate scene objects. `Succession`
+and repeated-object sequences within one play remain unsupported.
 
 Animation previews run at
 15 frames per second and are limited to 60 seconds, with a 90-second deadline
