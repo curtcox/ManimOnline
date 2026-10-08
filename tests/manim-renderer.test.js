@@ -268,3 +268,19 @@ test('ellipses render separate radii with tracing, fill and transforms', () => {
   assert.equal(ellipse.getAttribute('stroke-dashoffset'), '0.5');
   assert.match(ellipse.getAttribute('transform'), /translate\(50, 0\).*rotate\(90\).*scale\(2\)/);
 });
+
+
+test('annulus uses opposite closed subpaths without radial connectors', () => {
+  const ring = renderer.renderMobject({type:'annulus', inner_radius:1, outer_radius:2,
+    draw_progress:.5, stroke_width:3, fill_opacity:.4});
+  const d = ring.getAttribute('d');
+  assert.equal((d.match(/M /g)||[]).length, 2);
+  assert.equal((d.match(/ Z/g)||[]).length, 2);
+  assert.equal((d.match(/ A /g)||[]).length, 4);
+  assert.doesNotMatch(d, /L /);
+  assert.match(d, /A 100,100 0 1 1/);
+  assert.match(d, /A 50,50 0 1 0/);
+  assert.equal(ring.getAttribute('fill-rule'), 'nonzero');
+  assert.equal(ring.getAttribute('fill-opacity'), '0.4');
+  assert.equal(ring.getAttribute('stroke-dashoffset'), '0.5');
+});

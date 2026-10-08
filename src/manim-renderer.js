@@ -86,6 +86,9 @@ const ManimRenderer = {
       case 'circle':
         element = this.renderCircle(mobject);
         break;
+      case 'annulus':
+        element = this.renderAnnulus(mobject);
+        break;
       case 'ellipse':
         element = this.renderEllipse(mobject);
         break;
@@ -190,6 +193,22 @@ const ManimRenderer = {
     circle.setAttribute('stroke', mobject.color || '#FFFFFF');
     circle.setAttribute('stroke-width', mobject.stroke_width ?? 2);
     return circle;
+  },
+
+  /** Opposite closed contours leave a hole without a radial stroke. */
+  renderAnnulus(mobject) {
+    const path = document.createElementNS(this.SVG_NS, 'path');
+    const contour = (radius, sweep) => {
+      const r = radius * this.UNIT_SCALE;
+      return `M ${r},0 A ${r},${r} 0 1 ${sweep} ${-r},0 A ${r},${r} 0 1 ${sweep} ${r},0 Z`;
+    };
+    path.setAttribute('d', contour(mobject.outer_radius ?? 2, 1) + ' ' + contour(mobject.inner_radius ?? 1, 0));
+    path.setAttribute('fill-rule', 'nonzero');
+    path.setAttribute('fill', mobject.color || '#FFFFFF');
+    path.setAttribute('fill-opacity', mobject.fill_opacity ?? 1);
+    path.setAttribute('stroke', mobject.color || '#FFFFFF');
+    path.setAttribute('stroke-width', mobject.stroke_width ?? 0);
+    return path;
   },
 
   /** Render an oval with independent horizontal and vertical radii. */

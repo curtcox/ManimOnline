@@ -730,3 +730,26 @@ Local Pyodide gallery playback verified a filled quarter wedge and clockwise
 three-quarter ring sector with an empty center. At six seconds the ring morph
 used fourteen cubic segments; restoration retained two closed sector paths at
 ten seconds without the follower dot. Graphviz rendered after switching.
+
+
+## Complete rings
+
+Annulus follows the [official outer-circle/reversed-inner-circle topology](https://docs.manim.community/en/stable/_modules/manim/mobject/geometry/arc.html).
+Its snapshot stores two radii and a center, and the SVG backend emits separately
+closed, oppositely wound arc contours. Nonzero fill preserves the hole and no
+radial segment is stroked. Defaults and validated radius/XY/style options parallel
+Sector; equal, zero and reversed radii are stable. mark_paths_closed is accepted
+but contours are always closed for browser rendering.
+
+Exact radial bounds include the larger radius. Path queries traverse outer then
+inner contours with separate start/end points, weighted by circumference; motion
+jumps between subpaths. Same-type transforms interpolate radii analytically;
+copy/checkpoints, creation, growth and restoration use the existing pipeline.
+Other types crossfade pending general disconnected-subpath alignment. Tests cover
+validation, degenerate endpoints, transformed bounds, contour order, intermediate
+radii, gallery restoration, opposite SVG winding, no radial stroke and tracing.
+
+Local Pyodide playback verified separate closed contours at two seconds with
+an empty center and no radial seam. At seven seconds the radii interpolated to
+0.95 and 1.75; the eleven-second final frame restored 0.7 and 1.5 and removed
+the follower dot. Graphviz rendered after switching examples.

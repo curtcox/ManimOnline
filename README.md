@@ -93,7 +93,7 @@ Python runs in a Web Worker using Pyodide 0.27.0. The browser loads Python on
 first use, so the first render needs an internet connection. This is a small
 Manim-like runtime, **not the full Manim Community engine**.
 
-- Shapes: `Circle`, `Ellipse`, `Arc`, `Sector`, `AnnularSector`, `CubicBezier`, `VMobject`, `Dot`, `Square`, `Rectangle`, `Line`, `Arrow`, `Triangle`, `Polygon`,
+- Shapes: `Circle`, `Ellipse`, `Arc`, `Sector`, `AnnularSector`, `Annulus`, `CubicBezier`, `VMobject`, `Dot`, `Square`, `Rectangle`, `Line`, `Arrow`, `Triangle`, `Polygon`,
   `Text`, `MathTex`, and `VGroup`.
 - Scene operations: `add`, `remove`, `play`, and `wait`.
 - Animations: `Create`, `Uncreate`, `Write`, `FadeIn`, `FadeOut`, `GrowFromCenter`,
@@ -625,3 +625,15 @@ curve morphing and Restore use the existing cubic path pipeline. get_arc_center
 and move_arc_center_to account for transforms. Bounds and path-speed queries use
 the existing cubic approximation. **Circular and ring sectors** demonstrates
 signed sweeps, outline following, unequal-curve morphing and restoration.
+
+
+`Annulus(inner_radius=1, outer_radius=2)` renders a complete ring with two separate,
+oppositely wound contours and no radial stroke. Fill and stroke default to 1 and
+0; arc_center, standard styles and finite nonnegative radii are supported.
+Create/Uncreate, growth, transforms, same-type radius interpolation and Restore
+use the existing animation pipeline. Path motion traverses the outer contour
+counterclockwise then the inner contour clockwise, jumping across the gap; there
+is no drawn connector. Bounds use the larger radius. mark_paths_closed is accepted
+as a boolean; SVG contours are always closed. General disconnected path editing
+and morphing rings into other shapes remain open (other types crossfade).
+**Rings with separate contours** shows creation, path following and changing radii.

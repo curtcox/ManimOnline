@@ -7,6 +7,7 @@ const ExampleCatalog = Object.freeze([
   { id: 'layout', label: 'Position and arrange', path: 'examples/layout_scene.py' },
   { id: 'stagger', label: 'Staggered animations', path: 'examples/staggered_scene.py' },
   { id: 'succession', label: 'Animate in sequence', path: 'examples/succession_scene.py' },
+  { id: 'annulus', label: 'Rings with separate contours', path: 'examples/annulus_scene.py' },
   { id: 'sectors', label: 'Circular and ring sectors', path: 'examples/sector_scene.py' },
   { id: 'ellipse', label: 'Follow an ellipse', path: 'examples/ellipse_scene.py' },
   { id: 'trace', label: 'Trace moving points', path: 'examples/trace_scene.py' },

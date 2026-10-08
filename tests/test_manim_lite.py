@@ -16,6 +16,43 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_annulus_bounds_contour_order_and_validation(self):
+        ring = lite.Annulus(inner_radius=1, outer_radius=2, arc_center=lite.UP)
+        self.assertEqual(ring._bounds(), (-2,-1,2,3))
+        self.assertEqual(ring.get_start(), lite.Vector((2,1,0)))
+        self.assertEqual(ring.get_end(), lite.Vector((1,1,0)))
+        for alpha, expected in [(1/3,[-2,1,0]), (5/6,[-1,1,0]), (1,[1,1,0])]:
+            for actual, value in zip(ring.point_from_proportion(alpha), expected):
+                self.assertAlmostEqual(actual, value)
+        ring.rotate(lite.PI/2).scale(2).move_arc_center_to(lite.RIGHT)
+        self.assertEqual(ring._bounds(), (-3,-4,5,4))
+        self.assertEqual(ring.fill_opacity, 1)
+        self.assertEqual(ring.stroke_width, 0)
+        for inner, outer in [(0,0),(0,1),(1,1),(2,1)]:
+            ring = lite.Annulus(inner_radius=inner, outer_radius=outer)
+            self.assertEqual(ring._bounds()[2], max(inner,outer))
+            self.assertEqual(ring.get_start()[0], outer)
+            self.assertEqual(ring.point_from_proportion(1), ring.get_end())
+            self.assertTrue(all(lite.math.isfinite(v) for v in ring.point_from_proportion(.5)))
+        for invalid in [-1, True, float('inf'), float('nan'), '2']:
+            with self.assertRaises(ValueError): lite.Annulus(inner_radius=invalid)
+            with self.assertRaises(ValueError): lite.Annulus(outer_radius=invalid)
+        with self.assertRaises(ValueError): lite.Annulus(mark_paths_closed=1)
+        with self.assertRaises(NotImplementedError): lite.Annulus(arc_center=lite.OUT)
+
+    def test_annulus_gallery_interpolates_radii_and_restores(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/annulus_scene.py').read_text()))
+        self.assertEqual(result['duration'], 11)
+        middle = result['frames'][105]['mobjects'][0]
+        self.assertEqual(middle['type'], 'annulus')
+        self.assertAlmostEqual(middle['inner_radius'], .95)
+        self.assertAlmostEqual(middle['outer_radius'], 1.75)
+        final = result['frames'][-1]['mobjects']
+        self.assertEqual(len(final), 1)
+        self.assertEqual(final[0]['inner_radius'], .7)
+        self.assertEqual(final[0]['outer_radius'], 1.5)
+        self.assertEqual(final[0]['color'], lite.BLUE)
+
     def test_sectors_have_closed_curved_outlines_and_native_style_defaults(self):
         ring = lite.AnnularSector(inner_radius=1, outer_radius=2)
         self.assertIsInstance(ring, lite.Arc)

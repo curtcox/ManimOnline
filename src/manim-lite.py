@@ -214,6 +214,9 @@ class Mobject:
         return self.shift(target - anchor + direction * buff)
 
     def _local_bounds(self):
+        if self._type == 'annulus':
+            r = max(self.inner_radius, self.outer_radius)
+            return (-r, -r, r, r)
         if self._type == 'circle':
             return (-self.radius, -self.radius, self.radius, self.radius)
         if self._type == 'arc':
@@ -283,7 +286,19 @@ class Mobject:
                     return self._point_to_world(VMobject._bezier_point(curve, remaining / length if length else 0))
                 remaining -= length
             return self._point_to_world(Vector(self.curves[-1][-1]))
-        if self._type == 'ellipse':
+        if self._type == 'annulus':
+            # Traverse each contour independently; no radial connector is drawn.
+            total = self.outer_radius + self.inner_radius
+            distance = alpha * total
+            if alpha in (0, 1):
+                radius, angle = (self.outer_radius if alpha == 0 else self.inner_radius), 0
+            elif distance <= self.outer_radius and self.outer_radius:
+                radius, angle = self.outer_radius, TAU * distance / self.outer_radius
+            else:
+                radius = self.inner_radius
+                angle = -TAU * (distance - self.outer_radius) / radius if radius else 0
+            point = Vector((radius * math.cos(angle), radius * math.sin(angle), 0))
+        elif self._type == 'ellipse':
             angle = TAU * alpha
             point = Vector((self.width / 2 * math.cos(angle), self.height / 2 * math.sin(angle), 0))
         elif self._type in ('circle', 'arc'):
@@ -359,8 +374,9 @@ class Mobject:
             dy = abs(self.geometry_scale) * math.hypot(rx * math.sin(self.angle), ry * math.cos(self.angle))
             return (self.position[0] - dx, self.position[1] - dy,
                     self.position[0] + dx, self.position[1] + dy)
-        if self._type == 'circle':
-            r = abs(self.radius * self.geometry_scale)
+        if self._type in ('circle', 'annulus'):
+            radius = max(self.inner_radius, self.outer_radius) if self._type == 'annulus' else self.radius
+            r = abs(radius * self.geometry_scale)
             return (self.position[0] - r, self.position[1] - r, self.position[0] + r, self.position[1] + r)
         return (min(p[0] for p in points), min(p[1] for p in points),
                 max(p[0] for p in points), max(p[1] for p in points))
@@ -781,6 +797,37 @@ class AnnularSector(Arc, VMobject):
 class Sector(AnnularSector):
     def __init__(self, radius=1, **kwargs):
         super().__init__(inner_radius=0, outer_radius=radius, **kwargs)
+
+
+class Annulus(Circle):
+    def __init__(self, inner_radius=1, outer_radius=2, fill_opacity=1,
+                 stroke_width=0, color=WHITE, mark_paths_closed=False,
+                 arc_center=ORIGIN, **kwargs):
+        if any(isinstance(v, bool) or not isinstance(v, (int, float)) or
+               not math.isfinite(v) or v < 0 for v in (inner_radius, outer_radius)):
+            raise ValueError('Annulus radii must be nonnegative and finite')
+        center = Vector(arc_center)
+        if not all(math.isfinite(v) for v in center):
+            raise ValueError('Annulus center must be finite')
+        if center[2]:
+            raise NotImplementedError('Annuli support only the XY plane')
+        if not isinstance(mark_paths_closed, bool):
+            raise ValueError('mark_paths_closed must be a boolean')
+        super().__init__(radius=outer_radius, fill_opacity=fill_opacity,
+                         stroke_width=stroke_width, color=color, **kwargs)
+        self._type = 'annulus'
+        self.inner_radius, self.outer_radius = inner_radius, outer_radius
+        self.mark_paths_closed = mark_paths_closed
+        self.position = list(center)
+
+    get_arc_center = Arc.get_arc_center
+    move_arc_center_to = Arc.move_arc_center_to
+
+    def get_start(self):
+        return self.point_from_proportion(0)
+
+    def get_end(self):
+        return self._point_to_world(Vector((self.inner_radius, 0, 0)))
 
 
 class Dot(Circle):
@@ -1952,7 +1999,7 @@ class MovingCameraScene(Scene):
     camera_class = MovingCamera
 
 
-EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'AnnularSector', 'Sector', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
+EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'TransformFromCopy',

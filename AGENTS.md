@@ -134,3 +134,7 @@ Read `examples/sector_scene.py` for Sector/AnnularSector signed sweeps,
 connected outline following and unequal-curve morphing. Preserve native inner-arc,
 radial-edge, reversed-outer-arc and closing-edge order; zero inner radius is valid.
 Sectors serialize through the existing bezierpath pipeline.
+
+Read `examples/annulus_scene.py` for separate full-ring contours, outline motion,
+radius interpolation and restoration. Preserve opposite winding and separate SVG
+subpaths; never insert a radial connector. General disconnected morphing remains open.

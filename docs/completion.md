@@ -43,7 +43,8 @@ Pyodide gallery checks. Primitive circle/ellipse/arc/sector/straight outlines no
 this morph pipeline, with Python tests and local Pyodide checks for primitive
 transitions, restoration, and the terminal curve. Recursive ordered VGroup alignment now has frame tests for nested/unequal/empty
 families, leaf wrapping, copy and sequential restoration. General Mobject family
-restructuring and disconnected subpath alignment remain open.
+restructuring and disconnected subpath alignment remain open; Annulus now renders
+separate ring contours and interpolates radii for same-type transforms.
 
 Full Community parity additionally requires general geometry/path morphing, full scene-family
 composition and layering, 3D cameras and advanced camera APIs (2D settings, moving-camera pan/zoom and automatic bounds fitting now have Python/SVG tests), glyph-level text/TeX
