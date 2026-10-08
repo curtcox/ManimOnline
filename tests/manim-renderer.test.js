@@ -11,6 +11,36 @@ class Element {
 }
 global.document = { createElementNS: (_namespace, tag) => new Element(tag) };
 
+test('arc SVG traces the counterclockwise quarter and preserves creation styles', () => {
+  const arc = renderer.renderMobject({ type: 'arc', radius: 2, start_angle: 0,
+    arc_angle: Math.PI / 2, color: '#58C4DD', draw_progress: 0.5 });
+  const d = arc.getAttribute('d');
+  assert.match(d, /^M 100,0 A 100,100 0 0 1 /);
+  const end = d.split(' ').at(-1).split(',').map(Number);
+  assert.ok(Math.abs(end[0]) < 1e-10);
+  assert.equal(end[1], 100);
+  assert.equal(arc.getAttribute('stroke-dashoffset'), '0.5');
+  assert.equal(arc.getAttribute('stroke'), '#58C4DD');
+  assert.equal(arc.getAttribute('fill-opacity'), '0');
+});
+
+test('full-turn and major arcs use distinct bounded SVG segments', () => {
+  const full = renderer.renderMobject({ type: 'arc', arc_angle: -2 * Math.PI });
+  assert.equal(full.getAttribute('d').split(' A ').length, 3);
+  assert.equal((full.getAttribute('d').match(/ 0 0 0 /g) || []).length, 2);
+  const major = renderer.renderMobject({ type: 'arc', arc_angle: 1.5 * Math.PI });
+  assert.equal(major.getAttribute('d').split(' A ').length, 3);
+  assert.ok(!major.getAttribute('d').includes('Z'));
+});
+
+test('zero radius and zero sweep arcs do not emit invalid arc commands', () => {
+  for (const props of [{ radius: 0 }, { arc_angle: 0 }]) {
+    const arc = renderer.renderMobject({ type: 'arc', ...props });
+    assert.ok(!arc.getAttribute('d').includes(' A '));
+    assert.ok(!/NaN|Infinity/.test(arc.getAttribute('d')));
+  }
+});
+
 test('SVG places a rotation and scale around the geometry center', () => {
   const line = renderer.renderMobject({ type: 'line', start: [1, 0], end: [3, 0],
     position: [2, 0], geometry_center: [2, 0], geometry_scale: 2, angle: Math.PI / 2 });

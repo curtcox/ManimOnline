@@ -66,12 +66,22 @@ remain unsupported.
 orientation and style, with group scheduling and duration/easing overrides.
 Paths are snapshotted at animation start. `point_from_proportion` applies the
 same translation, scale, rotation, and geometry center as SVG rendering.
-Circles use analytical circular motion; closed primitive outlines use
-distance-weighted straight segments. Only XY Circle, Line, Polygon, Square,
+Circles and arcs use analytical circular motion; closed primitive outlines use
+distance-weighted straight segments. Only XY Circle, Arc, Line, Polygon, Square,
 Rectangle, and Triangle paths are supported. Arbitrary Bézier curves, text,
 groups, arrows, 3D paths, live path updates, and automatic tangent orientation
 remain unsupported. Zero-length segments are stable and nonfinite paths fail
 explicitly.
+
+`Arc` supports radius, start_angle, signed angle, arc_center, and ordinary shape
+styles. SVG circular-arc commands are split at most half a turn per segment so
+full turns render correctly. Local bounds include the sweep's extrema; rotated
+bounds are conservative. The circular center is separate from the bounding-box
+center used by normal transforms. `get_arc_center` and `move_arc_center_to`
+respect geometry transforms; the latter also supports animate chains. Sweeps
+are limited to one turn in the XY plane. Arc fill closes the chord, not a sector.
+Multiple turns, num_components, sectors, and other Arc-specific APIs remain
+unsupported.
 
 Next work can add additional verified compatibility APIs, geometry-aware path
 transforms, glyph outline rendering, sequential animation composition, and an offline
@@ -89,6 +99,7 @@ Use `examples/layout_scene.py` for shape spacing, dot positioning, and animated
 row-to-column layout checks.
 Use `examples/staggered_scene.py` for delayed reveals and overlapping movement.
 Use `examples/path_scene.py` for transformed circular/polygon paths and line motion.
+Use `examples/arc_scene.py` for open paths, opposite sweeps, and transformed arc motion.
 
 ## Verification
 
@@ -110,6 +121,7 @@ independently of browser integration; report both categories separately.
 - [Manim positioning methods](https://docs.manim.community/en/stable/reference/manim.mobject.mobject.Mobject.html)
 - [Manim animation composition](https://docs.manim.community/en/stable/reference/manim.animation.composition.html)
 - [Manim path movement](https://docs.manim.community/en/stable/reference/manim.animation.movement.MoveAlongPath.html)
+- [Manim circular arcs](https://docs.manim.community/en/stable/reference/manim.mobject.geometry.arc.Arc.html)
 - [Manim configuration](https://docs.manim.community/en/stable/guides/configuration.html)
 - [Pyodide worker guidance](https://pyodide.org/en/stable/usage/webworker.html)
 

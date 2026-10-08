@@ -40,6 +40,7 @@ Then open `http://localhost:8000` in your browser.
 - [Layout scene](examples/layout_scene.py): shape spacing and animated row-to-column arrangement.
 - [Staggered scene](examples/staggered_scene.py): delayed reveals, overlapping movement, and staggered fades.
 - [Path scene](examples/path_scene.py): motion along transformed circles, polygon outlines, and lines.
+- [Arc scene](examples/arc_scene.py): open circular paths and clockwise/counterclockwise motion.
 
 ## Supported browser animation subset
 
@@ -47,7 +48,7 @@ Python runs in a Web Worker using Pyodide 0.27.0. The browser loads Python on
 first use, so the first render needs an internet connection. This is a small
 Manim-like runtime, **not the full Manim Community engine**.
 
-- Shapes: `Circle`, `Dot`, `Square`, `Rectangle`, `Line`, `Arrow`, `Triangle`, `Polygon`,
+- Shapes: `Circle`, `Arc`, `Dot`, `Square`, `Rectangle`, `Line`, `Arrow`, `Triangle`, `Polygon`,
   `Text`, and `VGroup`.
 - Scene operations: `add`, `remove`, `play`, and `wait`.
 - Animations: `Create`, `Uncreate`, `Write`, `FadeIn`, `FadeOut`, `Rotate`,
@@ -60,7 +61,7 @@ Manim-like runtime, **not the full Manim Community engine**.
   creates rows or columns with optional `center=False`.
 - Geometry: uniform scaling, 2D rotation in radians, optional `about_point`,
   `get_center()`, and `PI`, `TAU`, and `DEGREES` constants.
-- Paths: `point_from_proportion(alpha)` for circles, lines, polygons, squares,
+- Paths: `point_from_proportion(alpha)` for circles, arcs, lines, polygons, squares,
   rectangles, and triangles, including their 2D geometry transforms.
 - Timing: `run_time`, `linear`/`smooth` rate functions, simultaneous animations,
   and nested animation groups with staggered starts.
@@ -125,6 +126,16 @@ corner; triangles start at their top vertex. Straight edges are sampled by
 distance, so longer edges take proportionally longer. Path sampling is limited
 to the XY plane; groups, text, arrowheads, arbitrary curves, and live path
 updates are unsupported. This is preview geometry, not Manim's Bézier engine.
+
+`Arc(radius=1, start_angle=0, angle=PI/2, arc_center=ORIGIN)` draws an open
+circular arc. Angles are in radians; positive sweeps go counterclockwise and
+negative sweeps clockwise, up to one full turn. Arcs work with `Create`,
+`Uncreate`, transforms, layout, and `MoveAlongPath`. `get_arc_center()` returns
+the underlying circle center; `move_arc_center_to(point)` moves that center and
+also works in animate chains. `move_to` and default scale/rotation use the
+visible bounding-box center. Arc path sampling follows its starting angle and
+sweep. Fill closes the endpoints with a chord; sectors, 3D arcs, multiple turns,
+and `num_components` are unsupported.
 
 Animation previews run at
 15 frames per second and are limited to 60 seconds, with a 90-second deadline

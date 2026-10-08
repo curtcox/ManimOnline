@@ -87,6 +87,16 @@ class Mobject:
     def _local_bounds(self):
         if self._type == 'circle':
             return (-self.radius, -self.radius, self.radius, self.radius)
+        if self._type == 'arc':
+            angles = [self.start_angle, self.start_angle + self.arc_angle]
+            for angle in (0, PI / 2, PI, 3 * PI / 2):
+                distance = ((angle - self.start_angle) % TAU if self.arc_angle >= 0
+                            else (self.start_angle - angle) % TAU)
+                if distance <= abs(self.arc_angle):
+                    angles.append(angle)
+            points = [(self.radius * math.cos(a), self.radius * math.sin(a)) for a in angles]
+            return (min(p[0] for p in points), min(p[1] for p in points),
+                    max(p[0] for p in points), max(p[1] for p in points))
         if self._type == 'square':
             half = self.side_length / 2
             return (-half, -half, half, half)
@@ -122,11 +132,11 @@ class Mobject:
         """Sample supported XY outlines by distance, then apply SVG geometry transforms."""
         if not math.isfinite(alpha) or not 0 <= alpha <= 1:
             raise ValueError('Path proportion must be finite and between 0 and 1')
-        if self._type == 'circle':
+        if self._type in ('circle', 'arc'):
             if not math.isfinite(self.radius) or self.radius < 0:
                 raise ValueError('Path radius must be nonnegative and finite')
-            point = Vector((self.radius * math.cos(TAU * alpha),
-                            self.radius * math.sin(TAU * alpha), 0))
+            angle = TAU * alpha if self._type == 'circle' else self.start_angle + self.arc_angle * alpha
+            point = Vector((self.radius * math.cos(angle), self.radius * math.sin(angle), 0))
         else:
             closed = True
             if self._type == 'line':
@@ -142,7 +152,7 @@ class Mobject:
                 height = math.sqrt(3) / 2
                 vertices = [(0, height * 2 / 3), (-0.5, -height / 3), (0.5, -height / 3)]
             else:
-                raise NotImplementedError('Paths support Circle, Line, Polygon, Square, Rectangle, and Triangle')
+                raise NotImplementedError('Paths support Circle, Arc, Line, Polygon, Square, Rectangle, and Triangle')
             if len(vertices) < 2:
                 raise ValueError('A path needs at least two vertices')
             vertices = [Vector(v) for v in vertices]
@@ -162,6 +172,9 @@ class Mobject:
                     point = start + (end - start) * (remaining / length)
                     break
                 remaining -= length
+        return self._point_to_world(point)
+
+    def _point_to_world(self, point):
         if self.position[2]:
             raise NotImplementedError('Paths support only the XY plane')
         center = self._geometry_center()
@@ -247,6 +260,32 @@ class Circle(Mobject):
     def __init__(self, radius=1, **kwargs):
         super().__init__(**kwargs)
         self._type, self.radius = 'circle', radius
+
+
+class Arc(Mobject):
+    def __init__(self, radius=1, start_angle=0, angle=PI / 2, arc_center=ORIGIN, **kwargs):
+        center = Vector(arc_center)
+        if not all(math.isfinite(v) for v in (radius, start_angle, angle, *center)) or radius < 0:
+            raise ValueError('Arc geometry must be finite with a nonnegative radius')
+        if center[2]:
+            raise NotImplementedError('Arcs support only the XY plane')
+        if abs(angle) > TAU:
+            raise NotImplementedError('Arcs support at most one full turn')
+        super().__init__(**kwargs)
+        self._type, self.radius = 'arc', radius
+        self.start_angle, self.arc_angle = start_angle % TAU, angle
+        self.position = list(center)
+
+    def get_arc_center(self):
+        return self._point_to_world(ORIGIN)
+
+    def move_arc_center_to(self, point):
+        point = Vector(point)
+        if not all(math.isfinite(v) for v in point):
+            raise ValueError('Arc center must be finite')
+        if point[2]:
+            raise NotImplementedError('Arcs support only the XY plane')
+        return self.shift(point - self.get_arc_center())
 
 
 class Dot(Circle):
@@ -528,7 +567,7 @@ class Animate(Transform):
     def __getattr__(self, name):
         if name.startswith('__'):
             raise AttributeError(name)
-        if name not in ('shift', 'move_to', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'scale', 'rotate'):
+        if name not in ('shift', 'move_to', 'move_arc_center_to', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'scale', 'rotate'):
             raise NotImplementedError(f'animate.{name} is not supported yet')
         def apply(*args, **kwargs):
             getattr(self.target, name)(*args, **kwargs)
@@ -657,7 +696,7 @@ class Scene:
         return {'frames': self.frames, 'fps': FPS, 'duration': (len(self.frames)-1)/FPS}
 
 
-EXPORTS = ['Scene', 'Mobject', 'Circle', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
+EXPORTS = ['Scene', 'Mobject', 'Circle', 'Arc', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'VGroup', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'MoveAlongPath',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform', 'UP', 'DOWN', 'LEFT',

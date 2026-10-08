@@ -20,7 +20,8 @@ compatibility layer, not a server running full Manim Community.
 9. `examples/layout_scene.py` for relative positioning and animated arrangements.
 10. `examples/staggered_scene.py` for overlapping animation timing and cleanup.
 11. `examples/path_scene.py` for transformed paths and center-following motion.
-12. `todo/master_plan.md` and the other `todo/` documents for background plans.
+12. `examples/arc_scene.py` for open circular paths and signed sweeps.
+13. `todo/master_plan.md` and the other `todo/` documents for background plans.
 
 `ace/`, `viz-global.js`, and `svg-pan-zoom.min.js` are vendored dependencies.
 Avoid editing these to implement Manim features. The Markdown files under

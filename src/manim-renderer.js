@@ -55,6 +55,9 @@ const ManimRenderer = {
       case 'circle':
         element = this.renderCircle(mobject);
         break;
+      case 'arc':
+        element = this.renderArc(mobject);
+        break;
       case 'square':
         element = this.renderSquare(mobject);
         break;
@@ -132,6 +135,28 @@ const ManimRenderer = {
     circle.setAttribute('stroke', mobject.color || '#FFFFFF');
     circle.setAttribute('stroke-width', mobject.stroke_width ?? 2);
     return circle;
+  },
+
+  /** Render a circular arc as bounded SVG arc segments, including a full turn. */
+  renderArc(mobject) {
+    const path = document.createElementNS(this.SVG_NS, 'path');
+    const radius = (mobject.radius ?? 1) * this.UNIT_SCALE;
+    const start = mobject.start_angle ?? 0;
+    const angle = mobject.arc_angle ?? Math.PI / 2;
+    const point = a => `${radius * Math.cos(a)},${radius * Math.sin(a)}`;
+    let d = `M ${point(start)}`;
+    const segments = Math.ceil(Math.abs(angle) / Math.PI);
+    if (radius > 0) {
+      for (let i = 1; i <= segments; i++) {
+        d += ` A ${radius},${radius} 0 0 ${angle >= 0 ? 1 : 0} ${point(start + angle * i / segments)}`;
+      }
+    }
+    path.setAttribute('d', d);
+    path.setAttribute('fill', mobject.color || '#FFFFFF');
+    path.setAttribute('fill-opacity', mobject.fill_opacity ?? 0);
+    path.setAttribute('stroke', mobject.color || '#FFFFFF');
+    path.setAttribute('stroke-width', mobject.stroke_width ?? 2);
+    return path;
   },
 
   /**

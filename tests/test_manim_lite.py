@@ -16,6 +16,59 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_arc_defaults_clockwise_samples_and_wraparound_bounds(self):
+        arc = lite.Arc()
+        self.assertPointAlmostEqual(arc.point_from_proportion(0), (1, 0, 0))
+        self.assertPointAlmostEqual(arc.point_from_proportion(1), (0, 1, 0))
+        self.assertPointAlmostEqual(arc.get_center(), (0.5, 0.5, 0))
+        clockwise = lite.Arc(start_angle=lite.PI / 2, angle=-lite.PI)
+        self.assertPointAlmostEqual(clockwise.point_from_proportion(0.5), (1, 0, 0))
+        self.assertPointAlmostEqual(clockwise._local_bounds(), (0, -1, 1, 1))
+        wrapped = lite.Arc(start_angle=7 * lite.PI / 4, angle=lite.PI / 2)
+        self.assertAlmostEqual(wrapped._local_bounds()[2], 1)
+        full = lite.Arc(angle=-lite.TAU)
+        self.assertPointAlmostEqual(full._local_bounds(), (-1, -1, 1, 1))
+        self.assertPointAlmostEqual(full.point_from_proportion(0), full.point_from_proportion(1))
+
+    def test_arc_transforms_keep_circle_center_distinct_from_bounds_center(self):
+        arc = lite.Arc().scale(2).rotate(lite.PI / 2).shift(lite.RIGHT)
+        self.assertPointAlmostEqual(arc.point_from_proportion(0), (2.5, 1.5, 0))
+        self.assertPointAlmostEqual(arc.get_arc_center(), (2.5, -0.5, 0))
+        arc.move_arc_center_to(lite.ORIGIN)
+        self.assertPointAlmostEqual(arc.get_arc_center(), lite.ORIGIN)
+        self.assertPointAlmostEqual(arc.point_from_proportion(0), (0, 2, 0))
+        arc = lite.Arc(arc_center=(2, 1))
+        self.assertPointAlmostEqual(arc.get_arc_center(), (2, 1, 0))
+
+    def test_arc_creation_transform_and_path_motion(self):
+        result = render('p = Arc(radius=2, angle=PI, arc_center=(1, 0))\nself.play(Create(p), run_time=2, rate_func=linear)\nself.play(MoveAlongPath(Dot(), p), run_time=2, rate_func=linear)\nself.play(p.animate.move_arc_center_to(LEFT))')
+        self.assertEqual(result['frames'][15]['mobjects'][0]['draw_progress'], 0.5)
+        self.assertPointAlmostEqual(result['frames'][45]['mobjects'][1]['position'], (1, 2, 0))
+        self.assertPointAlmostEqual(result['frames'][-1]['mobjects'][0]['position'], (-1, 0, 0))
+        result = render('self.play(Transform(Arc(angle=PI/2), Arc(angle=PI)))')
+        self.assertAlmostEqual(result['frames'][-1]['mobjects'][0]['arc_angle'], lite.PI)
+
+    def test_arc_degenerate_geometry_and_invalid_inputs(self):
+        arc = lite.Arc(angle=0, radius=2, arc_center=(1, 1))
+        self.assertPointAlmostEqual(arc.point_from_proportion(0.5), (3, 1, 0))
+        self.assertPointAlmostEqual(lite.Arc(radius=0).point_from_proportion(0.5), lite.ORIGIN)
+        for kwargs in ({'radius': -1}, {'radius': float('inf')}, {'angle': float('nan')},
+                       {'start_angle': float('inf')}, {'arc_center': (float('nan'), 0)}):
+            with self.assertRaises(ValueError):
+                lite.Arc(**kwargs)
+        for kwargs in ({'angle': lite.TAU * 2}, {'arc_center': lite.OUT}, {'num_components': 20}):
+            with self.assertRaises(NotImplementedError):
+                lite.Arc(**kwargs)
+
+    def test_arc_examples_render_with_final_path_positions(self):
+        result = json.loads(lite.render_scene((ROOT / 'examples/arc_scene.py').read_text()))
+        self.assertEqual(result['duration'], 7)
+        self.assertEqual(len(result['frames'][-1]['mobjects']), 4)
+        self.assertPointAlmostEqual(result['frames'][-1]['mobjects'][2]['position'], (-3.4, 0, 0))
+        text = (ROOT / 'examples/geometry/arc.md').read_text()
+        result = json.loads(lite.render_scene(text.split('```py\n')[1].split('```')[0]))
+        self.assertEqual(result['frames'][0]['mobjects'][0]['type'], 'arc')
+
     def assertPointAlmostEqual(self, point, expected):
         for value, target in zip(point, expected):
             self.assertAlmostEqual(value, target)
