@@ -378,7 +378,7 @@ from the current tip geometry, not interpolated stale metadata. _tip_role marks
 structural target child slots during interpolation. explicit_tips suppresses the
 legacy renderer head even after pop_tips. Logical endpoints include tip points;
 own Arrow points describe the shaft. Native world-coordinate child semantics and
-curved tip-bearing paths remain unfinished. NumberPlane vectors force buff=0.
+general Arc/Circle tip attachment remains unfinished. NumberPlane vectors force buff=0.
 
 
 Read `examples/round_square_tips_scene.py` for circular and square tip attachment
@@ -395,3 +395,13 @@ tip_shape_start/tip_shape_end, both endpoint markers and restoration. DoubleArro
 subclasses Arrow and retains frame type arrow; never introduce a second renderer
 implementation. tip_shape_end overrides tip_shape; start shape defaults separately
 to filled triangle. Both tips use the existing role tags and sampled shaft bases.
+
+
+Read `examples/curved_arrow_scene.py` for CurvedArrow/CurvedDoubleArrow. These
+subclass ArcBetweenPoints but materialize raw cubic geometry and mark
+_curved_tip_path. _refresh_tip_shafts fits shaft_curves from raw endpoints to
+sampled tip bases; never feed fitted curves back into raw alignment. Renderer and
+own-path queries consume fitted curves, logical endpoints use actual tip points.
+Orient tips from endpoint minus adjacent raw handle. Curved scaling includes tips
+and endpoint fitting transforms the whole family uniformly. Collapsed curves
+cannot expand by endpoint fitting. Preserve the stored local arc center.

@@ -1038,7 +1038,7 @@ than a semicircle. A signed radius overrides the angle and selects the shorter
 arc; its magnitude must be at least half the endpoint distance. Angle zero makes
 a straight path and coincident endpoints collapse to a point. Use `always_redraw`
 for changing endpoints or bend. Full turns and unresolvable extreme floating-point
-geometry are rejected; arbitrary 3D arcs and curved arrow tips remain open.
+geometry are rejected; arbitrary 3D arcs and general Arc/Circle tip attachment remain open.
 
 
 ### Polygons with curved edges
@@ -1152,8 +1152,8 @@ and length-based caps for tip size and stroke width. `buff=0` touches the given
 endpoints; coordinate-plane vectors retain this behavior automatically.
 Arrow.scale keeps world tip size by default; `scale_tips=True` scales the whole
 family. Tip coordinates follow the runtime's parent-local child convention.
-Curved arrows, full native tip-family behavior and Arrow partial-path/morph
-support remain unfinished.
+Full native tip-family behavior and straight Arrow partial-path/morph support
+remain unfinished.
 
 
 Try **Render circular and square arrow tips** (`examples/round_square_tips_scene.py`).
@@ -1173,4 +1173,17 @@ each end independently with `tip_shape_start` and `tip_shape_end`; the latter
 replaces `tip_shape` for the end tip when both are supplied. It inherits Arrow's
 endpoint buffer, sizing caps, fixed-size tip scaling, endpoint editing, tip
 management, copying and checkpoint animation. Tip coordinates retain the
-runtime's parent-local convention; curved double arrows remain unfinished.
+runtime's parent-local convention; see curved-arrow support below.
+
+
+Try **Animate tangent-aligned curved arrows** (`examples/curved_arrow_scene.py`).
+`CurvedArrow(start_point, end_point, **style)` and `CurvedDoubleArrow` extend the
+XY endpoint-arc implementation with real tangent-aligned tips. Configure `angle`
+or signed `radius`, `tip_length`, and `tip_shape`; curved double arrows also accept
+`tip_shape_start`/`tip_shape_end`. They support tip management, endpoint queries,
+arc-center positioning, ordinary family scaling/rotation, direct or animated
+`put_start_and_end_on`, copying and restoration. Scaling includes tip geometry.
+The shaft fits to actual tip bases on each sampled frame. Endpoint fitting
+preserves curve shape with a uniform rotation/scale; it cannot expand collapsed
+curves. General Arc/Circle tip attachment, native world-coordinate children,
+3D paths and full tip-bearing partial-path behavior remain unfinished.

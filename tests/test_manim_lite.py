@@ -16,6 +16,103 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_curved_arrow_tangent_tips_and_trimmed_cubic_shaft(self):
+        import math
+        for cls in (lite.CurvedArrow,lite.CurvedDoubleArrow):
+            for angle in (0,lite.PI/2,-lite.PI/2,lite.PI,-lite.PI,1.5*lite.PI):
+                arrow=cls((-2,1,0),(2,1,0),angle=angle,tip_length=.5)
+                self.assertIsInstance(arrow,lite.ArcBetweenPoints)
+                self.assertPointAlmostEqual(arrow.get_start(),(-2,1,0))
+                self.assertPointAlmostEqual(arrow.get_end(),(2,1,0))
+                raw=arrow._raw_curves()
+                for at_start in (False,True) if cls is lite.CurvedDoubleArrow else (False,):
+                    tip=arrow._tip(at_start)
+                    curve=raw[0] if at_start else raw[-1]
+                    vector=lite.Vector(curve[0])-lite.Vector(curve[1]) if at_start else lite.Vector(curve[-1])-lite.Vector(curve[-2])
+                    self.assertAlmostEqual(math.sin(tip.tip_angle-math.atan2(vector[1],vector[0])),0)
+                    self.assertAlmostEqual(math.cos(tip.tip_angle-math.atan2(vector[1],vector[0])),1)
+                self.assertPointAlmostEqual(arrow.get_points()[-1],arrow._point_to_world(arrow.tip.base))
+                if cls is lite.CurvedDoubleArrow:
+                    self.assertPointAlmostEqual(arrow.get_points()[0],arrow._point_to_world(arrow.start_tip.base))
+                arrow.scale(-1.3).rotate(.4).shift(lite.UP)
+                before=arrow.to_dict()
+                arrow.save_state().put_start_and_end_on((-3,2,0),(1,-1,0))
+                self.assertPointAlmostEqual(arrow.get_start(),(-3,2,0))
+                self.assertPointAlmostEqual(arrow.get_end(),(1,-1,0))
+                arrow.restore()
+                self.assertEqual(arrow.to_dict(),before)
+                copy=arrow.copy()
+                self.assertIsNot(copy.tip,arrow.tip)
+                start,end=arrow.get_start_and_end()
+                arrow.pop_tips()
+                self.assertPointAlmostEqual(arrow.get_points()[0],start)
+                self.assertPointAlmostEqual(arrow.get_points()[-1],end)
+        tiny=lite._fit_curve_endpoints([[[0,0,0],[1e-320,0,0],[2e-320,0,0],[3e-320,0,0]]],(0,0,0),(1,0,0))
+        self.assertPointAlmostEqual(tiny[0][-1],(1,0,0))
+        self.assertTrue(all(math.isfinite(v) for point in tiny[0] for v in point))
+        arc=lite.CurvedArrow(lite.LEFT*2,lite.RIGHT*2,angle=lite.PI/2)
+        self.assertPointAlmostEqual(arc.get_arc_center(),(0,2,0))
+        arc.move_arc_center_to((1,3,0))
+        self.assertPointAlmostEqual(arc.get_arc_center(),(1,3,0))
+        with self.assertRaises(ValueError):
+            lite.CurvedArrow(lite.ORIGIN,lite.ORIGIN).put_start_and_end_on(lite.LEFT,lite.RIGHT)
+
+    def test_curved_arrow_unequal_curve_morph_and_validation(self):
+        source=lite.CurvedDoubleArrow(lite.LEFT*2,lite.RIGHT*2,angle=lite.PI/3)
+        target=lite.CurvedDoubleArrow(lite.LEFT*3,lite.RIGHT*3,angle=-lite.PI)
+        scene=lite.Scene()
+        scene.play(lite.Transform(source,target),run_time=2)
+        for frame in scene.frames:
+            snapshot=frame['mobjects'][0]
+            for child in snapshot['children']:
+                tip=lite.ArrowTriangleFilledTip()
+                tip.__dict__.update(child)
+                tip._type=child['type']
+                tip.children=[]
+                tip._sampled_geometry_center=lite.Vector(child['geometry_center'])
+                curves=snapshot['shaft_curves']
+                self.assertPointAlmostEqual(curves[0][0] if child['_tip_role']=='start' else curves[-1][-1],tip.base)
+        for kwargs in ({'angle':lite.TAU},{'tip_length':-1},{'radius':0},{'tip_shape':lite.Dot}):
+            with self.assertRaises((ValueError,TypeError)):
+                lite.CurvedArrow(lite.LEFT,lite.RIGHT,**kwargs)
+        mixed=lite.CurvedDoubleArrow(lite.LEFT,lite.RIGHT,tip_shape_start=lite.ArrowSquareTip,
+                                     tip_shape_end=lite.ArrowCircleFilledTip,tip_shape=lite.StealthTip)
+        self.assertIsInstance(mixed.start_tip,lite.ArrowSquareTip)
+        self.assertIsInstance(mixed.tip,lite.ArrowCircleFilledTip)
+
+    def test_curved_arrow_gallery_sampled_tip_bases_and_markers(self):
+        result=json.loads(lite.render_scene((ROOT/'examples/curved_arrow_scene.py').read_text()))
+        self.assertEqual(result['duration'],9)
+        for frame in result['frames'][30:106]:
+            group=frame['mobjects'][2]
+            parent=lite.Mobject()
+            parent.__dict__.update(group)
+            parent._type=group['type']
+            parent.children=[]
+            parent._sampled_geometry_center=lite.Vector(group['geometry_center'])
+            for index,snapshot in enumerate(frame['mobjects'][:2]):
+                arrow=lite.CurvedArrow(lite.LEFT,lite.RIGHT)
+                arrow.__dict__.update(snapshot)
+                arrow._type=snapshot['type']
+                arrow.children=[]
+                arrow._sampled_geometry_center=lite.Vector(snapshot['geometry_center'])
+                for child in snapshot['children']:
+                    tip=lite.ArrowTriangleFilledTip()
+                    tip.__dict__.update(child)
+                    tip._type=child['type']
+                    tip.children=[]
+                    tip._sampled_geometry_center=lite.Vector(child['geometry_center'])
+                    arrow.children.append(tip)
+                    curves=snapshot['shaft_curves']
+                    self.assertPointAlmostEqual(curves[0][0] if child['_tip_role']=='start' else curves[-1][-1],tip.base)
+                for offset,expected in enumerate(arrow.get_start_and_end()):
+                    marker=group['children'][index*2+offset]
+                    self.assertPointAlmostEqual(parent._point_to_world(lite.Vector(marker['position'])),expected)
+        for a,b in zip(result['frames'][30]['mobjects'][:2],result['frames'][105]['mobjects'][:2]):
+            for key in ('position','angle','geometry_scale','curves','shaft_curves'):
+                self.assertEqual(a[key],b[key])
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+
     def test_double_arrow_defaults_and_independent_shapes(self):
         arrow=lite.DoubleArrow()
         self.assertIsInstance(arrow,lite.Arrow)

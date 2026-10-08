@@ -155,11 +155,17 @@ transforms, morphing and restoration. Python tests and Pyodide playback verify
 queries and marker tracking. Arrow now attaches real tip children with start/end tip management, sampled shaft
 trimming, fixed-size standalone scaling and endpoint editing. Circular/square
 outline and filled tips now have editable geometry and both-end attachment.
-Curved arrows, native world-coordinate child semantics and full tip-family
+General Arc/Circle tip attachment, native world-coordinate child semantics and full tip-family
 compatibility remain open.
 
 
 DoubleArrow now constructs real tips at both ends, with independent tip shapes,
 existing Arrow sizing/endpoint transforms and tip-management semantics. Tests
-cover both-end marker/shaft alignment and checkpoint restoration. Curved double
-arrows and native world-coordinate children remain open.
+cover both-end marker/shaft alignment and checkpoint restoration. Native
+world-coordinate children remain open.
+
+
+CurvedArrow/CurvedDoubleArrow now provide XY endpoint arcs with tangent-aligned
+real tip children, sampled shaft fitting, endpoint/center transforms and existing
+family morph/restoration flow. Generic Arc/Circle tip APIs, native world-coordinate
+children, arbitrary 3D and full tip-bearing path semantics remain open.

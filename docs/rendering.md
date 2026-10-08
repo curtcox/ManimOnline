@@ -272,8 +272,8 @@ Zero-length connectors have zero unit vector and angle. Coordinates must be
 finite and in the XY plane. Queries refer to a child's coordinates within its
 parent group; they do not accumulate parent transforms. Arrow logical endpoint
 queries include tip points; own points describe the trimmed shaft. Buffers and
-straight tip attachment are supported. Curved connectors and attachment to
-object boundaries remain unsupported.
+straight tip attachment are supported. CurvedArrow/CurvedDoubleArrow support is described below. Attachment to
+object boundaries remains unsupported.
 
 The editor's example picker loads supported Python scenes and a DOT diagram
 from a fixed local catalog in `src/examples.js`. It resets scene selection and
@@ -1360,7 +1360,7 @@ moves, then reduces the positive bend to zero and removes both paths. Python
 checks cover positive/negative minor and major sweeps, center/radius calculation,
 endpoint alignment, radius precedence, zero/coincident cases, world transforms,
 partial extraction, restoration, validation, precision and gallery cleanup.
-General 3D arcs, mutable native points and curved arrow tips remain open.
+General 3D arcs, mutable native points and general Arc/Circle tip attachment remain open.
 
 Reference: [official Manim arc implementation](https://docs.manim.community/en/stable/_modules/manim/mobject/geometry/arc.html).
 
@@ -1664,7 +1664,7 @@ enclosing-triangle factor; its start_angle is stored metadata.
 These objects support positive/negative/zero scaling, rotation, own-point APIs,
 partial curves, family filtering, layout, callbacks, copying and checkpoints.
 They also attach to Line/Arrow as real children; see the integration notes below.
-Curved tip-bearing paths remain open.
+General Arc/Circle tip attachment remains open.
 
 Reference: [official Manim arrow-tip implementation](https://docs.manim.community/en/stable/_modules/manim/mobject/geometry/tips.html).
 
@@ -1761,7 +1761,7 @@ length/stroke caps, fixed-size or uniform tip scaling, rotation and direct or
 animated endpoint edits. Copying yields independent tip children. Restore
 animation preserves existing matching tip identities; pop_tips returns both
 original tip objects and restores the full shaft. Native world-coordinate child
-semantics, curved double arrows and Arrow partial-path/cross-type morph behavior
+semantics and straight Arrow partial-path/cross-type morph behavior
 remain open.
 
 Reference: [Manim DoubleArrow implementation](https://docs.manim.community/en/stable/_modules/manim/mobject/geometry/line.html).
@@ -1778,3 +1778,44 @@ Verification: all 341 Python and 77 Node tests passed. Local Pyodide playback
 showed two shafts, four tip paths and four endpoint markers at six seconds,
 restored horizontal geometry at seven seconds, and no geometry at nine seconds.
 Switching to DOT rendered the Editor → Render → Preview graph.
+
+
+## Tangent-aligned curved arrows
+
+CurvedArrow/CurvedDoubleArrow extend ArcBetweenPoints and reuse Line's tip APIs.
+They materialize the endpoint arc as world-space cubic geometry before attaching
+real child tips. Tip orientation uses endpoint minus adjacent handle, including
+reverse direction at the start. Signed angles/radii, straight zero-angle paths
+and coincident endpoints follow the existing endpoint-arc constructor. Tip length
+defaults to .35 without straight Arrow's size/stroke caps. CurvedDoubleArrow uses
+independent start/end shapes with the same precedence as DoubleArrow.
+
+Raw curves retain the logical full path. _refresh_tip_shafts derives both local
+base coordinates and shaft_curves via a 2D similarity mapping from raw endpoints
+to current sampled tip bases. _path_curves and the SVG cubic renderer consume
+shaft_curves; logical endpoint queries compose actual child tip points with the
+parent transform. pop_tips restores the untrimmed path. Path alignment uses raw
+curves to avoid fitting an already trimmed shaft a second time when curve counts
+differ. Sample capture then fits the aligned interpolated shaft to its live tips.
+
+Curved endpoint fitting transforms the entire family about the old start, then
+moves it to the requested start. Scaling includes the tips, unlike standalone
+straight Arrow's fixed-size default. Arc center queries retain their stored local
+center through these transforms. Fitting cannot expand a collapsed curve.
+Ordinary transforms, same/different-count curved morphs, copying, callbacks and
+restoration use the existing family flow. Native world-coordinate children,
+general Arc/Circle tip APIs, arbitrary 3D curves, native mutable point semantics
+and general tip-bearing partial-path behavior remain unfinished.
+
+Reference: [Manim curved arrows and tip placement](https://docs.manim.community/en/stable/_modules/manim/mobject/geometry/arc.html).
+
+Tests cover tangent directions, positive/negative/zero sweeps, zero-length
+validation, both-end shapes, shaft bases, signed scaling, endpoint/center edits,
+copy/checkpoints, removal, unequal-count morphs and gallery endpoint tracking.
+
+
+Verification: all 344 Python and 78 Node tests passed. Local Pyodide playback
+showed two curved shafts, three tip paths and four endpoint markers at six
+seconds, restored geometry at seven seconds, and no geometry at nine seconds.
+Switching to DOT rendered the Editor → Render → Preview graph. Curve fitting
+normalizes offsets before mapping, avoiding reciprocal overflow for tiny spans.

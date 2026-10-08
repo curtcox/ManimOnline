@@ -2054,6 +2054,98 @@ class DoubleArrow(Arrow):
         self.add_tip(at_start=True,tip_shape=tip_shape_start)
 
 
+class CurvedArrow(ArcBetweenPoints):
+    """An editable endpoint arc with tangent-aligned tip children."""
+    _tip = Line._tip
+    tip = Line.tip
+    start_tip = Line.start_tip
+    has_tip = Line.has_tip
+    has_start_tip = Line.has_start_tip
+    get_tip = Line.get_tip
+    get_tips = Line.get_tips
+    get_default_tip_length = Line.get_default_tip_length
+    add_tip = Line.add_tip
+    pop_tips = Line.pop_tips
+    get_start_and_end = Line.get_start_and_end
+    get_vector = Line.get_vector
+    get_length = Line.get_length
+    get_unit_vector = Line.get_unit_vector
+
+    def __init__(self, start_point, end_point, tip_shape=None, tip_length=.35, **kwargs):
+        ArrowTip._tip_dimension(tip_length,'length')
+        super().__init__(start_point,end_point,**kwargs)
+        center = Arc.get_arc_center(self)
+        points = Mobject.get_points(self)
+        VMobject.set_points(self,points)
+        self._curve_arc_center = list(center)
+        self._curved_tip_path = True
+        self.tip_length = tip_length
+        self.add_tip(tip_shape=tip_shape)
+
+    def _raw_curves(self):
+        snapshot = self.to_dict()
+        snapshot.pop('shaft_curves',None)
+        return _path_curves(snapshot)
+
+    def _orient_tip(self, tip, at_start):
+        curves = self._raw_curves()
+        if not curves:
+            raise ValueError('The curve has no completed segments')
+        curve = curves[0] if at_start else curves[-1]
+        anchor = Vector(curve[0] if at_start else curve[-1])
+        handle = Vector(curve[1] if at_start else curve[-2])
+        vector = anchor-handle
+        angle = math.atan2(vector[1],vector[0]) if any(vector) else 0
+        tip.rotate(angle-tip.tip_angle)
+        tip.shift(anchor-tip.tip_point)
+
+    def get_start(self):
+        tip = self._tip(True)
+        curves = self._raw_curves() if tip is None else None
+        if curves == []:
+            raise ValueError('The curve has no completed segments')
+        point = tip.tip_point if tip is not None else Vector(curves[0][0])
+        return self._point_to_world(point)
+
+    def get_end(self):
+        tip = self._tip()
+        curves = self._raw_curves() if tip is None else None
+        if curves == []:
+            raise ValueError('The curve has no completed segments')
+        point = tip.tip_point if tip is not None else Vector(curves[-1][-1])
+        return self._point_to_world(point)
+
+    def get_arc_center(self):
+        return self._point_to_world(Vector(self.__dict__.get('_curve_arc_center',ORIGIN)))
+
+    def put_start_and_end_on(self, start, end):
+        start,end = Line._endpoints(start,end)
+        old_start,old_end = self.get_start_and_end()
+        old_vector,new_vector = old_end-old_start,end-start
+        old_length,new_length = math.hypot(*old_vector),math.hypot(*new_vector)
+        if not math.isfinite(new_length):
+            raise ValueError('Curve endpoint span must be finite')
+        if not old_length:
+            if new_length:
+                raise ValueError('Cannot expand a collapsed curve with endpoint fitting')
+            return self.shift(start-old_start)
+        factor = new_length/old_length
+        if not math.isfinite(factor):
+            raise ValueError('Curve endpoint scale must be finite')
+        angle = math.atan2(new_vector[1],new_vector[0])-math.atan2(old_vector[1],old_vector[0])
+        self.rotate(angle,about_point=old_start).scale(factor,about_point=old_start)
+        return self.shift(start-old_start)
+
+
+class CurvedDoubleArrow(CurvedArrow):
+    def __init__(self, start_point, end_point, **kwargs):
+        if 'tip_shape_end' in kwargs:
+            kwargs['tip_shape'] = kwargs.pop('tip_shape_end')
+        tip_shape_start = kwargs.pop('tip_shape_start',ArrowTriangleFilledTip)
+        super().__init__(start_point,end_point,**kwargs)
+        self.add_tip(at_start=True,tip_shape=tip_shape_start)
+
+
 class Triangle(Mobject):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -3457,7 +3549,8 @@ def interpolate(start, end, alpha):
 def _refresh_tip_shafts(snapshot):
     for child in snapshot.get('children',[]):
         _refresh_tip_shafts(child)
-    if snapshot['type'] not in ('line','arrow'):
+    curved = snapshot.get('_curved_tip_path') and snapshot['type'] == 'bezierpath'
+    if snapshot['type'] not in ('line','arrow') and not curved:
         return snapshot
     snapshot.pop('shaft_start',None)
     snapshot.pop('shaft_end',None)
@@ -3476,13 +3569,35 @@ def _refresh_tip_shafts(snapshot):
         tip._sampled_geometry_center = Vector(child['geometry_center'])
         tip.children = []
         snapshot['shaft_'+role] = list(tip._point_to_world(point))
+    if curved:
+        curves = snapshot['curves']
+        snapshot['shaft_curves'] = (_fit_curve_endpoints(curves,
+            snapshot.get('shaft_start',curves[0][0]),snapshot.get('shaft_end',curves[-1][-1]))
+            if curves else [])
     return snapshot
+
+
+def _fit_curve_endpoints(curves, start, end):
+    first,last = Vector(curves[0][0]),Vector(curves[-1][-1])
+    start,end = Vector(start),Vector(end)
+    old,new = last-first,end-start
+    length = math.hypot(*old)
+    if not length:
+        return copy.deepcopy(curves)
+    unit = Vector(value/length for value in old)
+    real = new[0]*unit[0]+new[1]*unit[1]
+    imag = new[1]*unit[0]-new[0]*unit[1]
+    def point(value):
+        x,y,_ = Vector(value)-first
+        x,y = x/length,y/length
+        return list(start+Vector((real*x-imag*y,imag*x+real*y,0)))
+    return [[point(value) for value in curve] for curve in curves]
 
 
 def _path_curves(snapshot):
     kind = snapshot['type']
     if kind == 'bezierpath':
-        return copy.deepcopy(snapshot['curves'])
+        return copy.deepcopy(snapshot.get('shaft_curves',snapshot['curves']))
     if kind == 'annulus':
         outer = _path_curves({'type':'circle', 'radius':snapshot['outer_radius']})
         inner = _path_curves({'type':'circle', 'radius':snapshot['inner_radius']})
@@ -3586,6 +3701,11 @@ def _align_path_snapshots(start, target):
         return None
     if start['type'] == target['type'] and start['type'] not in ('polyline', 'polygon', 'bezierpath'):
         return None  # Matching primitives retain their analytical interpolation.
+    # Align untrimmed curved-arrow geometry; capture fits it to sampled tips.
+    start,target = copy.deepcopy(start),copy.deepcopy(target)
+    for snapshot in (start,target):
+        if snapshot.get('_curved_tip_path'):
+            snapshot.pop('shaft_curves',None)
     paths1, paths2 = _path_subpaths(start), _path_subpaths(target)
     if not paths1 or not paths2:
         return None  # Empty geometry has no endpoint to align; retain the fade.
@@ -4354,7 +4474,7 @@ class MovingCameraScene(Scene):
     camera_class = MovingCamera
 
 
-EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow',
+EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
            'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'NumberPlane', 'ComplexPlane', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',

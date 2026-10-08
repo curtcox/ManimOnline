@@ -384,3 +384,10 @@ test('explicit arrow tips paint as children with a trimmed shaft and no implicit
   assert.equal(shapes.filter(node => node.tag === 'path' || node.tag === 'polyline').length,0);
   assert.equal(shapes.find(node => node.tag === 'line').getAttribute('x2'),'100');
 });
+
+
+test('curved arrow rendering uses sampled fitted shaft curves', () => {
+  const path=renderer.renderMobject({type:'bezierpath',curves:[[[0,0],[1,1],[2,1],[3,0]]],
+    shaft_curves:[[[.5,0],[1,2],[2,2],[2.5,0]]]});
+  assert.equal(path.getAttribute('d'),'M 25,0 C 50,100 100,100 125,0');
+});

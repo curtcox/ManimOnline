@@ -414,7 +414,7 @@ const ManimRenderer = {
 
   renderBezierPath(mobject) {
     const path = this.renderCornerPath({ ...mobject, vertices: [] });
-    const curves = mobject.curves || [];
+    const curves = mobject.shaft_curves || mobject.curves || [];
     const xy = point => `${point[0] * this.UNIT_SCALE},${point[1] * this.UNIT_SCALE}`;
     const commands = [];
     let start = null, end = null, offset = 0;
