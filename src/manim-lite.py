@@ -642,13 +642,44 @@ def interpolate(start, end, alpha):
 
 
 def _path_curves(snapshot):
-    if snapshot['type'] == 'bezierpath':
+    kind = snapshot['type']
+    if kind == 'bezierpath':
         return copy.deepcopy(snapshot['curves'])
-    vertices = snapshot['vertices']
+    if kind in ('circle', 'arc'):
+        radius = snapshot['radius']
+        if not math.isfinite(radius) or radius < 0:
+            raise ValueError('Path radius must be nonnegative and finite')
+        start = snapshot.get('start_angle', 0)
+        sweep = snapshot.get('arc_angle', TAU)
+        count = max(1, math.ceil(abs(sweep) / (PI / 4)))
+        step = sweep / count
+        factor = 4 / 3 * math.tan(step / 4)
+        anchors = [Vector((radius * math.cos(start + step*i),
+                           radius * math.sin(start + step*i), 0)) for i in range(count + 1)]
+        if abs(sweep) == TAU:
+            anchors[-1] = anchors[0]
+        curves = []
+        for a, b in zip(anchors, anchors[1:]):
+            tangent_a, tangent_b = Vector((-a[1], a[0], 0)), Vector((-b[1], b[0], 0))
+            curves.append([list(a), list(a + tangent_a * factor),
+                           list(b - tangent_b * factor), list(b)])
+        return curves
+    if kind in ('square', 'rectangle'):
+        width = snapshot['side_length'] if kind == 'square' else snapshot['width']
+        height = snapshot['side_length'] if kind == 'square' else snapshot['height']
+        vertices = [(width/2,height/2), (-width/2,height/2),
+                    (-width/2,-height/2), (width/2,-height/2)]
+    elif kind == 'triangle':
+        height = math.sqrt(3) / 2
+        vertices = [(0,height*2/3), (-0.5,-height/3), (0.5,-height/3)]
+    elif kind == 'line':
+        vertices = [snapshot['start'], snapshot['end']]
+    else:
+        vertices = snapshot['vertices']
     if not vertices:
         return []
     points = [Vector(p) for p in vertices]
-    if snapshot['type'] == 'polygon':
+    if kind in ('polygon', 'square', 'rectangle', 'triangle'):
         points.append(points[0])
     if len(points) == 1:
         return [[list(points[0]) for _ in range(4)]]
@@ -681,9 +712,12 @@ def _subdivide_curves(curves, count):
 
 
 def _align_path_snapshots(start, target):
-    path_types = ('polyline', 'polygon', 'bezierpath')
+    path_types = ('polyline', 'polygon', 'bezierpath', 'circle', 'arc',
+                  'square', 'rectangle', 'triangle', 'line')
     if start['type'] not in path_types or target['type'] not in path_types:
         return None
+    if start['type'] == target['type'] and start['type'] not in ('polyline', 'polygon', 'bezierpath'):
+        return None  # Matching primitives retain their analytical interpolation.
     curves1, curves2 = _path_curves(start), _path_curves(target)
     if not curves1 or not curves2:
         return None  # Empty geometry has no endpoint to align; retain the fade.

@@ -72,6 +72,7 @@ Then open `http://localhost:8000` in your browser.
 - [Path scene](examples/path_scene.py): motion along transformed circles, polygon outlines, and lines.
 - [Arc scene](examples/arc_scene.py): open circular paths and clockwise/counterclockwise motion.
 - [Growth scene](examples/growth_scene.py): growth from a point, group growth, and staggered shrinking.
+- [Shape morph scene](examples/shape_morph_scene.py): deform primitive outlines, restore a circle, and finish as a curve.
 - [Morph scene](examples/morph_scene.py): align unequal corner/curve counts, restore, and close an outline.
 - [Bezier scene](examples/bezier_scene.py): trace, follow, deform, and restore cubic curves and mixed paths.
 - [Corner paths](examples/corner_path_scene.py): trace, follow, and deform a connected path.
@@ -120,8 +121,8 @@ Manim-like runtime, **not the full Manim Community engine**.
 `Uncreate` reverses that draw and removes the object. Groups reveal all children
 simultaneously. Text creation and `Write` use fades because glyph paths are not
 available in this runtime. MathTex creation also uses fades. Arrow shafts and heads reveal together. Transforms
-interpolate matching geometry, align connected corner/cubic/polygon paths, and
-crossfade other different shape types.
+interpolate matching geometry and align supported primitive/corner/cubic/polygon
+outlines for morphing. Text, arrow, and other unsupported outline combinations crossfade.
 `TransformFromCopy(source, target)` animates the target from a snapshot of the
 source while preserving the source. Add the source first to keep it visible;
 only the target is automatically added. Both are snapshotted at playback start.
@@ -458,6 +459,26 @@ completion. Transform finishes with the target's original geometry representatio
 and preserves the source checkpoint. A one-point path can grow into a segment;
 empty paths still fade because they have no anchor to align. Correspondence follows
 path order; the runtime does not optimize point matching or winding direction.
-Disconnected subpaths, primitive-to-path conversion, and nested group-family
+Disconnected subpaths, arrow outlines, and nested group-family
 alignment remain open. This follows the curve-subdivision concept in
 [Manim align_points](https://docs.manim.community/en/stable/reference/manim.mobject.types.vectorized_mobject.VMobject.html#manim.mobject.types.vectorized_mobject.VMobject.align_points).
+
+
+### Primitive outline morphing
+
+Circle, Arc, Square, Rectangle, Triangle, and Line can morph into each other and
+into supported corner/cubic/polygon paths. Straight outlines convert exactly to
+cubic segments. Circles and arcs use tangent-matched cubic segments spanning at
+most 45 degrees, with exact anchors and closure for full turns. Circular geometry
+is slightly approximate during these morphs; static shapes, path sampling, and
+same-type primitive transforms retain their previous analytical behavior.
+Tests sample the circular approximation with radial error below 0.0005% of radius.
+
+The conversion keeps original layout/transform pivots, positions, styles, depth,
+and checkpoint behavior. Segment subdivision preserves every straight corner.
+Correspondence follows each shape's existing path order; there is no automatic
+start-point or winding optimization. The target retains its native geometry at
+completion. Arrowheads, text/glyph outlines, and general group-family matching
+remain unsupported and continue to use the existing crossfade behavior.
+Circular control handles follow the tangent construction in
+[Manim Arc](https://docs.manim.community/en/stable/_modules/manim/mobject/geometry/arc.html).

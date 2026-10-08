@@ -16,6 +16,85 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_circle_conversion_is_closed_tangent_matched_and_accurate(self):
+        circle = lite.Circle(radius=2)
+        curves = lite._path_curves(circle.to_dict())
+        self.assertEqual(len(curves), 8)
+        self.assertEqual(curves[0][0], [2,0,0])
+        self.assertEqual(curves[-1][-1], curves[0][0])
+        for index, curve in enumerate(curves):
+            self.assertEqual(curve[-1], curves[(index+1)%8][0])
+            for t in (i/100 for i in range(101)):
+                point = lite.VMobject._bezier_point(curve,t)
+                self.assertLessEqual(abs((point[0]**2 + point[1]**2)**0.5 - 2), 1e-5)
+            anchor, handle = lite.Vector(curve[0]), lite.Vector(curve[1])
+            direction = handle-anchor
+            self.assertAlmostEqual(anchor[0]*direction[0] + anchor[1]*direction[1], 0)
+        self.assertEqual(lite._path_curves(lite.Circle(radius=0).to_dict())[0], [[0,0,0]]*4)
+
+    def test_arc_conversion_preserves_signed_sweep_exact_endpoints_and_pivot(self):
+        for sweep in (lite.PI, -lite.PI, 0, lite.TAU):
+            arc = lite.Arc(radius=2,start_angle=lite.PI/3,angle=sweep,arc_center=lite.RIGHT).scale(0.7).rotate(0.2)
+            snapshot = arc.to_dict()
+            curves = lite._path_curves(snapshot)
+            expected = lambda a: (2*lite.math.cos(a), 2*lite.math.sin(a), 0)
+            for actual, point in ((curves[0][0],expected(lite.PI/3)), (curves[-1][-1],expected(lite.PI/3+sweep))):
+                for a,b in zip(actual,point):
+                    self.assertAlmostEqual(a,b)
+            if sweep:
+                anchor, handle = lite.Vector(curves[0][0]), lite.Vector(curves[0][1])
+                direction = handle-anchor
+                self.assertEqual((anchor[0]*direction[1]-anchor[1]*direction[0]) > 0, sweep > 0)
+            aligned = lite._align_path_snapshots(snapshot, lite.Square().to_dict())[0]
+            self.assertEqual(aligned['geometry_center'],snapshot['geometry_center'])
+            self.assertEqual(aligned['position'],snapshot['position'])
+
+    def test_straight_primitive_conversion_preserves_outline_vertices(self):
+        cases = ((lite.Line((1,2),(4,5)), 1, (1,2,0), (4,5,0)),
+                 (lite.Square(side_length=4), 4, (2,2,0), (2,2,0)),
+                 (lite.Rectangle(width=6,height=2), 4, (3,1,0), (3,1,0)),
+                 (lite.Triangle(), 3, (0,3**0.5/3,0), (0,3**0.5/3,0)))
+        for shape, count, start, end in cases:
+            with self.subTest(shape=shape._type):
+                curves = lite._path_curves(shape.to_dict())
+                self.assertEqual(len(curves),count)
+                for a,b in zip(curves[0][0],start):
+                    self.assertAlmostEqual(a,b)
+                for a,b in zip(curves[-1][-1],end):
+                    self.assertAlmostEqual(a,b)
+                for curve in curves:
+                    middle = lite.VMobject._bezier_point(curve,0.5)
+                    for a,b,c in zip(middle,curve[0],curve[-1]):
+                        self.assertAlmostEqual(a,(b+c)/2)
+
+    def test_primitive_to_path_morphs_retain_one_drawable_and_native_matching_types(self):
+        for source,target in (('Circle()', 'Square()'), ('Square()', 'Triangle()'),
+                              ('Rectangle()', 'Polygon(ORIGIN,RIGHT,UP)'),
+                              ('Line(LEFT,RIGHT)', 'CubicBezier(LEFT,UL,UR,RIGHT)'),
+                              ('Arc(angle=-PI)', 'VMobject().set_points_as_corners([LEFT,UP,RIGHT])')):
+            result = render(f'p = {source}\nq = {target}\nself.play(Transform(p,q), run_time=2, rate_func=linear)')
+            frame = result['frames'][15]['mobjects']
+            self.assertEqual(len(frame),1)
+            self.assertEqual(frame[0]['type'],'bezierpath')
+            self.assertEqual(frame[0]['opacity'],1)
+        result = render('p = Circle(radius=1)\nself.play(Transform(p,Circle(radius=3)),run_time=2,rate_func=linear)')
+        self.assertEqual(result['frames'][15]['mobjects'][0]['type'],'circle')
+        self.assertEqual(result['frames'][15]['mobjects'][0]['radius'],2)
+        result = render('p = Arc(angle=PI)\nself.play(Transform(p,Arc(angle=-PI)),run_time=2,rate_func=linear)')
+        self.assertEqual(result['frames'][15]['mobjects'][0]['arc_angle'],0)
+        result = render('p = Arrow()\nself.play(Transform(p,Circle()),run_time=2,rate_func=linear)')
+        self.assertEqual([m['opacity'] for m in result['frames'][15]['mobjects']],[0.5,0.5])
+
+    def test_primitive_morph_gallery_restores_circle_and_finishes_as_cubic(self):
+        result = json.loads(lite.render_scene((ROOT / 'examples/shape_morph_scene.py').read_text()))
+        self.assertEqual(result['duration'],11)
+        self.assertEqual(result['frames'][45]['mobjects'][0]['type'],'bezierpath')
+        self.assertEqual(len(result['frames'][45]['mobjects'][0]['curves']),8)
+        self.assertEqual(len(result['frames'][120]['mobjects'][0]['curves']),8)
+        self.assertEqual(result['frames'][120]['mobjects'][0]['geometry_scale'],1.2)
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['type'],'bezierpath')
+        self.assertEqual(len(result['frames'][-1]['mobjects'][0]['curves']),1)
+
     def test_cubic_subdivision_preserves_curve_geometry_and_every_existing_join(self):
         curve = [[0,0,0], [8,4,0], [-2,3,0], [3,0,0]]
         pieces = lite._subdivide_curves([curve], 3)
@@ -686,7 +765,7 @@ class SceneTests(unittest.TestCase):
         scene.play(lite.FadeOut(target))
         self.assertEqual(scene.mobjects, [source])
 
-    def test_transform_from_copy_snapshots_at_start_and_crossfades_types(self):
+    def test_transform_from_copy_snapshots_at_start_and_morphs_primitives(self):
         source, target = lite.Circle(), lite.Square()
         effect = lite.TransformFromCopy(source, target)
         source.shift(lite.LEFT)
@@ -694,8 +773,10 @@ class SceneTests(unittest.TestCase):
         scene = lite.Scene()
         scene.play(effect, run_time=2, rate_func=lite.linear)
         middle = scene.frames[15]['mobjects']
-        self.assertEqual([m['type'] for m in middle], ['circle', 'square'])
-        self.assertEqual([m['opacity'] for m in middle], [0.5, 0.5])
+        self.assertEqual([m['type'] for m in middle], ['bezierpath'])
+        self.assertEqual(middle[0]['opacity'], 1)
+        self.assertEqual(len(middle[0]['curves']), 8)
+        self.assertEqual(middle[0]['position'], [0,0,0])
         self.assertEqual(scene.mobjects, [target])
         self.assertEqual(effect._terminal, [target.to_dict()])
 
@@ -856,7 +937,8 @@ class SceneTests(unittest.TestCase):
         scene = lite.Scene()
         scene.play(lite.Transform(shape, lite.Circle(color=lite.RED).shift(lite.RIGHT)))
         scene.play(lite.Restore(shape), run_time=2, rate_func=lite.linear)
-        self.assertEqual([s['type'] for s in scene.frames[30]['mobjects']], ['circle', 'square'])
+        self.assertEqual([s['type'] for s in scene.frames[30]['mobjects']], ['bezierpath'])
+        self.assertEqual(scene.frames[30]['mobjects'][0]['opacity'], 1)
         self.assertEqual(shape._type, 'square')
         self.assertEqual(shape.color, lite.WHITE)
         shape.shift(lite.RIGHT).restore()

@@ -37,7 +37,9 @@ movement, vertex interpolation, and cleanup. Unequal connected path/polygon
 counts now align through exact cubic subdivision, with tests and local Pyodide
 checks for continuous morphing, restored pivots, and the final polygon; connected cubic paths support tracing, parameter sampling,
 and equal-count control-point interpolation, with Python/SVG tests and local
-Pyodide gallery checks. General geometry/path alignment remains open.
+Pyodide gallery checks. Primitive circle/arc/straight outlines now convert into
+this morph pipeline, with Python tests and local Pyodide checks for primitive
+transitions, restoration, and the terminal curve. General family/subpath alignment remains open.
 
 Full Community parity additionally requires general geometry/path morphing, full scene-family
 composition and layering, camera configuration, glyph-level text/TeX

@@ -140,7 +140,7 @@ This is viewport testing, not proof of native mobile keyboard/device behavior.
 Creation traces normalized SVG outlines and fades in their fill. Uncreate
 reverses drawing and removes the object. Group children and arrow components
 reveal simultaneously; text creation and writing use fades. Transforms between
-different shape types crossfade.
+supported outlines use cubic alignment; other shape-type pairs crossfade.
 Tracing uses scaling strokes for accurate path fractions at any preview size;
 completed objects return to non-scaling strokes.
 The Scene field selects a source-defined class and defaults to the first one.
@@ -234,7 +234,7 @@ Gradients, background strokes, and full Manim color parsing are unsupported.
 the same object. `restore` replaces live geometry/style state while keeping the
 checkpoint available for reuse. `Restore` and `.animate.restore()` use existing
 Transform sampling, including group timing, geometry interpolation, and
-crossfades for different shape types. Transform completion preserves the source
+outline morphing and crossfades for unsupported combinations. Transform completion preserves the source
 checkpoint and does not adopt the target's checkpoint. Saved states are excluded
 from recursive frame serialization. Root identity is retained; children are
 copied on group restoration, matching the current group-transform behavior.
@@ -258,7 +258,7 @@ animates only the destination. It adds the destination once, preserves both live
 objects and their child identities/checkpoints, and holds the destination after
 completion in longer groups. Sources are read-only references and may animate
 independently; add them explicitly to keep them visible. Matching geometry
-interpolates, differing types crossfade, as with other transforms. Destination
+interpolates, supported outlines morph, and unsupported types crossfade. Destination
 family conflicts are rejected. This does not implement full Manim path morphing.
 
 `Line` and `Arrow` expose transformed endpoints, vector, length, unit vector,
@@ -405,10 +405,27 @@ interpolate in one drawable path, including corner-to-cubic and open-to-closed
 morphs. Closed SVG paths use Z to retain stroke joins. Live geometry and target
 identity are unchanged until normal completion; checkpoints restore original
 representations. Empty paths still crossfade. No automatic winding/correspondence,
-disconnected subpaths, primitive conversion, or family alignment is implied.
+disconnected subpaths or family alignment is implied. Primitive conversion is
+now described below.
 
 Python checks verify subdivision at several parameters, preservation of joins and
 transformed pivots, immutable source/target snapshots, singleton/empty geometry,
 copy/replacement/restoration, and sequential stages. SVG tests verify closed joins.
 Local Pyodide playback showed one fully opaque path at the unequal-count midpoint,
 a restored rotated/scaled curve, and the final polygon. DOT rendered after switching.
+
+## Primitive outline conversion
+
+Cross-type Transform/Restore/copy/replacement frames convert Circle, Arc, Square,
+Rectangle, Triangle, and Line to the connected cubic alignment pipeline. Matching
+primitive types keep native parameter interpolation. Straight edges are exact;
+circular segments span at most 45 degrees and use tangent handles, with exact
+end anchors and full-turn closure. This introduces a small circular approximation
+only during cross-type morphing. Tests densely sample the radial error below
+0.0005% of radius, verify tangent direction and signed/zero/full sweeps, preserve
+original pivots, and check native completion/restoration. Arrowhead, text/glyph,
+and full group-family outline matching remain gaps.
+
+Local Pyodide playback verified a single opaque, closed eight-segment outline
+at the circle/square midpoint, the triangle transition, restored circle scaling,
+and the terminal open cubic. DOT rendered after switching.
