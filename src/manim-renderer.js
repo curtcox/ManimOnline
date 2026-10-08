@@ -88,6 +88,9 @@ const ManimRenderer = {
       case 'polyline':
         element = this.renderCornerPath(mobject);
         break;
+      case 'bezierpath':
+        element = this.renderBezierPath(mobject);
+        break;
       case 'polygon':
         element = this.renderPolygon(mobject);
         break;
@@ -315,6 +318,16 @@ const ManimRenderer = {
     path.setAttribute('fill-opacity', mobject.fill_opacity ?? 0);
     path.setAttribute('stroke', mobject.stroke_color ?? mobject.color ?? '#FFFFFF');
     path.setAttribute('stroke-width', mobject.stroke_width ?? 4);
+    return path;
+  },
+
+  renderBezierPath(mobject) {
+    const path = this.renderCornerPath({ ...mobject, vertices: [] });
+    const curves = mobject.curves || [];
+    const xy = point => `${point[0] * this.UNIT_SCALE},${point[1] * this.UNIT_SCALE}`;
+    path.setAttribute('d', curves.length
+      ? `M ${xy(curves[0][0])} ` + curves.map(curve => `C ${curve.slice(1).map(xy).join(' ')}`).join(' ')
+      : '');
     return path;
   },
 

@@ -191,3 +191,20 @@ test('corner paths render connected open segments with tracing and standard geom
   assert.match(path.getAttribute('transform'), /translate\(50, 0\).*rotate\(90\) scale\(2\)/);
   assert.equal(renderer.renderMobject({ type: 'polyline', vertices: [] }).getAttribute('d'), '');
 });
+
+
+test('cubic paths render SVG curves with standard tracing, styles, and transforms', () => {
+  const path = renderer.renderMobject({ type: 'bezierpath', curves: [
+    [[-3, 0, 0], [-1, 3, 0], [1, 3, 0], [3, 0, 0]],
+    [[3, 0, 0], [4, 0, 0], [5, 0, 0], [6, 0, 0]]
+  ], color: '#58C4DD', stroke_opacity: 0.4, fill_opacity: 0.2, draw_progress: 0.5,
+    geometry_center: [1.5, 1.5, 0], geometry_scale: 0.8, angle: Math.PI / 12 });
+  assert.equal(path.getAttribute('d'), 'M -150,0 C -50,150 50,150 150,0 C 200,0 250,0 300,0');
+  assert.equal(path.getAttribute('stroke'), '#58C4DD');
+  assert.equal(path.getAttribute('stroke-width'), '4');
+  assert.equal(path.getAttribute('stroke-opacity'), '0.4');
+  assert.equal(path.getAttribute('pathLength'), '1');
+  assert.equal(path.getAttribute('stroke-dashoffset'), '0.5');
+  assert.match(path.getAttribute('transform'), /rotate\(14.999.*scale\(0.8\)/);
+  assert.equal(renderer.renderMobject({ type: 'bezierpath', curves: [] }).getAttribute('d'), '');
+});

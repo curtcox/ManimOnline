@@ -34,7 +34,9 @@ have Python tests and Pyodide browser checks, including teardown animation.
 
 Corner-path VMobjects now have Python/SVG tests and Pyodide checks for tracing,
 movement, equal-count vertex interpolation, and cleanup. Unequal-count paths and
-polygons crossfade; general geometry/path alignment remains open.
+polygons crossfade; connected cubic paths now support tracing, parameter sampling,
+and equal-count control-point interpolation, with Python/SVG tests and local
+Pyodide gallery checks. General geometry/path alignment remains open.
 
 Full Community parity additionally requires general geometry/path morphing, full scene-family
 composition and layering, camera configuration, glyph-level text/TeX

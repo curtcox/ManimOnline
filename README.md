@@ -72,6 +72,7 @@ Then open `http://localhost:8000` in your browser.
 - [Path scene](examples/path_scene.py): motion along transformed circles, polygon outlines, and lines.
 - [Arc scene](examples/arc_scene.py): open circular paths and clockwise/counterclockwise motion.
 - [Growth scene](examples/growth_scene.py): growth from a point, group growth, and staggered shrinking.
+- [Bezier scene](examples/bezier_scene.py): trace, follow, deform, and restore cubic curves and mixed paths.
 - [Corner paths](examples/corner_path_scene.py): trace, follow, and deform a connected path.
 - [Scene lifecycle](examples/lifecycle_scene.py): setup-created objects, scene time, and teardown animation.
 - [Foreground scene](examples/foreground_scene.py): keep a grouped overlay above later additions and release it.
@@ -90,7 +91,7 @@ Python runs in a Web Worker using Pyodide 0.27.0. The browser loads Python on
 first use, so the first render needs an internet connection. This is a small
 Manim-like runtime, **not the full Manim Community engine**.
 
-- Shapes: `Circle`, `Arc`, `Dot`, `Square`, `Rectangle`, `Line`, `Arrow`, `Triangle`, `Polygon`,
+- Shapes: `Circle`, `Arc`, `CubicBezier`, `VMobject`, `Dot`, `Square`, `Rectangle`, `Line`, `Arrow`, `Triangle`, `Polygon`,
   `Text`, `MathTex`, and `VGroup`.
 - Scene operations: `add`, `remove`, `play`, and `wait`.
 - Animations: `Create`, `Uncreate`, `Write`, `FadeIn`, `FadeOut`, `GrowFromCenter`,
@@ -108,7 +109,7 @@ Manim-like runtime, **not the full Manim Community engine**.
 - Geometry: uniform scaling, 2D rotation in radians, optional `about_point`,
   `get_center()`, and `PI`, `TAU`, and `DEGREES` constants.
 - Paths: `point_from_proportion(alpha)` for circles, arcs, lines, polygons, squares,
-  rectangles, triangles, and VMobject corner paths, including their 2D geometry transforms.
+  rectangles, triangles, and VMobject corner/cubic paths, including their 2D geometry transforms.
 - Timing: `run_time`, `linear`/`smooth` rate functions, simultaneous animations,
   and nested animation groups with staggered starts.
 - Directions support vector addition/subtraction and scalar multiplication,
@@ -208,14 +209,14 @@ even when a rate function returns to zero.
 
 `MoveAlongPath(object, path)` moves the object's center along a path without
 turning it to face the direction of travel. It defaults to one second with
-smooth easing; use `rate_func=linear` for constant speed. Paths are snapshotted
+smooth easing; use `rate_func=linear` for linear path proportion. Paths are snapshotted
 at animation start. Circles use exact circular sampling from the positive X
 axis counterclockwise; polygon outlines follow their vertex order and close
 back to the first vertex. Square/rectangle paths start at the upper right
 corner; triangles start at their top vertex. Straight edges are sampled by
 distance, so longer edges take proportionally longer. Path sampling is limited
-to the XY plane; groups, text, arrowheads, arbitrary curves, and live path
-updates are unsupported. This is preview geometry, not Manim's Bézier engine.
+to the XY plane; connected cubic curves are described below. Groups, text,
+arrowheads, disconnected subpaths, and live path updates are unsupported.
 
 `Arc(radius=1, start_angle=0, angle=PI/2, arc_center=ORIGIN)` draws an open
 circular arc. Angles are in radians; positive sweeps go counterclockwise and
@@ -344,7 +345,7 @@ Corner paths support Create/Uncreate, styles, layout, group/depth ordering,
 transforms, checkpoints, `get_start()`/`get_end()`, and `MoveAlongPath` sampled
 by distance along straight segments. Equal-count point lists interpolate;
 unequal-count corner paths and polygons crossfade rather than jumping between
-vertex lists. Full Bézier control points, smooth curves, multiple subpaths, and
+vertex lists. Smoothing, multiple subpaths, general point-array operations, and
 arbitrary shape-to-shape path alignment remain unsupported. This uses the
 [Manim corner-path API](https://docs.manim.community/en/stable/reference/manim.mobject.types.vectorized_mobject.VMobject.html?highlight=corner)
 with a straight-segment SVG representation.
@@ -414,3 +415,27 @@ runtime and worker lifecycle; they do not substitute for browser checks.
 ## License
 
 BSD-3-Clause (see LICENSE-graphvizonline for GraphvizOnline attribution)
+
+
+### Cubic Bezier paths
+
+`CubicBezier(start_anchor, start_handle, end_handle, end_anchor, **style)` creates
+an open cubic curve. Add a cubic segment to a VMobject's existing endpoint with
+`add_cubic_bezier_curve_to(handle1, handle2, anchor)`. Start an empty VMobject with
+`set_points_as_corners([start])` first. Earlier corners become straight cubic
+segments when a curve is appended. Later `add_line_to`/`add_points_as_corners`
+continue the path with straight segments. `set_points_as_corners` replaces the
+whole path, and `reverse_direction` reverses segment order and control handles.
+Coordinates must be finite and in the XY plane; invalid appends preserve the path.
+
+Curves render as SVG cubic commands with Create/Uncreate, styles, group transforms,
+copy/checkpoints, Restore, and MoveAlongPath. Matching curve counts interpolate
+anchors and handles during Transform; different counts or corner/cubic path types
+crossfade. Sampling uses the cubic parameter within each segment. For several
+segments, their relative durations use lengths estimated with 20 intervals per
+segment. This is approximate and does not produce constant speed within a curve.
+Geometry bounds and transform pivots enclose anchors and handles, rather than
+measuring the visible curve's exact extrema. Disconnected subpaths, general point
+alignment, smoothing, and the rest of VMobject's point-array API remain unsupported.
+See [Manim CubicBezier](https://docs.manim.community/en/stable/reference/manim.mobject.geometry.arc.CubicBezier.html)
+and [path sampling](https://docs.manim.community/en/stable/_modules/manim/mobject/types/vectorized_mobject.html).

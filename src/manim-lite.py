@@ -114,6 +114,8 @@ class Mobject:
             points = [self.start, self.end]
         elif self._type in ('polygon', 'polyline'):
             points = self.vertices
+        elif self._type == 'bezierpath':
+            points = [point for curve in self.curves for point in curve]
         elif self._type == 'triangle':
             height = math.sqrt(3) / 2
             points = [(0, height * 2 / 3), (-0.5, -height / 3), (0.5, -height / 3)]
@@ -140,6 +142,24 @@ class Mobject:
         """Sample supported XY outlines by distance, then apply SVG geometry transforms."""
         if not math.isfinite(alpha) or not 0 <= alpha <= 1:
             raise ValueError('Path proportion must be finite and between 0 and 1')
+        if self._type == 'bezierpath':
+            if not self.curves:
+                raise ValueError('The path has no points')
+            if alpha in (0, 1):
+                return self._point_to_world(Vector(self.curves[0][0] if alpha == 0 else self.curves[-1][-1]))
+            lengths = []
+            for curve in self.curves:
+                samples = [VMobject._bezier_point(curve, i / 20) for i in range(21)]
+                lengths.append(sum(math.dist(a, b) for a, b in zip(samples, samples[1:])))
+            total = sum(lengths)
+            if not math.isfinite(total):
+                raise ValueError('Path length must be finite')
+            remaining = alpha * total
+            for curve, length in zip(self.curves, lengths):
+                if remaining <= length:
+                    return self._point_to_world(VMobject._bezier_point(curve, remaining / length if length else 0))
+                remaining -= length
+            return self._point_to_world(Vector(self.curves[-1][-1]))
         if self._type in ('circle', 'arc'):
             if not math.isfinite(self.radius) or self.radius < 0:
                 raise ValueError('Path radius must be nonnegative and finite')
@@ -328,7 +348,7 @@ class Mobject:
 
 
 class VMobject(Mobject):
-    """A single XY path made of connected straight segments."""
+    """A single XY path made of connected straight or cubic segments."""
     def __init__(self, **kwargs):
         kwargs.setdefault('stroke_width', 4)
         super().__init__(**kwargs)
@@ -340,33 +360,82 @@ class VMobject(Mobject):
         if any(not all(math.isfinite(v) for v in point) for point in vertices):
             raise ValueError('Path coordinates must be finite')
         if any(point[2] for point in vertices):
-            raise NotImplementedError('Corner paths support only the XY plane')
+            raise NotImplementedError('Paths support only the XY plane')
         return vertices
 
     def set_points_as_corners(self, points):
-        self.vertices = self._corners(points)
+        vertices = self._corners(points)
+        self._type, self.vertices = 'polyline', vertices
+        self.__dict__.pop('curves', None)
         return self
 
     def add_points_as_corners(self, points):
-        self.vertices.extend(self._corners(points))
+        vertices = self._corners(points)
+        if self._type == 'bezierpath':
+            start = Vector(self.curves[-1][-1])
+            for point in vertices:
+                end = Vector(point)
+                self.curves.append([list(start), list(start + (end-start) * (1/3)),
+                                    list(start + (end-start) * (2/3)), list(end)])
+                start = end
+        else:
+            self.vertices.extend(vertices)
         return self
 
     def add_line_to(self, point):
         return self.add_points_as_corners([point])
 
     def reverse_direction(self):
-        self.vertices.reverse()
+        if self._type == 'bezierpath':
+            self.curves = [list(reversed(curve)) for curve in reversed(self.curves)]
+        else:
+            self.vertices.reverse()
+        return self
+
+    @staticmethod
+    def _bezier_point(curve, t):
+        # De Casteljau interpolation avoids large polynomial coefficients.
+        points = [Vector(p) for p in curve]
+        while len(points) > 1:
+            points = [a * (1-t) + b * t for a, b in zip(points, points[1:])]
+        return points[0]
+
+    def add_cubic_bezier_curve_to(self, handle1, handle2, anchor):
+        points = self._corners([handle1, handle2, anchor])
+        if self._type != 'bezierpath':
+            if not self.vertices:
+                raise ValueError('Start the path with a corner before adding a cubic curve')
+            curves = []
+            for a, b in zip(self.vertices, self.vertices[1:]):
+                a, b = Vector(a), Vector(b)
+                curves.append([list(a), list(a + (b-a) * (1/3)),
+                               list(a + (b-a) * (2/3)), list(b)])
+            curves.append([self.vertices[-1][:], *points])
+            self._type, self.curves, self.vertices = 'bezierpath', curves, []
+        else:
+            self.curves.append([self.curves[-1][-1][:], *points])
         return self
 
     def get_start(self):
+        if self._type == 'bezierpath':
+            return self._point_to_world(Vector(self.curves[0][0]))
         if not self.vertices:
             raise ValueError('The path has no points')
         return self._point_to_world(Vector(self.vertices[0]))
 
     def get_end(self):
+        if self._type == 'bezierpath':
+            return self._point_to_world(Vector(self.curves[-1][-1]))
         if not self.vertices:
             raise ValueError('The path has no points')
         return self._point_to_world(Vector(self.vertices[-1]))
+
+
+class CubicBezier(VMobject):
+    def __init__(self, start_anchor, start_handle, end_handle, end_anchor, **kwargs):
+        super().__init__(**kwargs)
+        self.curves = [self._corners([start_anchor, start_handle, end_handle, end_anchor])]
+        self._type = 'bezierpath'
 
 
 class Circle(Mobject):
@@ -711,7 +780,9 @@ class Transform(Animation):
         if (self.start['type'] == target['type'] and
                 (target['type'] != 'mathtex' or self.start['text'] == target['text']) and
                 (target['type'] not in ('polygon', 'polyline') or
-                 len(self.start['vertices']) == len(target['vertices']))):
+                 len(self.start['vertices']) == len(target['vertices'])) and
+                (target['type'] != 'bezierpath' or
+                 len(self.start['curves']) == len(target['curves']))):
             return [interpolate(self.start, target, alpha)]
         # Different geometry is crossfaded rather than claiming path morphing.
         source = copy.deepcopy(self.start)
@@ -863,7 +934,7 @@ class Animate(Transform):
     def __getattr__(self, name):
         if name.startswith('__'):
             raise AttributeError(name)
-        if name not in ('shift', 'move_to', 'move_arc_center_to', 'put_start_and_end_on', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'set_points_as_corners', 'add_points_as_corners', 'add_line_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
+        if name not in ('shift', 'move_to', 'move_arc_center_to', 'put_start_and_end_on', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'set_points_as_corners', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
             raise NotImplementedError(f'animate.{name} is not supported yet')
         def apply(*args, **kwargs):
             getattr(self.target, name)(*args, **kwargs)
@@ -1118,7 +1189,7 @@ class Scene:
         return {'frames': self.frames, 'fps': FPS, 'duration': (len(self.frames)-1)/FPS}
 
 
-EXPORTS = ['Scene', 'Mobject', 'VMobject', 'Circle', 'Arc', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
+EXPORTS = ['Scene', 'Mobject', 'VMobject', 'CubicBezier', 'Circle', 'Arc', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'MathTex', 'VGroup', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'TransformFromCopy',

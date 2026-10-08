@@ -16,6 +16,77 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_cubic_bezier_samples_endpoints_midpoint_and_transformed_geometry(self):
+        curve = lite.CubicBezier((-3,0), (-1,3), (1,3), (3,0))
+        self.assertIsInstance(curve, lite.VMobject)
+        self.assertEqual(curve.point_from_proportion(0.5), (0,2.25,0))
+        self.assertEqual(curve._local_bounds(), (-3,0,3,3))
+        curve.scale(2).rotate(lite.PI/2).shift(lite.RIGHT)
+        for actual, expected in ((curve.get_start(), (4,-4.5,0)), (curve.get_end(), (4,7.5,0)), (curve.point_from_proportion(0.5), (-0.5,1.5,0))):
+            for a, b in zip(actual, expected):
+                self.assertAlmostEqual(a, b)
+        for alpha in (-0.1, 1.1, float('nan')):
+            with self.assertRaises(ValueError):
+                curve.point_from_proportion(alpha)
+
+    def test_mixed_cubic_and_corner_segments_follow_length_weighted_curve_parameters(self):
+        path = lite.VMobject().set_points_as_corners([(0,0), (1,0)])
+        self.assertIs(path.add_cubic_bezier_curve_to((2,0), (3,0), (4,0)), path)
+        path.add_points_as_corners([(5,0), (6,0)])
+        self.assertEqual(len(path.curves), 4)
+        self.assertEqual(path.get_start(), (0,0,0))
+        self.assertEqual(path.get_end(), (6,0,0))
+        for alpha in (0.1, 0.25, 0.5, 0.75, 1):
+            self.assertAlmostEqual(path.point_from_proportion(alpha)[0], 6*alpha)
+        before = path.copy()
+        path.reverse_direction()
+        for alpha in (0,0.25,0.5,1):
+            for a, b in zip(path.point_from_proportion(alpha), before.point_from_proportion(1-alpha)):
+                self.assertAlmostEqual(a,b)
+
+    def test_cubic_validation_is_atomic_and_degenerate_curves_are_stable(self):
+        path = lite.VMobject()
+        with self.assertRaisesRegex(ValueError, 'Start the path'):
+            path.add_cubic_bezier_curve_to(lite.ORIGIN, lite.RIGHT, lite.UP)
+        path.set_points_as_corners([lite.ORIGIN])
+        for bad, error in (((float('inf'),0), ValueError), ((0,0,1), NotImplementedError)):
+            with self.assertRaises(error):
+                path.add_cubic_bezier_curve_to(lite.ORIGIN, bad, lite.RIGHT)
+            self.assertEqual(path._type, 'polyline')
+            self.assertEqual(path.vertices, [[0,0,0]])
+        path.add_cubic_bezier_curve_to(lite.ORIGIN, lite.ORIGIN, lite.ORIGIN)
+        self.assertEqual(path.point_from_proportion(0.5), lite.ORIGIN)
+        saved = path.to_dict()
+        with self.assertRaises(ValueError):
+            path.add_points_as_corners([lite.RIGHT, (float('nan'),0)])
+        self.assertEqual(path.to_dict(), saved)
+        path.set_points_as_corners([])
+        self.assertEqual(path._type, 'polyline')
+        self.assertNotIn('curves', path.to_dict())
+
+    def test_cubic_control_points_interpolate_and_checkpoint_restores_curve(self):
+        result = render('a = CubicBezier((-3,0), (-1,0), (1,0), (3,0)).save_state()\nb = CubicBezier((-3,0), (-1,4), (1,4), (3,0))\nself.play(Transform(a,b), run_time=2, rate_func=linear)\nself.play(Restore(a))')
+        middle = result['frames'][15]['mobjects'][0]
+        self.assertEqual(middle['curves'][0][1], [-1,2,0])
+        self.assertEqual(middle['curves'][0][2], [1,2,0])
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['curves'][0][1], [-1,0,0])
+        result = render('a = CubicBezier(ORIGIN, RIGHT, RIGHT, RIGHT)\nself.play(a.animate.add_cubic_bezier_curve_to(UR, UR, UP), run_time=1, rate_func=linear)')
+        self.assertEqual(len(result['frames'][7]['mobjects']), 2)
+        self.assertEqual(len(result['frames'][-1]['mobjects'][0]['curves']), 2)
+
+    def test_cubic_gallery_traces_follows_deforms_restores_and_introduces_mixed_path(self):
+        result = json.loads(lite.render_scene((ROOT / 'examples/bezier_scene.py').read_text()))
+        self.assertEqual(result['duration'], 11)
+        first = result['frames'][0]['mobjects'][0]
+        self.assertEqual(first['type'], 'bezierpath')
+        self.assertEqual(first['draw_progress'], 0)
+        curve = lite.CubicBezier((-3,-1), (-2,3), (2,-3), (3,1)).scale(0.8).rotate(lite.PI/12)
+        for a, b in zip(result['frames'][75]['mobjects'][1]['position'], curve.get_end()):
+            self.assertAlmostEqual(a,b)
+        self.assertEqual(result['frames'][105]['mobjects'][0]['color'].lower(), lite.GREEN.lower())
+        self.assertEqual([m['type'] for m in result['frames'][-1]['mobjects']], ['text', 'bezierpath'])
+        self.assertEqual(len(result['frames'][-1]['mobjects'][1]['curves']), 3)
+
     def test_foreground_roots_stay_after_later_additions_and_animations(self):
         a, b, c = lite.Circle(), lite.Square(), lite.Dot()
         scene = lite.Scene().add(a)

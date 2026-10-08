@@ -83,8 +83,8 @@ geometry transforms, with exact endpoints for straight-edged paths. Create and
 Uncreate trace the whole connected stroke. Styles, checkpoints, depth/group
 ordering, transforms, and MoveAlongPath use the existing pipeline. Same-count
 vertex lists interpolate; different-count corner paths/polygons crossfade to avoid
-the earlier terminal jump. Bézier handles, smooth/multiple paths, and arbitrary
-shape alignment remain open.
+the earlier terminal jump. Connected cubic handles are supported below; smoothing/multiple paths and
+arbitrary shape alignment remain open.
 
 Tests cover construction, extension, reversal, validation without partial edits,
 empty/degenerate/closed paths, transformed endpoint queries, movement, tracing,
@@ -192,7 +192,7 @@ Paths are snapshotted at animation start. `point_from_proportion` applies the
 same translation, scale, rotation, and geometry center as SVG rendering.
 Circles and arcs use analytical circular motion; closed primitive outlines use
 distance-weighted straight segments. Only XY Circle, Arc, Line, Polygon, Square,
-Rectangle, Triangle, and VMobject corner paths are supported. Arbitrary Bézier curves, text,
+Rectangle, Triangle, and VMobject corner/cubic paths are supported. Disconnected curves, text,
 groups, arrows, 3D paths, live path updates, and automatic tangent orientation
 remain unsupported. Zero-length segments are stable and nonfinite paths fail
 explicitly.
@@ -377,3 +377,20 @@ Local Pyodide browser checks confirmed the yellow grouped overlay paints after
 the blue square, the released overlay paints before the red square, and promotion
 restores its visibility during rotation. The clear interval is empty and the
 terminal frame contains only the title. DOT rendered after switching.
+
+## Connected cubic curves
+
+CubicBezier and VMobject.add_cubic_bezier_curve_to now serialize connected
+four-control-point segments as SVG cubic commands. Corner paths remain unchanged
+until a cubic append converts their straight segments. Subsequent corners append
+straight cubics; replacement/reversal and animated operations preserve the API.
+Sampling partitions by approximate curve lengths (20 intervals) and uses each
+curve's parameter, with exact endpoints. Bounds enclose control points. Matching
+curve counts interpolate; different counts/types crossfade. General alignment,
+disconnected subpaths, smoothing, and full point-array APIs remain gaps.
+
+Python/SVG tests cover finite XY validation, exact transformed endpoints, cubic
+midpoints, mixed segment allocation, reversal, matching/unequal-count transforms,
+restoration, tracing, styles, and the gallery. Local Pyodide checks verified
+half-stroke tracing, endpoint arrival, intermediate control-point deformation,
+restoration, and the final mixed path. DOT rendered after switching.
