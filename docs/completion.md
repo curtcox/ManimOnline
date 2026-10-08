@@ -21,8 +21,14 @@ has been asked of the user; do not silently equate the current subset with eithe
 | Mobile-friendly UI | Wrapped toolbar and dynamic preview placement | Responsive editor/preview and mobile browser tests |
 | Deployed site | Existing test and GitHub Pages workflows | Check every new commit's CI/deployment and deployed behavior |
 
-Full Community parity additionally requires geometry/path morphing, sequential
-and repeated-object animation, camera configuration, glyph-level text/TeX
+Sequential and repeated-object animation now has Succession frame tests covering
+stage starts, relative operations, replacement, removal, nested groups, checkpoints,
+and terminal holds. Browser gallery playback verified accumulated rotation and
+final removal, plus Graphviz after switching. Broader layering/family cases remain
+acceptance work.
+
+Full Community parity additionally requires geometry/path morphing, full scene-family
+composition and layering, camera configuration, glyph-level text/TeX
 semantics, updaters, graphing, 3D, rendering/video output, and broad API/package
 compatibility. These are not implemented or proven by the current tests. Keep
 the original requested scope open until its requirements are clarified and

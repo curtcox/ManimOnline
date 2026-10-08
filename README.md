@@ -77,7 +77,7 @@ Manim-like runtime, **not the full Manim Community engine**.
 - Scene operations: `add`, `remove`, `play`, and `wait`.
 - Animations: `Create`, `Uncreate`, `Write`, `FadeIn`, `FadeOut`, `GrowFromCenter`,
   `GrowFromPoint`, `ShrinkToCenter`, `Rotate`,
-  `Rotating`, `MoveAlongPath`, `AnimationGroup`, `LaggedStart`, `Transform`, and
+  `Rotating`, `MoveAlongPath`, `AnimationGroup`, `LaggedStart`, `Succession`, `Transform`, and
   `ReplacementTransform`, `TransformFromCopy`, `Restore`, and `Indicate`; chained `.animate.shift()`, `.move_to()`,
   `.set_color()`, `.set_fill()`, `.set_stroke()`, `.set_opacity()`, `.scale()`, `.rotate()`,
   `.next_to()`, `.arrange()`, and `.restore()`.
@@ -167,8 +167,26 @@ preserving overlap. Group easing changes timeline progress; child easing changes
 each animation's progress. Groups may nest, and `VGroup` is iterable for building
 animation lists. Use independent objects: repeated objects, parent/child overlap,
 and animating a child inside a scene-added group are unsupported. Animate the
-whole added group or keep its children as separate scene objects. `Succession`
-and repeated-object sequences within one play remain unsupported.
+whole added group or keep its children as separate scene objects.
+
+`Succession` runs consecutive, non-overlapping stages (`lag_ratio=1`). Its
+duration is the sum of its children; `run_time` rescales that timeline. Repeated
+objects are allowed across stages. Each stage begins from the previous stage's
+finished geometry and visibility, so two `Rotate` steps accumulate, a replacement
+can be animated next, and future introductions stay hidden until their stage.
+Nested sequences and independent groups are supported. Relative `.animate`
+method chains resolve against the object and layout references at stage start;
+explicit `Transform` targets remain snapshots made when constructed.
+
+Sequences prepare against a copied scene and commit live changes in stage order
+at completion. A sequence cannot share animated objects with a simultaneous
+animation outside it, and each parallel stage still requires independent object
+families. Root drawing order stays fixed while sampling one play call; removal
+and reintroduction change live order at completion. Read-only path/copy references
+outside the sequence are snapshotted during preparation, so they do not track
+concurrent animations. Overlapping `Succession` stages and automatic scene-family
+restructuring remain unsupported. Completed groups hold their terminal state
+even when a rate function returns to zero.
 
 `MoveAlongPath(object, path)` moves the object's center along a path without
 turning it to face the direction of travel. It defaults to one second with

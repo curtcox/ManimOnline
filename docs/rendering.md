@@ -81,8 +81,16 @@ until final live-object cleanup. Each leaf snapshots its terminal state without
 mutating the live scene early. Conflicting object families are rejected, as is
 animating an individual child of a scene-added group. `VGroup` iteration permits
 building child animation lists before adding those children independently.
-`Succession`, repeated-object sequences, and automatic scene-family restructuring
-remain unsupported.
+`Succession` prepares consecutive stages against an isolated copy of the scene,
+applying each terminal state before preparing the next. Owned objects may repeat
+between stages, while parallel conflicts still fail. Later introductions stay
+hidden; replacement targets and removals are visible at the appropriate stage.
+Live geometry/checkpoints remain untouched during preparation and final changes
+commit in order. Nested groups/sequences and duration rescaling are tested.
+Relative animate chains resolve at stage start; explicit Transform targets stay
+construction-time snapshots. Root layering remains fixed during sampled frames
+within a play call, and external read-only references do not follow simultaneous
+animations. Only lag_ratio=1 is supported; family restructuring remains open.
 
 `MoveAlongPath` centers an object on sampled path points while preserving its
 orientation and style, with group scheduling and duration/easing overrides.
@@ -196,8 +204,8 @@ Math compilation currently runs in the browser DOM after worker execution;
 the worker's 90-second Python deadline does not interrupt synchronous typesetting.
 
 Next work can add additional verified compatibility APIs, geometry-aware path
-transforms, glyph outline rendering, sequential animation composition, and an offline
-asset strategy. Keep DOT
+transforms, glyph outline rendering, scene-family restructuring, and browser
+compatibility verification. Keep DOT
 rendering, sharing, and static SVG/PNG export working as these features evolve.
 
 Use `examples/minimal_scene.py` as a baseline and `examples/multiple_scenes.py`

@@ -792,6 +792,14 @@ class ReplacementTransform(Transform):
 class Animate(Transform):
     def __init__(self, mobject):
         super().__init__(mobject, mobject)
+        self.operations = []
+
+    def begin(self, scene):
+        # Relative method chains resolve against the state at this stage's start.
+        self.target = self.mobject.copy()
+        for name, args, kwargs in self.operations:
+            getattr(self.target, name)(*args, **kwargs)
+        super().begin(scene)
 
     def __getattr__(self, name):
         if name.startswith('__'):
@@ -800,6 +808,7 @@ class Animate(Transform):
             raise NotImplementedError(f'animate.{name} is not supported yet')
         def apply(*args, **kwargs):
             getattr(self.target, name)(*args, **kwargs)
+            self.operations.append((name, args, kwargs))
             return self
         return apply
 
@@ -834,7 +843,7 @@ class AnimationGroup:
             animation.prepare(scene)
 
     def states(self, alpha, rate_func=None):
-        time = (rate_func or self.rate_func)(max(0, min(1, alpha))) * self.natural_duration
+        time = self.natural_duration if alpha >= 1 else (rate_func or self.rate_func)(max(0, alpha)) * self.natural_duration
         result = {}
         for animation, (start, duration) in zip(self.animations, self.timings):
             result.update(animation.states((time - start) / duration))
@@ -848,6 +857,63 @@ class AnimationGroup:
 class LaggedStart(AnimationGroup):
     def __init__(self, *animations, lag_ratio=0.05, **kwargs):
         super().__init__(*animations, lag_ratio=lag_ratio, **kwargs)
+
+
+class Succession(AnimationGroup):
+    """Prepare consecutive stages from preceding terminal states on an isolated scene."""
+    def __init__(self, *animations, lag_ratio=1, **kwargs):
+        if lag_ratio != 1:
+            raise NotImplementedError('Succession supports non-overlapping stages with lag_ratio=1')
+        super().__init__(*animations, lag_ratio=1, **kwargs)
+
+    def objects(self):
+        return list(dict.fromkeys(super().objects()))
+
+    def prepare(self, scene):
+        owned = self.objects()
+        self._initial = [m for m in owned if m in scene.mobjects]
+        memo = {}
+        roots, animations = copy.deepcopy((scene.mobjects, self.animations), memo)
+        staging = Scene().add(*roots)
+        originals = {}
+        def remember(mobject):
+            originals[id(memo[id(mobject)])] = mobject
+            for child in mobject.children:
+                remember(child)
+        for root in scene.mobjects + owned:
+            remember(root)
+        self._stages = []
+        for animation in animations:
+            staging.validate(animation)
+            animation.prepare(staging)
+            baseline = {originals[id(m)]: [m.to_dict()] for m in staging.mobjects
+                        if originals[id(m)] in owned}
+            # Remap only identity keys; start/terminal geometry stays snapshotted.
+            prepared = copy.deepcopy(animation, originals.copy())
+            self._stages.append((baseline, prepared))
+            animation.finish(staging)
+        # Placeholder roots allow capture() to include later introductions. Their
+        # states remain empty until the relevant stage; geometry stays untouched.
+        scene.add(*owned)
+
+    def states(self, alpha, rate_func=None):
+        time = self.natural_duration if alpha >= 1 else (rate_func or self.rate_func)(max(0, alpha)) * self.natural_duration
+        stage = 0
+        for index, (start, _) in enumerate(self.timings):
+            if start <= time:
+                stage = index
+        start, duration = self.timings[stage]
+        baseline, animation = self._stages[stage]
+        result = {m: [] for m in self.objects()}
+        result.update(baseline)
+        result.update(animation.states((time - start) / duration))
+        return result
+
+    def finish(self, scene):
+        scene.remove(*(m for m in self.objects() if m not in self._initial))
+        for animation in self.animations:
+            animation.prepare(scene)
+            animation.finish(scene)
 
 
 class Scene:
@@ -877,18 +943,7 @@ class Scene:
             raise NotImplementedError('Unsupported play options: ' + ', '.join(kwargs))
         if not animations or any(not isinstance(a, (Animation, AnimationGroup)) for a in animations):
             raise TypeError('play() expects supported animations such as Create or Transform')
-        objects = [m for a in animations for m in a.objects()]
-        def family(mobject):
-            return [mobject] + [m for child in mobject.children for m in family(child)]
-        members = [m for obj in objects for m in family(obj)]
-        if len({id(m) for m in members}) != len(members):
-            raise ValueError('Use one animation per object in each play() call')
-        for root in self.mobjects:
-            for obj in objects:
-                if obj is not root and obj in family(root):
-                    raise NotImplementedError('Animate the whole scene-added group, not an individual child')
-                if root is not obj and root in family(obj):
-                    raise NotImplementedError('Remove scene-added children before animating their containing group')
+        self.validate(*animations)
         durations = [a.run_time if run_time is None else run_time for a in animations]
         if any(not math.isfinite(d) or d <= 0 for d in durations):
             raise ValueError('Animation run_time must be positive and finite')
@@ -905,6 +960,20 @@ class Scene:
             self.capture(overrides)
         for animation in animations:
             animation.finish(self)
+
+    def validate(self, *animations):
+        objects = [m for a in animations for m in a.objects()]
+        def family(mobject):
+            return [mobject] + [m for child in mobject.children for m in family(child)]
+        members = [m for obj in objects for m in family(obj)]
+        if len({id(m) for m in members}) != len(members):
+            raise ValueError('Use one animation per object in each play() call')
+        for root in self.mobjects:
+            for obj in objects:
+                if obj is not root and obj in family(root):
+                    raise NotImplementedError('Animate the whole scene-added group, not an individual child')
+                if root is not obj and root in family(obj):
+                    raise NotImplementedError('Remove scene-added children before animating their containing group')
 
     def wait(self, duration=1):
         if not math.isfinite(duration) or duration < 0:
@@ -927,7 +996,7 @@ class Scene:
 
 EXPORTS = ['Scene', 'Mobject', 'Circle', 'Arc', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'MathTex', 'VGroup', 'Create', 'Write', 'FadeIn',
-           'AnimationGroup', 'LaggedStart', 'MoveAlongPath',
+           'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'TransformFromCopy',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform', 'UP', 'DOWN', 'LEFT',
            'RIGHT', 'ORIGIN', 'OUT', 'IN', 'UL', 'UR', 'DL', 'DR', 'BLUE', 'RED', 'GREEN',

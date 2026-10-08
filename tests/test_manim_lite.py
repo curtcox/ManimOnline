@@ -16,6 +16,102 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_succession_repeated_rotations_start_from_prior_terminal_geometry(self):
+        result = render('s = Square()\nself.play(Succession(Rotate(s, PI / 2, run_time=2, rate_func=linear), Rotate(s, PI / 2, run_time=2, rate_func=linear)))')
+        self.assertEqual(result['duration'], 4)
+        for index, angle in ((15, lite.PI / 4), (30, lite.PI / 2), (45, 3 * lite.PI / 4), (60, lite.PI)):
+            self.assertAlmostEqual(result['frames'][index]['mobjects'][0]['angle'], angle)
+
+    def test_succession_introduces_later_objects_only_when_their_stage_begins(self):
+        result = render('a = Circle(color=BLUE)\nb = Square(color=RED).shift(RIGHT * 3)\nself.play(Succession(Create(a, run_time=2), FadeOut(a), FadeIn(b, run_time=2, rate_func=linear)))')
+        self.assertEqual(result['duration'], 5)
+        self.assertEqual(len(result['frames'][0]['mobjects']), 1)
+        self.assertEqual(result['frames'][44]['mobjects'][0]['type'], 'circle')
+        self.assertEqual(result['frames'][45]['mobjects'][0]['type'], 'square')
+        self.assertEqual(result['frames'][45]['mobjects'][0]['opacity'], 0)
+        self.assertEqual(result['frames'][60]['mobjects'][0]['opacity'], 0.5)
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['opacity'], 1)
+
+    def test_succession_replacement_can_be_followed_by_animation_of_its_target(self):
+        result = render('a = Circle()\nb = Square().shift(RIGHT * 2)\nself.play(Succession(ReplacementTransform(a, b), Rotate(b, PI, run_time=2, rate_func=linear)))\nself.play(b.animate.shift(UP))')
+        self.assertEqual(len(result['frames'][15]['mobjects']), 1)
+        self.assertEqual(result['frames'][15]['mobjects'][0]['type'], 'square')
+        self.assertAlmostEqual(result['frames'][30]['mobjects'][0]['angle'], lite.PI / 2)
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['position'], [2, 1, 0])
+
+    def test_succession_preparation_does_not_commit_live_geometry_or_checkpoints(self):
+        shape = lite.Square().save_state()
+        scene = lite.Scene().add(shape)
+        before = shape.to_dict()
+        sequence = lite.Succession(lite.Rotate(shape, lite.PI), lite.Restore(shape))
+        sequence.prepare(scene)
+        self.assertEqual(shape.to_dict(), before)
+        self.assertEqual(sequence.states(0)[shape][0]['angle'], 0)
+        self.assertAlmostEqual(sequence.states(0.5)[shape][0]['angle'], lite.PI)
+        sequence.finish(scene)
+        self.assertEqual(shape.to_dict(), before)
+        self.assertIn('_saved_state', shape.__dict__)
+
+    def test_succession_nested_groups_and_parallel_objects_have_independent_timelines(self):
+        result = render('a = Dot()\nb = Square().shift(RIGHT * 3)\nc = Circle().shift(LEFT * 3)\nself.play(AnimationGroup(Succession(AnimationGroup(FadeIn(a), Create(b)), Succession(Rotate(b, PI, rate_func=linear), FadeOut(a))), Create(c, run_time=4)))')
+        self.assertEqual(result['duration'], 4)
+        self.assertEqual(result['frames'][15]['mobjects'][0]['opacity'], 1)
+        self.assertAlmostEqual(result['frames'][22]['mobjects'][1]['angle'], lite.PI * 7 / 15)
+        self.assertEqual(len(result['frames'][45]['mobjects']), 2)
+        self.assertEqual(len(result['frames'][-1]['mobjects']), 2)
+
+    def test_succession_duration_rescaling_and_terminal_hold(self):
+        result = render('s = Square()\nc = Circle().shift(RIGHT * 3)\nself.play(Succession(Rotate(s, PI, rate_func=linear), FadeOut(s), run_time=2), Create(c, run_time=4))')
+        self.assertEqual(len(result['frames'][30]['mobjects']), 1)
+        self.assertEqual(len(result['frames'][59]['mobjects']), 1)
+        self.assertEqual(result['duration'], 4)
+        result = render('s = Square()\nself.play(Succession(Rotate(s, PI, rate_func=linear), Rotate(s, PI, rate_func=linear)), run_time=4)')
+        self.assertAlmostEqual(result['frames'][45]['mobjects'][0]['angle'], 3 * lite.PI / 2)
+
+    def test_succession_conflicts_and_invalid_options_are_explicit(self):
+        for body in ('s = Square()\nself.play(Succession(Create(s), Rotate(s)), FadeOut(s))',
+                     's = Square()\nself.play(Succession(AnimationGroup(Create(s), Rotate(s)), FadeOut(s)))'):
+            with self.assertRaisesRegex(ValueError, 'one animation per object'):
+                render(body)
+        with self.assertRaises(NotImplementedError):
+            lite.Succession(lite.Create(lite.Dot()), lag_ratio=0.5)
+        with self.assertRaises(TypeError):
+            lite.Succession()
+        with self.assertRaises(ValueError):
+            lite.Succession(lite.Create(lite.Dot()), run_time=float('inf'))
+
+    def test_succession_same_animation_instance_and_final_cleanup(self):
+        result = render('s = Square()\na = Rotate(s, PI / 2, rate_func=linear)\nself.play(Succession(a, a, FadeOut(s)))\nself.wait(1)')
+        self.assertAlmostEqual(result['frames'][15]['mobjects'][0]['angle'], lite.PI / 2)
+        self.assertEqual(result['frames'][-1]['mobjects'], [])
+
+    def test_completed_groups_hold_terminal_state_even_with_returning_easing(self):
+        for group in ('Succession', 'AnimationGroup'):
+            result = render(f'a = Dot()\nb = Square().shift(RIGHT * 3)\nself.play({group}(FadeOut(a), rate_func=there_and_back), Create(b, run_time=3))')
+            self.assertEqual(len(result['frames'][15]['mobjects']), 1)
+            self.assertEqual(len(result['frames'][44]['mobjects']), 1)
+
+    def test_succession_relative_animate_chains_accumulate_from_stage_starts(self):
+        result = render('s = Square().save_state()\nself.play(Succession(s.animate.shift(RIGHT * 2), s.animate.shift(UP * 2).scale(2)))\nself.play(s.animate.restore())')
+        self.assertEqual(result['frames'][15]['mobjects'][0]['position'], [2, 0, 0])
+        self.assertEqual(result['frames'][22]['mobjects'][0]['position'][0], 2)
+        self.assertEqual(result['frames'][30]['mobjects'][0]['position'], [2, 2, 0])
+        self.assertEqual(result['frames'][30]['mobjects'][0]['geometry_scale'], 2)
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['position'], [0, 0, 0])
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['geometry_scale'], 1)
+
+    def test_delayed_animate_methods_resolve_current_layout_reference(self):
+        result = render('a = Square()\nb = Square().shift(RIGHT * 3)\nself.play(Succession(b.animate.shift(UP * 2), a.animate.next_to(b, LEFT)))')
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['position'], [3, 2, 0])
+        self.assertEqual(result['frames'][-1]['mobjects'][1]['position'], [0.75, 2, 0])
+
+    def test_succession_gallery_example_completes_all_steps(self):
+        result = json.loads(lite.render_scene((ROOT / 'examples/succession_scene.py').read_text()))
+        self.assertEqual(result['duration'], 10)
+        self.assertEqual([m['type'] for m in result['frames'][15]['mobjects']], ['text', 'square'])
+        self.assertEqual([m['type'] for m in result['frames'][105]['mobjects']], ['text', 'circle'])
+        self.assertEqual([m['type'] for m in result['frames'][-1]['mobjects']], ['text'])
+
     def test_mathtex_serialization_and_constructor_validation(self):
         formula = lite.MathTex('a^2', '+ b^2', arg_separator=' ', color=lite.BLUE, font_size=36)
         self.assertEqual(formula.to_dict()['type'], 'mathtex')
