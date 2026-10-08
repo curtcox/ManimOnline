@@ -898,3 +898,40 @@ and group highlights, followed by two sequential flashes on the same object.
 Local Pyodide playback verified yellow/blue sections aligned with gray original
 outlines at two seconds and their removal at nine seconds. Switching to the DOT
 example rendered Editor → Render → Preview successfully.
+
+## Linear numeric coordinates
+
+NumberLine supplies the linear coordinate foundation for graphing, following the
+[official NumberLine API](https://docs.manim.community/en/stable/reference/manim.mobject.graphing.number_line.NumberLine.html).
+The renderer sees an existing VGroup containing a tagged shaft, optional tip,
+ticks and numeric labels. Child roles are strings rather than object references,
+so snapshots remain JSON-safe and copy/restoration do not leave stale aliases.
+The complete group participates in creation, transformation and animation.
+General geometry-bearing family/path semantics remain open.
+
+Numeric conversion interpolates the current world shaft endpoints and allows
+extrapolation. Inverse conversion projects onto the shaft direction, including
+points away from it, and rejects a collapsed shaft. Queries compose the shaft
+transform with the NumberLine parent transform. During animation, dependent
+updaters read the temporarily exposed sampled family and parent pivot; they do
+not use the held terminal geometry early. Lists/tuples of scalar numbers are
+accepted by n2p; NumPy arrays and batch inverse conversion remain open.
+
+Ticks crossing zero use multiples of the configured step; wholly positive or
+negative ranges begin at their minimum. Tip endpoints exclude the final tick.
+Numeric labels use DecimalNumber's existing SVG text and decimal formatting;
+font metrics, TeX label factories and logarithmic scaling remain open. Tick and
+label additions are limited to 1000 each. Decoration construction validates
+before insertion. On a transformed NumberLine, new world geometry is mapped
+into parent coordinates and its changed bounding-box pivot is compensated,
+keeping existing world endpoints and decoration positions fixed.
+
+Python checks cover range/length/format validation, bounded additions, zero
+anchoring, tips and elongated ticks, scalar/batch conversion, projection and
+extrapolation, rotation/scaling, transformed decoration insertion, copies,
+restoration, animated resizing and dependent marker sampling. Local Pyodide
+playback verified the marker at the tracked numeric position while the shaft
+rotated/shrank/moved. At eleven seconds, restoration returned a horizontal line
+and the marker/readout to zero. Switching to DOT rendered the editor flow graph.
+Axes, NumberPlane, function plotting and the remaining graphing APIs are still
+implementation work.

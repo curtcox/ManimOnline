@@ -165,3 +165,11 @@ Read `examples/passing_flash_scene.py` for ShowPassingFlash, simultaneous group
 highlights and sequence reuse. Clip snapshot copies; keep group pivots fixed as
 child bounds change. Validate every outline before introducing a group, remove
 the flash at completion, and retain its live geometry for subsequent animations.
+
+Read `examples/number_line_scene.py` for NumberLine numeric coordinates, labels,
+marker updaters and saved-view restoration. NumberLine serializes through the
+group renderer; shaft/ticks/numbers/tip roles identify children without storing
+Mobject references in frame JSON. Conversions apply both shaft and parent
+transforms, including temporarily exposed animation samples. When adding world
+decorations, invert the parent transform and compensate for its changed bounds
+pivot; existing geometry must stay fixed. Axes and function plotting remain open.

@@ -715,3 +715,34 @@ at once. Groups highlight their supported children simultaneously while keeping
 their original transform pivots. The removed object retains its geometry and can
 be reused in `Succession`. Glyphs, arrows and per-child flash delays remain open.
 Try **Traveling outline highlights** (`examples/passing_flash_scene.py`).
+
+`NumberLine(x_range=[minimum, maximum, step])` provides linear numeric
+coordinates with a shaft, ticks and optional numeric labels. A two-item range
+uses step 1; ranges increase and steps are positive. `length` sets the displayed
+shaft length, or `unit_size` sets scene units per number. `number_to_point`/`n2p`
+convert a number (or list/tuple of numbers) to positions; `point_to_number`/`p2n`
+project a point back onto the shaft. Both conversions extrapolate outside the
+range and follow the number line's current shift, rotation and uniform scale.
+`line @ number` and `point @ line` are equivalent shortcuts.
+
+Options include `include_ticks`, `tick_size`, `numbers_with_elongated_ticks`,
+`longer_tick_multiple`, `exclude_origin_tick`, `rotation`, and `include_tip` with
+`tip_width`/`tip_height`. A range crossing zero anchors ticks at multiples of its
+step; other ranges start ticks at the minimum. A tip suppresses a tick exactly at
+the maximum. `get_tick_range`, `get_tick`, `get_tick_marks`, `get_start`/`get_end`,
+`get_length`, `get_unit_size`, `get_unit_vector` and `get_angle` inspect geometry.
+`point_from_proportion` follows the shaft. `set_length` also works in `.animate`.
+
+Use `include_numbers=True` or `numbers_to_include` for labels, with
+`numbers_to_exclude`, `font_size`, `label_direction`, `line_to_number_buff` and
+`decimal_number_config` controlling numeric formatting. `add_numbers` and
+`add_ticks` add independent decoration groups; `.numbers`, `.ticks` and `.tip`
+access the latest matching group/tip. `get_number_mobject` makes a standalone
+label. Adding decorations preserves existing world positions, including on
+transformed lines. Labels use the existing centered SVG numeric text; glyph
+metrics and native TeX label construction remain open. Ticks/labels are bounded
+to 1000 per addition. Inverse conversion and decoration insertion require a
+noncollapsed shaft. NumberLine uses the existing group renderer: animations
+target the complete line, and raw partial-curve APIs do not target its shaft.
+Logarithmic scaling, NumPy coordinate arrays, Axes and function plots remain open.
+Try **Follow numeric coordinates** (`examples/number_line_scene.py`).

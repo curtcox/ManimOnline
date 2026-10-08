@@ -58,6 +58,12 @@ RoundedRectangle now uses closed cubic outlines for circular/concave corners,
 per-corner morphing, path following and restoration; general polygon rounding
 and rectangle grids remain open.
 
+NumberLine now supplies linear numeric conversion, ticks, numeric labels,
+world-space extrapolation/projection and transform-aware marker updates. Python
+checks cover transformed insertion without axis drift, sampling, validation,
+length changes and restoration. Graphing still needs Axes, NumberPlane, function
+plots and broader coordinate/graph APIs.
+
 Full Community parity additionally requires general geometry/path morphing, full scene-family
 composition and layering, 3D cameras and advanced camera APIs (2D settings, moving-camera pan/zoom and automatic bounds fitting now have Python/SVG tests), glyph-level text/TeX
 semantics (basic DecimalNumber/Integer numeric labels now implemented), broader updater utilities (Mobject callbacks, real ValueTracker always_redraw and TracedPath now implemented), graphing, 3D, rendering/video output, and broad API/package

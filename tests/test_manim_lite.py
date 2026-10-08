@@ -16,6 +16,138 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_number_line_default_range_ticks_and_numeric_labels(self):
+        line = lite.NumberLine([-2,2,.5],length=8,include_numbers=True,
+                               numbers_to_exclude=[0],numbers_with_elongated_ticks=[1])
+        self.assertPointAlmostEqual(line.get_start(),(-4,0,0))
+        self.assertPointAlmostEqual(line.get_end(),(4,0,0))
+        self.assertEqual(line.get_unit_size(),2)
+        self.assertEqual(line.get_tick_range(),[-2,-1.5,-1,-.5,0,.5,1,1.5,2])
+        self.assertEqual(len(line.get_tick_marks()),9)
+        self.assertEqual([n.text for n in line.numbers],['-2.0','-1.5','-1.0','-0.5','0.5','1.0','1.5','2.0'])
+        self.assertAlmostEqual(line.ticks[6].get_length(),.4)
+        self.assertAlmostEqual(line.ticks[5].get_length(),.2)
+        self.assertEqual(lite.NumberLine([1,3]).get_length(),2)
+        self.assertEqual(lite.NumberLine([0,1,1e-7],include_ticks=False).decimal_number_config['num_decimal_places'],7)
+        self.assertEqual(lite.NumberLine().n2p(0),lite.ORIGIN)
+        json.dumps(line.to_dict(),allow_nan=False)
+
+    def test_number_line_coordinate_round_trip_and_off_axis_projection(self):
+        line = lite.NumberLine([2,8,2],length=9,include_tip=True,include_numbers=True,
+                               rotation=.3).rotate(.4).scale(1.7).shift(lite.UP*2)
+        values = [-4,2,3.5,8,12]
+        points = line.n2p(values)
+        for value,point in zip(values,points):
+            self.assertAlmostEqual(line.p2n(point),value)
+            self.assertPointAlmostEqual(line @ value,point)
+            self.assertAlmostEqual(point @ line,value)
+        start,end = line.get_start_and_end()
+        self.assertPointAlmostEqual(line.n2p(2),start)
+        self.assertPointAlmostEqual(line.n2p(8),end)
+        vector = line.get_vector()
+        normal = lite.Vector((-vector[1],vector[0],0))
+        self.assertAlmostEqual(line.p2n(line.n2p(4)+normal),4)
+        self.assertPointAlmostEqual(line.point_from_proportion(.5),line.n2p(5))
+        self.assertPointAlmostEqual(line.get_unit_vector(),line.n2p(6)-line.n2p(5))
+
+    def test_number_line_ticks_anchor_origin_and_tip_preserves_end(self):
+        line = lite.NumberLine([-1.2,2.2,.5],length=6,include_tip=True,exclude_origin_tick=True,rotation=lite.PI/2)
+        self.assertEqual(line.get_tick_range(),[-1,-.5,.5,1,1.5,2])
+        self.assertPointAlmostEqual(line.tip.vertices[0],line.get_end())
+        tick = line.get_tick(1)
+        self.assertAlmostEqual(tick.get_length(),.2)
+        self.assertAlmostEqual(tick.get_vector()[1],0)
+        self.assertPointAlmostEqual(tick.get_center(),line.n2p(1))
+        self.assertEqual(lite.NumberLine([1,3,1],include_tip=True).get_tick_range(),[1,2])
+        self.assertEqual(lite.NumberLine([-3,-1,1]).get_tick_range(),[-3,-2,-1])
+        self.assertEqual(lite.NumberLine([0,2],include_ticks=False,numbers_to_include=[.25,1.5]).numbers[0].get_value(),.25)
+
+    def test_number_line_decorations_preserve_transformed_existing_geometry(self):
+        for scale in (1.5,-1.5):
+            line = lite.NumberLine([-3,3],length=6,include_ticks=False).rotate(.7).scale(scale).shift(lite.UR)
+            start,end = line.get_start_and_end()
+            desired = line.get_number_mobject(1,direction=lite.UP,buff=.4)
+            line.add_numbers([1],direction=lite.UP,buff=.4)
+            self.assertPointAlmostEqual(line.get_start(),start)
+            self.assertPointAlmostEqual(line.get_end(),end)
+            self.assertPointAlmostEqual(line._point_to_world(line.numbers[0].get_center()),desired.get_center())
+            self.assertAlmostEqual(line.numbers[0].angle+line.angle,0)
+            self.assertAlmostEqual(line.numbers[0].geometry_scale*line.geometry_scale,1)
+            line.add_ticks()
+            self.assertPointAlmostEqual(line.get_start(),start)
+            self.assertPointAlmostEqual(line.get_end(),end)
+            for value,tick in zip(line.get_tick_range(),line.ticks):
+                self.assertPointAlmostEqual(line._point_to_world(tick.get_center()),line.n2p(value))
+
+    def test_number_line_copies_restoration_and_length_changes(self):
+        line = lite.NumberLine([-2,4],unit_size=2,include_numbers=True).shift(lite.DOWN).save_state()
+        copied = line.copy()
+        copied.numbers[0].set_color(lite.RED)
+        self.assertNotEqual(copied.numbers[0].color,line.numbers[0].color)
+        midpoint = (line.get_start()+line.get_end())*.5
+        line.set_length(3)
+        self.assertEqual(line.get_length(),3)
+        self.assertPointAlmostEqual((line.get_start()+line.get_end())*.5,midpoint)
+        line.restore()
+        self.assertEqual(line.get_length(),12)
+        scene = lite.Scene().add(line)
+        scene.play(line.animate.set_length(6),run_time=1,rate_func=lite.linear)
+        self.assertEqual(line.get_length(),6)
+        self.assertEqual(len(scene.frames[7]['mobjects'][0]['children']),3)
+
+    def test_number_line_invalid_inputs_are_atomic_and_bounded(self):
+        for values in ([0,0],[2,1],[0,1,0],[0,1,-1],[0,float('inf')],[0,True],[0],[-1e308,1e308]):
+            with self.assertRaises(ValueError): lite.NumberLine(values)
+        for kwargs in ({'length':0},{'unit_size':-1},{'tick_size':-1},{'rotation':float('nan')},
+                       {'include_ticks':1},{'tip_width':0},{'label_direction':lite.ORIGIN},
+                       {'numbers_to_include':[float('nan')]},{'decimal_number_config':{'num_decimal_places':-1}}):
+            with self.assertRaises(ValueError): lite.NumberLine(**kwargs)
+        with self.assertRaises(ValueError): lite.NumberLine([0,1,.00001])
+        with self.assertRaises(NotImplementedError): lite.NumberLine(label_direction=lite.OUT)
+        with self.assertRaises(NotImplementedError): lite.NumberLine(scaling='logarithmic')
+        line = lite.NumberLine([0,2]).rotate(.4).scale(2)
+        before = line.to_dict()
+        for values in ([0,float('nan')],[0]*1001):
+            with self.assertRaises(ValueError): line.add_numbers(values)
+            self.assertEqual(line.to_dict(),before)
+        with self.assertRaises(ValueError): line.n2p(True)
+        with self.assertRaises(ValueError): line.p2n([float('inf'),0,0])
+        with self.assertRaises(ValueError): line.point_from_proportion(2)
+        line.scale(0)
+        before = line.to_dict()
+        with self.assertRaises(ValueError): line.p2n(lite.ORIGIN)
+        with self.assertRaises(ValueError): line.add_numbers([1])
+        self.assertEqual(line.to_dict(),before)
+
+    def test_number_line_sampled_coordinates_drive_dependent_updaters(self):
+        result = render('line = NumberLine([-2,2],length=4,include_numbers=True)\n'
+                        'dot = Dot(line.n2p(1))\n'
+                        'dot.add_updater(lambda m: m.move_to(line.n2p(1)))\n'
+                        'self.add(line,dot)\n'
+                        'self.play(line.animate.rotate(PI/2).scale(2).shift(UP),run_time=2,rate_func=linear)')
+        for index in (0,7,15,29,30):
+            data = result['frames'][index]['mobjects'][0]
+            line = lite.NumberLine([-2,2],length=4,include_numbers=True)
+            line.position = data['position']
+            line.angle,line.geometry_scale = data['angle'],data['geometry_scale']
+            line._sampled_geometry_center = data['geometry_center']
+            self.assertPointAlmostEqual(result['frames'][index]['mobjects'][1]['position'],line.n2p(1))
+
+    def test_number_line_gallery_tracker_and_restore(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/number_line_scene.py').read_text()))
+        self.assertEqual(result['duration'],11)
+        middle = result['frames'][90]['mobjects']
+        line = next(m for m in middle if m['type'] == 'vgroup')
+        self.assertGreater(line['angle'],0)
+        self.assertLess(line['geometry_scale'],1)
+        final = result['frames'][-1]['mobjects']
+        self.assertEqual(next(m for m in final if m['type'] == 'text')['text'],'0.0')
+        line = next(m for m in final if m['type'] == 'vgroup')
+        self.assertEqual(line['angle'],0)
+        self.assertEqual(line['geometry_scale'],1)
+        dot = next(m for m in final if m['type'] == 'circle')
+        self.assertPointAlmostEqual(dot['position'],lite.ORIGIN)
+
     def test_passing_flash_exact_window_and_reusable_source(self):
         source = lite.CubicBezier(lite.LEFT*3,lite.UP*2,lite.DOWN*2,lite.RIGHT*3).rotate(.4)
         source.set_stroke(color=lite.YELLOW,width=7).save_state()

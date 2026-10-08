@@ -1411,6 +1411,253 @@ class VGroup(Group):
     pass
 
 
+class NumberLine(VGroup):
+    """Linear XY coordinates, composed from a shaft, ticks and numeric labels."""
+    def __init__(self, x_range=None, length=None, unit_size=1, include_ticks=True,
+                 tick_size=.1, numbers_with_elongated_ticks=None, longer_tick_multiple=2,
+                 exclude_origin_tick=False, rotation=0, include_tip=False,
+                 tip_width=.35, tip_height=.35, include_numbers=False, font_size=36,
+                 label_direction=DOWN, line_to_number_buff=.25,
+                 decimal_number_config=None, numbers_to_exclude=None,
+                 numbers_to_include=None, **kwargs):
+        radius = max(1, round(config.frame_width/2))
+        values = list(x_range) if x_range is not None else [-radius,radius,1]
+        if len(values) == 2:
+            values.append(1)
+        if len(values) != 3:
+            raise ValueError('NumberLine x_range needs [minimum, maximum, positive step]')
+        for value in values:
+            self._real(value, 'NumberLine range')
+        if values[0] >= values[1] or values[2] <= 0 or not math.isfinite(values[1]-values[0]):
+            raise ValueError('NumberLine range must increase and have a positive step')
+        for value, name in ((unit_size,'unit_size'),(font_size,'font_size'),
+                            (tip_width,'tip_width'),(tip_height,'tip_height')):
+            self._real(value,name,positive=True)
+        for value, name in ((tick_size,'tick_size'),(longer_tick_multiple,'longer_tick_multiple'),
+                            (line_to_number_buff,'line_to_number_buff')):
+            self._real(value,name,nonnegative=True)
+        self._real(rotation,'rotation')
+        if not all(isinstance(v,bool) for v in
+                   (include_ticks,exclude_origin_tick,include_tip,include_numbers)):
+            raise ValueError('NumberLine inclusion flags must be booleans')
+        label_direction = self._direction(label_direction)
+        length = (values[1]-values[0])*unit_size if length is None else length
+        self._real(length,'length',positive=True)
+        super().__init__(**kwargs)
+        self.x_range = values[:]
+        self.x_min,self.x_max,self.x_step = values
+        self.tick_size,self.longer_tick_multiple = tick_size,longer_tick_multiple
+        self.include_tip,self.exclude_origin_tick = include_tip,exclude_origin_tick
+        self.font_size,self.label_direction = font_size,list(label_direction)
+        self.line_to_number_buff = line_to_number_buff
+        self.numbers_with_elongated_ticks = self._numbers(numbers_with_elongated_ticks or [])
+        self.numbers_to_exclude = self._numbers(numbers_to_exclude or [])
+        self.numbers_to_include = None if numbers_to_include is None else self._numbers(numbers_to_include)
+        decimals = len(format(values[2],'.12f').rstrip('0').split('.')[-1])
+        self.decimal_number_config = dict(decimal_number_config) if decimal_number_config is not None else dict(num_decimal_places=decimals)
+        # Validate label formatting even when labels are deferred.
+        DecimalNumber(0,font_size=font_size,**self.decimal_number_config)
+        shaft = Line(LEFT*(length/2),RIGHT*(length/2),color=self.color,
+                     stroke_color=self.stroke_color,stroke_width=self.stroke_width,
+                     stroke_opacity=self.stroke_opacity).rotate(rotation)
+        shaft._number_line_role = 'shaft'
+        self.add(shaft)
+        if include_tip:
+            end = shaft.get_end()
+            direction = shaft.get_unit_vector()
+            normal = Vector((-direction[1],direction[0],0))
+            base = end - direction*tip_height
+            tip = Polygon(end,base+normal*(tip_width/2),base-normal*(tip_width/2),
+                          color=self.stroke_color,fill_opacity=1,
+                          stroke_width=self.stroke_width,stroke_opacity=self.stroke_opacity)
+            tip._number_line_role = 'tip'
+            self.add(tip)
+        if include_ticks:
+            self.add_ticks()
+        if include_numbers or self.numbers_to_include is not None:
+            self.add_numbers(self.numbers_to_include)
+
+    @staticmethod
+    def _real(value, name, positive=False, nonnegative=False):
+        if (isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value)
+                or positive and value <= 0 or nonnegative and value < 0):
+            raise ValueError(name + ' must be a finite real value' + (' greater than zero' if positive else ''))
+        return value
+
+    @classmethod
+    def _numbers(cls, values):
+        result = list(values)
+        if len(result) > 1000:
+            raise ValueError('NumberLine supports at most 1000 ticks or labels per addition')
+        for value in result:
+            cls._real(value,'NumberLine value')
+        return result
+
+    @staticmethod
+    def _direction(value):
+        direction = Vector(value)
+        if not all(math.isfinite(v) for v in direction) or direction == ORIGIN:
+            raise ValueError('NumberLine label direction must be finite and nonzero')
+        if direction[2]:
+            raise NotImplementedError('NumberLine supports only XY label directions')
+        return direction
+
+    def _part(self, role):
+        for child in reversed(self.children):
+            if child.__dict__.get('_number_line_role') == role:
+                return child
+        raise ValueError('NumberLine has no ' + role)
+
+    @property
+    def ticks(self):
+        return self._part('ticks')
+
+    @property
+    def numbers(self):
+        return self._part('numbers')
+
+    @property
+    def tip(self):
+        return self._part('tip')
+
+    def get_start(self):
+        return self._point_to_world(self._part('shaft').get_start())
+
+    def get_end(self):
+        return self._point_to_world(self._part('shaft').get_end())
+
+    get_start_and_end = Line.get_start_and_end
+    get_vector = Line.get_vector
+    get_length = Line.get_length
+    get_angle = Line.get_angle
+
+    def get_unit_size(self):
+        return self.get_length()/(self.x_max-self.x_min)
+
+    def get_unit_vector(self):
+        return self.get_vector()*(1/(self.x_max-self.x_min))
+
+    def set_length(self, length):
+        self._real(length,'length',positive=True)
+        current = self.get_length()
+        if current == 0:
+            raise ValueError('Cannot resize a collapsed NumberLine')
+        return self.scale(length/current,about_point=(self.get_start()+self.get_end())*.5)
+
+    def point_from_proportion(self, alpha):
+        self._real(alpha,'Path proportion')
+        if not 0 <= alpha <= 1:
+            raise ValueError('Path proportion must be between zero and one')
+        return self.get_start() + self.get_vector()*alpha
+
+    def number_to_point(self, number):
+        if isinstance(number,(list,tuple)):
+            return [self.number_to_point(value) for value in self._numbers(number)]
+        self._real(number,'NumberLine value')
+        result = self.get_start()+self.get_vector()*((number-self.x_min)/(self.x_max-self.x_min))
+        if not all(math.isfinite(v) for v in result):
+            raise ValueError('NumberLine coordinates must be finite')
+        return result
+
+    n2p = number_to_point
+
+    def point_to_number(self, point):
+        point = Vector(point)
+        if not all(math.isfinite(v) for v in point):
+            raise ValueError('NumberLine point must be finite')
+        start, end = self.get_start_and_end()
+        direction = end-start
+        length = math.hypot(*direction)
+        if length == 0:
+            raise ValueError('Cannot convert coordinates on a collapsed NumberLine')
+        alpha = sum(a*(b/length) for a,b in zip(point-start,direction))/length
+        return self._real(self.x_min+alpha*(self.x_max-self.x_min),'NumberLine result')
+
+    p2n = point_to_number
+
+    def __matmul__(self, number):
+        return self.n2p(number)
+
+    def __rmatmul__(self, point):
+        return self.p2n(point)
+
+    def get_tick_range(self):
+        span = (self.x_max-self.x_min)/self.x_step
+        if not math.isfinite(span) or span > 999:
+            raise ValueError('NumberLine supports at most 1000 ticks or labels per addition')
+        if self.x_min > 0 or self.x_max < 0:
+            values = [self.x_min+i*self.x_step for i in range(math.floor(span+1e-9)+1)]
+        else:
+            lo = math.ceil(self.x_min/self.x_step-1e-9)
+            hi = math.floor(self.x_max/self.x_step+1e-9)
+            values = [i*self.x_step for i in range(lo,hi+1)]
+        return [value for value in values if
+                not (self.include_tip and abs(value-self.x_max) <= 1e-9)
+                and not (self.exclude_origin_tick and value == 0)]
+
+    def get_tick(self, x, size=None):
+        size = self.tick_size if size is None else size
+        self._real(size,'tick size',nonnegative=True)
+        vector = self.get_vector()
+        length = self.get_length()
+        if length == 0:
+            raise ValueError('Cannot place ticks on a collapsed NumberLine')
+        normal = Vector((-vector[1],vector[0],0))*(size/length)
+        point = self.n2p(x)
+        return Line(point-normal,point+normal,color=self.stroke_color,
+                    stroke_width=self.stroke_width,stroke_opacity=self.stroke_opacity)
+
+    def _add_world_decoration(self, decoration, role):
+        # New geometry is positioned in world coordinates. Invert this parent,
+        # then compensate for its changed bounding-box pivot after insertion.
+        if self.geometry_scale == 0:
+            raise ValueError('Cannot add decorations to a collapsed NumberLine')
+        center = self._geometry_center()
+        def local(point):
+            offset = Vector(point)-Vector(self.position)-center
+            return center+Vector((offset[0]*math.cos(self.angle)+offset[1]*math.sin(self.angle),
+                                  -offset[0]*math.sin(self.angle)+offset[1]*math.cos(self.angle),0))*(1/self.geometry_scale)
+        for child in decoration.children:
+            if isinstance(child, Line):
+                child.put_start_and_end_on(local(child.get_start()),local(child.get_end()))
+            else:
+                child.move_to(local(child.get_center()))
+                child.angle -= self.angle
+                child.geometry_scale /= self.geometry_scale
+        decoration._number_line_role = role
+        self.add(decoration)
+        delta = center-self._geometry_center()
+        rotated = Vector((delta[0]*math.cos(self.angle)-delta[1]*math.sin(self.angle),
+                          delta[0]*math.sin(self.angle)+delta[1]*math.cos(self.angle),0))*self.geometry_scale
+        self.shift(delta-rotated)
+        return self
+
+    def add_ticks(self):
+        ticks = VGroup(*(self.get_tick(value,self.tick_size*(self.longer_tick_multiple
+                         if value in self.numbers_with_elongated_ticks else 1))
+                         for value in self.get_tick_range()))
+        return self._add_world_decoration(ticks,'ticks')
+
+    def get_tick_marks(self):
+        return self.ticks
+
+    def get_number_mobject(self, x, direction=None, buff=None, font_size=None, **number_config):
+        direction = self._direction(self.label_direction if direction is None else direction)
+        buff = self.line_to_number_buff if buff is None else buff
+        self._real(buff,'label buffer',nonnegative=True)
+        options = dict(self.decimal_number_config,**number_config)
+        options.setdefault('color',self.color)
+        return DecimalNumber(x,font_size=self.font_size if font_size is None else font_size,
+                             **options).next_to(self.n2p(x),direction=direction,buff=buff)
+
+    def add_numbers(self, x_values=None, excluding=None, font_size=None, **kwargs):
+        values = self.get_tick_range() if x_values is None else self._numbers(x_values)
+        excluding = self.numbers_to_exclude if excluding is None else self._numbers(excluding)
+        labels = VGroup(*(self.get_number_mobject(value,font_size=font_size,**kwargs)
+                          for value in values if value not in excluding))
+        return self._add_world_decoration(labels,'numbers')
+
+
 def linear(t):
     return t
 
@@ -1973,7 +2220,7 @@ class Animate(Transform):
     def __getattr__(self, name):
         if name.startswith('__'):
             raise AttributeError(name)
-        if name not in ('become', 'set_value', 'increment_value', 'shift', 'move_to', 'set_width', 'set_height', 'move_arc_center_to', 'put_start_and_end_on', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'pointwise_become_partial', 'set_points', 'append_points', 'clear_points', 'add_subpath', 'append_vectorized_mobject', 'start_new_path', 'close_path', 'set_points_as_corners', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
+        if name not in ('become', 'set_value', 'increment_value', 'shift', 'move_to', 'set_width', 'set_height', 'set_length', 'move_arc_center_to', 'put_start_and_end_on', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'pointwise_become_partial', 'set_points', 'append_points', 'clear_points', 'add_subpath', 'append_vectorized_mobject', 'start_new_path', 'close_path', 'set_points_as_corners', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
             raise NotImplementedError(f'animate.{name} is not supported yet')
         def apply(*args, **kwargs):
             getattr(self.target, name)(*args, **kwargs)
@@ -2299,7 +2546,7 @@ class MovingCameraScene(Scene):
 
 
 EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'Arrow',
-           'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'Create', 'Write', 'FadeIn',
+           'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform', 'UP', 'DOWN', 'LEFT',
