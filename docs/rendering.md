@@ -42,7 +42,17 @@ comments before scoring, avoiding language keywords inside scene text/labels.
 one second of quiet. Explicit rendering cancels both timers, and revision guards
 discard callbacks already queued for superseded edits. Browser checks covered
 manual selection/reload, forced-renderer errors, Auto recovery, literal filtering,
-and gallery reset. Sharing-service responses remain a separate acceptance gate.
+and gallery reset.
+
+Share captures the latest source and relevant scene/renderer/DOT options in an
+immediately copyable local link. Old source parameters are removed. Editing
+invalidates the link and cancels pending optional shortening. `ShareClient`
+bounds AllOrigins/is.gd requests and response reading to ten seconds, validates
+the returned URL, and retains the source link on failure. Tests simulate service
+success, failure, stalled bodies, cancellation, and stale results. Local browser
+round trips restored RotatingSquare with its Manim override and neato/plain DOT
+output; changing the scene cleared an outdated link. Live shortening-service
+availability remains unverified.
 
 At viewport widths up to 760 pixels, panels stack and code wraps; the toolbar
 scrolls when needed and playback controls have larger touch targets. The code

@@ -12,8 +12,8 @@ has been asked of the user; do not silently equate the current subset with eithe
 | --- | --- | --- |
 | Basic shapes and animations | Python frame tests, SVG renderer tests, Pyodide browser playback | Browser compatibility matrix, broader examples |
 | Worker execution and hard Python timeout | ManimClient deadline/cancellation tests | Recheck real runaway Python and recovery across browsers |
-| Automatic detection and edit debounce | Literal/comment filtering, manual renderer selector with URL aliases, detector/scheduler tests, browser override/reload/recovery/gallery checks | Sharing-service checks; broader ambiguous-source coverage |
-| Scene selection and URL reload | Browser selection/reload checks | Full sharing-service success/failure checks |
+| Automatic detection and edit debounce | Literal/comment filtering, manual renderer selector with URL aliases, detector/scheduler tests, browser override/reload/recovery/gallery checks | Live sharing-service checks; broader ambiguous-source coverage |
+| Scene selection and URL reload | Source-link snapshots, scene/type/DOT options, shortening failure/deadline/stale-response tests | Live shortening availability |
 | Gallery | Bundled catalog, stale-load tests, browser loading | Preserve catalog acceptance as APIs change |
 | MathTex | Python/backend/renderer tests, real formula SVG paths and export | Glyph bounds, substring APIs, tracing, broader formula coverage |
 | SVG/PNG export for both renderers | Graphviz supports both; Manim exports current SVG or 800 × 450 PNG snapshot, with rasterization failure/cleanup tests | Browser export checks across supported browsers |

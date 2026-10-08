@@ -15,6 +15,7 @@ compatibility layer, not a server running full Manim Community.
 4. `src/unified-worker.js` and `src/manim-client.js` for execution and deadlines.
 5. `src/manim-renderer.js`, `src/manim-player.js`, and `src/detector.js`.
    `src/render-scheduler.js` coalesces editor/scene edits and cancels stale callbacks.
+   `src/share-links.js` snapshots local share links and bounds optional shortening.
 6. `docs/rendering.md` for current gaps and next milestones.
    `src/examples.js` contains the editor gallery catalog and stale-load protection.
    `src/manim-math.js` prepares vector formula glyphs for playback and SVG export.

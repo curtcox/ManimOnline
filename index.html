@@ -530,7 +530,9 @@ class HelloWorld(Scene):
       <input type="button" value="Share" id="share">
     </label>
 
-    <input type="input" value="" id="shareurl">
+    <input type="text" value="" id="shareurl" aria-label="Share link" readonly>
+    <button type="button" id="shorten-share" hidden>Shorten link</button>
+    <span id="share-status" role="status"></span>
 
   </div>
   <div id="review">
@@ -551,6 +553,7 @@ class HelloWorld(Scene):
   <script src="svg-pan-zoom.min.js" type="text/javascript" charset="utf-8"></script>
   <script src="src/detector.js?v=2"></script>
   <script src="src/render-scheduler.js?v=1"></script>
+  <script src="src/share-links.js?v=1"></script>
   <script src="src/manim-renderer.js?v=mathtex-1"></script>
   <script src="src/manim-client.js"></script>
   <script src="src/manim-player.js?v=mathtex-1"></script>
@@ -725,6 +728,36 @@ class HelloWorld(Scene):
 
       let renderRevision = 0;
       let player = null;
+      const shareClient = new ShareClient();
+      const shortenShare = document.getElementById('shorten-share');
+      const shareStatus = document.getElementById('share-status');
+      let shareSnapshot = null;
+      let shareFingerprint = '';
+      function currentShareFingerprint() {
+        return JSON.stringify([editor.getSession().getDocument().getValue(),
+          rendererMode.value, sceneNameInput.value, engineEl.value, formatEl.value]);
+      }
+      function clearShare() {
+        shareClient.cancel();
+        shareSnapshot = null;
+        shareFingerprint = '';
+        shareURLEl.value = '';
+        shareURLEl.style.display = 'none';
+        shortenShare.hidden = true;
+        shortenShare.disabled = false;
+        shareStatus.textContent = '';
+      }
+      shortenShare.addEventListener('click', async () => {
+        if (!shareSnapshot) return;
+        const snapshot = shareSnapshot;
+        shortenShare.disabled = true;
+        shareStatus.textContent = 'Shortening link…';
+        const result = await shareClient.shorten(snapshot);
+        if (snapshot !== shareSnapshot || !result) return;
+        shareURLEl.value = result.url;
+        shortenShare.disabled = false;
+        shareStatus.textContent = result.shortened ? 'Short link ready.' : 'Shortening unavailable. Use the source link.';
+      });
       const rendererMode = document.getElementById('renderer-mode');
       let exportingPNG = false;
       const frameFormat = document.getElementById('manim-export-format');
@@ -808,6 +841,7 @@ class HelloWorld(Scene):
       loadExampleButton.addEventListener('click', () => exampleLoader.load(examplePicker.value));
 
       function invalidateRender() {
+        if (shareSnapshot && shareFingerprint !== currentShareFingerprint()) clearShare();
         renderRevision++;
         exportStatus.textContent = '';
         if (manimClient.pending) manimClient.cancel();
@@ -888,40 +922,19 @@ class HelloWorld(Scene):
       }
 
       function copyShareURL(e) {
-        let content = encodeURIComponent(editor.getSession().getDocument().getValue());
-        const longUrl = new URL(location.href);
-        longUrl.hash = content;
-        applySceneToURL(longUrl);
-
-        shareEl.disabled = true;
-        let n = 0;
-        let animateId = setInterval(()=> { shareEl.value = "Loading" + ".".repeat(n++%3)}, 300)
-        fetch("https://api.allorigins.win/get?url=" + encodeURIComponent("https://is.gd/create.php?" + new URLSearchParams({
-          format: 'simple',
-          url: longUrl.toString(),
-        }).toString()))
-          .then((r) => {
-            if (r.ok) return r.json()
-            return new Error("network issues");
-          })
-          .then((rs) => {
-            shareURLEl.style.display = "inline";
-            shareURLEl.value = rs.contents;
-          }).catch((err) => {
-            const rawContent = editor.getSession().getDocument().getValue();
-            const compressedContent = LZString.compressToEncodedURIComponent(rawContent);
-
-            const compressedUrl = new URL(location.href);
-            compressedUrl.searchParams.append("compressed", compressedContent);
-            compressedUrl.hash = "";
-            applySceneToURL(compressedUrl);
-            shareURLEl.style.display = "inline";
-            shareURLEl.value = compressedUrl.toString();
-          }).finally(()=>{
-            clearInterval(animateId);
-            shareEl.value = "Share";
-            shareEl.disabled = false;
-          })
+        clearShare();
+        const code = editor.getSession().getDocument().getValue();
+        const mode = rendererMode.value;
+        shareSnapshot = ShareLinks.build({ url: location.href, code, mode,
+          type: mode === 'auto' ? ContentDetector.detect(code).type : mode,
+          scene: sceneNameInput.value, engine: engineEl.value, format: formatEl.value,
+          compress: typeof LZString === 'undefined' ? null : text => LZString.compressToEncodedURIComponent(text) });
+        shareFingerprint = currentShareFingerprint();
+        shareURLEl.style.display = 'inline';
+        shareURLEl.value = shareSnapshot.fallback;
+        shareURLEl.select();
+        shortenShare.hidden = false;
+        shareStatus.textContent = 'Source link ready to copy.';
       }
 
       // Detect content type and update UI
@@ -1142,6 +1155,7 @@ class HelloWorld(Scene):
 
       function updateState() {
         const updatedUrl = new URL(window.location)
+        for (const parameter of ['raw', 'compressed', 'url']) updatedUrl.searchParams.delete(parameter);
         const content = encodeURIComponent(editor.getSession().getDocument().getValue());
         updatedUrl.hash = content
         applySceneToURL(updatedUrl);
@@ -1179,7 +1193,7 @@ class HelloWorld(Scene):
       formatEl.addEventListener("change", render);
       engineEl.addEventListener("change", render);
       rawEl.addEventListener("change", render);
-      share.addEventListener("click", copyShareURL);
+      shareEl.addEventListener("click", copyShareURL);
 
       HTMLOptionsCollection.prototype.indexOf = function (name) {
         for (let i = 0; i < this.length; i++) {

@@ -28,5 +28,6 @@ jobs:
           node --check src/offline.js
           node --check src/render-scheduler.js
           node --check src/detector.js
+          node --check src/share-links.js
           node --check offline-assets.js
           node --check service-worker.js

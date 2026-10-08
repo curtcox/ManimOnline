@@ -290,8 +290,8 @@ limits or a failed CDN request can prevent setup; use **Retry offline setup**
 after reconnecting. Browser storage may be cleared or evicted later.
 
 Only the listed application assets are cached. External source links, URL
-shortening, and arbitrary Python packages still need a connection. Sharing has
-a local compressed-link fallback. A first-ever visit without a connection cannot
+shortening, and arbitrary Python packages still need a connection. Source links
+are generated locally and use compression when available. A first-ever visit without a connection cannot
 load the site; connect for the initial setup. If saved files are incomplete on
 an offline reload, the service worker shows a recovery page.
 
@@ -301,6 +301,21 @@ tabs too; each tab preserves its latest source and scene selection in its URL
 before reloading. Maintainers must bump the version in
 `offline-assets.js` when changing a cached local file. The pinned Python assets
 follow the [Pyodide deployment manifest](https://pyodide.org/en/0.27.0/usage/downloading-and-deploying.html).
+
+## Sharing scenes
+
+**Share** immediately selects a source link for copying. It contains the current
+code, selected scene, renderer override, and DOT engine/format when applicable.
+Source links use compression when available and work without a shortening
+service. Old `raw`, `compressed`, or external-source parameters are replaced,
+so a reload uses the latest edits. Changing source or rendering options clears
+the displayed link to avoid copying an outdated version.
+
+**Shorten link** optionally sends that captured source URL through the existing
+AllOrigins/is.gd services. If the request fails, stalls for ten seconds, or
+returns an invalid link, the source link remains available. Editing cancels
+pending shortening and ignores its later response. Tests simulate service
+success/failure; live shortening-service availability is not guaranteed.
 
 ## Verification
 
