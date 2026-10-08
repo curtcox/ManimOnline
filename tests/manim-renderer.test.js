@@ -11,6 +11,28 @@ class Element {
 }
 global.document = { createElementNS: (_namespace, tag) => new Element(tag) };
 
+test('disconnected cubic contours use separate moves and close individually', () => {
+  const path = renderer.renderMobject({type:'bezierpath',curves:[
+    [[0,0],[1,0],[1,1],[0,0]],
+    [[3,0],[4,0],[4,1],[3,0]],
+    [[5,0],[6,0],[6,0],[7,0]]
+  ],vertices:[[9,0]],draw_progress:.5});
+  const d = path.getAttribute('d');
+  assert.equal((d.match(/M /g)||[]).length,4);
+  assert.equal((d.match(/Z/g)||[]).length,2);
+  assert.equal((d.match(/C /g)||[]).length,3);
+  assert.ok(d.endsWith('M 450,0'));
+  assert.equal(path.getAttribute('stroke-dashoffset'),'0.5');
+});
+
+test('explicit aligned contour boundaries survive coincident collapsed endpoints', () => {
+  const path = renderer.renderMobject({type:'bezierpath',curves:[
+    [[0,0],[1,0],[1,1],[0,0]], [[0,0],[0,0],[0,0],[0,0]]
+  ],subpath_lengths:[1,1]});
+  assert.equal((path.getAttribute('d').match(/M /g)||[]).length,2);
+  assert.equal((path.getAttribute('d').match(/Z/g)||[]).length,2);
+});
+
 test('value trackers produce no SVG geometry even inside groups', () => {
   const svg = renderer.render({mobjects:[{type:'vgroup', children:[
     {type:'valuetracker',position:[2,0,0]}, {type:'circle',radius:1}

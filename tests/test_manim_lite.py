@@ -16,6 +16,101 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_disconnected_path_construction_pending_anchor_and_sampling(self):
+        self.assertEqual(lite.VMobject().set_points_as_corners([lite.UP]).get_subpaths(), [])
+        path = lite.VMobject().start_new_path(lite.ORIGIN)
+        self.assertTrue(path.has_new_path_started())
+        self.assertEqual(path.get_subpaths(), [])
+        self.assertEqual(path.get_start(), lite.ORIGIN)
+        self.assertEqual(path.point_from_proportion(.5), lite.ORIGIN)
+        path.add_line_to(lite.RIGHT)
+        self.assertFalse(path.has_new_path_started())
+        path.start_new_path(lite.RIGHT*10).add_cubic_bezier_curve_to(lite.RIGHT*11,lite.RIGHT*12,lite.RIGHT*13)
+        self.assertEqual([len(p) for p in path.get_subpaths()], [4,4])
+        self.assertEqual(path.point_from_proportion(.25), lite.RIGHT)
+        self.assertGreater(path.point_from_proportion(.251)[0], 10)
+        self.assertEqual(path.get_end(), lite.RIGHT*13)
+        before = path.to_dict()
+        with self.assertRaises(NotImplementedError): path.start_new_path(lite.OUT)
+        self.assertEqual(path.to_dict(), before)
+        path.start_new_path(lite.UP)
+        self.assertEqual(path.get_end(), lite.UP)
+        path.start_new_path(lite.DOWN)
+        self.assertEqual([len(p) for p in path.get_subpaths()], [4,4,4])
+        self.assertTrue(path.has_new_path_started())
+        path.set_points_as_corners([lite.ORIGIN,lite.RIGHT])
+        self.assertNotIn('curves', path.__dict__)
+        self.assertEqual(len(path.get_subpaths()), 1)
+
+    def test_disconnected_path_closure_reverse_transforms_and_independence(self):
+        path = lite.VMobject().set_points_as_corners([lite.ORIGIN,lite.RIGHT,lite.UP])
+        path.close_path().start_new_path(lite.RIGHT*3).add_line_to(lite.RIGHT*4).close_path()
+        self.assertEqual([len(p) for p in path.get_subpaths()], [12,8])
+        for subpath in path.get_subpaths(): self.assertEqual(subpath[0], subpath[-1])
+        saved = path.to_dict()
+        path.close_path()
+        self.assertEqual(path.to_dict(), saved)
+        path.save_state().reverse_direction()
+        self.assertEqual([len(p) for p in path.get_subpaths()], [8,12])
+        path.restore()
+        self.assertEqual(path.curves, saved['curves'])
+        clone = path.copy().shift(lite.RIGHT)
+        self.assertEqual(clone.get_subpaths()[0][0], lite.RIGHT)
+        self.assertEqual(path.get_subpaths()[0][0], lite.ORIGIN)
+        returned = clone.get_subpaths()
+        returned[0].clear()
+        self.assertEqual(len(clone.get_subpaths()[0]), 12)
+
+    def test_disconnected_alignment_matches_each_contour_even_with_equal_total_counts(self):
+        a = lite.VMobject().start_new_path(lite.ORIGIN).add_points_as_corners([lite.RIGHT,lite.UR])
+        a.start_new_path(lite.LEFT*3).add_line_to(lite.LEFT*4)
+        b = lite.VMobject().start_new_path(lite.UP).add_line_to(lite.UR)
+        b.start_new_path(lite.DOWN*3).add_points_as_corners([lite.DR*3,lite.RIGHT*4])
+        original = a.to_dict(), b.to_dict()
+        first, last = lite._align_path_snapshots(*original)
+        self.assertEqual(first['subpath_lengths'], [2,2])
+        self.assertEqual(last['subpath_lengths'], [2,2])
+        middle = lite.interpolate(first,last,.5)
+        self.assertEqual([len(p) for p in lite._path_subpaths(middle)], [2,2])
+        self.assertTrue(all(isinstance(n,int) for n in middle['subpath_lengths']))
+        self.assertEqual((a.to_dict(),b.to_dict()), original)
+        # Matching counts still need boundaries when their endpoints coincide
+        # temporarily during interpolation.
+        c = lite.VMobject().start_new_path(lite.ORIGIN).add_line_to(lite.RIGHT)
+        c.start_new_path(lite.RIGHT*3).add_line_to(lite.RIGHT*4)
+        d = lite.VMobject().start_new_path(lite.ORIGIN).add_line_to(lite.RIGHT*3)
+        d.start_new_path(lite.RIGHT).add_line_to(lite.RIGHT*4)
+        first, last = lite._align_path_snapshots(c.to_dict(),d.to_dict())
+        middle = lite.interpolate(first,last,.5)
+        self.assertEqual(middle['curves'][0][-1], middle['curves'][1][0])
+        self.assertEqual([len(p) for p in lite._path_subpaths(middle)], [1,1])
+
+    def test_annulus_morph_aligns_hole_with_collapsed_missing_contour(self):
+        ring, square = lite.Annulus(), lite.Square()
+        first, last = lite._align_path_snapshots(ring.to_dict(),square.to_dict())
+        self.assertEqual(first['subpath_lengths'], [8,8])
+        self.assertEqual(last['subpath_lengths'], [8,8])
+        inner = lite._path_subpaths(first)[1]
+        self.assertLess(inner[0][1][1], 0)
+        null = lite._path_subpaths(last)[1]
+        self.assertTrue(all(point == null[0][0] for curve in null for point in curve))
+        result = render('ring = Annulus().save_state()\nself.add(ring)\nself.play(Transform(ring, Square()), run_time=2)\nself.play(Restore(ring), run_time=2)')
+        self.assertEqual(len(result['frames'][15]['mobjects']), 1)
+        self.assertEqual(result['frames'][15]['mobjects'][0]['subpath_lengths'], [8,8])
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['type'], 'annulus')
+
+    def test_disconnected_gallery_morphs_and_restores_both_contours(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/subpath_scene.py').read_text()))
+        self.assertEqual(result['duration'], 13)
+        morph = result['frames'][105]['mobjects'][0]
+        self.assertEqual(morph['subpath_lengths'], [8,8])
+        collapse = result['frames'][135]['mobjects'][0]
+        self.assertEqual(collapse['subpath_lengths'], [12,8])
+        final = result['frames'][-1]['mobjects']
+        self.assertEqual(len(final), 1)
+        self.assertEqual([len(p) for p in lite._path_subpaths(final[0])], [4,4])
+        self.assertEqual(final[0]['color'], lite.BLUE)
+
     def test_rounded_rectangle_contours_dimensions_and_radius_order(self):
         box = lite.RoundedRectangle()
         self.assertIsInstance(box, lite.Rectangle)

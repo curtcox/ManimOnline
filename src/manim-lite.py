@@ -239,7 +239,7 @@ class Mobject:
         elif self._type in ('polygon', 'polyline'):
             points = self.vertices
         elif self._type == 'bezierpath':
-            points = [point for curve in self.curves for point in curve]
+            points = [point for curve in self.curves for point in curve] + getattr(self, 'vertices', [])
         elif self._type == 'triangle':
             height = math.sqrt(3) / 2
             points = [(0, height * 2 / 3), (-0.5, -height / 3), (0.5, -height / 3)]
@@ -270,6 +270,8 @@ class Mobject:
             raise ValueError('Path proportion must be finite and between 0 and 1')
         if self._type == 'bezierpath':
             if not self.curves:
+                if getattr(self, 'vertices', []):
+                    return self._point_to_world(Vector(self.vertices[0]))
                 raise ValueError('The path has no points')
             if alpha in (0, 1):
                 return self._point_to_world(Vector(self.curves[0][0] if alpha == 0 else self.curves[-1][-1]))
@@ -588,7 +590,7 @@ def always_redraw(func):
 
 
 class VMobject(Mobject):
-    """A single XY path made of connected straight or cubic segments."""
+    """XY paths made of straight or cubic segments, with separate contours."""
     def __init__(self, **kwargs):
         kwargs.setdefault('stroke_width', 4)
         super().__init__(**kwargs)
@@ -607,17 +609,45 @@ class VMobject(Mobject):
         vertices = self._corners(points)
         self._type, self.vertices = 'polyline', vertices
         self.__dict__.pop('curves', None)
+        self.__dict__.pop('subpath_lengths', None)
+        return self
+
+    def start_new_path(self, point):
+        point = self._corners([point])[0]
+        if self._type != 'bezierpath':
+            self.curves = _path_curves(self.to_dict())
+        elif self.vertices:
+            self.curves.append([self.vertices[0][:] for _ in range(4)])
+        self._type, self.vertices = 'bezierpath', [point]
+        self.__dict__.pop('subpath_lengths', None)
+        return self
+
+    def has_new_path_started(self):
+        return bool(self.vertices) if self._type == 'bezierpath' else len(self.vertices) == 1
+
+    def get_subpaths(self):
+        return [[self._point_to_world(Vector(point)) for curve in path for point in curve]
+                for path in _path_subpaths(self.to_dict(), include_pending=False)]
+
+    def close_path(self):
+        paths = _path_subpaths(self.to_dict())
+        if paths and (self.has_new_path_started() or paths[-1][-1][-1] != paths[-1][0][0]):
+            self.add_line_to(paths[-1][0][0])
         return self
 
     def add_points_as_corners(self, points):
         vertices = self._corners(points)
         if self._type == 'bezierpath':
-            start = Vector(self.curves[-1][-1])
+            if not vertices:
+                return self
+            start = Vector(self.vertices[0] if self.vertices else self.curves[-1][-1])
             for point in vertices:
                 end = Vector(point)
                 self.curves.append([list(start), list(start + (end-start) * (1/3)),
                                     list(start + (end-start) * (2/3)), list(end)])
                 start = end
+            self.vertices = []
+            self.__dict__.pop('subpath_lengths', None)
         else:
             self.vertices.extend(vertices)
         return self
@@ -627,7 +657,12 @@ class VMobject(Mobject):
 
     def reverse_direction(self):
         if self._type == 'bezierpath':
+            if self.vertices:
+                self.curves.append([self.vertices[0][:] for _ in range(4)])
+                self.vertices = []
             self.curves = [list(reversed(curve)) for curve in reversed(self.curves)]
+            if 'subpath_lengths' in self.__dict__:
+                self.subpath_lengths.reverse()
         else:
             self.vertices.reverse()
         return self
@@ -653,19 +688,22 @@ class VMobject(Mobject):
             curves.append([self.vertices[-1][:], *points])
             self._type, self.curves, self.vertices = 'bezierpath', curves, []
         else:
-            self.curves.append([self.curves[-1][-1][:], *points])
+            start = self.vertices[0] if self.vertices else self.curves[-1][-1]
+            self.curves.append([start[:], *points])
+            self.vertices = []
+        self.__dict__.pop('subpath_lengths', None)
         return self
 
     def get_start(self):
         if self._type == 'bezierpath':
-            return self._point_to_world(Vector(self.curves[0][0]))
+            return self._point_to_world(Vector(self.curves[0][0] if self.curves else self.vertices[0]))
         if not self.vertices:
             raise ValueError('The path has no points')
         return self._point_to_world(Vector(self.vertices[0]))
 
     def get_end(self):
         if self._type == 'bezierpath':
-            return self._point_to_world(Vector(self.curves[-1][-1]))
+            return self._point_to_world(Vector(self.vertices[0] if self.vertices else self.curves[-1][-1]))
         if not self.vertices:
             raise ValueError('The path has no points')
         return self._point_to_world(Vector(self.vertices[-1]))
@@ -1250,6 +1288,9 @@ def interpolate(start, end, alpha):
     if isinstance(start, dict) and isinstance(end, dict):
         result = {key: interpolate(value, end.get(key, value), alpha)
                   for key, value in start.items()}
+        if 'subpath_lengths' in start:
+            result['subpath_lengths'] = copy.deepcopy(end.get('subpath_lengths', start['subpath_lengths'])
+                                                      if alpha >= 1 else start['subpath_lengths'])
         if start.get('type') == end.get('type') == 'text' and '_number_format' in start and '_number_format' in end:
             # Formatting switches discretely; only the real value interpolates.
             result['_number_format'] = copy.deepcopy(end['_number_format'] if alpha >= 1 else start['_number_format'])
@@ -1268,6 +1309,10 @@ def _path_curves(snapshot):
     kind = snapshot['type']
     if kind == 'bezierpath':
         return copy.deepcopy(snapshot['curves'])
+    if kind == 'annulus':
+        outer = _path_curves({'type':'circle', 'radius':snapshot['outer_radius']})
+        inner = _path_curves({'type':'circle', 'radius':snapshot['inner_radius']})
+        return outer + [list(reversed(curve)) for curve in reversed(inner)]
     if kind in ('circle', 'arc', 'ellipse'):
         radius = 1 if kind == 'ellipse' else snapshot['radius']
         if not math.isfinite(radius) or radius < 0:
@@ -1337,26 +1382,56 @@ def _subdivide_curves(curves, count):
     return result
 
 
+def _path_subpaths(snapshot, include_pending=True):
+    if not include_pending and snapshot['type'] == 'polyline' and len(snapshot['vertices']) < 2:
+        return []
+    curves = _path_curves(snapshot)
+    lengths = snapshot.get('subpath_lengths')
+    if snapshot['type'] == 'annulus':
+        lengths = [8, 8]
+    paths = []
+    if lengths:
+        offset = 0
+        for count in lengths:
+            paths.append(curves[offset:offset+count])
+            offset += count
+    else:
+        for curve in curves:
+            if not paths or paths[-1][-1][-1] != curve[0]:
+                paths.append([])
+            paths[-1].append(curve)
+    if include_pending and snapshot['type'] == 'bezierpath' and snapshot.get('vertices'):
+        paths.append([[snapshot['vertices'][0][:] for _ in range(4)]])
+    return paths
+
+
 def _align_path_snapshots(start, target):
     path_types = ('polyline', 'polygon', 'bezierpath', 'circle', 'arc', 'ellipse',
-                  'square', 'rectangle', 'triangle', 'line')
+                  'square', 'rectangle', 'triangle', 'line', 'annulus')
     if start['type'] not in path_types or target['type'] not in path_types:
         return None
     if start['type'] == target['type'] and start['type'] not in ('polyline', 'polygon', 'bezierpath'):
         return None  # Matching primitives retain their analytical interpolation.
-    curves1, curves2 = _path_curves(start), _path_curves(target)
-    if not curves1 or not curves2:
+    paths1, paths2 = _path_subpaths(start), _path_subpaths(target)
+    if not paths1 or not paths2:
         return None  # Empty geometry has no endpoint to align; retain the fade.
     if (start['type'] == target['type'] and
-            (len(curves1) == len(curves2) if start['type'] == 'bezierpath'
+            (len(paths1) == len(paths2) == 1 and len(paths1[0]) == len(paths2[0]) if start['type'] == 'bezierpath'
              else len(start['vertices']) == len(target['vertices']))):
         return None
-    count = max(len(curves1), len(curves2))
+    path_count = max(len(paths1), len(paths2))
+    for paths in (paths1, paths2):
+        while len(paths) < path_count:
+            paths.append([[paths[-1][-1][-1][:] for _ in range(4)]])
+    counts = [max(len(a), len(b)) for a, b in zip(paths1, paths2)]
     result = []
-    for snapshot, curves in ((start, curves1), (target, curves2)):
+    for snapshot, paths in ((start, paths1), (target, paths2)):
         aligned = copy.deepcopy(snapshot)
-        aligned['type'], aligned['curves'] = 'bezierpath', _subdivide_curves(curves, count)
-        aligned.pop('vertices', None)
+        aligned['type'] = 'bezierpath'
+        aligned['curves'] = [curve for path, count in zip(paths, counts)
+                             for curve in _subdivide_curves(path, count)]
+        aligned['vertices'] = []
+        aligned['subpath_lengths'] = counts[:]
         # Keep the original pivot. Subdivision changes control-point bounds but
         # must not move a previously scaled/rotated curve at either endpoint.
         result.append(aligned)

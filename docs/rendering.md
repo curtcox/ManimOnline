@@ -387,7 +387,7 @@ straight cubics; replacement/reversal and animated operations preserve the API.
 Sampling partitions by approximate curve lengths (20 intervals) and uses each
 curve's parameter, with exact endpoints. Bounds enclose control points. Matching
 curve counts interpolate; unequal connected paths align through subdivision. General alignment,
-disconnected subpaths, smoothing, and full point-array APIs remain gaps.
+smoothing and full point-array APIs remain gaps. Separate contours are described below.
 
 Python/SVG tests cover finite XY validation, exact transformed endpoints, cubic
 midpoints, mixed segment allocation, reversal, matching/unequal-count transforms,
@@ -405,7 +405,8 @@ interpolate in one drawable path, including corner-to-cubic and open-to-closed
 morphs. Closed SVG paths use Z to retain stroke joins. Live geometry and target
 identity are unchanged until normal completion; checkpoints restore original
 representations. Empty paths still crossfade. No automatic winding/correspondence,
-disconnected subpaths or family alignment is implied. Primitive conversion is
+family alignment is implied by this connected-path milestone. Separate contours
+are now described below. Primitive conversion is
 now described below.
 
 Python checks verify subdivision at several parameters, preservation of joins and
@@ -446,7 +447,7 @@ original source/target objects remain untouched until normal completion.
 
 This extends geometry alignment, not scene-family restructuring or child identity
 preservation. Unsupported glyph/arrow pairs still crossfade at their leaf level;
-automatic matching and disconnected subpaths remain open. The group-morph gallery
+automatic matching remains open; separate contours are described below. The group-morph gallery
 covers nested unequal families, checkpoints, and group erasure.
 
 Local Pyodide browser checks showed four continuously morphed paths at three
@@ -745,7 +746,7 @@ Exact radial bounds include the larger radius. Path queries traverse outer then
 inner contours with separate start/end points, weighted by circumference; motion
 jumps between subpaths. Same-type transforms interpolate radii analytically;
 copy/checkpoints, creation, growth and restoration use the existing pipeline.
-Other types crossfade pending general disconnected-subpath alignment. Tests cover
+Other supported outlines now use separate-contour alignment described below. Tests cover
 validation, degenerate endpoints, transformed bounds, contour order, intermediate
 radii, gallery restoration, opposite SVG winding, no radial stroke and tracing.
 
@@ -773,3 +774,39 @@ Local Pyodide playback verified a closed twelve-segment rounded outline at two
 seconds, alternating concave/convex corners at eight seconds, and the restored
 blue outline without the follower at eleven seconds. Graphviz rendered after
 switching examples.
+
+
+## Disconnected contours and alignment
+
+VMobject supports start_new_path, has_new_path_started, close_path and get_subpaths
+using the [official path construction and per-contour alignment model](https://docs.manim.community/en/stable/_modules/manim/mobject/types/vectorized_mobject.html).
+An unfinished anchor is retained separately until the next straight/cubic append;
+starting another contour completes the previous unfinished anchor as a null curve.
+Queries return transformed, independent lists of anchors/handles; pending anchors
+are excluded from subpaths. Reverse completes any pending anchor then reverses
+curve order and direction. Existing replacement, copying and checkpoints apply.
+
+Flat cubic snapshots group connected anchor pairs into separate contours. SVG
+emits a new M at each boundary and Z only for that contour's matching start/end,
+so holes and open segments have no artificial connector. Path motion sums actual
+curve lengths and jumps across gaps. Aligned snapshots carry integer contour
+lengths so collapsed/coincident paths keep their boundaries.
+
+Transform aligns ordered contour pairs independently through exact subdivision.
+Missing contours become null curves at the other path's final endpoint, matching
+the native strategy. Annulus converts into outer and reversed inner circles.
+Matching annuli retain analytical radius interpolation. All native target/checkpoint
+representations return at completion. This supports nested family morphs through
+the existing transform plan; automatic contour correspondence, boolean geometry,
+smoothing and general point-array APIs remain open.
+
+Tests cover pending anchors, atomic validation, independent queries, closure,
+reversal/copy/checkpoints, gap-free length sampling, equal-total/different-contour
+counts, null-contour alignment, ring morph restoration, integer boundary metadata,
+SVG moves/closure/tracing and gallery restoration.
+
+Local Pyodide playback verified two closed square contours at two seconds,
+two closed morph contours with sixteen cubics at seven seconds, a shrinking
+hole with twenty cubics at nine seconds, and restoration of both blue square
+contours at thirteen seconds. No radial connector was drawn. Graphviz rendered
+after switching examples.

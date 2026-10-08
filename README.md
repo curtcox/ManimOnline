@@ -219,7 +219,8 @@ back to the first vertex. Square/rectangle paths start at the upper right
 corner; triangles start at their top vertex. Straight edges are sampled by
 distance, so longer edges take proportionally longer. Path sampling is limited
 to the XY plane; connected cubic curves are described below. Groups, text,
-arrowheads, disconnected subpaths, and live path updates are unsupported.
+arrowheads and live path updates are unsupported. Separate contours are sampled
+without counting the gap between them; motion jumps across that gap.
 
 `Arc(radius=1, start_angle=0, angle=PI/2, arc_center=ORIGIN)` draws an open
 circular arc. Angles are in radians; positive sweeps go counterclockwise and
@@ -337,7 +338,7 @@ does not advance it. Time is independent of Python execution/loading and browser
 playback or seeking. The hook order and time concept follow the
 [Manim Scene API](https://docs.manim.community/en/stable/_modules/manim/scene/scene.html).
 
-`VMobject()` supports a single connected XY path. Build it with
+`VMobject()` supports connected and disconnected XY paths. Build it with
 `set_points_as_corners(points)`, extend it with `add_points_as_corners(points)` or
 `add_line_to(point)`, and reverse it with `reverse_direction()`. These methods
 also work in animate chains. Points are local coordinates and must be finite;
@@ -348,8 +349,8 @@ Corner paths support Create/Uncreate, styles, layout, group/depth ordering,
 transforms, checkpoints, `get_start()`/`get_end()`, and `MoveAlongPath` sampled
 by distance along straight segments. Equal-count point lists interpolate;
 unequal-count corner paths and polygons align through cubic subdivision before
-interpolation. Smoothing, multiple subpaths, general point-array operations, and
-arbitrary shape-to-shape path alignment remain unsupported. This uses the
+interpolation. Smoothing and general point-array operations remain unsupported. Separate-contour
+construction and alignment are described below. This uses the
 [Manim corner-path API](https://docs.manim.community/en/stable/reference/manim.mobject.types.vectorized_mobject.VMobject.html?highlight=corner)
 with a straight-segment SVG representation.
 
@@ -491,8 +492,8 @@ transparent counterparts. A shape transforming to a group is wrapped in a neutra
 container so its original transform is retained. Group transforms and pivots are
 interpolated, and completion/restoration keeps the native target representation.
 Child identities are copied at completion as before; scene-added child animation,
-arbitrary Mobject families, automatic correspondence, and disconnected paths
-remain open. See **Morph nested groups** in the gallery.
+arbitrary Mobject families and automatic correspondence remain open.
+Disconnected path alignment is described below. See **Morph nested groups** in the gallery.
 
 
 Group and VGroup support child add/remove/add_to_back, indexing (including negative
@@ -634,8 +635,8 @@ Create/Uncreate, growth, transforms, same-type radius interpolation and Restore
 use the existing animation pipeline. Path motion traverses the outer contour
 counterclockwise then the inner contour clockwise, jumping across the gap; there
 is no drawn connector. Bounds use the larger radius. mark_paths_closed is accepted
-as a boolean; SVG contours are always closed. General disconnected path editing
-and morphing rings into other shapes remain open (other types crossfade).
+as a boolean; SVG contours are always closed. Rings morph into other supported outlines with separate contour alignment;
+missing contours collapse at the other outline's final endpoint.
 **Rings with separate contours** shows creation, path following and changing radii.
 
 `RoundedRectangle(corner_radius=0.5, width=4, height=2)` builds a closed cubic
@@ -648,3 +649,24 @@ outlines, styling, copying and Restore use the existing path pipeline. Curves
 approximate circular corners with two cubic segments. General polygon
 round_corners and rectangle grid lines remain open. **Rounded and concave corners**
 demonstrates outline following, per-corner morphing and restoration.
+
+
+`VMobject.start_new_path(point)` begins a separate contour. Continue with
+add_line_to/add_points_as_corners/add_cubic_bezier_curve_to and use close_path()
+to join only the current contour back to its start. has_new_path_started() reports
+an unfinished anchor; get_subpaths() returns independent lists of transformed
+anchors and handles (four points per cubic), excluding an unfinished anchor.
+Starting another contour completes an earlier unfinished anchor as a null curve.
+Reverse direction reverses contour order and winding, completing an unfinished
+anchor first.
+
+The renderer emits separate SVG moves and closes each completed loop. Path motion
+weights curves by length without drawing or traversing a connector across gaps.
+Transforms align contours in order, subdivide each pair independently, and add
+null contours at the final endpoint when one side has fewer contours. Explicit
+contour boundaries survive intermediate coincident endpoints. Annulus participates
+with outer and reversed inner circles; other supported primitives use one contour.
+Native representations return at completion and Restore. Automatic contour
+matching, boolean geometry, smoothing and full point-array editing remain open.
+**Morph separate contours** follows a square ring, morphs it to Annulus, collapses
+the hole into a rounded rectangle and restores both original contours.

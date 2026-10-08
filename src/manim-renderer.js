@@ -380,12 +380,27 @@ const ManimRenderer = {
     const path = this.renderCornerPath({ ...mobject, vertices: [] });
     const curves = mobject.curves || [];
     const xy = point => `${point[0] * this.UNIT_SCALE},${point[1] * this.UNIT_SCALE}`;
-    path.setAttribute('d', curves.length
-      ? `M ${xy(curves[0][0])} ` + curves.map(curve => `C ${curve.slice(1).map(xy).join(' ')}`).join(' ')
-      : '');
-    if (curves.length && xy(curves[0][0]) === xy(curves[curves.length - 1][3])) {
-      path.setAttribute('d', path.getAttribute('d') + ' Z');
+    const commands = [];
+    let start = null, end = null, offset = 0;
+    const boundaries = new Set();
+    for (const length of mobject.subpath_lengths || []) {
+      boundaries.add(offset);
+      offset += length;
     }
+    const close = () => { if (start !== null && start === end) commands.push('Z'); };
+    curves.forEach((curve, index) => {
+      const anchor = xy(curve[0]);
+      if (start === null || (boundaries.size ? boundaries.has(index) : anchor !== end)) {
+        close();
+        commands.push(`M ${anchor}`);
+        start = anchor;
+      }
+      commands.push(`C ${curve.slice(1).map(xy).join(' ')}`);
+      end = xy(curve[3]);
+    });
+    close();
+    if (mobject.vertices?.length) commands.push(`M ${xy(mobject.vertices[0])}`);
+    path.setAttribute('d', commands.join(' '));
     return path;
   },
 
