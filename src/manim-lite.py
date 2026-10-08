@@ -472,7 +472,7 @@ class Mobject:
             retained = {key:source.__dict__[key] for key in ('updaters','updating_suspended','_saved_state')
                         if key in source.__dict__}
             state = copy.deepcopy({key:value for key,value in replacement.__dict__.items()
-                                   if key not in ('children','updaters','updating_suspended','_saved_state','_sampled_geometry_center')})
+                                   if key not in ('children','updaters','updating_suspended','_saved_state','_sampled_geometry_center', 'traced_point_func')})
             state.update(retained, children=children)
             source.__dict__ = state
         replace(self, target)
@@ -500,7 +500,7 @@ class Mobject:
 
     def to_dict(self):
         result = copy.deepcopy({key: value for key, value in self.__dict__.items()
-                                if key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center')})
+                                if key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func')})
         result['type'] = result.pop('_type')
         result['geometry_center'] = list(self._geometry_center())
         result['children'] = [child.to_dict() for child in self.children]
@@ -641,6 +641,55 @@ class VMobject(Mobject):
         if not self.vertices:
             raise ValueError('The path has no points')
         return self._point_to_world(Vector(self.vertices[-1]))
+
+
+class TracedPath(VMobject):
+    """Connect sampled XY points, optionally dropping old segments over time."""
+    def __init__(self, traced_point_func, stroke_width=2, stroke_color=WHITE,
+                 dissipating_time=None, **kwargs):
+        if not callable(traced_point_func):
+            raise TypeError('TracedPath expects a callable returning an XY point')
+        if (dissipating_time is not None and
+                (not isinstance(dissipating_time, (int, float)) or
+                 not math.isfinite(dissipating_time) or dissipating_time < 0)):
+            raise ValueError('dissipating_time must be nonnegative and finite')
+        super().__init__(stroke_width=stroke_width,
+                         stroke_color=WHITE if stroke_color is None else stroke_color, **kwargs)
+        self.traced_point_func = traced_point_func
+        self.dissipating_time = dissipating_time
+        self.time = 1.0 if dissipating_time else None
+        # Act on the updater argument so copied traces extend their own path.
+        self.add_updater(lambda m, dt: m.update_path(m, dt))
+
+    def update_path(self, mob, dt):
+        point = self._corners([self.traced_point_func()])[0]
+        # Bake accumulated transforms before adding a new world-space sample.
+        # Otherwise a changing path bounding box would move the old rotation pivot.
+        if self._type == 'bezierpath':
+            curves = [[list(self._point_to_world(Vector(p))) for p in curve]
+                      for curve in self.curves]
+            vertices = []
+        else:
+            vertices = [list(self._point_to_world(Vector(p))) for p in self.vertices]
+            curves = None
+        self.position, self.angle, self.geometry_scale = list(ORIGIN), 0, 1
+        self.__dict__.pop('_sampled_geometry_center', None)
+        if curves:
+            self.curves = curves
+            self.add_line_to(point)
+        else:
+            self.set_points_as_corners(vertices or [point])
+            self.add_line_to(point)
+        if self.dissipating_time:
+            self.time += dt
+            if self.time - 1 > self.dissipating_time:
+                if self._type == 'bezierpath':
+                    self.curves = self.curves[1:]
+                    if not self.curves:
+                        self.set_points_as_corners([point])
+                else:
+                    self.vertices = self.vertices[1:]
+        return self
 
 
 class CubicBezier(VMobject):
@@ -1848,7 +1897,7 @@ class MovingCameraScene(Scene):
     camera_class = MovingCamera
 
 
-EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'CubicBezier', 'Circle', 'Arc', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
+EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'CubicBezier', 'Circle', 'Arc', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'TransformFromCopy',

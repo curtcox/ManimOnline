@@ -16,6 +16,79 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_trace_tracks_sampled_geometry_and_serializes_without_callbacks(self):
+        result = render("""dot = Dot(LEFT * 2)
+trace = TracedPath(dot.get_center)
+self.add(trace, dot)
+self.play(dot.animate.shift(RIGHT * 4), run_time=2, rate_func=linear)
+trace.clear_updaters()
+self.wait(1)""")
+        middle = result['frames'][15]['mobjects'][0]
+        self.assertEqual(middle['vertices'][0], [-2, 0, 0])
+        self.assertEqual(middle['vertices'][-1], [0, 0, 0])
+        self.assertNotIn('traced_point_func', middle)
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['vertices'][-1], [2, 0, 0])
+        self.assertEqual(result['frames'][0]['mobjects'][0]['vertices'], [[-2, 0, 0]]*2)
+
+    def test_trace_dissipation_suspension_copy_and_checkpoint(self):
+        point = [0, 0, 0]
+        trace = lite.TracedPath(lambda:point, dissipating_time=.2)
+        trace.update(0)
+        for index in range(1, 7):
+            point[0] = index
+            trace.update(.1)
+        self.assertLessEqual(len(trace.vertices), 4)
+        self.assertEqual(trace.get_end(), lite.Vector(point))
+        trace.save_state()
+        before = trace.to_dict()
+        trace.suspend_updating().update(.5)
+        self.assertEqual(trace.to_dict(), before)
+        trace.resume_updating()
+        clone = trace.copy()
+        point[0] = 9
+        clone.update(.1)
+        self.assertEqual(clone.get_end()[0], 9)
+        self.assertEqual(trace.get_end()[0], 6)
+        trace.update(.1).restore()
+        self.assertEqual(trace.to_dict(), before)
+        trace.clear_updaters().update(1)
+        self.assertEqual(trace.to_dict(), before)
+
+    def test_trace_transforms_preserve_old_world_points_and_errors_are_atomic(self):
+        point = [1, 0, 0]
+        trace = lite.TracedPath(lambda:point)
+        trace.update()
+        point[0] = 2
+        trace.update()
+        trace.rotate(lite.PI/2).shift(lite.UP)
+        old = trace.get_start()
+        point[:] = [3, 2, 0]
+        trace.update()
+        for a, b in zip(trace.get_start(), old): self.assertAlmostEqual(a, b)
+        self.assertEqual(trace.get_end(), lite.Vector(point))
+        before = trace.to_dict()
+        for invalid in [[float('nan'), 0, 0], [0, 0, 1]]:
+            point[:] = invalid
+            with self.assertRaises((ValueError, NotImplementedError)): trace.update(.1)
+            self.assertEqual(trace.to_dict(), before)
+        with self.assertRaises(TypeError): lite.TracedPath(3)
+        for invalid in [-1, float('nan'), float('inf'), '1']:
+            with self.assertRaises(ValueError): lite.TracedPath(lambda:lite.ORIGIN, dissipating_time=invalid)
+
+    def test_trace_gallery_tail_disappears_and_full_trail_freezes(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/trace_scene.py').read_text()))
+        self.assertEqual(result['duration'], 7)
+        full, tail = result['frames'][45]['mobjects'][2:]
+        self.assertGreater(len(full['vertices']), len(tail['vertices']))
+        self.assertAlmostEqual(full['vertices'][-1][0], -3)
+        self.assertAlmostEqual(full['vertices'][-1][1], -1)
+        waiting = result['frames'][89]['mobjects']
+        self.assertGreater(len(waiting[2]['vertices']), 50)
+        for point in waiting[3]['vertices']:
+            self.assertAlmostEqual(point[0], 4)
+            self.assertAlmostEqual(point[1], 0)
+        self.assertEqual(result['frames'][-1]['mobjects'], [])
+
     def test_numeric_label_formatting_and_integer_rounding(self):
         self.assertEqual(lite.DecimalNumber().text, '0.00')
         number = lite.DecimalNumber(1234.125, num_decimal_places=3, include_sign=True,

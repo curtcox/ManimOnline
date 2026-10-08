@@ -120,3 +120,8 @@ Read `examples/numeric_scene.py` for DecimalNumber/Integer tracker labels,
 formatted intermediate animation values and restoration. Numeric labels use
 centered SVG Text, not native TeX digit families. Keep formatting options
 independent of numeric interpolation and preserve atomic finite-value validation.
+
+Read `examples/trace_scene.py` for TracedPath sampling, timed dissipation,
+freezing and removal. Exclude traced_point_func from snapshots, preserve the
+original sampled source identity, and bake current path transforms before
+appending world-space points so earlier vertices retain their position.

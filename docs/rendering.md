@@ -657,3 +657,29 @@ glyph bounds/indexing, complex values, TeX units and Variable remain open.
 Local Pyodide gallery playback verified +1.00 and 1 at three seconds, the direct
 numeric animation at 1,750 points after five seconds, and restoration to 1,000
 points at the end. Graphviz rendered after switching.
+
+
+## Point tracing
+
+TracedPath uses Mobject updaters to connect finite XY points through the existing
+VMobject polyline representation. It follows animation sample exposure and source
+callback order. The [official TracedPath source](https://docs.manim.community/en/stable/_modules/manim/animation/changing.html)
+adds a straight segment per update and, after dissipating_time, removes one old
+segment per update. The preview follows that frame-based retention rule rather
+than time-clipping individual segments. None/zero disables dissipation; negative
+or nonfinite durations fail early. Pauses and callback removal preserve geometry.
+
+Transforms are baked into existing vertices before adding a new world-space point,
+preventing changing bounds from moving a rotated trail's pivot. Copy callbacks
+operate on the copied trace. As for other callbacks, function closures retain their
+captured references; copied bound point methods follow Python deepcopy behavior.
+The point provider is excluded from JSON. Invalid samples leave existing geometry
+and the dissipation clock unchanged. Tests cover sampled animation endpoints,
+source ordering, immutable old frames, dissipation, suspension, copies/checkpoints,
+transformed vertices, invalid points and gallery removal. 3D trails, smooth
+reconstruction and stroke-opacity gradients remain open.
+
+Local Pyodide gallery playback verified a three-quarter blue trail and a short
+yellow trail at three seconds. By 5.9 seconds the blue circle stayed frozen and
+the yellow path contained only coincident endpoint samples. All geometry was
+removed at seven seconds; DOT rendered after switching.

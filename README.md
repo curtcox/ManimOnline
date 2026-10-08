@@ -591,3 +591,15 @@ style and callbacks. Copy, checkpoints and Restore use the existing pipeline.
 Native TeX digit families, measured glyph bounds, edge_to_fix, digit indexing,
 complex values and Variable remain open. See **Show changing numbers** for live
 tracker labels, direct numeric animation and restoration.
+
+
+`TracedPath(point_function, stroke_width=2, stroke_color=WHITE,
+dissipating_time=None)` connects sampled XY positions at 15 fps. Pass a method
+such as dot.get_center or a callable returning a finite point. Add the trace to
+the scene; for an updater-driven source, add the source first so its callback runs
+before tracing. A positive dissipating_time drops one old segment per update
+after that many seconds; None or zero retains the full trail. Suspension pauses
+tracing and its clock; clear_updaters freezes the trail. Copy/checkpoints and
+transforms use the existing path pipeline. Trails use straight sample segments;
+3D points and opacity gradients remain unsupported. **Trace moving points**
+compares a full circular trail with a one-second trail that disappears during wait.
