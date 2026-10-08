@@ -16,6 +16,87 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_raw_points_round_trip_transforms_without_mutable_aliases(self):
+        curve = lite.CubicBezier(lite.LEFT*2,lite.UL,lite.DR,lite.RIGHT*2)
+        curve.rotate(lite.PI/3).scale(2).shift(lite.UP)
+        before = [curve.point_from_proportion(a) for a in (0,.25,.5,.75,1)]
+        points = curve.get_points()
+        self.assertEqual(curve.get_num_points(), 4)
+        self.assertTrue(curve.has_points())
+        curve.set_points(points)
+        self.assertEqual(curve.position, list(lite.ORIGIN))
+        self.assertEqual(curve.geometry_scale, 1)
+        self.assertEqual(curve.angle, 0)
+        for alpha, expected in zip((0,.25,.5,.75,1), before):
+            for actual, value in zip(curve.point_from_proportion(alpha), expected):
+                self.assertAlmostEqual(actual, value)
+        points[0][0] = 999
+        self.assertNotEqual(curve.get_points()[0][0], 999)
+        returned = curve.get_points()
+        returned[1][0] = 999
+        self.assertNotEqual(curve.get_points()[1][0], 999)
+        self.assertEqual(len(lite.Circle().get_points()), 32)
+        self.assertEqual(len(lite.Annulus().get_points()), 64)
+
+    def test_raw_points_pending_append_and_clear_keep_styles_callbacks_checkpoint(self):
+        path = lite.VMobject(color=lite.RED,stroke_width=7).set_points([lite.UP])
+        callback = lambda m: None
+        path.add_updater(callback).save_state()
+        self.assertTrue(path.has_new_path_started())
+        path.append_points([lite.UR,lite.RIGHT,lite.ORIGIN])
+        self.assertFalse(path.has_new_path_started())
+        self.assertEqual(path.get_num_points(), 4)
+        self.assertEqual(path.get_end(), lite.ORIGIN)
+        path.clear_points()
+        self.assertFalse(path.has_points())
+        self.assertEqual(path.get_subpaths(), [])
+        for query in (path.get_start,path.get_end):
+            with self.assertRaises(ValueError): query()
+        path.restore()
+        self.assertEqual(path.get_points(), [list(lite.UP)])
+        self.assertEqual(path.stroke_width, 7)
+        self.assertEqual(path.color, lite.RED)
+        self.assertEqual(path.updaters, [callback])
+
+    def test_raw_points_invalid_edits_are_atomic(self):
+        path = lite.CubicBezier(lite.ORIGIN,lite.UP,lite.UR,lite.RIGHT).shift(lite.LEFT)
+        before = path.to_dict()
+        for points in [[lite.UP]*2, [lite.UP]*3, [lite.OUT]*4,
+                       [[float('nan'),0]]*4, [[float('inf'),0]]*4]:
+            with self.assertRaises((ValueError,NotImplementedError)): path.set_points(points)
+            self.assertEqual(path.to_dict(), before)
+            with self.assertRaises((ValueError,NotImplementedError)): path.append_points(points)
+            self.assertEqual(path.to_dict(), before)
+        with self.assertRaises(ValueError): path.add_subpath([lite.UP])
+        with self.assertRaises(TypeError): path.append_vectorized_mobject(lite.Text('text'))
+        self.assertEqual(path.to_dict(), before)
+
+    def test_append_vector_outline_keeps_world_geometry_and_independent_provider(self):
+        path = lite.CubicBezier(lite.LEFT,lite.UL,lite.UR,lite.RIGHT).rotate(.3).scale(2)
+        original = path.get_points()
+        ring = lite.Annulus(inner_radius=.5,outer_radius=1,arc_center=lite.UP*3)
+        incoming = ring.get_points()
+        path.start_new_path(lite.DOWN)
+        path.append_vectorized_mobject(ring)
+        self.assertEqual(path.get_points(), original + incoming)
+        self.assertEqual(len(path.get_subpaths()), 3)
+        ring.shift(lite.RIGHT*5)
+        self.assertEqual(path.get_points(), original + incoming)
+        self.assertEqual(path.color, lite.WHITE)
+        path.add_subpath(lite.CubicBezier(lite.DOWN,lite.DL,lite.DR,lite.DOWN).get_points())
+        self.assertEqual(len(path.get_subpaths()), 4)
+
+    def test_point_array_gallery_edits_appends_and_restores(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/point_array_scene.py').read_text()))
+        self.assertEqual(result['duration'], 8)
+        edited = result['frames'][60]['mobjects'][0]
+        self.assertEqual(len(edited['curves']), 17)
+        self.assertEqual([len(p) for p in lite._path_subpaths(edited)], [1,8,8])
+        final = result['frames'][-1]['mobjects'][0]
+        seed = lite.CubicBezier((-3,-1),(-1,2),(1,-2),(3,1)).rotate(lite.PI/6)
+        self.assertEqual(final['curves'], [seed.get_points()])
+        self.assertEqual(final['color'], lite.BLUE)
+
     def test_disconnected_path_construction_pending_anchor_and_sampling(self):
         self.assertEqual(lite.VMobject().set_points_as_corners([lite.UP]).get_subpaths(), [])
         path = lite.VMobject().start_new_path(lite.ORIGIN)

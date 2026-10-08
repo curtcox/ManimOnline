@@ -149,3 +149,9 @@ morphs. Pending anchors live in vertices on bezier paths; append consumes them.
 Aligned snapshots keep integer subpath_lengths to preserve coincident boundaries.
 Subdivide contour pairs independently and collapse missing contours at the last
 endpoint; never bridge disconnected contours with an SVG segment.
+
+Read `examples/point_array_scene.py` for raw cubic construction, world-space
+point queries, animated handle edits and copied outline append. Validate array
+length/XY coordinates before mutation; bake transforms before raw appends or
+start_new_path so changing bounds cannot move earlier geometry. Returned points
+are independent lists; NumPy indexing and mutable points attributes remain open.

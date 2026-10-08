@@ -264,6 +264,25 @@ class Mobject:
     def get_center(self):
         return Vector(self.position) + self._geometry_center()
 
+    def get_points(self):
+        """Independent world-space anchors/handles for supported XY outlines."""
+        if self._type not in ('polyline', 'polygon', 'bezierpath', 'circle', 'arc', 'ellipse',
+                              'square', 'rectangle', 'triangle', 'line', 'annulus'):
+            return []
+        if self._type == 'polyline' and len(self.vertices) == 1:
+            points = self.vertices
+        else:
+            points = [point for curve in _path_curves(self.to_dict()) for point in curve]
+            if self._type == 'bezierpath':
+                points += self.vertices
+        return [list(self._point_to_world(Vector(point))) for point in points]
+
+    def get_num_points(self):
+        return len(self.get_points())
+
+    def has_points(self):
+        return self.get_num_points() > 0
+
     def point_from_proportion(self, alpha):
         """Sample supported XY outlines by distance, then apply SVG geometry transforms."""
         if not math.isfinite(alpha) or not 0 <= alpha <= 1:
@@ -353,11 +372,14 @@ class Mobject:
     def _point_to_world(self, point):
         if self.position[2]:
             raise NotImplementedError('Paths support only the XY plane')
-        center = self._geometry_center()
-        offset = (point - center) * self.geometry_scale
-        point = Vector(self.position) + center + Vector((
-            offset[0] * math.cos(self.angle) - offset[1] * math.sin(self.angle),
-            offset[0] * math.sin(self.angle) + offset[1] * math.cos(self.angle), 0))
+        if self.angle == 0 and self.geometry_scale == 1:
+            point = Vector(self.position) + point
+        else:
+            center = self._geometry_center()
+            offset = (point - center) * self.geometry_scale
+            point = Vector(self.position) + center + Vector((
+                offset[0] * math.cos(self.angle) - offset[1] * math.sin(self.angle),
+                offset[0] * math.sin(self.angle) + offset[1] * math.cos(self.angle), 0))
         if not all(math.isfinite(v) for v in point):
             raise ValueError('Path coordinates must be finite')
         return point
@@ -605,6 +627,46 @@ class VMobject(Mobject):
             raise NotImplementedError('Paths support only the XY plane')
         return vertices
 
+    def set_points(self, points):
+        points = self._corners(points)
+        if len(points) % 4 not in (0, 1):
+            raise ValueError('Cubic points need groups of four, optionally followed by one new anchor')
+        completed = len(points) - len(points) % 4
+        self.curves = [points[i:i+4] for i in range(0, completed, 4)]
+        self.vertices = points[completed:]
+        self._type = 'bezierpath'
+        # Raw point arrays are world coordinates, just as native stored points.
+        self.position, self.angle, self.geometry_scale = list(ORIGIN), 0, 1
+        self.__dict__.pop('_sampled_geometry_center', None)
+        self.__dict__.pop('subpath_lengths', None)
+        return self
+
+    def append_points(self, new_points):
+        points = self._corners(new_points)
+        if not points:
+            return self
+        return self.set_points(self.get_points() + points)
+
+    def clear_points(self):
+        return self.set_points([])
+
+    def add_subpath(self, points):
+        points = self._corners(points)
+        if len(points) % 4:
+            raise ValueError('A subpath needs complete groups of four cubic points')
+        return self.append_points(points)
+
+    def append_vectorized_mobject(self, vectorized_mobject):
+        if not isinstance(vectorized_mobject, Mobject) or vectorized_mobject._type not in (
+                'polyline', 'polygon', 'bezierpath', 'circle', 'arc', 'ellipse',
+                'square', 'rectangle', 'triangle', 'line', 'annulus'):
+            raise TypeError('Expected a supported vector outline')
+        incoming = vectorized_mobject.get_points()
+        existing = self.get_points()
+        if len(existing) % 4:
+            existing = existing[:-1]
+        return self.set_points(existing + incoming)
+
     def set_points_as_corners(self, points):
         vertices = self._corners(points)
         self._type, self.vertices = 'polyline', vertices
@@ -614,13 +676,10 @@ class VMobject(Mobject):
 
     def start_new_path(self, point):
         point = self._corners([point])[0]
-        if self._type != 'bezierpath':
-            self.curves = _path_curves(self.to_dict())
-        elif self.vertices:
-            self.curves.append([self.vertices[0][:] for _ in range(4)])
-        self._type, self.vertices = 'bezierpath', [point]
-        self.__dict__.pop('subpath_lengths', None)
-        return self
+        existing = self.get_points()
+        if len(existing) % 4:
+            existing.extend([existing[-1][:] for _ in range(3)])
+        return self.set_points(existing + [point])
 
     def has_new_path_started(self):
         return bool(self.vertices) if self._type == 'bezierpath' else len(self.vertices) == 1
@@ -696,6 +755,8 @@ class VMobject(Mobject):
 
     def get_start(self):
         if self._type == 'bezierpath':
+            if not self.curves and not self.vertices:
+                raise ValueError('The path has no points')
             return self._point_to_world(Vector(self.curves[0][0] if self.curves else self.vertices[0]))
         if not self.vertices:
             raise ValueError('The path has no points')
@@ -703,6 +764,8 @@ class VMobject(Mobject):
 
     def get_end(self):
         if self._type == 'bezierpath':
+            if not self.curves and not self.vertices:
+                raise ValueError('The path has no points')
             return self._point_to_world(Vector(self.vertices[0] if self.vertices else self.curves[-1][-1]))
         if not self.vertices:
             raise ValueError('The path has no points')
@@ -1788,7 +1851,7 @@ class Animate(Transform):
     def __getattr__(self, name):
         if name.startswith('__'):
             raise AttributeError(name)
-        if name not in ('become', 'set_value', 'increment_value', 'shift', 'move_to', 'set_width', 'set_height', 'move_arc_center_to', 'put_start_and_end_on', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'set_points_as_corners', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
+        if name not in ('become', 'set_value', 'increment_value', 'shift', 'move_to', 'set_width', 'set_height', 'move_arc_center_to', 'put_start_and_end_on', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'set_points', 'append_points', 'clear_points', 'add_subpath', 'append_vectorized_mobject', 'start_new_path', 'close_path', 'set_points_as_corners', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
             raise NotImplementedError(f'animate.{name} is not supported yet')
         def apply(*args, **kwargs):
             getattr(self.target, name)(*args, **kwargs)

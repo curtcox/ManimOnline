@@ -670,3 +670,23 @@ Native representations return at completion and Restore. Automatic contour
 matching, boolean geometry, smoothing and full point-array editing remain open.
 **Morph separate contours** follows a square ring, morphs it to Annulus, collapses
 the hole into a rounded rectangle and restores both original contours.
+
+Supported outlines expose `get_points()`, `get_num_points()` and `has_points()`.
+get_points returns independent lists of world-space anchors/handles, four points
+per completed cubic plus an optional unfinished anchor. Primitive outlines use
+the same cubic conversion as morphing; a single corner anchor stays one point.
+Objects without supported outline geometry return no points.
+
+`VMobject.set_points(points)` replaces raw cubic geometry; append_points extends
+it, add_subpath requires complete four-point groups, and clear_points empties it.
+Arrays must contain complete cubic groups, optionally followed by one new anchor,
+with finite XY coordinates. Mutations validate before changing the object.
+Raw edits use world coordinates and reset position/rotation/scale after baking
+existing geometry, preserving styles, callbacks and checkpoints. start_new_path
+also bakes existing transforms before adding its world-space anchor, so changing
+the bounds does not move earlier rotated curves. append_vectorized_mobject copies
+a supported outline and drops the receiver's unfinished anchor, retaining receiver
+styles. These editing methods work in animate chains and with Restore. Returned
+lists are copies; NumPy point-array indexing and direct mutable points attributes
+remain open. **Edit cubic point arrays** builds a transformed curve from raw
+points, animates its handles, appends a ring and restores the curve.

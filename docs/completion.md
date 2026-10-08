@@ -46,7 +46,9 @@ families, leaf wrapping, copy and sequential restoration. General Mobject family
 restructuring remains open. Disconnected VMobject construction, separate SVG
 contours and ordered per-contour alignment now support ring-to-outline morphs;
 Annulus retains analytical radii for same-type transforms. Automatic contour
-correspondence and full point-array APIs remain open.
+correspondence remains open. Raw get/set/append/clear points, subpath append and
+copied outline append now have transformed-world-coordinate tests and animate
+support. Full NumPy semantics, mutable points attributes and glyph geometry remain open.
 RoundedRectangle now uses closed cubic outlines for circular/concave corners,
 per-corner morphing, path following and restoration; general polygon rounding
 and rectangle grids remain open.

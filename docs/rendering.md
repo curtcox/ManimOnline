@@ -810,3 +810,33 @@ two closed morph contours with sixteen cubics at seven seconds, a shrinking
 hole with twenty cubics at nine seconds, and restoration of both blue square
 contours at thirteen seconds. No radial connector was drawn. Graphviz rendered
 after switching examples.
+
+## Raw cubic point arrays
+
+Supported outlines expose get_points/get_num_points/has_points. Point queries
+return independent world-space coordinate lists: four anchors/handles per cubic,
+plus an optional unfinished anchor. Primitive queries use existing cubic outline
+conversion. Geometry without a supported outline returns an empty list.
+
+VMobject implements set_points, append_points, clear_points, add_subpath and
+append_vectorized_mobject, following the [official raw-point operations](https://docs.manim.community/en/stable/_modules/manim/mobject/types/vectorized_mobject.html).
+Arrays validate finite XY points and lengths of 4n or 4n+1 before mutation;
+add_subpath requires 4n. Replacements use world coordinates. Append bakes old
+transforms and preserves earlier points; start_new_path now does the same to
+avoid changing the rotation pivot when an unfinished anchor expands the bounds.
+Neutral transforms avoid unnecessary floating-point subtraction/readdition.
+Copied vector outlines are independent, retain receiver styles and drop the
+receiver's unfinished anchor as native append_vectorized_mobject does.
+
+Styles/callbacks/checkpoints survive editing. Animate accepts the raw methods,
+start_new_path and close_path; existing morph alignment samples intermediate
+geometry and restoration. Empty endpoint queries report a clear error. Tests
+cover transformed round trips, alias isolation, pending completion, invalid
+input atomicity, clearing/restoration, copied outline appends and gallery output.
+General NumPy semantics, direct mutable points attributes and glyph point access
+remain open.
+
+Local Pyodide playback verified raw pending-anchor completion, animated handle
+edits and appended ring geometry. At four seconds the preview contained three
+separate contours and seventeen cubics; at eight seconds Restore returned the
+original single curve. Graphviz rendered after switching examples.
