@@ -82,13 +82,13 @@ geometry. Endpoint queries and distance-based sampling apply the existing local
 geometry transforms, with exact endpoints for straight-edged paths. Create and
 Uncreate trace the whole connected stroke. Styles, checkpoints, depth/group
 ordering, transforms, and MoveAlongPath use the existing pipeline. Same-count
-vertex lists interpolate; different-count corner paths/polygons crossfade to avoid
-the earlier terminal jump. Connected cubic handles are supported below; smoothing/multiple paths and
+vertex lists interpolate; different-count corner paths/polygons now align through
+cubic subdivision as described below. Connected cubic handles are supported below; smoothing/multiple paths and
 arbitrary shape alignment remain open.
 
 Tests cover construction, extension, reversal, validation without partial edits,
 empty/degenerate/closed paths, transformed endpoint queries, movement, tracing,
-deformation, unequal-count crossfades, checkpoints, SVG styles, and gallery
+deformation, unequal-count alignment, checkpoints, SVG styles, and gallery
 cleanup. Local Pyodide checks showed half tracing at one second, endpoint arrival
 at five seconds, deformed vertices at six, removal at the end, and DOT after
 switching. See `examples/corner_path_scene.py`.
@@ -386,7 +386,7 @@ until a cubic append converts their straight segments. Subsequent corners append
 straight cubics; replacement/reversal and animated operations preserve the API.
 Sampling partitions by approximate curve lengths (20 intervals) and uses each
 curve's parameter, with exact endpoints. Bounds enclose control points. Matching
-curve counts interpolate; different counts/types crossfade. General alignment,
+curve counts interpolate; unequal connected paths align through subdivision. General alignment,
 disconnected subpaths, smoothing, and full point-array APIs remain gaps.
 
 Python/SVG tests cover finite XY validation, exact transformed endpoints, cubic
@@ -394,3 +394,21 @@ midpoints, mixed segment allocation, reversal, matching/unequal-count transforms
 restoration, tracing, styles, and the gallery. Local Pyodide checks verified
 half-stroke tracing, endpoint arrival, intermediate control-point deformation,
 restoration, and the final mixed path. DOT rendered after switching.
+
+## Unequal connected-path alignment
+
+Transform snapshots convert corner/polygon edges to cubics and subdivide the
+shorter curve list evenly to match counts. Exact De Casteljau splitting retains
+curve geometry and existing joins; stored geometry pivots preserve transformed
+endpoint frames even when control-point bounds change. Matching anchors/handles
+interpolate in one drawable path, including corner-to-cubic and open-to-closed
+morphs. Closed SVG paths use Z to retain stroke joins. Live geometry and target
+identity are unchanged until normal completion; checkpoints restore original
+representations. Empty paths still crossfade. No automatic winding/correspondence,
+disconnected subpaths, primitive conversion, or family alignment is implied.
+
+Python checks verify subdivision at several parameters, preservation of joins and
+transformed pivots, immutable source/target snapshots, singleton/empty geometry,
+copy/replacement/restoration, and sequential stages. SVG tests verify closed joins.
+Local Pyodide playback showed one fully opaque path at the unequal-count midpoint,
+a restored rotated/scaled curve, and the final polygon. DOT rendered after switching.

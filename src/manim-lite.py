@@ -641,6 +641,68 @@ def interpolate(start, end, alpha):
     return copy.deepcopy(end if alpha >= 1 else start)
 
 
+def _path_curves(snapshot):
+    if snapshot['type'] == 'bezierpath':
+        return copy.deepcopy(snapshot['curves'])
+    vertices = snapshot['vertices']
+    if not vertices:
+        return []
+    points = [Vector(p) for p in vertices]
+    if snapshot['type'] == 'polygon':
+        points.append(points[0])
+    if len(points) == 1:
+        return [[list(points[0]) for _ in range(4)]]
+    return [[list(a), list(a * (2/3) + b * (1/3)),
+             list(a * (1/3) + b * (2/3)), list(b)]
+            for a, b in zip(points, points[1:])]
+
+
+def _split_cubic(curve, t):
+    p0, p1, p2, p3 = [Vector(p) for p in curve]
+    a, b, c = [p * (1-t) + q * t for p, q in ((p0,p1), (p1,p2), (p2,p3))]
+    d, e = a * (1-t) + b * t, b * (1-t) + c * t
+    midpoint = d * (1-t) + e * t
+    return ([list(p) for p in (p0,a,d,midpoint)],
+            [list(p) for p in (midpoint,e,c,p3)])
+
+
+def _subdivide_curves(curves, count):
+    # Distribute inserted curves across existing segments, preserving every join.
+    quotient, remainder = divmod(count, len(curves))
+    result = []
+    for index, curve in enumerate(curves):
+        parts = quotient + (index < remainder)
+        remaining = curve
+        for part in range(parts - 1):
+            left, remaining = _split_cubic(remaining, 1 / (parts - part))
+            result.append(left)
+        result.append(remaining)
+    return result
+
+
+def _align_path_snapshots(start, target):
+    path_types = ('polyline', 'polygon', 'bezierpath')
+    if start['type'] not in path_types or target['type'] not in path_types:
+        return None
+    curves1, curves2 = _path_curves(start), _path_curves(target)
+    if not curves1 or not curves2:
+        return None  # Empty geometry has no endpoint to align; retain the fade.
+    if (start['type'] == target['type'] and
+            (len(curves1) == len(curves2) if start['type'] == 'bezierpath'
+             else len(start['vertices']) == len(target['vertices']))):
+        return None
+    count = max(len(curves1), len(curves2))
+    result = []
+    for snapshot, curves in ((start, curves1), (target, curves2)):
+        aligned = copy.deepcopy(snapshot)
+        aligned['type'], aligned['curves'] = 'bezierpath', _subdivide_curves(curves, count)
+        aligned.pop('vertices', None)
+        # Keep the original pivot. Subdivision changes control-point bounds but
+        # must not move a previously scaled/rotated curve at either endpoint.
+        result.append(aligned)
+    return tuple(result)
+
+
 class Animation:
     def __init__(self, mobject, run_time=1, rate_func=smooth):
         self.mobject, self.run_time, self.rate_func = mobject, run_time, rate_func
@@ -775,8 +837,18 @@ class Transform(Animation):
         super().__init__(mobject, **kwargs)
         self.target = target_mobject.copy()
 
+    def begin(self, scene):
+        super().begin(scene)
+        self._aligned_paths = None
+        self._alignment_checked = False
+
     def sample(self, alpha):
         target = self.target.to_dict()
+        if not self._alignment_checked:
+            self._aligned_paths = _align_path_snapshots(self.start, target)
+            self._alignment_checked = True
+        if self._aligned_paths:
+            return [interpolate(*self._aligned_paths, alpha)]
         if (self.start['type'] == target['type'] and
                 (target['type'] != 'mathtex' or self.start['text'] == target['text']) and
                 (target['type'] not in ('polygon', 'polyline') or

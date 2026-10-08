@@ -328,6 +328,9 @@ const ManimRenderer = {
     path.setAttribute('d', curves.length
       ? `M ${xy(curves[0][0])} ` + curves.map(curve => `C ${curve.slice(1).map(xy).join(' ')}`).join(' ')
       : '');
+    if (curves.length && xy(curves[0][0]) === xy(curves[curves.length - 1][3])) {
+      path.setAttribute('d', path.getAttribute('d') + ' Z');
+    }
     return path;
   },
 

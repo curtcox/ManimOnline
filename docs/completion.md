@@ -33,8 +33,9 @@ and cleanup. Broader family composition remains implementation work. Scene lifec
 have Python tests and Pyodide browser checks, including teardown animation.
 
 Corner-path VMobjects now have Python/SVG tests and Pyodide checks for tracing,
-movement, equal-count vertex interpolation, and cleanup. Unequal-count paths and
-polygons crossfade; connected cubic paths now support tracing, parameter sampling,
+movement, vertex interpolation, and cleanup. Unequal connected path/polygon
+counts now align through exact cubic subdivision, with tests and local Pyodide
+checks for continuous morphing, restored pivots, and the final polygon; connected cubic paths support tracing, parameter sampling,
 and equal-count control-point interpolation, with Python/SVG tests and local
 Pyodide gallery checks. General geometry/path alignment remains open.
 

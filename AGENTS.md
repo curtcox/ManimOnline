@@ -43,7 +43,8 @@ compatibility layer, not a server running full Manim Community.
 24. `examples/corner_path_scene.py` for straight-segment VMobject tracing and deformation.
 25. `examples/foreground_scene.py` for grouped foreground overlays, release, and cleanup.
 26. `examples/bezier_scene.py` for cubic tracing, parameter sampling, restoration, and mixed paths.
-27. `todo/master_plan.md` and the other `todo/` documents for background plans.
+27. `examples/morph_scene.py` for unequal path alignment, restored pivots, and closing outlines.
+28. `todo/master_plan.md` and the other `todo/` documents for background plans.
     `docs/completion.md` tracks the remaining acceptance gates.
 
 `ace/`, `viz-global.js`, and `svg-pan-zoom.min.js` are vendored dependencies.

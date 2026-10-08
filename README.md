@@ -72,6 +72,7 @@ Then open `http://localhost:8000` in your browser.
 - [Path scene](examples/path_scene.py): motion along transformed circles, polygon outlines, and lines.
 - [Arc scene](examples/arc_scene.py): open circular paths and clockwise/counterclockwise motion.
 - [Growth scene](examples/growth_scene.py): growth from a point, group growth, and staggered shrinking.
+- [Morph scene](examples/morph_scene.py): align unequal corner/curve counts, restore, and close an outline.
 - [Bezier scene](examples/bezier_scene.py): trace, follow, deform, and restore cubic curves and mixed paths.
 - [Corner paths](examples/corner_path_scene.py): trace, follow, and deform a connected path.
 - [Scene lifecycle](examples/lifecycle_scene.py): setup-created objects, scene time, and teardown animation.
@@ -119,7 +120,8 @@ Manim-like runtime, **not the full Manim Community engine**.
 `Uncreate` reverses that draw and removes the object. Groups reveal all children
 simultaneously. Text creation and `Write` use fades because glyph paths are not
 available in this runtime. MathTex creation also uses fades. Arrow shafts and heads reveal together. Transforms
-interpolate matching geometry and crossfade between different shape types.
+interpolate matching geometry, align connected corner/cubic/polygon paths, and
+crossfade other different shape types.
 `TransformFromCopy(source, target)` animates the target from a snapshot of the
 source while preserving the source. Add the source first to keep it visible;
 only the target is automatically added. Both are snapshotted at playback start.
@@ -344,8 +346,8 @@ geometry, and endpoint queries require at least one point.
 Corner paths support Create/Uncreate, styles, layout, group/depth ordering,
 transforms, checkpoints, `get_start()`/`get_end()`, and `MoveAlongPath` sampled
 by distance along straight segments. Equal-count point lists interpolate;
-unequal-count corner paths and polygons crossfade rather than jumping between
-vertex lists. Smoothing, multiple subpaths, general point-array operations, and
+unequal-count corner paths and polygons align through cubic subdivision before
+interpolation. Smoothing, multiple subpaths, general point-array operations, and
 arbitrary shape-to-shape path alignment remain unsupported. This uses the
 [Manim corner-path API](https://docs.manim.community/en/stable/reference/manim.mobject.types.vectorized_mobject.VMobject.html?highlight=corner)
 with a straight-segment SVG representation.
@@ -429,13 +431,33 @@ whole path, and `reverse_direction` reverses segment order and control handles.
 Coordinates must be finite and in the XY plane; invalid appends preserve the path.
 
 Curves render as SVG cubic commands with Create/Uncreate, styles, group transforms,
-copy/checkpoints, Restore, and MoveAlongPath. Matching curve counts interpolate
-anchors and handles during Transform; different counts or corner/cubic path types
-crossfade. Sampling uses the cubic parameter within each segment. For several
+copy/checkpoints, Restore, and MoveAlongPath. Transform interpolates anchors and handles. Unequal segment counts and
+corner/cubic/polygon path combinations align through subdivision as described below. Sampling uses the cubic parameter within each segment. For several
 segments, their relative durations use lengths estimated with 20 intervals per
 segment. This is approximate and does not produce constant speed within a curve.
 Geometry bounds and transform pivots enclose anchors and handles, rather than
-measuring the visible curve's exact extrema. Disconnected subpaths, general point
+measuring the visible curve's exact extrema. Disconnected subpaths, arbitrary shape
 alignment, smoothing, and the rest of VMobject's point-array API remain unsupported.
 See [Manim CubicBezier](https://docs.manim.community/en/stable/reference/manim.mobject.geometry.arc.CubicBezier.html)
 and [path sampling](https://docs.manim.community/en/stable/_modules/manim/mobject/types/vectorized_mobject.html).
+
+
+### Path alignment during transforms
+
+Transform, Restore, ReplacementTransform, TransformFromCopy, and animate chains
+can morph connected corner, cubic, and polygon paths with unequal segment counts.
+Straight edges become cubic segments, and polygons include their closing edge.
+The shorter segment list is subdivided evenly across its existing segments until
+both lists match. De Casteljau splitting preserves the original curve and every
+join; alignment snapshots keep the original geometry pivots, scale, rotation,
+and position. The displayed frame then interpolates paired anchors, handles, and
+styles. Both closed endpoints produce a closed SVG stroke with its usual joins.
+
+Alignment leaves the live source and target unchanged until normal animation
+completion. Transform finishes with the target's original geometry representation
+and preserves the source checkpoint. A one-point path can grow into a segment;
+empty paths still fade because they have no anchor to align. Correspondence follows
+path order; the runtime does not optimize point matching or winding direction.
+Disconnected subpaths, primitive-to-path conversion, and nested group-family
+alignment remain open. This follows the curve-subdivision concept in
+[Manim align_points](https://docs.manim.community/en/stable/reference/manim.mobject.types.vectorized_mobject.VMobject.html#manim.mobject.types.vectorized_mobject.VMobject.align_points).

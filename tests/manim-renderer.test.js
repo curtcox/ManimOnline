@@ -208,3 +208,12 @@ test('cubic paths render SVG curves with standard tracing, styles, and transform
   assert.match(path.getAttribute('transform'), /rotate\(14.999.*scale\(0.8\)/);
   assert.equal(renderer.renderMobject({ type: 'bezierpath', curves: [] }).getAttribute('d'), '');
 });
+
+test('aligned closed paths retain SVG stroke joins at their closing anchor', () => {
+  const path = renderer.renderMobject({ type: 'bezierpath', curves: [
+    [[0,0,0],[1,0,0],[1,1,0],[0,1,0]],
+    [[0,1,0],[-1,1,0],[-1,0,0],[0,0,0]]
+  ], fill_opacity: 0.3 });
+  assert.equal(path.getAttribute('d'), 'M 0,0 C 50,0 50,50 0,50 C -50,50 -50,0 0,0 Z');
+  assert.equal(path.getAttribute('fill-opacity'), '0.3');
+});

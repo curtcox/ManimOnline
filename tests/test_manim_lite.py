@@ -16,6 +16,63 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_cubic_subdivision_preserves_curve_geometry_and_every_existing_join(self):
+        curve = [[0,0,0], [8,4,0], [-2,3,0], [3,0,0]]
+        pieces = lite._subdivide_curves([curve], 3)
+        for index, piece in enumerate(pieces):
+            for t in (0,0.25,0.5,1):
+                for a, b in zip(lite.VMobject._bezier_point(piece,t), lite.VMobject._bezier_point(curve,(index+t)/3)):
+                    self.assertAlmostEqual(a,b)
+        second = [[3,0,0], [4,1,0], [5,1,0], [6,0,0]]
+        pieces = lite._subdivide_curves([curve, second], 5)
+        self.assertEqual(pieces[2][-1], second[0])
+        self.assertEqual(pieces[3][0], second[0])
+        self.assertEqual(pieces[-1][-1], second[-1])
+
+    def test_alignment_keeps_transformed_pivots_and_live_source_target_unchanged(self):
+        source = lite.CubicBezier((0,0), (8,4), (-2,3), (3,0)).scale(0.8).rotate(lite.PI/4).shift(lite.LEFT)
+        target = source.copy().add_line_to((4,1)).add_line_to((5,2)).set_color(lite.GREEN)
+        before = source.to_dict(), target.to_dict()
+        animation = lite.Transform(source,target)
+        animation.prepare(lite.Scene())
+        for alpha, original in ((0,before[0]), (1,before[1])):
+            frame = animation.sample(alpha)[0]
+            self.assertEqual(len(frame['curves']), 3)
+            for key in ('geometry_center', 'geometry_scale', 'angle', 'position'):
+                self.assertEqual(frame[key], original[key])
+            self.assertEqual(frame['curves'][0][0], original['curves'][0][0])
+            self.assertEqual(frame['curves'][-1][-1], original['curves'][-1][-1])
+        self.assertEqual((source.to_dict(),target.to_dict()),before)
+
+    def test_corner_to_cubic_morph_and_single_point_growth_keep_endpoints(self):
+        result = render('p = VMobject().set_points_as_corners([(-2,0),(2,0)])\nq = CubicBezier((-2,0),(-1,2),(1,2),(2,0))\nself.play(Transform(p,q), run_time=2, rate_func=linear)')
+        frame = result['frames'][15]['mobjects'][0]
+        self.assertEqual(frame['type'], 'bezierpath')
+        self.assertEqual(frame['curves'][0][0], [-2,0,0])
+        self.assertEqual(frame['curves'][0][-1], [2,0,0])
+        self.assertEqual(frame['curves'][0][1][1], 1)
+        result = render('p = VMobject().set_points_as_corners([ORIGIN])\nq = VMobject().set_points_as_corners([ORIGIN, RIGHT*2])\nself.play(Transform(p,q), run_time=2, rate_func=linear)')
+        self.assertEqual(result['frames'][15]['mobjects'][0]['curves'][0][-1], [1,0,0])
+        result = render('p = VMobject()\nq = CubicBezier(ORIGIN,RIGHT,UP,UR)\nself.play(Transform(p,q), run_time=2, rate_func=linear)')
+        self.assertEqual([m['opacity'] for m in result['frames'][15]['mobjects']], [0.5,0.5])
+
+    def test_alignment_handles_restore_copy_replacement_and_sequential_stage_state(self):
+        result = render('p = VMobject().set_points_as_corners([ORIGIN, RIGHT*2]).save_state()\nq = VMobject().set_points_as_corners([ORIGIN, RIGHT*2, UR*2])\nself.add(p)\nself.play(TransformFromCopy(p,q), run_time=2, rate_func=linear)\nassert p.vertices == [[0,0,0],[2,0,0]]\nself.play(Succession(Transform(p,q), Restore(p)), rate_func=linear)')
+        self.assertEqual(len(result['frames'][15]['mobjects']), 2)
+        self.assertEqual(result['frames'][15]['mobjects'][1]['type'], 'bezierpath')
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['vertices'], [[0,0,0],[2,0,0]])
+        result = render('p = VMobject().set_points_as_corners([ORIGIN,RIGHT])\nq = CubicBezier(ORIGIN,UP,UR,RIGHT)\nself.play(ReplacementTransform(p,q), run_time=2, rate_func=linear)\nassert self.mobjects == [q]')
+        self.assertEqual(result['frames'][15]['mobjects'][0]['type'], 'bezierpath')
+
+    def test_alignment_gallery_finishes_as_closed_polygon(self):
+        result = json.loads(lite.render_scene((ROOT / 'examples/morph_scene.py').read_text()))
+        self.assertEqual(result['duration'], 10)
+        self.assertEqual(result['frames'][45]['mobjects'][0]['type'], 'bezierpath')
+        self.assertEqual(len(result['frames'][45]['mobjects'][0]['curves']), 3)
+        self.assertEqual(len(result['frames'][75]['mobjects'][0]['curves']), 3)
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['type'], 'polygon')
+        self.assertEqual(len(result['frames'][-1]['mobjects'][0]['vertices']), 4)
+
     def test_cubic_bezier_samples_endpoints_midpoint_and_transformed_geometry(self):
         curve = lite.CubicBezier((-3,0), (-1,3), (1,3), (3,0))
         self.assertIsInstance(curve, lite.VMobject)
@@ -71,7 +128,8 @@ class SceneTests(unittest.TestCase):
         self.assertEqual(middle['curves'][0][2], [1,2,0])
         self.assertEqual(result['frames'][-1]['mobjects'][0]['curves'][0][1], [-1,0,0])
         result = render('a = CubicBezier(ORIGIN, RIGHT, RIGHT, RIGHT)\nself.play(a.animate.add_cubic_bezier_curve_to(UR, UR, UP), run_time=1, rate_func=linear)')
-        self.assertEqual(len(result['frames'][7]['mobjects']), 2)
+        self.assertEqual(len(result['frames'][7]['mobjects']), 1)
+        self.assertEqual(len(result['frames'][7]['mobjects'][0]['curves']), 2)
         self.assertEqual(len(result['frames'][-1]['mobjects'][0]['curves']), 2)
 
     def test_cubic_gallery_traces_follows_deforms_restores_and_introduces_mixed_path(self):
@@ -222,17 +280,23 @@ class SceneTests(unittest.TestCase):
         self.assertEqual(result['frames'][75]['mobjects'][0]['vertices'], [[0,0,0], [3,0,0], [3,3,0]])
         self.assertEqual(result['frames'][-1]['mobjects'], [])
 
-    def test_unequal_corner_counts_crossfade_instead_of_jumping(self):
+    def test_unequal_corner_counts_morph_through_one_aligned_path(self):
         for shape in ('VMobject().set_points_as_corners', 'Polygon'):
             initial = '[(0,0,0), (2,0,0)]' if shape.startswith('VM') else '(0,0,0), (2,0,0), (0,2,0)'
             target = '[(0,0,0), (2,0,0), (2,2,0)]' if shape.startswith('VM') else '(0,0,0), (2,0,0), (2,2,0), (0,2,0)'
             result = render(f'p = {shape}({initial})\nq = {shape}({target})\nself.play(Transform(p,q), run_time=2, rate_func=linear)')
             middle = result['frames'][15]['mobjects']
-            self.assertEqual(len(middle), 2)
-            self.assertEqual([m['opacity'] for m in middle], [0.5, 0.5])
-            self.assertNotEqual(len(middle[0]['vertices']), len(middle[1]['vertices']))
-            self.assertEqual(len(result['frames'][-1]['mobjects']), 1)
-            self.assertEqual(result['frames'][-1]['mobjects'][0]['vertices'], middle[1]['vertices'])
+            self.assertEqual(len(middle), 1)
+            self.assertEqual(middle[0]['opacity'], 1)
+            self.assertEqual(middle[0]['type'], 'bezierpath')
+            self.assertEqual(len(middle[0]['curves']), 2 if shape.startswith('VM') else 4)
+            final = result['frames'][-1]['mobjects'][0]
+            self.assertEqual(final['type'], 'polyline' if shape.startswith('VM') else 'polygon')
+            if shape.startswith('VM'):
+                self.assertEqual(middle[0]['curves'][0][-1], [1.5,0,0])
+                self.assertEqual(middle[0]['curves'][-1][-1], [2,1,0])
+            else:
+                self.assertEqual(middle[0]['curves'][0][0], middle[0]['curves'][-1][-1])
 
     def test_lifecycle_gallery_initializes_construct_objects_and_reports_elapsed_time(self):
         result = json.loads(lite.render_scene((ROOT / 'examples/lifecycle_scene.py').read_text()))
