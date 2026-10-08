@@ -2,45 +2,44 @@
 
 ## Goal and current state
 
-Build a browser experience for editing Manim scene source, requesting a render,
-and playing the resulting animation. The original project idea is
-“GraphvizOnline but Manim.” Keep the edit → render → preview loop central.
-
-The repository currently contains documentation and an example scene only.
-There is no application, renderer, package manifest, CI, or test suite.
-Do not infer an existing stack or report the project as runnable.
+Build a browser experience for editing Manim source and previewing animations,
+while preserving the existing Graphviz editor. This is a static GitHub Pages
+site; the established direction is in-browser Pyodide and a limited Manim-lite
+compatibility layer, not a server running full Manim Community.
 
 ## Read first
 
-1. `README.md` for the public project overview.
-2. `docs/rendering.md` for the proposed milestone, open decisions, and verification.
-3. `examples/minimal_scene.py` for a small rendering input.
+1. `README.md` for local serving instructions and public status.
+2. `index.html` for editor setup, rendering integration, and output controls.
+3. `src/detector.js`, `src/manim-renderer.js`, and `src/unified-worker.js`.
+4. `docs/rendering.md` for current gaps and next milestones.
+5. `todo/master_plan.md` and the other `todo/` documents for background plans.
+
+`ace/`, `viz-global.js`, and `svg-pan-zoom.min.js` are vendored dependencies.
+Avoid editing these to implement Manim features. The Markdown files under
+`examples/` illustrate the broader Manim API; they do not imply browser support.
 
 ## Implementation guidance
 
-- Treat the roadmap as a proposal, not an already approved architecture.
-  Browser access does not require that Manim itself execute inside the browser.
-- Investigate the rendering runtime before building a large editor UI. Prove
-  that the example can produce a video the target browser can play.
-- Prefer a small end-to-end slice: source input, explicit scene selection,
-  render status, useful errors, and video playback/download.
-- Use Manim Community as the initial investigation target; record the chosen
-  version and renderer when introducing dependencies. Other Manim variants are
-  not assumed compatible.
-- User scene source is executable Python. For a server design, isolate rendering
-  from the web process and host, with resource limits and per-job storage.
-  A subprocess alone is not a sandbox. See the roadmap for the required boundaries.
-- Keep generated videos, caches, and job directories out of version control.
-  Add scoped ignore rules when introducing tools that generate them.
-- Avoid speculative infrastructure, accounts, sharing features, and dependency
-  installs for documentation-only tasks.
+- Keep the edit → render → preview loop central. Preserve DOT rendering, sharing,
+  and exports when changing the unified flow.
+- Extend the existing static architecture before introducing another stack.
+  Full Manim, video encoding, LaTeX, and offline support are not proven here.
+- Keep Python execution in a worker so a main-thread timeout can terminate
+  runaway code. A Promise timeout inside a blocked worker cannot interrupt it.
+- Isolate each source execution namespace and ignore stale render results.
+- Keep the compatibility layer in one source rather than divergent copies in
+  the page and worker. Label supported behavior and unsupported features plainly.
+- Use official Manim/Pyodide documentation when investigating compatibility.
+- Keep generated media, caches, and temporary test output out of Git.
+- Do not introduce accounts, sharing services, or server infrastructure unless
+  the task calls for them. If a server is later introduced, submitted Python
+  requires runtime isolation, resource limits, and per-job artifact storage.
 
 ## Verification and handoff
 
-There are no repository test commands yet. Do not invent them or claim a real
-render from syntax checks or mocks. Once code exists, document exact setup and
-verification commands in the README and update these notes to reflect reality.
-
-For rendering changes, verify successful playback, actionable scene errors,
-timeout/cancellation behavior, and isolation between jobs as appropriate to the
-change. Report what was actually run and any remaining environment limitations.
+Serve locally with `python3 -m http.server 8000`. Check both a DOT graph and a
+Manim example in a real browser. Syntax checks or native Python tests do not
+prove Pyodide loading or browser playback. Report which checks actually ran.
+Update the README and these notes when adding test commands or changing the
+runtime. Do not claim full Manim compatibility from a subset implementation.

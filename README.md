@@ -1,32 +1,48 @@
-# ManimOnline
+# [ManimOnline](https://curtcox.github.io/ManimOnline)
 
-GraphvizOnline but Manim: write a Manim scene in a browser, render it, and watch
-the resulting animation without installing Manim on the user's computer.
+A web-based editor that supports both Graphviz DOT language diagrams and Manim Python animations, with automatic detection and appropriate rendering.
 
-## Project status
+## Features
 
-This project is at the planning stage. There is no browser app, rendering
-service, dependency manifest, or automated test suite yet. The implementation
-language, framework, hosting platform, and rendering runtime are still open.
+- **Graphviz DOT Support**: Full support for Graphviz DOT language diagrams
+- **Manim Support**: (Coming soon) Browser-based Manim animation rendering
+- **Auto-Detection**: Automatically detects whether input is DOT or Manim Python
+- **URL Sharing**: Share diagrams via URL parameters
+- **Export**: Download diagrams as SVG or PNG
 
-“Browser-based” describes the intended user experience. Whether rendering runs
-in the browser or on a server has not been decided.
+## Usage
 
-## Start here
+Visit the deployed site and start typing:
+- For Graphviz: Write DOT language code (e.g., `digraph { a -> b }`)
+- For Manim: Write Python code with Manim imports (coming soon)
 
-- [AGENTS.md](AGENTS.md): orientation and working guidance for coding agents.
-- [Rendering roadmap](docs/rendering.md): proposed first milestone, runtime
-  investigation, boundaries, and acceptance checks.
-- [Minimal example](examples/minimal_scene.py): a short scene for an initial
-  rendering smoke check once a Manim runtime is available.
+## Development
 
-There is no project setup command yet. In an environment with Manim Community
-installed, the example can be rendered from the repository root with:
+This is a static site that can be served directly. To run locally:
 
-```sh
-manim -ql examples/minimal_scene.py MinimalScene
+```bash
+# Using Python
+python -m http.server 8000
+
+# Using Node.js
+npx serve .
 ```
 
-This is a standalone Manim command, not a working ManimOnline application.
-See the official [Manim quickstart](https://docs.manim.community/en/stable/tutorials/quickstart.html)
-for scene and rendering basics.
+Then open `http://localhost:8000` in your browser.
+
+## Agent orientation
+
+- [AGENTS.md](AGENTS.md): project map and working guidance.
+- [Rendering roadmap](docs/rendering.md): current limitations and next milestones.
+- [Minimal scene](examples/minimal_scene.py): baseline animation input.
+
+## Credits
+
+- Based on [GraphvizOnline](https://github.com/dreampuf/GraphvizOnline) by Dreampuf (BSD-3-Clause)
+- Uses [viz.js](https://github.com/mdaines/viz.js) for Graphviz rendering
+- Uses [ACE Editor](https://ace.c9.io/) for code editing
+- Uses [svg-pan-zoom](https://github.com/ariutta/svg-pan-zoom) for SVG interaction
+
+## License
+
+BSD-3-Clause (see LICENSE-graphvizonline for GraphvizOnline attribution)

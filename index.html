@@ -1,0 +1,1336 @@
+<!DOCTYPE html>
+<html lang="utf-8">
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+  <title>ManimOnline</title>
+  <style type="text/css" media="screen">
+    body {
+      overflow: hidden;
+      margin: 0 0;
+    }
+
+    body.presentation #editor {
+      display: none;
+    }
+
+    body.presentation #options {
+      left: 0;
+    }
+
+    body.presentation #review {
+      left: 0;
+    }
+
+    #editor-toggle {
+      position: absolute;
+      left: 0;
+      top: 50%;
+      z-index: 10;
+      transform: translateY(-50%);
+    }
+
+    #toggle-btn {
+      cursor: pointer;
+      padding: 10px 6px;
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(4px);
+      border: 1px solid rgba(222, 226, 230, 0.7);
+      border-left: none;
+      border-radius: 0 6px 6px 0;
+      color: #495057;
+      font-size: 12px;
+      font-weight: 600;
+      box-shadow: 2px 0 4px rgba(0,0,0,0.08);
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 40px;
+      width: 20px;
+    }
+
+    #toggle-btn:hover {
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 2px 0 6px rgba(0,0,0,0.12);
+      color: #212529;
+    }
+
+    #toggle-btn:active {
+      background: rgba(233, 236, 239, 0.8);
+      box-shadow: 1px 0 3px rgba(0,0,0,0.05);
+    }
+
+    #toggle-btn.collapsed {
+      background: linear-gradient(to right, #ffffff, #f8f9fa);
+      border: 1px solid #dee2e6;
+      box-shadow: 2px 0 4px rgba(0,0,0,0.08);
+      color: #495057;
+    }
+
+    #toggle-btn.collapsed:hover {
+      background: linear-gradient(to right, #f8f9fa, #e9ecef);
+      color: #212529;
+    }
+
+    #editor {
+      margin: 0;
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      transition: width 0.3s ease;
+      width: 50%;
+    }
+
+    #editor.collapsed {
+      width: 0 !important;
+      overflow: hidden;
+    }
+
+    #splitter {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 5px;
+      background: #ccc;
+      cursor: col-resize;
+      z-index: 5;
+      transition: left 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 2px 0 4px rgba(0,0,0,0.08);
+    }
+
+    #splitter::before {
+      content: '⋮';
+      color: #555;
+      font-size: 20px;
+      font-weight: bold;
+      pointer-events: none;
+      line-height: 1;
+    }
+
+    #splitter:hover {
+      background: #999;
+    }
+
+    #splitter:hover::before {
+      color: #222;
+    }
+
+    #splitter.dragging {
+      background: #666;
+      transition: none;
+    }
+
+    #splitter.dragging::before {
+      color: #fff;
+    }
+
+    #review {
+      margin: 0;
+      position: absolute;
+      top: 42px;
+      bottom: 0;
+      right: 0;
+      left: calc(50% + 5px);
+      overflow: scroll;
+      transition: left 0.3s ease;
+    }
+
+    #review.expanded {
+      left: 0 !important;
+    }
+
+    #options {
+      margin: 0;
+      position: fixed;
+      left: calc(50% + 5px);
+      width: 100%;
+      flex: 0 0 auto;
+      background: linear-gradient(to bottom, #ffffff, #f8f9fa);
+      border-bottom: 1px solid #dee2e6;
+      padding: 8px 12px;
+      overflow: hidden;
+      transition: left 0.3s ease;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 14px;
+      z-index: 10;
+    }
+
+    #options.expanded {
+      left: 0 !important;
+    }
+
+    #options label {
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #495057;
+      font-weight: 500;
+    }
+
+    #options select {
+      padding: 4px 8px;
+      border: 1px solid #ced4da;
+      border-radius: 4px;
+      background: white;
+      color: #212529;
+      font-size: 14px;
+      cursor: pointer;
+      transition: border-color 0.15s ease;
+    }
+
+    #options select:hover {
+      border-color: #adb5bd;
+    }
+
+    #options select:focus {
+      outline: none;
+      border-color: #80bdff;
+      box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+    }
+
+    #options input[type="checkbox"] {
+      cursor: pointer;
+    }
+
+    #options input[type="button"] {
+      padding: 5px 12px;
+      border: 1px solid #ced4da;
+      border-radius: 4px;
+      background: white;
+      color: #212529;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    #options input[type="button"]:hover {
+      background: #f8f9fa;
+      border-color: #adb5bd;
+    }
+
+    #options input[type="button"]:active {
+      background: #e9ecef;
+    }
+
+    #options .graphviz-options {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    #options .graphviz-options.hidden {
+      display: none;
+    }
+
+    #options #raw.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    #options #raw.disabled input {
+      cursor: not-allowed;
+    }
+
+    #type-indicator {
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    #type-indicator.graphviz {
+      background: #e3f2fd;
+      color: #1565c0;
+    }
+
+    #type-indicator.manim {
+      background: #fff3e0;
+      color: #e65100;
+    }
+
+    #type-indicator.unknown {
+      background: #f5f5f5;
+      color: #757575;
+    }
+
+    #pyodide-status {
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      background: #f5f5f5;
+      color: #757575;
+    }
+
+    #pyodide-status.loading {
+      background: #fff8e1;
+      color: #f57f17;
+    }
+
+    #pyodide-status.ready {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+
+    #pyodide-status.hidden {
+      display: none;
+    }
+
+    #status {
+      width: 100%;
+      position: fixed;
+      bottom: 0;
+      display: block;
+      color: #FFF;
+      z-index: 999;
+    }
+
+    #review svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    #review #text {
+      font-size: 12px;
+      font-family: monaco, courier, monospace;
+      white-space: pre;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+    }
+
+    #review img {
+      display: block;
+      margin: 0 auto;
+    }
+
+    #review.working svg,
+    #output.error svg,
+    #review.working #text,
+    #output.error #text,
+    #review.working img,
+    #output.error img {
+      opacity: 0.4;
+    }
+
+    #review.error #error {
+      display: inherit;
+    }
+
+    #review #error {
+      display: none;
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      margin-right: 20px;
+      background: red;
+      color: white;
+      z-index: 1;
+      padding: 10px;
+      border-radius: 4px;
+      max-width: 80%;
+      white-space: pre-wrap;
+      font-family: monospace;
+    }
+
+    #download {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      text-decoration: none;
+      background: white;
+      color: #212529;
+      padding: 5px 12px;
+      border: 1px solid #ced4da;
+      border-radius: 4px;
+      display: inline-block;
+      transition: all 0.15s ease;
+    }
+
+    #download:hover {
+      background: #f8f9fa;
+      border-color: #adb5bd;
+    }
+
+    #download:active {
+      background: #e9ecef;
+    }
+
+    #shareurl {
+      display: none;
+      padding: 4px 8px;
+      border: 1px solid #ced4da;
+      border-radius: 4px;
+      background: white;
+      color: #212529;
+      font-size: 14px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      width: 300px;
+    }
+
+    #shareurl:focus {
+      outline: none;
+      border-color: #80bdff;
+      box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+    }
+  </style>
+</head>
+
+<body>
+  <div id="editor-toggle">
+    <button id="toggle-btn">&#9664;</button>
+  </div>
+  <pre id="editor">from manim import *
+
+class HelloWorld(Scene):
+    def construct(self):
+        # Create shapes with colors
+        circle = Circle(color=BLUE)
+        square = Square(color=RED).shift(RIGHT * 2)
+        triangle = Triangle(color=GREEN).shift(LEFT * 2)
+
+        # Add text
+        title = Text("ManimOnline", color=WHITE).shift(UP * 2)
+
+        # Add all objects to the scene
+        self.add(title, circle, square, triangle)</pre>
+  <div id="splitter"></div>
+  <div id="options">
+    <span id="type-indicator" class="manim">Manim</span>
+    <span id="pyodide-status" class="hidden">Python loading...</span>
+
+    <div class="graphviz-options hidden">
+      <label id="engine">
+        Engine:
+        <select>
+          <option>circo</option>
+          <option selected="">dot</option>
+          <option>fdp</option>
+          <option>nop</option>
+          <option>nop2</option>
+          <option>neato</option>
+          <option>sfdp</option>
+          <option>twopi</option>
+          <option>osage</option>
+          <option>patchwork</option>
+        </select>
+      </label>
+
+      <label id="format">
+        Format:
+        <select>
+          <option selected="">svg</option>
+          <option>png</option>
+          <option>json</option>
+          <option>xdot</option>
+          <option>plain</option>
+          <option>ps</option>
+        </select>
+      </label>
+
+      <label id="raw" class="disabled">
+        <input type="checkbox" disabled=""> Show raw output
+      </label>
+    </div>
+
+    <label>
+      <a href="#" target="_blank" id="download">Download</a>
+    </label>
+
+    <label>
+      <input type="button" value="Share" id="share">
+    </label>
+
+    <input type="input" value="" id="shareurl">
+
+  </div>
+  <div id="review">
+    <div id="error"></div>
+  </div>
+  <div id="status"></div>
+  <div class="github-fork-ribbon-wrapper right">
+    <div class="github-fork-ribbon">
+      <a href="https://github.com/curtcox/ManimOnline">Fork me on GitHub</a>
+    </div>
+  </div>
+
+  <script src="ace/ace.js" type="text/javascript" charset="utf-8"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"
+    integrity="sha512-qtX0GLM3qX8rxJN1gyDfcnMFFrKvixfoEOwbBib9VafR5vbChV5LeE5wSI/x+IlCkTY5ZFddFDCCfaVJJNnuKQ=="
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="viz-global.js"></script>
+  <script src="svg-pan-zoom.min.js" type="text/javascript" charset="utf-8"></script>
+  <script src="src/detector.js"></script>
+  <script src="src/manim-renderer.js"></script>
+  <script>
+    const editorElement = document.getElementById('editor');
+    const reviewElement = document.getElementById('review');
+    const optionsElement = document.getElementById('options');
+    const toggleBtn = document.getElementById('toggle-btn');
+    const splitter = document.getElementById('splitter');
+    const typeIndicator = document.getElementById('type-indicator');
+    const pyodideStatus = document.getElementById('pyodide-status');
+    const graphvizOptions = document.querySelector('.graphviz-options');
+
+    let isCollapsed = false;
+    let isDragging = false;
+    let currentSplitPercentage = 50;
+
+    // Pyodide state
+    let pyodide = null;
+    let pyodideLoading = false;
+    let pyodideReady = false;
+
+    // Current content type
+    let currentType = 'unknown';
+
+    // Splitter drag functionality
+    splitter.addEventListener('mousedown', (e) => {
+      if (isCollapsed) return;
+      isDragging = true;
+      splitter.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+      editorElement.style.transition = 'none';
+      splitter.style.transition = 'none';
+      reviewElement.style.transition = 'none';
+      optionsElement.style.transition = 'none';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+
+      const windowWidth = window.innerWidth;
+      const newLeft = e.clientX;
+      const percentage = (newLeft / windowWidth) * 100;
+
+      if (percentage >= 10 && percentage <= 90) {
+        currentSplitPercentage = percentage;
+        updatePanelSizes(percentage);
+      }
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        splitter.classList.remove('dragging');
+        document.body.style.cursor = '';
+        editorElement.style.transition = '';
+        splitter.style.transition = '';
+        reviewElement.style.transition = '';
+        optionsElement.style.transition = '';
+        setTimeout(resizeSVG, 100);
+      }
+    });
+
+    function updatePanelSizes(percentage) {
+      if (!isCollapsed) {
+        editorElement.style.width = `${percentage}%`;
+        splitter.style.left = `${percentage}%`;
+        reviewElement.style.left = `calc(${percentage}% + 5px)`;
+        optionsElement.style.left = `calc(${percentage}% + 5px)`;
+      }
+    }
+
+    toggleBtn.addEventListener('click', () => {
+      isCollapsed = !isCollapsed;
+
+      if (isCollapsed) {
+        editorElement.style.transition = 'width 0.3s ease';
+        splitter.style.transition = 'left 0.3s ease, opacity 0.3s ease';
+        reviewElement.style.transition = 'left 0.3s ease';
+        optionsElement.style.transition = 'left 0.3s ease';
+
+        editorElement.classList.add('collapsed');
+        reviewElement.classList.add('expanded');
+        optionsElement.classList.add('expanded');
+        toggleBtn.classList.add('collapsed');
+        splitter.style.opacity = '0';
+        splitter.style.left = '0';
+        toggleBtn.innerHTML = '&#9654;';
+
+        setTimeout(() => {
+          splitter.style.display = 'none';
+        }, 300);
+      } else {
+        splitter.style.left = '0';
+        splitter.style.opacity = '0';
+        splitter.style.display = 'flex';
+
+        editorElement.style.transition = 'width 0.3s ease';
+        splitter.style.transition = 'left 0.3s ease, opacity 0.3s ease';
+        reviewElement.style.transition = 'left 0.3s ease';
+        optionsElement.style.transition = 'left 0.3s ease';
+
+        setTimeout(() => {
+          editorElement.classList.remove('collapsed');
+          reviewElement.classList.remove('expanded');
+          optionsElement.classList.remove('expanded');
+          toggleBtn.classList.remove('collapsed');
+          toggleBtn.innerHTML = '&#9664;';
+          updatePanelSizes(currentSplitPercentage);
+          splitter.style.opacity = '1';
+        }, 10);
+      }
+
+      setTimeout(resizeSVG, 300);
+    });
+
+    window.addEventListener('resize', resizeSVG);
+
+    function resizeSVG() {
+      const svg = document.querySelector('#review svg');
+      if (svg && currentType === 'graphviz') {
+        try {
+          const panZoom = svgPanZoom(svg);
+          panZoom.resize();
+          panZoom.fit();
+          panZoom.center();
+
+          svg.style.width = '100%';
+          svg.style.height = '100%';
+        } catch (e) {
+          // Ignore pan-zoom errors
+        }
+      }
+    }
+
+    // Initialize Pyodide
+    async function initPyodide() {
+      if (pyodideReady || pyodideLoading) return;
+
+      pyodideLoading = true;
+      pyodideStatus.textContent = 'Loading Python...';
+      pyodideStatus.className = 'loading';
+      pyodideStatus.classList.remove('hidden');
+
+      try {
+        // Load Pyodide
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pyodide.js';
+        document.head.appendChild(script);
+
+        await new Promise((resolve, reject) => {
+          script.onload = resolve;
+          script.onerror = reject;
+        });
+
+        pyodideStatus.textContent = 'Initializing Python...';
+
+        pyodide = await loadPyodide({
+          indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.0/full/'
+        });
+
+        // Initialize manim-lite module
+        await pyodide.runPythonAsync(getManimLiteCode());
+
+        pyodideReady = true;
+        pyodideStatus.textContent = 'Python ready';
+        pyodideStatus.className = 'ready';
+
+        // Auto-hide after a moment
+        setTimeout(() => {
+          pyodideStatus.classList.add('hidden');
+        }, 2000);
+
+      } catch (error) {
+        console.error('Failed to load Pyodide:', error);
+        pyodideStatus.textContent = 'Python failed to load';
+        pyodideLoading = false;
+      }
+    }
+
+    // Manim-lite Python code
+    function getManimLiteCode() {
+      return `
+import sys
+import json
+
+class ManimLite:
+    BLUE = "#58C4DD"
+    RED = "#FC6255"
+    GREEN = "#83C167"
+    YELLOW = "#FFFF00"
+    PURPLE = "#9A72AC"
+    ORANGE = "#FF8C00"
+    WHITE = "#FFFFFF"
+    BLACK = "#000000"
+    GRAY = "#888888"
+    GREY = "#888888"
+    PINK = "#FF69B4"
+
+    UP = (0, 1, 0)
+    DOWN = (0, -1, 0)
+    LEFT = (-1, 0, 0)
+    RIGHT = (1, 0, 0)
+    ORIGIN = (0, 0, 0)
+
+    class Mobject:
+        def __init__(self):
+            self.position = [0, 0, 0]
+            self.color = ManimLite.WHITE
+            self.fill_opacity = 1.0
+            self.stroke_width = 2
+            self.children = []
+            self._type = "mobject"
+
+        def shift(self, direction):
+            if isinstance(direction, tuple):
+                direction = list(direction)
+            self.position = [
+                self.position[0] + direction[0],
+                self.position[1] + direction[1],
+                self.position[2] + (direction[2] if len(direction) > 2 else 0)
+            ]
+            return self
+
+        def move_to(self, point):
+            if isinstance(point, tuple):
+                point = list(point)
+            self.position = point[:3] if len(point) >= 3 else point + [0] * (3 - len(point))
+            return self
+
+        def set_color(self, color):
+            self.color = color
+            return self
+
+        def set_fill(self, color=None, opacity=None):
+            if color is not None:
+                self.color = color
+            if opacity is not None:
+                self.fill_opacity = opacity
+            return self
+
+        def to_dict(self):
+            return {
+                "type": self._type,
+                "position": self.position,
+                "color": self.color,
+                "fill_opacity": self.fill_opacity,
+                "stroke_width": self.stroke_width,
+                "children": [c.to_dict() for c in self.children]
+            }
+
+    class Circle(Mobject):
+        def __init__(self, radius=1, color=None, **kwargs):
+            super().__init__()
+            self._type = "circle"
+            self.radius = radius
+            if color:
+                self.color = color
+
+        def to_dict(self):
+            d = super().to_dict()
+            d["radius"] = self.radius
+            return d
+
+    class Square(Mobject):
+        def __init__(self, side_length=2, color=None, **kwargs):
+            super().__init__()
+            self._type = "square"
+            self.side_length = side_length
+            if color:
+                self.color = color
+
+        def to_dict(self):
+            d = super().to_dict()
+            d["side_length"] = self.side_length
+            return d
+
+    class Rectangle(Mobject):
+        def __init__(self, width=4, height=2, color=None, **kwargs):
+            super().__init__()
+            self._type = "rectangle"
+            self.width = width
+            self.height = height
+            if color:
+                self.color = color
+
+        def to_dict(self):
+            d = super().to_dict()
+            d["width"] = self.width
+            d["height"] = self.height
+            return d
+
+    class Line(Mobject):
+        def __init__(self, start=None, end=None, color=None, **kwargs):
+            super().__init__()
+            self._type = "line"
+            self.start = list(start) if start else [-1, 0, 0]
+            self.end = list(end) if end else [1, 0, 0]
+            if color:
+                self.color = color
+
+        def to_dict(self):
+            d = super().to_dict()
+            d["start"] = self.start
+            d["end"] = self.end
+            return d
+
+    class Arrow(Line):
+        def __init__(self, start=None, end=None, color=None, **kwargs):
+            super().__init__(start, end, color, **kwargs)
+            self._type = "arrow"
+
+    class Triangle(Mobject):
+        def __init__(self, color=None, **kwargs):
+            super().__init__()
+            self._type = "triangle"
+            if color:
+                self.color = color
+
+    class Polygon(Mobject):
+        def __init__(self, *vertices, color=None, **kwargs):
+            super().__init__()
+            self._type = "polygon"
+            self.vertices = [list(v) if isinstance(v, tuple) else v for v in vertices]
+            if color:
+                self.color = color
+
+        def to_dict(self):
+            d = super().to_dict()
+            d["vertices"] = self.vertices
+            return d
+
+    class Text(Mobject):
+        def __init__(self, text, color=None, font_size=48, **kwargs):
+            super().__init__()
+            self._type = "text"
+            self.text = text
+            self.font_size = font_size
+            if color:
+                self.color = color
+
+        def to_dict(self):
+            d = super().to_dict()
+            d["text"] = self.text
+            d["font_size"] = self.font_size
+            return d
+
+    class VGroup(Mobject):
+        def __init__(self, *mobjects, **kwargs):
+            super().__init__()
+            self._type = "vgroup"
+            self.children = list(mobjects)
+
+        def add(self, *mobjects):
+            self.children.extend(mobjects)
+            return self
+
+    class Scene:
+        def __init__(self):
+            self.mobjects = []
+
+        def add(self, *mobjects):
+            self.mobjects.extend(mobjects)
+
+        def remove(self, *mobjects):
+            for m in mobjects:
+                if m in self.mobjects:
+                    self.mobjects.remove(m)
+
+        def play(self, *animations, **kwargs):
+            pass
+
+        def wait(self, duration=1):
+            pass
+
+        def construct(self):
+            pass
+
+        def render(self):
+            self.construct()
+            return {"mobjects": [m.to_dict() for m in self.mobjects]}
+
+sys.modules['manim'] = ManimLite
+
+# Expose at global scope
+Circle = ManimLite.Circle
+Square = ManimLite.Square
+Rectangle = ManimLite.Rectangle
+Line = ManimLite.Line
+Arrow = ManimLite.Arrow
+Triangle = ManimLite.Triangle
+Polygon = ManimLite.Polygon
+Text = ManimLite.Text
+VGroup = ManimLite.VGroup
+Scene = ManimLite.Scene
+Mobject = ManimLite.Mobject
+
+BLUE = ManimLite.BLUE
+RED = ManimLite.RED
+GREEN = ManimLite.GREEN
+YELLOW = ManimLite.YELLOW
+PURPLE = ManimLite.PURPLE
+ORANGE = ManimLite.ORANGE
+WHITE = ManimLite.WHITE
+BLACK = ManimLite.BLACK
+GRAY = ManimLite.GRAY
+GREY = ManimLite.GREY
+PINK = ManimLite.PINK
+
+UP = ManimLite.UP
+DOWN = ManimLite.DOWN
+LEFT = ManimLite.LEFT
+RIGHT = ManimLite.RIGHT
+ORIGIN = ManimLite.ORIGIN
+`;
+    }
+
+    (function (document) {
+      window.URL = window.URL || window.webkitURL;
+      var el_stetus = document.getElementById("status"),
+        t_stetus = -1,
+        reviewer = document.getElementById("review"),
+        scale = window.devicePixelRatio || 1,
+        downloadBtn = document.getElementById("download"),
+        editor = ace.edit("editor"),
+        lastHD = -1,
+        parser = new DOMParser(),
+        formatEl = document.querySelector("#format select"),
+        engineEl = document.querySelector("#engine select"),
+        rawEl = document.querySelector("#raw input"),
+        shareEl = document.querySelector("#share"),
+        shareURLEl = document.querySelector("#shareurl"),
+        errorEl = document.querySelector("#error");
+
+      // Debounce timer for detection
+      let detectionTimer = -1;
+      const DEBOUNCE_DELAY = 1000; // 1 second as per master plan
+
+      function show_status(text, hide) {
+        hide = hide || 0;
+        clearTimeout(t_stetus);
+        el_stetus.innerHTML = text;
+        if (hide) {
+          t_stetus = setTimeout(function () {
+            el_stetus.innerHTML = "";
+          }, hide);
+        }
+      }
+
+      function show_error(e) {
+        console.error(e);
+        show_status("error", 500);
+        reviewer.classList.remove("working");
+        reviewer.classList.add("error");
+        var message = e.message === undefined ? "An error occurred while processing the input." : e.message;
+        while (errorEl.firstChild) {
+          errorEl.removeChild(errorEl.firstChild);
+        }
+        errorEl.appendChild(document.createTextNode(message));
+      }
+
+      function clearError() {
+        reviewer.classList.remove("error");
+        while (errorEl.firstChild) {
+          errorEl.removeChild(errorEl.firstChild);
+        }
+      }
+
+      function svgXmlToImage(svgXml, callback) {
+        var pngImage = new Image(), svgImage = new Image();
+
+        svgImage.onload = function () {
+          var canvas = document.createElement("canvas");
+          canvas.width = svgImage.width * scale;
+          canvas.height = svgImage.height * scale;
+
+          var context = canvas.getContext("2d");
+          context.drawImage(svgImage, 0, 0, canvas.width, canvas.height);
+
+          pngImage.src = canvas.toDataURL("image/png");
+          pngImage.width = svgImage.width;
+          pngImage.height = svgImage.height;
+
+          if (callback !== undefined) {
+            callback(null, pngImage);
+          }
+        }
+
+        svgImage.onerror = function (e) {
+          if (callback !== undefined) {
+            callback(e);
+          }
+        }
+        svgImage.src = svgXml;
+      }
+
+      function copyShareURL(e) {
+        let content = encodeURIComponent(editor.getSession().getDocument().getValue());
+        const longUrl = new URL(location.href);
+        longUrl.hash = content;
+
+        shareEl.disabled = true;
+        let n = 0;
+        let animateId = setInterval(()=> { shareEl.value = "Loading" + ".".repeat(n++%3)}, 300)
+        fetch("https://api.allorigins.win/get?url=" + encodeURIComponent("https://is.gd/create.php?" + new URLSearchParams({
+          format: 'simple',
+          url: longUrl.toString(),
+        }).toString()))
+          .then((r) => {
+            if (r.ok) return r.json()
+            return new Error("network issues");
+          })
+          .then((rs) => {
+            shareURLEl.style.display = "inline";
+            shareURLEl.value = rs.contents;
+          }).catch((err) => {
+            const rawContent = editor.getSession().getDocument().getValue();
+            const compressedContent = LZString.compressToEncodedURIComponent(rawContent);
+
+            const compressedUrl = new URL(location.href);
+            compressedUrl.searchParams.append("compressed", compressedContent);
+            compressedUrl.hash = "";
+            shareURLEl.style.display = "inline";
+            shareURLEl.value = compressedUrl.toString();
+          }).finally(()=>{
+            clearInterval(animateId);
+            shareEl.value = "Share";
+            shareEl.disabled = false;
+          })
+      }
+
+      // Detect content type and update UI
+      function detectAndUpdateType() {
+        const code = editor.getSession().getDocument().getValue();
+
+        // Check URL override first
+        const urlType = ContentDetector.getTypeFromURL();
+        if (urlType) {
+          updateTypeIndicator(urlType);
+          return urlType;
+        }
+
+        const detection = ContentDetector.detect(code);
+        updateTypeIndicator(detection.type);
+        return detection.type;
+      }
+
+      function updateTypeIndicator(type) {
+        currentType = type;
+        typeIndicator.className = type;
+
+        if (type === 'graphviz') {
+          typeIndicator.textContent = 'Graphviz';
+          graphvizOptions.classList.remove('hidden');
+          editor.getSession().setMode("ace/mode/dot");
+        } else if (type === 'manim') {
+          typeIndicator.textContent = 'Manim';
+          graphvizOptions.classList.add('hidden');
+          editor.getSession().setMode("ace/mode/python");
+        } else {
+          typeIndicator.textContent = 'Unknown';
+          graphvizOptions.classList.add('hidden');
+        }
+      }
+
+      // Unified render function
+      async function render() {
+        clearError();
+        const type = detectAndUpdateType();
+
+        if (type === 'graphviz') {
+          renderGraphviz();
+        } else if (type === 'manim') {
+          await renderManim();
+        } else {
+          // Try Graphviz as fallback
+          renderGraphviz();
+        }
+      }
+
+      function renderGraphviz() {
+        reviewer.classList.add("working");
+        reviewer.classList.remove("error");
+
+        show_status("rendering...");
+        Viz.instance().then(function (viz) {
+          let dotContent = editor.getSession().getDocument().getValue();
+          let options = {
+            format: formatEl.value,
+            engine: engineEl.value,
+          };
+          let result = null;
+
+          if (["svg", "png"].indexOf(formatEl.value) > -1) {
+            result = viz.renderSVGElement(dotContent, options);
+          } else {
+            result = viz.render(dotContent, options);
+          }
+
+          if (result.status !== undefined && result.status != "success") {
+            show_error(result.errors && result.errors.length > 0 && result.errors[0] || result);
+          } else {
+            updateGraphvizOutput(result);
+          }
+        }).catch((err) => {
+          show_error(err);
+        }).finally(() => {
+          reviewer.classList.remove("working");
+          show_status("done", 500)
+        });
+      }
+
+      async function renderManim() {
+        reviewer.classList.add("working");
+        show_status("rendering Manim...");
+
+        try {
+          // Initialize Pyodide if needed
+          if (!pyodideReady) {
+            await initPyodide();
+          }
+
+          const code = editor.getSession().getDocument().getValue();
+
+          // Execute the user's code
+          await pyodide.runPythonAsync(code);
+
+          // Find and render Scene classes
+          const result = await pyodide.runPythonAsync(`
+import json
+scene_classes = [name for name in dir() if isinstance(eval(name), type) and issubclass(eval(name), Scene) and name != 'Scene']
+if not scene_classes:
+    raise ValueError("No Scene class found. Define a class that inherits from Scene with a construct() method.")
+scene_instance = eval(scene_classes[0])()
+json.dumps(scene_instance.render())
+`);
+
+          const sceneData = JSON.parse(result);
+          updateManimOutput(sceneData);
+
+        } catch (error) {
+          show_error(error);
+        } finally {
+          reviewer.classList.remove("working");
+          show_status("done", 500);
+        }
+      }
+
+      function updateGraphvizOutput(result) {
+        if (formatEl.value === "svg") {
+          document.querySelector("#raw").classList.remove("disabled");
+          rawEl.disabled = false;
+        } else {
+          document.querySelector("#raw").classList.add("disabled");
+          rawEl.disabled = true;
+        }
+
+        clearReviewContent();
+
+        if (!result) {
+          return;
+        }
+
+        reviewer.classList.remove("working");
+        reviewer.classList.remove("error");
+
+        if (formatEl.value == "svg" && !rawEl.checked) {
+          var serializer = new XMLSerializer();
+          var source = serializer.serializeToString(result);
+          const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(source);
+          downloadBtn.href = url;
+          downloadBtn.download = "diagram.svg";
+          var a = document.createElement("a");
+          a.appendChild(result);
+          reviewer.appendChild(a);
+          svgPanZoom(result, {
+            zoomEnabled: true,
+            controlIconsEnabled: true,
+            fit: true,
+            center: true,
+          });
+        } else if (formatEl.value == "png") {
+          var serializer = new XMLSerializer();
+          var source = serializer.serializeToString(result);
+          let resultWithPNGHeader = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(source)));
+          svgXmlToImage(resultWithPNGHeader, function (err, image) {
+            if (err) {
+              show_error(err)
+              return
+            }
+            image.setAttribute("title", "diagram");
+            downloadBtn.href = image.src;
+            downloadBtn.download = "diagram.png";
+            var a = document.createElement("a");
+            a.appendChild(image);
+            reviewer.appendChild(a);
+          })
+        } else {
+          var text = document.createElement("div");
+          text.id = "text";
+          if (formatEl.value == "svg") {
+            let serializer = new XMLSerializer();
+            result = serializer.serializeToString(result);
+          } else {
+            result = result.output;
+          }
+          text.appendChild(document.createTextNode(result));
+          reviewer.appendChild(text);
+        }
+
+        updateState();
+      }
+
+      function updateManimOutput(sceneData) {
+        clearReviewContent();
+
+        reviewer.classList.remove("working");
+        reviewer.classList.remove("error");
+
+        // Render using ManimRenderer
+        const svg = ManimRenderer.render(sceneData);
+
+        // Set up download
+        const serializer = new XMLSerializer();
+        const source = serializer.serializeToString(svg);
+        const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(source);
+        downloadBtn.href = url;
+        downloadBtn.download = "manim.svg";
+
+        var a = document.createElement("a");
+        a.appendChild(svg);
+        reviewer.appendChild(a);
+
+        updateState();
+      }
+
+      function clearReviewContent() {
+        var text = reviewer.querySelector("#text");
+        if (text) {
+          reviewer.removeChild(text);
+        }
+
+        var a = reviewer.querySelector("a");
+        if (a) {
+          reviewer.removeChild(a);
+        }
+      }
+
+      function updateState() {
+        const updatedUrl = new URL(window.location)
+        const content = encodeURIComponent(editor.getSession().getDocument().getValue());
+        updatedUrl.hash = content
+        if (currentType === 'graphviz') {
+          updatedUrl.searchParams.set("engine", engineEl.value)
+        }
+        history.pushState({ "content": content, "type": currentType }, "", updatedUrl.toString())
+      }
+
+      // Set editor theme based on detected type
+      editor.setTheme("ace/theme/twilight");
+
+      // Debounced change handler
+      editor.getSession().on("change", function () {
+        clearTimeout(lastHD);
+        clearTimeout(detectionTimer);
+
+        // Detect type with shorter delay for UI update
+        detectionTimer = setTimeout(() => {
+          detectAndUpdateType();
+        }, 300);
+
+        // Render with full debounce delay
+        lastHD = setTimeout(render, DEBOUNCE_DELAY);
+      });
+
+      window.onpopstate = function (event) {
+        if (event.state != null && event.state.content != undefined) {
+          editor.getSession().setValue(decodeURIComponent(event.state.content));
+        }
+      };
+
+      formatEl.addEventListener("change", render);
+      engineEl.addEventListener("change", render);
+      rawEl.addEventListener("change", render);
+      share.addEventListener("click", copyShareURL);
+
+      HTMLOptionsCollection.prototype.indexOf = function (name) {
+        for (let i = 0; i < this.length; i++) {
+          if (this[i].value == name) {
+            return i;
+          }
+        }
+        return -1;
+      };
+
+      // URL parameter parsing
+      const params = new URLSearchParams(location.search.substring(1));
+      if (params.has('engine')) {
+        const engine = params.get('engine');
+        const index = engineEl.options.indexOf(engine);
+        if (index > -1) {
+          engineEl.selectedIndex = index;
+        }
+      }
+
+      if (params.has('format')) {
+        const format = params.get('format');
+        const index = formatEl.options.indexOf(format);
+        if (index > -1) {
+          formatEl.selectedIndex = index;
+        }
+      }
+
+      if (params.has("presentation")) {
+        document.body.classList.add("presentation");
+      }
+
+      if (params.has('raw')) {
+        editor.getSession().setValue(params.get('raw'));
+        render();
+      } else if (params.has('compressed')) {
+        const compressed = params.get('compressed');
+        editor.getSession().setValue(LZString.decompressFromEncodedURIComponent(compressed));
+        render();
+      } else if (params.has('url')) {
+        const url = params.get('url');
+        let ok = false;
+        fetch(url)
+          .then(res => {
+            ok = res.ok;
+            return res.text();
+          })
+          .then(res => {
+            if (!ok) {
+              throw { message: res };
+            }
+            editor.getSession().setValue(res);
+            render();
+          }).catch(e => {
+            show_error(e);
+          });
+      } else if (location.hash.length > 1) {
+        editor.getSession().setValue(decodeURIComponent(location.hash.substring(1)));
+        render();
+      } else if (editor.getValue()) {
+        // Initial render with default content
+        detectAndUpdateType();
+        render();
+      }
+
+    })(document);
+  </script>
+</body>
+
+</html>
