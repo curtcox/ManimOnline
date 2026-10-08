@@ -150,6 +150,7 @@ class Mobject:
         # Keep the affine mapping fixed when a geometry-bearing family's bounds change.
         previous = self._geometry_center() if self._type != 'vgroup' else None
         self.children = children
+        self.__dict__.pop('_family_pivot_cache',None)
         if previous is not None:
             delta = self._geometry_center()-previous
             transformed = Vector((delta[0]*math.cos(self.angle)-delta[1]*math.sin(self.angle),
@@ -369,10 +370,24 @@ class Mobject:
         if '_sampled_geometry_center' in self.__dict__:
             return Vector(self._sampled_geometry_center)
         left, bottom, right, top = self._local_bounds()
-        return Vector(((left + right) / 2, (bottom + top) / 2, 0))
+        center = Vector(((left + right) / 2, (bottom + top) / 2, 0))
+        if self.children and self._type != 'vgroup':
+            own = self._own_local_bounds()
+            child_bounds = tuple(child._bounds() for child in self.children)
+            previous = self.__dict__.get('_family_pivot_cache')
+            if previous is not None and previous[0] == own and previous[1] != child_bounds:
+                delta = center-Vector(previous[2])
+                transformed = Vector((delta[0]*math.cos(self.angle)-delta[1]*math.sin(self.angle),
+                                      delta[0]*math.sin(self.angle)+delta[1]*math.cos(self.angle),0))*self.geometry_scale
+                self.shift(transformed-delta)
+            self._family_pivot_cache = (own,child_bounds,list(center))
+        else:
+            self.__dict__.pop('_family_pivot_cache',None)
+        return center
 
     def get_center(self):
-        return Vector(self.position) + self._geometry_center()
+        center = self._geometry_center()
+        return Vector(self.position) + center
 
     def get_points(self):
         """Independent world-space anchors/handles for supported XY outlines."""
@@ -603,6 +618,7 @@ class Mobject:
     def scale(self, scale_factor, *, about_point=None):
         if not math.isfinite(scale_factor):
             raise ValueError('Scale factor must be finite')
+        self._geometry_center()
         if about_point is not None:
             pivot = Vector(about_point)
             center = self.get_center()
@@ -613,6 +629,7 @@ class Mobject:
     def rotate(self, angle, *, about_point=None):
         if not math.isfinite(angle):
             raise ValueError('Rotation angle must be finite')
+        self._geometry_center()
         if about_point is not None:
             pivot = Vector(about_point)
             center = self.get_center()
@@ -746,10 +763,11 @@ class Mobject:
         return Animate(self)
 
     def to_dict(self):
+        center = self._geometry_center()
         result = copy.deepcopy({key: value for key, value in self.__dict__.items()
-                                if key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels', '_angle_lines')})
+                                if key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache')})
         result['type'] = result.pop('_type')
-        result['geometry_center'] = list(self._geometry_center())
+        result['geometry_center'] = list(center)
         result['children'] = [child.to_dict() for child in self.children]
         return result
 

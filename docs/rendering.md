@@ -1489,8 +1489,9 @@ replacement preserve the existing affine mapping when child insertion changes
 the bounding-center pivot: position shifts by A(delta)-delta. This covers rotation,
 uniform scaling and collapsed parents. Group mutations retain their established
 behavior, since coordinate helpers already explicitly compensate their changes.
-Native world-space child mutation semantics are not yet complete: directly
-moving an attached child inside a transformed parent can still alter its pivot.
+Native world-space child mutation semantics remain incomplete. Direct child
+motion now preserves ordinary shape parents, as described below; Group/VGroup
+dynamic pivots remain unfinished.
 Bounds also remain conservative for rotated composite boxes/cubic handles, and
 text/glyph metrics remain incomplete.
 
@@ -1506,3 +1507,29 @@ Local Pyodide playback verified green/purple distant children and a red corner
 reference, with camera scale changing from about 2.43 to 1.83 as the fitted
 selection expanded. All family circles disappeared at ten seconds. Switching to
 DOT rendered the editor flow graph. All 310 Python and 76 Node tests passed.
+
+
+## Moving children inside transformed ordinary shapes
+
+Ordinary geometry-bearing parents now keep their affine mapping when moving or
+resizing a child changes the family bounding-center pivot. A private cache tracks
+own bounds, child bounds and the last local pivot. When child bounds change and
+own geometry stays fixed, position shifts by A(delta)-delta. Nested parents
+synchronize through bounds queries; pose changes and serialization synchronize
+before consuming position. Explicit child replacement resets the cache before
+its existing compensation, and sampled frames keep their pinned geometry center.
+The cache uses bounds rather than identities, survives copying/checkpoints, and
+is excluded from frame JSON.
+
+The gallery moves a tracked yellow dot inside a rotated/scaled rectangle while
+a green sibling and red corner reference remain fixed. Tests cover negative/zero
+scales, nested motion, child resizing, copy/restore isolation, serialization and
+final cleanup. This retains browser local-to-parent coordinates; native recursive
+world-point mutation semantics and Group/VGroup dynamic pivots remain unfinished.
+
+Reference: [official Manim Mobject implementation](https://docs.manim.community/en/stable/_modules/manim/mobject/mobject.html).
+
+Local Pyodide playback verified unchanged parent/sibling world transforms at two
+and seven seconds while the yellow dot moved, and no circles remained at nine
+seconds. Switching to DOT rendered the editor flow graph. All 314 Python and
+76 Node tests passed.

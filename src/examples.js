@@ -14,6 +14,7 @@ const ExampleCatalog = Object.freeze([
   { id: 'flash', label: 'Traveling outline highlights', path: 'examples/passing_flash_scene.py' },
   { id: 'numberline', label: 'Follow numeric coordinates', path: 'examples/number_line_scene.py' },
   { id: 'axes', label: 'Animate Cartesian coordinates', path: 'examples/axes_scene.py' },
+  { id: 'childmotion', label: 'Move children inside transformed shapes', path: 'examples/child_motion_scene.py' },
   { id: 'familybounds', label: 'Frame shapes and distant children', path: 'examples/family_bounds_scene.py' },
   { id: 'shapefamilies', label: 'Attach and restore children on shapes', path: 'examples/shape_family_scene.py' },
   { id: 'anglepaths', label: 'Follow and restore an editable angle path', path: 'examples/angle_path_scene.py' },

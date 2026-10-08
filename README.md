@@ -1081,4 +1081,7 @@ Size and edge queries now include both the parent's outline and nested children.
 Adding/removing/replacing children on an already transformed ordinary shape
 preserves its existing geometry's world position. Bounds are conservative for
 rotated families and cubic controls; browser text metrics remain incomplete.
-Moving a child directly inside a rotated/scaled parent still has pivot limitations.
+Direct child motion on ordinary shapes also preserves the parent and siblings.
+Try **Move children inside transformed shapes** (`examples/child_motion_scene.py`)
+for a tracked dot inside a rotated/scaled rectangle. Group/VGroup child motion
+still has pivot limitations; native world-space child coordinates remain incomplete.

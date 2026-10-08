@@ -16,6 +16,79 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_direct_child_motion_keeps_transformed_parent_path_and_sibling_fixed(self):
+        for scale in (0,.7,-1.2):
+            host = lite.Rectangle(width=2,height=1)
+            moving = lite.Dot(lite.RIGHT*3,radius=.2)
+            sibling = lite.Dot(lite.LEFT,radius=.2)
+            host.add(moving,sibling).rotate(.7).scale(scale).shift(lite.UP)
+            points = host.get_points()
+            sibling_world = host._point_to_world(sibling.get_center())
+            for x in (-4,0,5):
+                moving.move_to((x,2,0))
+                for a,b in zip(points,host.get_points()):
+                    self.assertPointAlmostEqual(a,b)
+                self.assertPointAlmostEqual(host._point_to_world(sibling.get_center()),sibling_world)
+                snapshot = host.to_dict()
+                self.assertNotIn('_family_pivot_cache',snapshot)
+                self.assertEqual(snapshot['position'],host.position)
+                # Repeated observations must not accumulate compensation.
+                self.assertEqual(host.to_dict(),snapshot)
+
+    def test_child_geometry_changes_and_nested_motion_preserve_ancestor_paths(self):
+        inner = lite.Circle(radius=.5).add(lite.Dot(lite.UP,radius=.2))
+        host = lite.Rectangle().add(inner).rotate(.4).scale(1.3)
+        own = host.get_points()
+        inner_point = host._point_to_world(inner.get_start())
+        inner.children[0].shift(lite.RIGHT*5)
+        self.assertPointAlmostEqual(host._point_to_world(inner.get_start()),inner_point)
+        for a,b in zip(own,host.get_points()): self.assertPointAlmostEqual(a,b)
+        inner.scale(2)
+        for a,b in zip(own,host.get_points()): self.assertPointAlmostEqual(a,b)
+        host.save_state()
+        checkpoint = host.to_dict()
+        host.children[0].shift(lite.LEFT*2)
+        host.restore()
+        self.assertEqual(host.to_dict(),checkpoint)
+        copied = host.copy()
+        copied.children[0].shift(lite.RIGHT)
+        self.assertEqual(host.to_dict(),checkpoint)
+        json.dumps(copied.to_dict(),allow_nan=False)
+
+    def test_child_motion_before_parent_transform_initializes_compensation(self):
+        host = lite.Circle().add(lite.Dot(lite.RIGHT*4))
+        host.rotate(.5).scale(2)
+        points = host.get_points()
+        host.children[0].shift(lite.LEFT*8)
+        host.rotate(.2)
+        # Rotation occurs around the updated family center, after child compensation.
+        self.assertNotEqual(host.get_points(),points)
+        self.assertNotIn('_family_pivot_cache',host.to_dict())
+        parent = lite.Rectangle().add(lite.Dot(lite.RIGHT*3))
+        parent.rotate(.5)
+        previous = parent.get_start()
+        parent.children[0].shift(lite.LEFT*6)
+        parent.get_center()
+        self.assertPointAlmostEqual(parent.get_start(),previous)
+
+    def test_child_motion_gallery_keeps_reference_anchor_and_cleans_up(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/child_motion_scene.py').read_text()))
+        self.assertEqual(result['duration'],9)
+        positions = []
+        for frame_index in (30,60,90,105):
+            frame = result['frames'][frame_index]
+            host_data = frame['mobjects'][0]
+            host = lite.Mobject()
+            host.__dict__.update(host_data)
+            host._type = host_data['type']
+            host._sampled_geometry_center = lite.Vector(host_data['geometry_center'])
+            host.children = []
+            self.assertPointAlmostEqual(host.get_start(),frame['mobjects'][1]['position'])
+            positions.append(host_data['children'][0]['position'])
+        self.assertNotEqual(positions[0],positions[-1])
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+        json.dumps(result,allow_nan=False)
+
     def test_family_bounds_include_own_path_nested_children_and_public_queries(self):
         host = lite.Rectangle(width=2,height=1)
         child = lite.Circle(radius=.5).shift(lite.RIGHT*4).add(lite.Dot((0,2,0),radius=.2))

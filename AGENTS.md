@@ -323,5 +323,12 @@ queries, camera fitting and distant child insertion/removal. `_own_local_bounds`
 contains primitive geometry; `_local_bounds` unions it with child bounds.
 `_replace_children` compensates changed pivots on ordinary shapes by shifting
 A(delta)-delta. Group mutations retain their established behavior; numeric-axis
-helpers already apply their own compensation. Direct child motion in transformed
-families and exact text/rotated curve bounds remain open.
+helpers already apply their own compensation. Group/VGroup child motion and exact text/rotated curve bounds remain open.
+
+Read `examples/child_motion_scene.py` for moving children inside rotated/scaled
+ordinary shapes. `_family_pivot_cache` tracks own/child bounds and the previous
+local pivot; changed child bounds with unchanged own geometry compensate position
+by A(delta)-delta. Synchronize before pose changes and frame serialization; exclude
+the cache from JSON. Explicit child replacement resets the cache to avoid double
+compensation. Preserve sampled-frame pinned pivots and coordinate-helper behavior.
+Native world-space child coordinates and Group/VGroup dynamic pivots remain open.
