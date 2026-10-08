@@ -16,6 +16,109 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_tangent_line_circle_direction_length_clipped_endpoints_and_style(self):
+        circle = lite.Circle(radius=2,color=lite.BLUE).shift(lite.RIGHT)
+        before = circle.to_dict()
+        tangent = lite.TangentLine(circle,.25,length=3,color=lite.YELLOW,stroke_width=5)
+        self.assertIsInstance(tangent,lite.Line)
+        self.assertAlmostEqual(tangent.get_length(),3)
+        self.assertPointAlmostEqual(tangent.get_unit_vector(),(-1,0,0))
+        self.assertPointAlmostEqual((tangent.get_start()+tangent.get_end())*.5,circle.point_from_proportion(.25))
+        self.assertEqual(tangent.stroke_color,lite.YELLOW)
+        self.assertEqual(tangent.stroke_width,5)
+        for alpha in (0,1):
+            clipped = lite.TangentLine(circle,alpha,d_alpha=.01)
+            a,b = max(0,alpha-.01),min(1,alpha+.01)
+            first,last = circle.point_from_proportion(a),circle.point_from_proportion(b)
+            self.assertPointAlmostEqual((clipped.get_start()+clipped.get_end())*.5,(first+last)*.5)
+        zero = lite.TangentLine(circle,.3,length=0)
+        self.assertEqual(zero.get_length(),0)
+        self.assertEqual(circle.to_dict(),before)
+
+    def test_tangent_line_transformed_ellipse_cubic_corner_and_tiny_sample(self):
+        ellipse = lite.Ellipse(width=4,height=2).rotate(.4).scale(.7).shift(lite.UP)
+        alpha = .2
+        tangent = lite.TangentLine(ellipse,alpha,length=2)
+        dx,dy = -2*lite.math.sin(alpha*lite.TAU),lite.math.cos(alpha*lite.TAU)
+        vector = lite.Vector((dx*lite.math.cos(.4)-dy*lite.math.sin(.4),
+                              dx*lite.math.sin(.4)+dy*lite.math.cos(.4),0))
+        unit = vector*(1/lite.math.hypot(*vector))
+        self.assertPointAlmostEqual(tangent.get_unit_vector(),unit)
+        curve = lite.CubicBezier((0,0,0),(1,3,0),(2,-2,0),(4,1,0))
+        cubic = lite.TangentLine(curve,.4,d_alpha=.01,length=3)
+        chord = lite.Line(curve.point_from_proportion(.39),curve.point_from_proportion(.41))
+        self.assertPointAlmostEqual(cubic.get_unit_vector(),chord.get_unit_vector())
+        corner = lite.VMobject().set_points_as_corners([(0,0,0),(1,0,0),(1,1,0)])
+        self.assertAlmostEqual(lite.TangentLine(corner,.5,d_alpha=.01).get_angle(),lite.PI/4)
+        tiny = lite.Line(lite.ORIGIN,(1e-320,0,0))
+        self.assertPointAlmostEqual(tiny.get_unit_vector(),lite.RIGHT)
+        self.assertAlmostEqual(lite.TangentLine(tiny,.5,length=1,d_alpha=.1).get_length(),1)
+
+    def test_tangent_line_validation_precedes_path_sampling_and_preserves_source(self):
+        source = lite.Circle()
+        before = source.to_dict()
+        for options in ({'alpha':-1},{'alpha':True},{'alpha':float('inf')},
+                        {'length':-1},{'length':True},{'length':float('nan')},
+                        {'d_alpha':0},{'d_alpha':True},{'d_alpha':float('inf')},
+                        {'d_alpha':1e-320}):
+            proportion = options.pop('alpha',.5)
+            with self.assertRaises(ValueError): lite.TangentLine(source,proportion,**options)
+        with self.assertRaises(TypeError): lite.TangentLine(lite.Text('glyph'),.5)
+        with self.assertRaises(ValueError): lite.TangentLine(lite.Circle(radius=0),.5)
+        with self.assertRaises(ValueError): lite.TangentLine(source,.5,d_alpha=1)
+        self.assertEqual(source.to_dict(),before)
+        calls = []
+        source.point_from_proportion = lambda alpha:calls.append(alpha) or lite.ORIGIN
+        with self.assertRaises(ValueError): lite.TangentLine(source,.5,stroke_width=-1)
+        self.assertEqual(calls,[])
+
+    def test_line_angle_length_slope_and_animation_preserve_anchor_or_center(self):
+        line = lite.Line((1,2,0),(4,3,0))
+        start,center = line.get_start(),line.get_center()
+        self.assertAlmostEqual(line.get_slope(),1/3)
+        line.set_angle(lite.PI/2)
+        self.assertPointAlmostEqual(line.get_start(),start)
+        self.assertAlmostEqual(line.get_angle(),lite.PI/2)
+        center = line.get_center()
+        line.set_length(5)
+        self.assertPointAlmostEqual(line.get_center(),center)
+        self.assertAlmostEqual(line.get_length(),5)
+        axis = lite.NumberLine([-2,2],length=4)
+        anchor = axis.get_start()
+        axis.set_angle(lite.PI/6)
+        self.assertPointAlmostEqual(axis.get_start(),anchor)
+        self.assertAlmostEqual(axis.get_slope(),lite.math.tan(lite.PI/6))
+        dashed = lite.DashedLine(dash_length=.2)
+        dashed.set_length(4).set_angle(lite.PI/4)
+        self.assertAlmostEqual(dashed.get_length(),4)
+        self.assertEqual(len(dashed),5)
+        before = line.to_dict()
+        for operation,value in ((line.set_angle,float('nan')),(line.set_length,-1),(line.set_length,True)):
+            with self.assertRaises(ValueError): operation(value)
+        self.assertEqual(line.to_dict(),before)
+        line.set_length(0)
+        self.assertEqual(line.get_length(),0)
+        with self.assertRaises(ValueError): line.set_length(1)
+        result = render("line = Line(ORIGIN,RIGHT*2)\nself.add(line)\nself.play(line.animate.set_angle(PI/2).set_length(4),run_time=2)")
+        final = result['frames'][-1]['mobjects'][0]
+        self.assertAlmostEqual(final['angle'],lite.PI/2)
+        self.assertAlmostEqual(final['geometry_scale'],2)
+
+    def test_tangent_paths_gallery_motion_length_redraw_and_cleanup(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/tangent_paths_scene.py').read_text()))
+        self.assertEqual(result['duration'],9)
+        first = result['frames'][30]['mobjects']
+        moving = result['frames'][74]['mobjects']
+        grown = result['frames'][105]['mobjects']
+        self.assertNotEqual(first[3]['children'][0]['start'],moving[3]['children'][0]['start'])
+        for root in grown[3:5]:
+            line,dot = root['children']
+            self.assertAlmostEqual(lite.math.dist(line['start'],line['end']),3)
+            midpoint = (lite.Vector(line['start'])+lite.Vector(line['end']))*.5
+            self.assertLess(lite.math.dist(midpoint,dot['position']),.0001)
+        self.assertEqual(len(result['frames'][-1]['mobjects']),3)
+        json.dumps(result,allow_nan=False)
+
     def test_dashed_vmobject_open_pattern_style_endpoints_and_source_isolation(self):
         source = lite.Line((0,0,0),(4,0,0),color=lite.RED,stroke_width=5,stroke_opacity=.3)
         before = source.to_dict()

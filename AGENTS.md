@@ -262,3 +262,12 @@ subcurves, with no stored source aliases or lookup tables in JSON. Closed full
 coverage and open shifted-end clipping need explicit edge-case tests. A Line
 converted to a cubic subcurve must query its actual path endpoints. Arrow tips,
 glyph geometry and general geometry-bearing source families remain open.
+
+
+Read `examples/tangent_paths_scene.py` for TangentLine, finite path sampling and
+length-driven redraw. Use clipped path proportions and the sample chord midpoint,
+with no retained source-object alias. Reject unresolved/coincident samples and a
+full closed-path chord before treating rounding noise as a direction. Normalize
+components directly so valid tiny spans do not overflow a reciprocal. Line angle
+changes default to the start; length changes default to the center. Preserve
+NumberLine's existing positive-length contract and the animated set_angle entry.

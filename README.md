@@ -985,3 +985,30 @@ pipeline. Arrow tips, glyph paths and general geometry-bearing families remain
 open. Try **Dash curved paths and shift their phase**
 (`examples/dashed_paths_scene.py`) for a wrapped ring, both spacing modes and
 animated refinement.
+
+
+`TangentLine(path, alpha, length=1, d_alpha=1e-6)` constructs a world-space
+finite-difference tangent on the supported XY outlines. alpha is a finite
+proportion in [0,1]; sampling uses the existing path-query behavior at
+`alpha-d_alpha` and `alpha+d_alpha`, clipped to the endpoints. The tangent is
+centered on the sample chord's midpoint, with the requested nonnegative length.
+At path ends it uses a one-sided chord. Its direction reflects the current source
+geometry and transforms. Source geometry is unchanged and no source reference is
+stored; use always_redraw to follow motion or a changing requested length.
+
+The sampling distance must be positive and finite. Coincident samples, an
+unrepresentable change in proportion, collapsed paths and sampling an entire
+closed path are rejected. Corners and contour jumps give a finite chord rather
+than a unique smooth tangent. Accuracy depends on the sampling distance and the
+existing path sampler. Tiny resolved spans normalize without reciprocal overflow.
+Try **Follow tangents along curved paths** (`examples/tangent_paths_scene.py`)
+for an ellipse and cubic curve with moving markers and growing tangents.
+
+Line, DashedLine and NumberLine expose `get_slope()` and `set_angle(angle,
+about_point=None)`. The slope is tan of the current world angle, with ordinary
+floating-point behavior near vertical. Angle changes rotate around the start by
+default and support animate. `Line.set_length(length)` and inherited DashedLine/
+TangentLine behavior scale around the current center, accepting a finite
+nonnegative length. Positive resizing of a collapsed line needs fresh endpoints
+first. Dashed resizing preserves its existing count and child edits. NumberLine
+keeps its existing positive-length resize validation.

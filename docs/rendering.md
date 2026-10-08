@@ -1266,3 +1266,38 @@ dashes and eight equal-length dashes at two seconds, changed phase before five
 seconds, and sixteen refined red dashes at seven seconds. The final nine-second
 frame retained only reference geometry and labels. Switching to DOT rendered the
 editor flow graph. All 282 Python and 74 Node tests passed.
+
+
+## Path tangents and line controls
+
+TangentLine implements the [Community path-tangent construction](https://docs.manim.community/en/stable/_modules/manim/mobject/geometry/line.html):
+sample around a path proportion, clip to [0,1], and extend the sample chord to a
+requested length around its midpoint. It uses existing world-space outline
+queries, including transformed circles/ellipses and cubic paths. Styles come from
+Line kwargs; no source alias is serialized. Positive finite sample distance,
+finite proportions in [0,1] and nonnegative finite lengths validate before sampling.
+Coincident samples or a distance that cannot change the proportion fail. A full
+closed-path chord is rejected explicitly because tiny closure rounding residuals
+do not define a direction. Resolved tiny spans normalize component by component.
+Zero requested length produces a finite collapsed line. Corners/disconnected
+contours can yield a chord through a nonsmooth point; no analytic tangent is
+claimed. Ordinary path sampling approximations still apply.
+
+Line.get_slope returns tan of the current angle. set_angle defaults to rotating
+around the current start, accepts an explicit pivot and is whitelisted for animate;
+NumberLine aliases this behavior. Line.set_length scales about its current center
+and accepts zero, while collapsed/nonfinite spans cannot be resized. DashedLine
+inherits these transforms over its actual child family without recomputing count.
+NumberLine retains its previous positive resize contract. Checkpoints and endpoint
+replacement provide the existing zero-scale recovery paths.
+
+Tests cover circular directions, midpoint/endpoint clipping, style/source
+isolation, transformed ellipses, cubic chord sampling, corners, tiny resolved
+spans, nonrepresentable sampling, closed/degenerate paths, input/style validation,
+angle anchors, lengths/centers, dashed count preservation, numeric-axis angles,
+animate and gallery redraw/removal. Local Pyodide playback verified tangents
+moving from 1.8-unit lengths at two seconds to 3-unit lengths at seven seconds,
+with their chord midpoints matching the markers within floating-point precision.
+The nine-second frame removed tangent lines and markers while retaining source
+curves and labels. Switching to DOT rendered the editor flow graph. All 287 Python
+and 74 Node tests passed.

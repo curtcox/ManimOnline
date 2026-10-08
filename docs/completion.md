@@ -82,7 +82,10 @@ endpoint transforms and orthogonal coordinate guides, with frame and browser
 checks for moving markers and rotating axes. DashedVMobject now adds exact cubic
 subcurves, approximate equal-length/parameter spacing, phase wrapping, clipping
 and disconnected contours, with gallery frame and browser checks. Arrow tips,
-glyph paths and general geometry-bearing source families remain open.
+glyph paths and general geometry-bearing source families remain open. TangentLine
+now follows supported world-space path geometry with clipped finite differences,
+length-driven redraw and browser checks. Line angle/length/slope controls now have
+anchor, animation, validation and tiny-span tests.
 
 Full Community parity additionally requires general geometry/path morphing, full scene-family
 composition and layering, 3D cameras and advanced camera APIs (2D settings, moving-camera pan/zoom and automatic bounds fitting now have Python/SVG tests), glyph-level text/TeX

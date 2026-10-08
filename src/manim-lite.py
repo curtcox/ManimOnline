@@ -1428,11 +1428,30 @@ class Line(Mobject):
 
     def get_unit_vector(self):
         length = self.get_length()
-        return self.get_vector() * (1 / length) if length else ORIGIN
+        if not math.isfinite(length):
+            raise ValueError('Line length must be finite')
+        return Vector(value/length for value in self.get_vector()) if length else ORIGIN
 
     def get_angle(self):
         vector = self.get_vector()
         return math.atan2(vector[1], vector[0]) if any(vector) else 0
+
+    def get_slope(self):
+        return math.tan(self.get_angle())
+
+    def set_angle(self, angle, about_point=None):
+        if isinstance(angle,bool) or not isinstance(angle,(int,float)) or not math.isfinite(angle):
+            raise ValueError('Line angle must be finite')
+        pivot = self.get_start() if about_point is None else about_point
+        return self.rotate(angle-self.get_angle(),about_point=pivot)
+
+    def set_length(self, length):
+        if isinstance(length,bool) or not isinstance(length,(int,float)) or not math.isfinite(length) or length < 0:
+            raise ValueError('Line length must be nonnegative and finite')
+        current = self.get_length()
+        if not math.isfinite(current) or current == 0:
+            raise ValueError('Cannot resize a collapsed or nonfinite line')
+        return self.scale(length/current)
 
     def get_projection(self, point):
         point,_ = Line._endpoints(point,point)
@@ -1464,6 +1483,37 @@ class Line(Mobject):
         self.position = list(center)
         self.geometry_scale = scale
         return self
+
+
+class TangentLine(Line):
+    """Finite-difference tangent to a supported world-space path."""
+    def __init__(self, vmob, alpha, length=1, d_alpha=1e-6, **kwargs):
+        if not isinstance(vmob,Mobject) or vmob._type not in (
+                'polyline','polygon','bezierpath','circle','arc','ellipse',
+                'square','rectangle','triangle','line','annulus'):
+            raise TypeError('TangentLine needs a supported vector outline')
+        if isinstance(alpha,bool) or not isinstance(alpha,(int,float)) or not math.isfinite(alpha) or not 0 <= alpha <= 1:
+            raise ValueError('Tangent proportion must be finite and between 0 and 1')
+        if isinstance(length,bool) or not isinstance(length,(int,float)) or not math.isfinite(length) or length < 0:
+            raise ValueError('Tangent length must be nonnegative and finite')
+        if isinstance(d_alpha,bool) or not isinstance(d_alpha,(int,float)) or not math.isfinite(d_alpha) or d_alpha <= 0:
+            raise ValueError('Tangent sample distance must be positive and finite')
+        super().__init__(LEFT,RIGHT,**kwargs)
+        a,b = max(0,alpha-d_alpha),min(1,alpha+d_alpha)
+        if a == b:
+            raise ValueError('Tangent sample distance cannot change this proportion')
+        if a == 0 and b == 1 and vmob.is_closed():
+            raise ValueError('A full closed path has coincident tangent samples')
+        p1,p2 = Line._endpoints(vmob.point_from_proportion(a),vmob.point_from_proportion(b))
+        vector = p2-p1
+        span = math.hypot(*vector)
+        if not math.isfinite(span) or not span:
+            raise ValueError('Cannot construct a tangent from coincident or nonfinite samples')
+        center = p1*.5+p2*.5
+        half = Vector(value/span for value in vector)*(length/2)
+        start,end = Line._endpoints(center-half,center+half)
+        self.start,self.end = list(start),list(end)
+        self.length,self.d_alpha = length,d_alpha
 
 
 class Arrow(Line):
@@ -1933,6 +1983,8 @@ class NumberLine(VGroup):
     get_vector = Line.get_vector
     get_length = Line.get_length
     get_angle = Line.get_angle
+    get_slope = Line.get_slope
+    set_angle = Line.set_angle
 
     def get_unit_size(self):
         return self.get_length()/(self.x_max-self.x_min)
@@ -3292,7 +3344,7 @@ class Animate(Transform):
     def __getattr__(self, name):
         if name.startswith('__'):
             raise AttributeError(name)
-        if name not in ('become', 'set_value', 'increment_value', 'shift', 'move_to', 'set_width', 'set_height', 'set_length', 'move_arc_center_to', 'put_start_and_end_on', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'pointwise_become_partial', 'set_points', 'append_points', 'clear_points', 'add_subpath', 'append_vectorized_mobject', 'start_new_path', 'close_path', 'set_points_as_corners', 'set_points_smoothly', 'make_smooth', 'make_jagged', 'change_anchor_mode', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
+        if name not in ('become', 'set_value', 'increment_value', 'shift', 'move_to', 'set_width', 'set_height', 'set_length', 'move_arc_center_to', 'put_start_and_end_on', 'set_angle', 'next_to', 'arrange', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'pointwise_become_partial', 'set_points', 'append_points', 'clear_points', 'add_subpath', 'append_vectorized_mobject', 'start_new_path', 'close_path', 'set_points_as_corners', 'set_points_smoothly', 'make_smooth', 'make_jagged', 'change_anchor_mode', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
             raise NotImplementedError(f'animate.{name} is not supported yet')
         def apply(*args, **kwargs):
             getattr(self.target, name)(*args, **kwargs)
@@ -3617,7 +3669,7 @@ class MovingCameraScene(Scene):
     camera_class = MovingCamera
 
 
-EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'Arrow',
+EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Arrow',
            'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'NumberPlane', 'ComplexPlane', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',
