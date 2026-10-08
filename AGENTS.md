@@ -50,6 +50,7 @@ Avoid editing these to implement Manim features. The Markdown files under
   and exports when changing the unified flow.
 - Extend the existing static architecture before introducing another stack.
   Full Manim, video encoding, LaTeX, and offline support are not proven here.
+- Preserve the explicit Render animation/Cancel render controls and their stale-result guards.
 - Keep Python execution in a worker so a main-thread timeout can terminate
   runaway code. A Promise timeout inside a blocked worker cannot interrupt it.
 - Isolate each source execution namespace and ignore stale render results.

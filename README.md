@@ -31,7 +31,12 @@ renderer. Choose Manim or Graphviz to override detection; the choice stays in th
 URL and shared links. Choose Auto to remove the override. Loading an example
 also restores Auto. Detection updates after 300 ms of quiet; rendering starts
 after one second. Changing the renderer or pressing Enter in the scene field
-renders immediately and cancels scheduled work for earlier edits.
+renders immediately and cancels scheduled work for earlier edits. **Render
+animation** also starts immediately, including a retry after an error or timeout.
+**Cancel render** stops active Manim work without changing the source. It is
+available during Python loading, execution, and formula preparation; the last
+completed preview remains paused. Editing still starts a new render after the
+usual delay.
 
 On screens up to 760 pixels wide, the toolbar, code editor, and preview stack
 vertically. Code wraps to fit the editor; **Hide code** gives the preview more
@@ -269,7 +274,7 @@ interpolation limitations apply to this effect as well.
 
 Animation previews run at
 15 frames per second and are limited to 60 seconds, with a 90-second deadline
-for loading and execution. Editing cancels active computation. Choose SVG or PNG
+for loading and execution. Editing or Cancel render terminates active Python computation. Choose SVG or PNG
 under Frame format, then Download to save the current frame. PNG pauses playback
 at the displayed frame and exports an 800 × 450 image with a black background.
 These are still images, not video exports. SVG retains vector formula paths;

@@ -6,7 +6,14 @@ ManimOnline is a static editor deployed through `.github/workflows/deploy.yml`.
 `index.html` integrates ACE, DOT detection, Graphviz rendering, and a Pyodide
 Manim-lite path. `src/manim-lite.py` implements a compatibility subset and generates timed frames.
 `src/unified-worker.js` loads it into Pyodide; `src/manim-client.js` enforces the
-90-second deadline and terminates active work on edits. The worker rebuilds the
+90-second deadline and terminates active work on edits or Cancel render. The
+Render animation control starts immediately and supports retry after failure.
+Cancellation clears scheduled callbacks, advances the page revision, and discards
+Python or formula results from the stopped render. Its controls remain available
+through loading/execution/formula preparation and reset on completion or error.
+The last completed preview remains paused during cancellation. A local in-app
+browser check stopped an infinite-loop scene, retried it until the real 90-second
+deadline, rendered a valid scene afterward, and then rendered a DOT graph. The worker rebuilds the
 compatibility definitions and executes source in a fresh namespace per render.
 `src/manim-renderer.js` turns serialized shapes into SVG and `src/manim-player.js`
 provides playback, replay, and seeking. Preview generation is limited to 900 timed

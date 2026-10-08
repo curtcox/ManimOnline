@@ -461,7 +461,11 @@ class HelloWorld(Scene):
         <option value="graphviz">Graphviz</option>
       </select>
     </label>
-    <span id="pyodide-status" class="hidden">Python loading...</span>
+    <span id="pyodide-status" class="hidden" role="status" aria-live="polite">Python loading...</span>
+    <span class="manim-options">
+      <button id="render-animation" type="button">Render animation</button>
+      <button id="cancel-render" type="button" hidden>Cancel render</button>
+    </span>
 
     <label>Example:
       <select id="example-picker" aria-label="Example">
@@ -726,6 +730,12 @@ class HelloWorld(Scene):
         shareURLEl = document.querySelector("#shareurl"),
         errorEl = document.querySelector("#error");
 
+      const renderAnimationButton = document.getElementById('render-animation');
+      const cancelRenderButton = document.getElementById('cancel-render');
+      function setRenderBusy(busy) {
+        renderAnimationButton.disabled = busy;
+        cancelRenderButton.hidden = !busy;
+      }
       let renderRevision = 0;
       let player = null;
       const shareClient = new ShareClient();
@@ -848,9 +858,20 @@ class HelloWorld(Scene):
         if (player) player.pause();
         reviewer.classList.remove('working');
         pyodideStatus.className = 'hidden';
+        setRenderBusy(false);
       }
 
       const scheduler = new RenderScheduler({ detect: detectAndUpdateType, render });
+      renderAnimationButton.addEventListener('click', render);
+      cancelRenderButton.addEventListener('click', () => {
+        scheduler.cancel();
+        invalidateRender();
+        clearError();
+        pyodideStatus.textContent = 'Render cancelled';
+        pyodideStatus.className = '';
+        show_status('Render cancelled. Choose Render animation to retry.');
+        renderAnimationButton.focus();
+      });
       rendererMode.addEventListener('change', () => {
         exampleLoader.cancel();
         const url = new URL(location.href);
@@ -1028,6 +1049,7 @@ class HelloWorld(Scene):
       async function renderManim() {
         const revision = renderRevision;
         reviewer.classList.add('working');
+        setRenderBusy(true);
         show_status('rendering Manim…');
         try {
           const code = editor.getSession().getDocument().getValue();
@@ -1052,7 +1074,10 @@ class HelloWorld(Scene):
           pyodideStatus.className = '';
           show_error(error);
         } finally {
-          if (revision === renderRevision) reviewer.classList.remove('working');
+          if (revision === renderRevision) {
+            reviewer.classList.remove('working');
+            setRenderBusy(false);
+          }
         }
       }
 

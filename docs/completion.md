@@ -11,7 +11,7 @@ has been asked of the user; do not silently equate the current subset with eithe
 | Requirement | Current evidence | Remaining verification/work |
 | --- | --- | --- |
 | Basic shapes and animations | Python frame tests, SVG renderer tests, Pyodide browser playback | Browser compatibility matrix, broader examples |
-| Worker execution and hard Python timeout | ManimClient deadline/cancellation tests | Recheck real runaway Python and recovery across browsers |
+| Worker execution and hard Python timeout | ManimClient deadline/cancellation tests; explicit cancel/retry controls; real in-app browser infinite-loop cancellation, 90-second timeout, valid-scene recovery and DOT switching | Repeat cancellation/timeout/recovery across browser matrix |
 | Automatic detection and edit debounce | Literal/comment filtering, manual renderer selector with URL aliases, detector/scheduler tests, browser override/reload/recovery/gallery checks | Live sharing-service checks; broader ambiguous-source coverage |
 | Scene selection and URL reload | Source-link snapshots, scene/type/DOT options, shortening failure/deadline/stale-response tests | Live shortening availability |
 | Gallery | Bundled catalog, stale-load tests, browser loading | Preserve catalog acceptance as APIs change |
