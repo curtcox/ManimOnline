@@ -771,7 +771,7 @@ positioned x/y labels; strings use MathTex and existing Mobjects can be supplied
 `x_axis`, `y_axis`, `axes`, `get_axes`, `get_axis`, `get_x_axis` and `get_y_axis`
 expose the actual child NumberLines. Their own geometry queries use Axes-local
 coordinates, as with existing group children; use c2p/p2c for world positions.
-Animate the complete Axes object. General NumberPlane, broader graphing APIs,
+Animate the complete Axes object. Broader graphing APIs,
 nonlinear scaling, NumPy arrays and 3D coordinates remain open.
 Try **Animate Cartesian coordinates** (`examples/axes_scene.py`), whose sampled
 polyline and marker follow transformed axes through updaters.
@@ -811,3 +811,24 @@ changed bounds so transformed anchors remain fixed during animated smoothing.
 Pending anchors are retained; smoothing targets this object's own geometry.
 Try **Plot smooth functions** (`examples/plot_scene.py`) for a changing parabola,
 tracked input, passing highlight and closed parametric loop.
+
+
+`NumberPlane` extends Axes with Cartesian background lines. Unspecified ranges
+span the configured frame; unspecified lengths give one scene unit per numeric
+unit. Axes omit ticks and tips by default, with 24-point numeric labels.
+`background_line_style` sets the major lines (default `BLUE_D`, width 2);
+`faded_line_style` configures subdivisions, defaulting to half the major width
+and opacity. `faded_line_ratio=2` divides each major interval into two; 0 or 1
+omits subdivisions. Line positions follow Manim's origin-relative, open-boundary
+grid convention, including ranges that exclude zero. The grid is limited to
+1000 lines and the ratio must be a nonnegative integer.
+
+`background_lines`, `faded_lines`, `x_lines` and `y_lines` expose local children;
+x_lines are horizontal major lines, y_lines vertical. Labels, plotting and
+coordinate conversions work through inherited Axes methods. `get_vector(coords,
+**style)` makes an independent Arrow from the current numeric origin to coords.
+Use `always_redraw` to follow a moving plane. The accepted
+`make_smooth_after_applying_functions` flag stores metadata; nonlinear
+transform preparation and function application are still open.
+Try **Move a Cartesian grid** (`examples/plane_scene.py`) for animated coordinates,
+a function plot, rotation, scaling, restoration and vector cleanup.

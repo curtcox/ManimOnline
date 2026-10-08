@@ -179,8 +179,7 @@ coordinate-driven geometry during animation/restoration. Tag child axes instead
 of serializing object references. Compose NumberLine-local queries with the Axes
 parent transform; actual child getters retain local group semantics. Coordinate
 inversion solves the current XY basis, and label insertion compensates for the
-parent's changed bounds pivot after validating both axes. NumberPlane remains
-open; this example uses an explicitly sampled polyline.
+parent's changed bounds pivot after validating both axes. NumberPlane is described below; this example uses an explicitly sampled polyline.
 
 Read `examples/plot_scene.py` for sampled scalar/parametric plotting, dynamic
 coefficients, exact graph-input queries and closed-loop drawing. Exclude function
@@ -191,3 +190,11 @@ periodic closed system; pin rounding-close seam anchors. Preserve transforms and
 compensate changed handle bounds so animated smoothing cannot move anchors.
 Declared gaps create separate contours; do not bridge discontinuities. Sampling
 is explicit rather than adaptive, and full graphing/NumPy semantics remain open.
+
+
+Read `examples/plane_scene.py` for NumberPlane grids and vectors following a
+transformed coordinate frame. Grid geometry stays in Axes-local coordinates;
+keep faded/background groups before the axes and tag their roles rather than
+serializing Mobject aliases. Preserve native origin-relative spacing, omitted
+outer boundaries and default unit lengths. Bound subdivision counts before
+allocating geometry. Nonlinear transforms and preparation remain open.

@@ -933,8 +933,7 @@ restoration, animated resizing and dependent marker sampling. Local Pyodide
 playback verified the marker at the tracked numeric position while the shaft
 rotated/shrank/moved. At eleven seconds, restoration returned a horizontal line
 and the marker/readout to zero. Switching to DOT rendered the editor flow graph.
-NumberPlane and broader graphing APIs are still
-implementation work.
+Broader graphing APIs remain implementation work.
 
 ## Cartesian axes
 
@@ -958,7 +957,7 @@ Coordinate labels are prepared on copies of both axes before mutating either
 live axis. After insertion, parent pivot compensation preserves world geometry
 when the bounds change. Axis labels use supplied Mobjects or existing MathTex
 strings. Independent child animation, generalized family geometry, glyph bounds,
-NumberPlane and broader graphing APIs remain implementation work.
+Broader graphing APIs remain implementation work.
 
 Python checks cover all-sign ranges, rectangular centering, nested transforms,
 extrapolation, inversion of unequal/skewed bases, scalar/batch conversions,
@@ -999,7 +998,7 @@ queries evaluate the original function in the current axes, rather than moving
 with independent graph transforms. Fresh plots are independent geometry;
 always_redraw regenerates them when their parameters or frame change.
 Vectorized callbacks, adaptive sampling, nonlinear/color scales, implicit plots,
-NumberPlane and broader graph analysis remain open.
+Broader graph analysis remains open.
 
 Tests cover exact open handles, periodic first/second derivative continuity,
 degenerate loops, contour/style/checkpoint preservation, animated transformed
@@ -1009,3 +1008,37 @@ callbacks. Local Pyodide rendered the changing parabola, tracked marker, yellow
 passing highlight and a closed 32-cubic red loop. At eleven seconds only the
 axes and final blue 40-cubic plot remained. Switching to DOT rendered the editor
 flow graph.
+
+
+## Cartesian grids
+
+NumberPlane adds major and faded Cartesian lines using the
+[official grid conventions](https://docs.manim.community/en/stable/_modules/manim/mobject/graphing/coordinate_systems.html).
+Ranges default to the configured frame and lengths to the numeric spans, giving
+unit scale. Axes omit ticks/tips and use 24-point labels. Default major strokes
+use BLUE_D; faded strokes halve numerical style values unless explicitly supplied.
+A nonnegative integer faded_line_ratio controls subdivisions; zero means no
+faded lines. Grid offsets follow the native origin-relative sequences, excluding
+outer boundaries; zero-offset lines follow the native major/faded classification.
+Preflight counts reject grids exceeding 1000 lines before allocation.
+
+Tagged background/faded groups precede the axes. Their lines use Axes-local
+coordinates, so inherited conversion, label pivot compensation and sampled
+transforms remain consistent. Major horizontal/vertical getters build local
+views of the actual children, preserving copy/restore identities without putting
+Mobject aliases in frame JSON. get_vector creates a world-space Arrow whose
+endpoints touch the numeric origin and requested coordinate; always_redraw keeps
+it synchronized with changing axes. The smoothing flag is metadata only;
+nonlinear transform preparation and application remain implementation work.
+
+Tests cover subdivisions, styles, nonzero ranges, default lengths, local roles,
+transformed labels/vectors, copies, restoration, invalid inputs, allocation limits
+and sampled marker alignment. The gallery combines a dynamic vector with a red
+function plot on a rotating/scaling plane, then restores the plane and removes
+the marker/vector.
+
+Local Pyodide playback verified 18 styled grid lines, the red curve and a yellow
+vector touching its marker on the rotated/scaled plane at seven seconds. The
+final eleven-second frame restored the grid and removed the marker/vector.
+Switching to DOT rendered the editor flow graph. All 242 Python and 72 Node
+tests passed for this update.

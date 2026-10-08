@@ -33,6 +33,7 @@ LEFT, RIGHT = Vector((-1, 0, 0)), Vector((1, 0, 0))
 ORIGIN = Vector((0, 0, 0))
 OUT, IN = Vector((0, 0, 1)), Vector((0, 0, -1))
 UL, UR, DL, DR = UP + LEFT, UP + RIGHT, DOWN + LEFT, DOWN + RIGHT
+BLUE_D = '#29ABCA'
 BLUE, RED, GREEN = '#58C4DD', '#FC6255', '#83C167'
 YELLOW, PURPLE, ORANGE = '#FFFF00', '#9A72AC', '#FF8C00'
 WHITE, BLACK, GRAY = '#FFFFFF', '#000000', '#888888'
@@ -2040,6 +2041,110 @@ class Axes(VGroup):
     i2gp = input_to_graph_point
 
 
+class NumberPlane(Axes):
+    """A linear Cartesian grid using the same local coordinates as its axes."""
+    def __init__(self, x_range=None, y_range=None, x_length=None, y_length=None,
+                 background_line_style=None, faded_line_style=None, faded_line_ratio=1,
+                 make_smooth_after_applying_functions=True, **kwargs):
+        if isinstance(faded_line_ratio,bool) or not isinstance(faded_line_ratio,int) or faded_line_ratio < 0:
+            raise ValueError('NumberPlane faded_line_ratio must be a nonnegative integer')
+        if not isinstance(make_smooth_after_applying_functions,bool):
+            raise ValueError('NumberPlane smoothing flag must be a boolean')
+        xr = ParametricFunction._range(x_range if x_range is not None else
+                                      [-config.frame_width/2,config.frame_width/2,1],1)
+        yr = ParametricFunction._range(y_range if y_range is not None else
+                                      [-config.frame_height/2,config.frame_height/2,1],1)
+        if xr[0] == xr[1] or yr[0] == yr[1]:
+            raise ValueError('NumberPlane ranges must increase')
+        offsets = [self._grid_offsets(values,faded_line_ratio) for values in (yr,xr)]
+        if sum(len(values) for values in offsets) > 1000:
+            raise ValueError('NumberPlane grids are limited to 1000 lines')
+        def merged(defaults, options):
+            if options is not None and not isinstance(options,dict):
+                raise TypeError('NumberPlane styles and axis configurations must be dictionaries')
+            result = copy.deepcopy(defaults)
+            result.update(copy.deepcopy(options or {}))
+            return result
+        background = merged(dict(stroke_color=BLUE_D,stroke_width=2,stroke_opacity=1),background_line_style)
+        faded = ({key: value*.5 if isinstance(value,(int,float)) and not isinstance(value,bool) else value
+                  for key,value in background.items()} if faded_line_style is None else
+                 merged({},faded_line_style))
+        # Validate styles even if the chosen grid has no faded lines.
+        Line(**background)
+        Line(**faded)
+        axis_options = merged(dict(stroke_width=2,include_ticks=False,include_tip=False,
+                                   line_to_number_buff=.1,label_direction=DR,font_size=24),
+                              kwargs.pop('axis_config',None))
+        y_options = merged(dict(label_direction=DR),kwargs.pop('y_axis_config',None))
+        super().__init__(xr,yr,x_length=xr[1]-xr[0] if x_length is None else x_length,
+                         y_length=yr[1]-yr[0] if y_length is None else y_length,
+                         axis_config=axis_options,y_axis_config=y_options,**kwargs)
+        self.background_line_style,self.faded_line_style = background,faded
+        self.faded_line_ratio = faded_line_ratio
+        self.make_smooth_after_applying_functions = make_smooth_after_applying_functions
+        major,minor = VGroup(),VGroup()
+        major._plane_role,minor._plane_role = 'background','faded'
+        for axis,perpendicular,values,role in ((self.x_axis,self.y_axis,offsets[0],'x'),
+                                             (self.y_axis,self.x_axis,offsets[1],'y')):
+            for offset,is_major in values:
+                direction = perpendicular.get_unit_vector()*offset
+                line = Line(axis.get_start()+direction,axis.get_end()+direction,
+                            **(background if is_major else faded))
+                line._grid_axis = role
+                (major if is_major else minor).add(line)
+        # Grid points are already Axes-local. Do not bake this parent's translation.
+        self.add_to_back(minor,major)
+
+    @staticmethod
+    def _grid_offsets(values, ratio):
+        low,high,freq = values
+        ratio = max(1,ratio)
+        try:
+            step = freq/ratio
+        except OverflowError as error:
+            raise ValueError('NumberPlane grid ratio is too large') from error
+        if step == 0 or not math.isfinite(step):
+            raise ValueError('NumberPlane grid step must be finite and positive')
+        extents = (min(high-low,high),-max(low-high,low))
+        result = [(0,ratio == 1)]
+        for sign,extent in zip((1,-1),extents):
+            count = extent/step
+            if not math.isfinite(count) or count > 1001:
+                raise ValueError('NumberPlane grids are limited to 1000 lines')
+            for index in range(1,max(1,math.ceil(count))):
+                offset = sign*index*step
+                if abs(offset) < extent:
+                    result.append((offset,index % ratio == 0))
+        return result
+
+    def _plane_group(self, role):
+        for child in self.children:
+            if child.__dict__.get('_plane_role') == role:
+                return child
+        raise ValueError('NumberPlane has no ' + role + ' lines')
+
+    @property
+    def background_lines(self):
+        return self._plane_group('background')
+
+    @property
+    def faded_lines(self):
+        return self._plane_group('faded')
+
+    @property
+    def x_lines(self):
+        return VGroup(*(line for line in self.background_lines if line.__dict__.get('_grid_axis') == 'x'))
+
+    @property
+    def y_lines(self):
+        return VGroup(*(line for line in self.background_lines if line.__dict__.get('_grid_axis') == 'y'))
+
+    def get_vector(self, coords, **kwargs):
+        kwargs.pop('buff',None)  # Manim always makes these vectors touch the origin.
+        start,end = Line._endpoints(self.c2p(0,0),self.c2p(coords))
+        return Arrow(start,end,**kwargs)
+
+
 def linear(t):
     return t
 
@@ -2928,11 +3033,11 @@ class MovingCameraScene(Scene):
 
 
 EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'Arrow',
-           'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'Create', 'Write', 'FadeIn',
+           'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'NumberPlane', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform', 'UP', 'DOWN', 'LEFT',
-           'RIGHT', 'ORIGIN', 'OUT', 'IN', 'UL', 'UR', 'DL', 'DR', 'BLUE', 'RED', 'GREEN',
+           'RIGHT', 'ORIGIN', 'OUT', 'IN', 'UL', 'UR', 'DL', 'DR', 'BLUE', 'BLUE_D', 'RED', 'GREEN',
            'YELLOW', 'PURPLE', 'ORANGE', 'WHITE', 'BLACK', 'GRAY', 'GREY', 'PINK',
            'linear', 'smooth', 'there_and_back', 'PI', 'TAU', 'DEGREES']
 

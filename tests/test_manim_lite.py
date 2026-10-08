@@ -16,6 +16,120 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_number_plane_grid_spacing_styles_and_roles(self):
+        plane = lite.NumberPlane([-3,3],[-2,2],faded_line_ratio=2,
+                                 background_line_style={'stroke_width':4,'stroke_opacity':.8})
+        self.assertEqual(len(plane.background_lines),6)
+        self.assertEqual(len(plane.faded_lines),12)
+        self.assertEqual(len(plane.x_lines),2)
+        self.assertEqual(len(plane.y_lines),4)
+        self.assertIs(plane.children[0],plane.faded_lines)
+        self.assertIs(plane.children[1],plane.background_lines)
+        self.assertEqual(plane.background_lines[0].stroke_width,4)
+        self.assertEqual(plane.faded_lines[0].stroke_width,2)
+        self.assertEqual(plane.faded_lines[0].stroke_opacity,.4)
+        self.assertPointAlmostEqual(plane.x_lines[0].get_start(),(-3,1,0))
+        self.assertPointAlmostEqual(plane.x_lines[1].get_end(),(3,-1,0))
+        self.assertEqual(plane.x_axis.font_size,24)
+        self.assertFalse(plane.x_axis.include_tip)
+        with self.assertRaises(ValueError): plane.x_axis.ticks
+        for ratio in (0,1):
+            plain = lite.NumberPlane([-3,3],[-2,2],faded_line_ratio=ratio)
+            self.assertEqual(len(plain.background_lines),8)
+            self.assertEqual(len(plain.faded_lines),0)
+        json.dumps(plane.to_dict(),allow_nan=False)
+        default = lite.NumberPlane()
+        self.assertAlmostEqual(default.get_x_unit_size(),1)
+        self.assertAlmostEqual(default.get_y_unit_size(),1)
+
+    def test_number_plane_nonzero_ranges_and_scaled_grid(self):
+        for xr,yr in (([2,6],[-4,-1]),([-6,-2],[1,4])):
+            plane = lite.NumberPlane(xr,yr,x_length=8,y_length=3,faded_line_ratio=1)
+            for line in plane.background_lines:
+                a = plane.p2c(plane._point_to_world(line.get_start()))
+                b = plane.p2c(plane._point_to_world(line.get_end()))
+                if line._grid_axis == 'x':
+                    self.assertAlmostEqual(a[0],xr[0]); self.assertAlmostEqual(b[0],xr[1])
+                    self.assertAlmostEqual(a[1],b[1])
+                    self.assertTrue(yr[0] <= a[1] <= yr[1])
+                else:
+                    self.assertAlmostEqual(a[1],yr[0]); self.assertAlmostEqual(b[1],yr[1])
+                    self.assertAlmostEqual(a[0],b[0])
+                    self.assertTrue(xr[0] <= a[0] <= xr[1])
+        plane = lite.NumberPlane([-2,2,.5],[-1,1,.5],x_length=8,y_length=4)
+        self.assertPointAlmostEqual(plane.c2p(1,1),(2,2,0))
+        self.assertEqual(len(plane.background_lines),10)
+
+    def test_number_plane_transform_labels_copy_restore_and_vector(self):
+        plane = lite.NumberPlane([-3,3],[-2,2],faded_line_ratio=3).rotate(.5).scale(1.4).shift(lite.UP)
+        before = [plane.c2p(x,y) for x,y in ((0,0),(1,1),(-3,-2),(3,2))]
+        grid = [[plane._point_to_world(line.get_start()),plane._point_to_world(line.get_end())]
+                for line in plane.background_lines]
+        plane.add_coordinates()
+        for (x,y),point in zip(((0,0),(1,1),(-3,-2),(3,2)),before):
+            self.assertPointAlmostEqual(plane.c2p(x,y),point)
+        for line,points in zip(plane.background_lines,grid):
+            self.assertPointAlmostEqual(plane._point_to_world(line.get_start()),points[0])
+            self.assertPointAlmostEqual(plane._point_to_world(line.get_end()),points[1])
+        arrow = plane.get_vector([1,1],color=lite.YELLOW,buff=.7)
+        self.assertPointAlmostEqual(arrow.get_start(),before[0])
+        self.assertPointAlmostEqual(arrow.get_end(),before[1])
+        clone = plane.copy()
+        clone.background_lines[0].set_color(lite.RED)
+        self.assertNotEqual(clone.background_lines[0].stroke_color,plane.background_lines[0].stroke_color)
+        plane.save_state().shift(lite.RIGHT).restore()
+        self.assertPointAlmostEqual(plane.c2p(1,1),before[1])
+        self.assertEqual(len(plane.x_lines),2)
+        json.dumps(plane.to_dict(),allow_nan=False)
+
+    def test_number_plane_validation_and_grid_limits(self):
+        for ratio in (-1,True,1.5,float('inf'),10**400):
+            with self.assertRaises(ValueError): lite.NumberPlane(faded_line_ratio=ratio)
+        for ranges in ([0,0],[0,1,0],[0,1,1e-320],[0,1,.0001]):
+            with self.assertRaises(ValueError): lite.NumberPlane(ranges,[-1,1])
+        for options in ({'background_line_style':[]},{'faded_line_style':[]},{'axis_config':[]}):
+            with self.assertRaises(TypeError): lite.NumberPlane(**options)
+        for options in ({'faded_line_style':{'stroke_width':-1}},
+                        {'background_line_style':{'stroke_opacity':2}},
+                        {'make_smooth_after_applying_functions':1}):
+            with self.assertRaises(ValueError): lite.NumberPlane(**options)
+        with self.assertRaises(NotImplementedError): lite.NumberPlane().get_vector([1,1,1])
+
+    def test_number_plane_sampled_animation_keeps_marker_on_grid(self):
+        class Demo(lite.Scene):
+            def construct(self):
+                self.plane = lite.NumberPlane([-2,2],[-2,2],faded_line_ratio=2)
+                marker = lite.Dot(self.plane.c2p(1,1))
+                marker.add_updater(lambda mob: mob.move_to(self.plane.c2p(1,1)))
+                self.add(self.plane,marker)
+                self.play(self.plane.animate.rotate(.6).scale(.8).shift(lite.UP))
+        scene = Demo(); result = scene.render()
+        for frame in result['frames']:
+            snapshot = frame['mobjects'][0]
+            plane = lite.NumberPlane([-2,2],[-2,2],faded_line_ratio=2)
+            plane.position = snapshot['position']; plane.angle = snapshot['angle']
+            plane.geometry_scale = snapshot['geometry_scale']
+            self.assertPointAlmostEqual(frame['mobjects'][1]['position'],plane.c2p(1,1))
+        self.assertPointAlmostEqual(scene.plane.c2p(1,1),result['frames'][-1]['mobjects'][1]['position'])
+
+    def test_number_plane_gallery_restores_grid_and_removes_vector(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/plane_scene.py').read_text()))
+        self.assertEqual(result['duration'],11)
+        middle = result['frames'][105]['mobjects']
+        self.assertEqual(len(middle),4)
+        self.assertAlmostEqual(middle[0]['angle'],lite.PI/6)
+        self.assertAlmostEqual(middle[0]['geometry_scale'],.8)
+        # The arrow and marker follow the same sampled coordinate query.
+        arrow = lite.Arrow(); data = middle[3]
+        for attr in ('position','angle','geometry_scale','start','end'):
+            setattr(arrow,attr,data[attr])
+        self.assertPointAlmostEqual(arrow.get_end(),middle[2]['position'])
+        final = result['frames'][-1]['mobjects']
+        self.assertEqual(len(final),2)
+        self.assertEqual(final[0]['angle'],0)
+        self.assertEqual(final[0]['geometry_scale'],1)
+        self.assertPointAlmostEqual(final[1]['curves'][0][0],(-4,1.7,0))
+
     def test_open_smoothing_exact_handles_and_c2_joins(self):
         path = lite.VMobject().set_points_smoothly([(0,0),(1,1),(2,0)])
         expected = [[(0,0),(1/3,.5),(2/3,1),(1,1)],[(1,1),(4/3,1),(5/3,.5),(2,0)]]
