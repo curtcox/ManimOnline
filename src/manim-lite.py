@@ -448,6 +448,20 @@ class Text(Mobject):
         self._type, self.text, self.font_size = 'text', str(text), font_size
 
 
+class MathTex(Text):
+    """A single formula rendered as SVG paths by the browser's math backend."""
+    def __init__(self, *tex_strings, arg_separator=' ', font_size=48, **kwargs):
+        if not all(isinstance(value, str) for value in (*tex_strings, arg_separator)):
+            raise TypeError('MathTex expects TeX strings')
+        if not math.isfinite(font_size) or font_size <= 0:
+            raise ValueError('MathTex font_size must be positive and finite')
+        text = arg_separator.join(tex_strings)
+        if len(text) > 4096:
+            raise ValueError('MathTex expressions are limited to 4096 characters')
+        super().__init__(text, font_size=font_size, **kwargs)
+        self._type = 'mathtex'
+
+
 class VGroup(Mobject):
     def __init__(self, *mobjects, **kwargs):
         super().__init__(**kwargs)
@@ -598,7 +612,7 @@ class Create(Animation):
             if data['type'] == 'vgroup':
                 for child in data['children']:
                     reveal(child)
-            elif data['type'] == 'text':
+            elif data['type'] in ('text', 'mathtex'):
                 data['opacity'] *= progress
             else:
                 data['draw_progress'] = progress
@@ -637,7 +651,8 @@ class Transform(Animation):
 
     def sample(self, alpha):
         target = self.target.to_dict()
-        if self.start['type'] == target['type']:
+        if (self.start['type'] == target['type'] and
+                (target['type'] != 'mathtex' or self.start['text'] == target['text'])):
             return [interpolate(self.start, target, alpha)]
         # Different geometry is crossfaded rather than claiming path morphing.
         source = copy.deepcopy(self.start)
@@ -911,7 +926,7 @@ class Scene:
 
 
 EXPORTS = ['Scene', 'Mobject', 'Circle', 'Arc', 'Dot', 'Square', 'Rectangle', 'Line', 'Arrow',
-           'Triangle', 'Polygon', 'Text', 'VGroup', 'Create', 'Write', 'FadeIn',
+           'Triangle', 'Polygon', 'Text', 'MathTex', 'VGroup', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'TransformFromCopy',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform', 'UP', 'DOWN', 'LEFT',

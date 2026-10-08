@@ -2,6 +2,13 @@
 
 ## Project Vision
 
+Current implementation and remaining acceptance gates are tracked in
+[`docs/completion.md`](../docs/completion.md) and
+[`docs/rendering.md`](../docs/rendering.md). The historical KaTeX proposal below
+has been superseded by verified MathJax SVG-path rendering for `MathTex`; the
+evidence and export tradeoff are recorded in
+[`manim_latex_questions.md`](manim_latex_questions.md).
+
 Create a web-based editor similar to [GraphvizOnline](https://dreampuf.github.io/GraphvizOnline) that supports both Graphviz DOT language diagrams and Manim Python animations, with automatic detection and appropriate rendering.
 
 ## Table of Contents

@@ -157,6 +157,22 @@ Revision checks discard superseded responses and errors, including when edits
 arrive during response-body loading. Failed loads leave editor source unchanged.
 Toolbar controls wrap, with preview placement tracking the toolbar height.
 
+`MathTex` serializes a formula and standard Mobject styles in the Python worker.
+`src/manim-math.js` lazily loads MathJax 3.2.2 and compiles each distinct formula
+once before playback, with stale-revision checks before/after asynchronous work.
+The renderer copies inert vector geometry into each frame and centers the glyph
+viewBox at the object anchor. Font cache is disabled, so exported SVGs contain
+paths without external fonts or references. Formula changes crossfade; creation
+and writing fade. Standard styles and group transforms apply to the formula.
+TeX uses base and AMS packages, display math, a 1000 macro-expansion bound, and
+a 4096-character buffer. Custom macros, links, external extensions, and native
+LaTeX templates are unsupported. The loader has a 20-second connection deadline;
+scenes are limited to 64 distinct formulas and 2 MiB of generated glyph SVG.
+Python retains anchor-only bounds: substring objects, glyph tracing, glyph-aware
+layout, `Tex`, and matching-symbol transformations need further implementation.
+Math compilation currently runs in the browser DOM after worker execution;
+the worker's 90-second Python deadline does not interrupt synchronous typesetting.
+
 Next work can add additional verified compatibility APIs, geometry-aware path
 transforms, glyph outline rendering, sequential animation composition, and an offline
 asset strategy. Keep DOT
@@ -167,7 +183,7 @@ for scene selection with animated scale and rotation.
 `examples/creation_and_rotation.py` demonstrates stroke creation, an orbit, and
 erasure. Broader examples under `examples/`
 are feature references, not an acceptance claim. Document unsupported APIs and
-limits on duration/frame count. MP4 export, LaTeX, 3D, arbitrary dependencies,
+limits on duration/frame count. MP4 export, full LaTeX documents, 3D, arbitrary dependencies,
 updaters, and offline caching remain future work unless separately implemented.
 Use `examples/layout_scene.py` for shape spacing, dot positioning, and animated
 row-to-column layout checks.
@@ -180,6 +196,7 @@ Use `examples/restore_scene.py` for group restoration and recovery after shrinki
 Use `examples/indicate_scene.py` for temporary size/color emphasis and staggered highlights.
 Use `examples/copy_scene.py` for retained originals, crossfades, and target cleanup.
 Use `examples/connector_scene.py` for endpoint motion and restored rotated arrows.
+Use `examples/math_scene.py` for vector formulas, highlights, and formula crossfades.
 
 ## Verification
 
@@ -209,6 +226,8 @@ independently of browser integration; report both categories separately.
 - [Manim indication](https://docs.manim.community/en/stable/reference/manim.animation.indication.Indicate.html)
 - [Manim copy transforms](https://docs.manim.community/en/stable/reference/manim.animation.transform.TransformFromCopy.html)
 - [Manim line geometry](https://docs.manim.community/en/stable/reference/manim.mobject.geometry.line.Line.html)
+- [Manim MathTex](https://docs.manim.community/en/stable/reference/manim.mobject.text.tex_mobject.MathTex.html)
+- [MathJax SVG output](https://docs.mathjax.org/en/v3.2/options/output/svg.html)
 - [Manim configuration](https://docs.manim.community/en/stable/guides/configuration.html)
 - [Pyodide worker guidance](https://pyodide.org/en/stable/usage/webworker.html)
 

@@ -2,6 +2,18 @@
 
 ## Purpose
 
+**Implementation update (2026-10-08):** The browser now uses MathJax 3.2.2
+SVG output for `MathTex`; see [current rendering behavior](../docs/rendering.md).
+The KaTeX recommendation below is historical research, not the implemented
+backend. Its assumption that KaTeX exposes complete SVG glyph output was
+incorrect: the [official output options](https://katex.org/docs/options.html)
+are HTML and MathML. MathJax provides self-contained vector paths, verified in
+browser playback and exported SVG, without foreignObject or font dependencies.
+Python scene execution stays in the worker; bounded formula compilation
+currently runs through MathJax's browser DOM API before playback. The earlier
+bundle/performance estimates and worker-only typesetting success criteria have
+not been verified and must not be presented as achieved.
+
 Determine the best approach for rendering mathematical expressions (MathTex) in ManimOnline without a native LaTeX installation.
 
 ## Context

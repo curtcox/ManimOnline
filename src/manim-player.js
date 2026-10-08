@@ -2,6 +2,7 @@
 class ManimPlayer {
   constructor(container, sceneData, onFrame) {
     this.frames = sceneData.frames;
+    this.mathGlyphs = sceneData.mathGlyphs;
     this.fps = sceneData.fps;
     this.index = 0;
     this.playing = false;
@@ -38,7 +39,7 @@ class ManimPlayer {
 
   draw(index) {
     this.index = index;
-    const svg = ManimRenderer.render(this.frames[index]);
+    const svg = ManimRenderer.render(this.frames[index], this.mathGlyphs);
     svg.setAttribute('role', 'img');
     svg.setAttribute('aria-label', 'Manim animation preview');
     this.stage.replaceChildren(svg);

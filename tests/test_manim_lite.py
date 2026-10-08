@@ -16,6 +16,36 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_mathtex_serialization_and_constructor_validation(self):
+        formula = lite.MathTex('a^2', '+ b^2', arg_separator=' ', color=lite.BLUE, font_size=36)
+        self.assertEqual(formula.to_dict()['type'], 'mathtex')
+        self.assertEqual(formula.text, 'a^2 + b^2')
+        self.assertEqual((formula.fill_opacity, formula.stroke_width), (1, 0))
+        for size in (0, -1, float('nan'), float('inf')):
+            with self.assertRaises(ValueError):
+                lite.MathTex('x', font_size=size)
+        with self.assertRaises(ValueError):
+            lite.MathTex('x' * 4097)
+        with self.assertRaises(TypeError):
+            lite.MathTex(12)
+        with self.assertRaises(NotImplementedError):
+            lite.MathTex('x', tex_template='custom')
+
+    def test_mathtex_creation_fades_and_changed_formula_crossfades(self):
+        result = render("a = MathTex(r'\\frac{a}{b}')\nself.play(Create(a), run_time=2)\nself.play(Transform(a, MathTex('x^2', color=RED)), run_time=2)\nself.wait(1)")
+        first = result['frames'][15]['mobjects'][0]
+        self.assertEqual(first['opacity'], 0.5)
+        self.assertNotIn('draw_progress', first)
+        middle = result['frames'][45]['mobjects']
+        self.assertEqual([m['text'] for m in middle], [r'\frac{a}{b}', 'x^2'])
+        self.assertEqual([m['opacity'] for m in middle], [0.5, 0.5])
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['text'], 'x^2')
+
+    def test_math_example_renders_all_formula_frames(self):
+        result = json.loads(lite.render_scene((ROOT / 'examples/math_scene.py').read_text()))
+        self.assertEqual(result['duration'], 7)
+        self.assertEqual(result['frames'][-1]['mobjects'][1]['text'], r'\sum_{k=1}^n k = \frac{n(n+1)}{2}')
+
     def test_line_endpoint_queries_follow_geometry_transforms(self):
         for cls in (lite.Line, lite.Arrow):
             line = cls((1, 1), (3, 1)).scale(-2).rotate(lite.PI / 2).shift(lite.RIGHT)

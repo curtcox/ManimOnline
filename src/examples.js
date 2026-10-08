@@ -1,6 +1,7 @@
 /** Supported, local examples and a loader that ignores superseded requests. */
 const ExampleCatalog = Object.freeze([
   { id: 'minimal', label: 'First animation', path: 'examples/minimal_scene.py' },
+  { id: 'math', label: 'Math formulas', path: 'examples/math_scene.py' },
   { id: 'scenes', label: 'Multiple scenes', path: 'examples/multiple_scenes.py' },
   { id: 'creation', label: 'Creation and rotation', path: 'examples/creation_and_rotation.py' },
   { id: 'layout', label: 'Position and arrange', path: 'examples/layout_scene.py' },

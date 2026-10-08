@@ -17,7 +17,7 @@ const ManimRenderer = {
    * @param {Object} sceneData - The scene data from Manim-lite
    * @returns {SVGElement}
    */
-  render(sceneData) {
+  render(sceneData, mathGlyphs) {
     const svg = document.createElementNS(this.SVG_NS, 'svg');
     svg.setAttribute('width', this.CANVAS_WIDTH);
     svg.setAttribute('height', this.CANVAS_HEIGHT);
@@ -32,7 +32,7 @@ const ManimRenderer = {
     // Render all mobjects
     if (sceneData.mobjects) {
       for (const mobject of sceneData.mobjects) {
-        const element = this.renderMobject(mobject);
+        const element = this.renderMobject(mobject, mathGlyphs);
         if (element) {
           mainGroup.appendChild(element);
         }
@@ -45,7 +45,7 @@ const ManimRenderer = {
   /**
    * Render a single mobject
    */
-  renderMobject(mobject) {
+  renderMobject(mobject, mathGlyphs) {
     const type = mobject.type;
     const position = mobject.position || [0, 0, 0];
 
@@ -79,8 +79,11 @@ const ManimRenderer = {
       case 'text':
         element = this.renderText(mobject);
         break;
+      case 'mathtex':
+        element = this.renderMathTex(mobject, mathGlyphs);
+        break;
       case 'vgroup':
-        element = this.renderVGroup(mobject);
+        element = this.renderVGroup(mobject, mathGlyphs);
         break;
       default:
         console.warn(`Unknown mobject type: ${type}`);
@@ -329,11 +332,40 @@ const ManimRenderer = {
   /**
    * Render a VGroup (container)
    */
-  renderVGroup(mobject) {
+  renderMathTex(mobject, mathGlyphs) {
+    const asset = mathGlyphs && mathGlyphs.get(mobject.text);
+    if (!asset) throw new Error('MathTex glyphs have not been prepared.');
+    const parsed = new DOMParser().parseFromString(asset.svg, 'image/svg+xml');
+    const group = document.createElementNS(this.SVG_NS, 'g');
+    const scale = (mobject.font_size || 48) / 1000;
+    const [x, y, width, height] = asset.viewBox;
+    group.setAttribute('transform', `scale(1, -1) scale(${scale}) translate(${-x - width / 2}, ${-y - height / 2})`);
+    group.setAttribute('fill', mobject.color || '#FFFFFF');
+    group.setAttribute('fill-opacity', mobject.fill_opacity ?? 1);
+    group.setAttribute('stroke', mobject.color || '#FFFFFF');
+    group.setAttribute('stroke-width', mobject.stroke_width || 0);
+    // Copy only inert vector geometry. No links, scripts, styles or font references.
+    const tags = new Set(['g', 'path', 'rect', 'line', 'polygon', 'polyline', 'circle', 'ellipse']);
+    const attributes = ['d', 'transform', 'x', 'y', 'x1', 'y1', 'x2', 'y2', 'width', 'height', 'points', 'cx', 'cy', 'r', 'rx', 'ry'];
+    function copyGeometry(node) {
+      if (!tags.has(node.localName)) throw new Error('Unsupported math SVG geometry: ' + node.localName);
+      const element = document.createElementNS('http://www.w3.org/2000/svg', node.localName);
+      for (const name of attributes) {
+        if (node.hasAttribute(name)) element.setAttribute(name, node.getAttribute(name));
+      }
+      for (const child of node.children) element.appendChild(copyGeometry(child));
+      return element;
+    }
+    for (const child of parsed.documentElement.children) group.appendChild(copyGeometry(child));
+    group.setAttribute('aria-label', mobject.text);
+    return group;
+  },
+
+  renderVGroup(mobject, mathGlyphs) {
     const group = document.createElementNS(this.SVG_NS, 'g');
     if (mobject.children) {
       for (const child of mobject.children) {
-        const element = this.renderMobject(child);
+        const element = this.renderMobject(child, mathGlyphs);
         if (element) {
           group.appendChild(element);
         }

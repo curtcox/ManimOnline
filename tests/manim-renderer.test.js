@@ -11,6 +11,28 @@ class Element {
 }
 global.document = { createElementNS: (_namespace, tag) => new Element(tag) };
 
+test('math glyphs render with transforms, styles, and no external SVG content', () => {
+  const path = new Element('path');
+  path.localName = 'path';
+  path.setAttribute('d', 'M 0 0 L 1000 0');
+  path.setAttribute('onclick', 'bad()');
+  path.hasAttribute = name => path.getAttribute(name) !== null;
+  global.DOMParser = class { parseFromString() { return { documentElement: { children: [path] } }; } };
+  const glyphs = new Map([['x', { svg: '<svg/>', viewBox: [0, -700, 1000, 900] }]]);
+  const group = renderer.renderMobject({ type: 'vgroup', children: [
+    { type: 'mathtex', text: 'x', font_size: 48, fill_color: '#FF0000', position: [2, 1, 0] }
+  ] }, glyphs);
+  const shape = group.children[0];
+  assert.match(shape.getAttribute('transform'), /translate\(100, 50\).*scale\(1, -1\) scale\(0.048\)/);
+  assert.equal(shape.getAttribute('fill'), '#FF0000');
+  assert.equal(shape.children[0].getAttribute('d'), 'M 0 0 L 1000 0');
+  assert.equal(shape.children[0].getAttribute('onclick'), null);
+  path.localName = 'script';
+  assert.throws(() => renderer.renderMobject({ type: 'mathtex', text: 'x' }, glyphs), /Unsupported math SVG/);
+  assert.throws(() => renderer.renderMobject({ type: 'mathtex', text: 'y' }, glyphs), /not been prepared/);
+  delete global.DOMParser;
+});
+
 test('primitive fill and stroke channels render independently, including zero opacity', () => {
   for (const type of ['circle', 'arc', 'square', 'rectangle', 'triangle', 'polygon', 'text']) {
     const shape = renderer.renderMobject({ type, fill_color: '#FF0000', stroke_color: '#00FF00',

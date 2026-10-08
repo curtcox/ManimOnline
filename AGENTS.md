@@ -16,6 +16,7 @@ compatibility layer, not a server running full Manim Community.
 5. `src/manim-renderer.js`, `src/manim-player.js`, and `src/detector.js`.
 6. `docs/rendering.md` for current gaps and next milestones.
    `src/examples.js` contains the editor gallery catalog and stale-load protection.
+   `src/manim-math.js` prepares vector formula glyphs for playback and SVG export.
 7. `examples/multiple_scenes.py` for selection and geometry transform checks.
 8. `examples/creation_and_rotation.py` for stroke creation and orbital motion.
 9. `examples/layout_scene.py` for relative positioning and animated arrangements.
@@ -28,7 +29,9 @@ compatibility layer, not a server running full Manim Community.
 16. `examples/indicate_scene.py` for temporary highlights and staggered emphasis.
 17. `examples/copy_scene.py` for retained sources and independent target cleanup.
 18. `examples/connector_scene.py` for transformed endpoint queries and animated connectors.
-19. `todo/master_plan.md` and the other `todo/` documents for background plans.
+19. `examples/math_scene.py` for formula rendering and changed-formula crossfades.
+20. `todo/master_plan.md` and the other `todo/` documents for background plans.
+    `docs/completion.md` tracks the remaining acceptance gates.
 
 `ace/`, `viz-global.js`, and `svg-pan-zoom.min.js` are vendored dependencies.
 Avoid editing these to implement Manim features. The Markdown files under

@@ -54,6 +54,7 @@ Then open `http://localhost:8000` in your browser.
 - [Restore scene](examples/restore_scene.py): saved geometry/styles, animated restoration, and recovery from zero size.
 - [Indicate scene](examples/indicate_scene.py): temporary highlights and staggered emphasis.
 - [Copy scene](examples/copy_scene.py): copy transforms, retained originals, and target cleanup.
+- [Math scene](examples/math_scene.py): vector formulas, highlights, and formula crossfades.
 - [Connector scene](examples/connector_scene.py): endpoint motion on a rotated arrow and checkpoint restoration.
 
 ## Supported browser animation subset
@@ -63,7 +64,7 @@ first use, so the first render needs an internet connection. This is a small
 Manim-like runtime, **not the full Manim Community engine**.
 
 - Shapes: `Circle`, `Arc`, `Dot`, `Square`, `Rectangle`, `Line`, `Arrow`, `Triangle`, `Polygon`,
-  `Text`, and `VGroup`.
+  `Text`, `MathTex`, and `VGroup`.
 - Scene operations: `add`, `remove`, `play`, and `wait`.
 - Animations: `Create`, `Uncreate`, `Write`, `FadeIn`, `FadeOut`, `GrowFromCenter`,
   `GrowFromPoint`, `ShrinkToCenter`, `Rotate`,
@@ -89,7 +90,7 @@ Manim-like runtime, **not the full Manim Community engine**.
 `Create` progressively traces primitive shape outlines and fades in their fill;
 `Uncreate` reverses that draw and removes the object. Groups reveal all children
 simultaneously. Text creation and `Write` use fades because glyph paths are not
-available in this runtime. Arrow shafts and heads reveal together. Transforms
+available in this runtime. MathTex creation also uses fades. Arrow shafts and heads reveal together. Transforms
 interpolate matching geometry and crossfade between different shape types.
 `TransformFromCopy(source, target)` animates the target from a snapshot of the
 source while preserving the source. Add the source first to keep it visible;
@@ -119,6 +120,20 @@ center. `Rotating` defaults to a full turn over five seconds at a constant rate;
 `angle`, `about_point`, `run_time`, and `rate_func`. `OUT` rotates counterclockwise
 and `IN` reverses it; other axes are unsupported. Unlike `.animate.rotate()`,
 these animations sample the circular trajectory at each frame.
+
+`MathTex(r"\frac{a}{b}", font_size=48, color=BLUE)` renders formulas as vector
+paths through MathJax 3.2.2, loaded on first math use. Multiple string arguments
+are joined with `arg_separator=' '`. Fractions, integrals, sums, roots, and AMS
+math are supported; formulas use display math. Scale, rotation, colors, fades,
+groups, and highlights work normally. Transforms to another formula crossfade.
+SVG exports contain the formula paths and need no math fonts or library.
+Creation and writing fade the entire expression. Glyph selection, substring
+color maps, custom templates/macros/packages, `Tex`, and matching-symbol
+transforms are not implemented. Python layout uses the formula anchor, without
+glyph bounds. First math use needs internet access; limits are 4096 characters
+per formula, 64 distinct formulas, and 2 MiB of generated math SVG per preview.
+Characters requiring browser font fallback rather than vector glyphs show an
+unsupported-glyph error.
 
 Connector endpoint queries include the line's own scale, rotation, and position.
 `put_start_and_end_on` accepts finite XY points and preserves styles and saved
@@ -222,7 +237,7 @@ Animation previews run at
 for loading and execution. Editing cancels active computation. Download saves
 the current SVG frame, not a video.
 
-LaTeX/`MathTex`, 3D, updaters, full NumPy integration, MP4 export, and offline
+Full LaTeX documents, 3D, updaters, full NumPy integration, MP4 export, and offline
 caching are not implemented. The broader examples directory includes APIs
 outside this subset. Unsupported operations report Python errors.
 
