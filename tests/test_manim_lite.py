@@ -975,7 +975,9 @@ self.play(UntypeWithCursor(text, cursor))""")['frames']
         self.assertEqual([p.tex_string for p in isolated],['a','^2 + ','b','^2 = ','c','^2'])
         self.assertEqual(isolated.get_part_by_tex('c').color,lite.YELLOW)
         single=lite.MathTex('x')
-        self.assertIs(single[0],single)
+        # Community: the string is the formula's only part, holding the glyphs.
+        self.assertEqual(len(single),1)
+        self.assertEqual((single[0].tex_string,len(single[0]),single[0][0].glyph),('x',1,0))
         self.assertEqual(len(single),1)
         classed=eq[0].text
         # Browser metrics place parts exactly (em units, centers relative to the ink center).
@@ -8121,6 +8123,36 @@ class Demo(Scene):
         self.assertEqual(convert(r'cost $x^2$ \& more'), r'\text{cost }x^2\text{ }\&\text{ more}')
         with self.assertRaises(NotImplementedError):
             convert(r'\LaTeX')
+
+    def test_mathtex_glyph_submobjects_follow_measured_boxes_and_tex_order(self):
+        # Community: MathTex -> parts -> glyphs; 13 glyphs here, the fraction rule second.
+        text = lite.MathTex(r'\frac{d}{dx}f(x)g(x)=', 'f(x)')
+        self.assertEqual((len(text), len(text[0])), (2, 13))
+        self.assertEqual(lite._estimate_glyph_count(r'\sqrt{x+1} = \sum_{i=0}^n i^2'), 13)
+        self.assertEqual(lite._estimate_glyph_count(r'\left( \frac{a}{b} \right)'), 5)
+        # Browser metrics: [w, h, parts|None, glyphs] in em, centers relative to the ink center.
+        source = """from manim import *
+class S(Scene):
+    def construct(self):
+        m = MathTex('x^2').shift(RIGHT)
+        m[0][1].set_color(RED)
+        self.add(m)
+"""
+        metrics = {'x^2': [1, 1, None, [[-0.25, -0.05, 0.5, 0.5, -1], [0.3, 0.1, 0.4, 0.4, -1]]]}
+        frame = json.loads(lite.render_scene(source, math_metrics=metrics))
+        self.assertEqual(frame['math_estimated'], [])
+        part = frame['frames'][-1]['mobjects'][0]['children'][0]
+        em = 48 * lite.TEX_EM_PER_POINT
+        first, second = part['children']
+        self.assertEqual((first['glyph'], second['glyph'], second['color']), (0, 1, lite.RED))
+        self.assertPointAlmostEqual(first['position'], (1 - 0.25 * em, -0.05 * em, 0))
+        self.assertPointAlmostEqual(second['position'], (1 + 0.3 * em, 0.1 * em, 0))
+        # Before measurement, out-of-range glyph indices are placeholders (not errors).
+        self.assertIsInstance(lite.MathTex('xy')[0][9], lite.VMobject)
+        single = lite.SingleStringMathTex('ab')
+        self.assertEqual((len(single), single[1].glyph), (2, 1))
+        labels = lite.index_labels(lite.MathTex('ab')[0])
+        self.assertEqual((len(labels), labels[0].background_stroke_width), (2, 5))
 
 
 if __name__ == '__main__':

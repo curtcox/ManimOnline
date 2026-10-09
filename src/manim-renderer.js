@@ -443,6 +443,30 @@ const ManimRenderer = {
       }
     }
 
+    if (element && type !== 'vgroup' && mobject.background_stroke_width > 0) {
+      // Community's background stroke is painted behind the fill: a stroke-only copy first.
+      const back = element.cloneNode(true);
+      const scale = this._strokeUnit === undefined ? 1 : Math.abs(inheritedScale * (mobject.geometry_scale ?? 1)) *
+        (type === 'mathtex' ? (mobject.font_size || 48) / 96 * this.UNIT_SCALE / 1000 : 1);
+      const width = this._strokeUnit === undefined ? mobject.background_stroke_width :
+        (scale > 0 ? mobject.background_stroke_width * this._strokeUnit / scale : 0);
+      for (const leaf of [back, ...back.querySelectorAll('*')]) {
+        if (leaf.localName === 'g' || leaf.localName === 'defs') continue;
+        leaf.setAttribute('fill', 'none');
+        leaf.setAttribute('stroke', mobject.background_stroke_color || '#000000');
+        leaf.setAttribute('stroke-width', width);
+        leaf.setAttribute('stroke-opacity', mobject.background_stroke_opacity ?? 1);
+        leaf.setAttribute('stroke-linejoin', 'round');
+      }
+      const pair = document.createElementNS(this.SVG_NS, 'g');
+      pair.setAttribute('opacity', element.getAttribute('opacity') ?? 1);
+      element.setAttribute('opacity', 1);
+      back.setAttribute('opacity', 1);
+      pair.appendChild(back);
+      pair.appendChild(element);
+      element = pair;
+    }
+
     if (element && paintDefs) {
       const wrapper = document.createElementNS(this.SVG_NS, 'g');
       wrapper.appendChild(paintDefs);
@@ -821,8 +845,10 @@ const ManimRenderer = {
   renderMathTex(mobject, mathGlyphs) {
     const whole = mathGlyphs && mathGlyphs.get(mobject.text);
     if (!whole) throw new Error('MathTex glyphs have not been prepared.');
-    // A multi-part MathTex draws each \class part from the shared formula.
-    const asset = mobject.part === undefined ? whole : whole.parts?.[mobject.part];
+    // A multi-part MathTex draws each \class part from the shared formula; a glyph
+    // submobject draws one leaf of it.
+    const asset = Number.isInteger(mobject.glyph) ? whole.glyphs?.[mobject.glyph] :
+      mobject.part === undefined ? whole : whole.parts?.[mobject.part];
     if (!asset) throw new Error('MathTex part glyphs have not been prepared.');
     const parsed = new DOMParser().parseFromString(asset.svg, 'image/svg+xml');
     const group = document.createElementNS(this.SVG_NS, 'g');

@@ -1661,7 +1661,10 @@ class Mobject:
             points = [(0, height * 2 / 3), (-0.5, -height / 3), (0.5, -height / 3)]
         elif self._type in ('text', 'mathtex'):
             # Text is centered on its estimated (Text) or measured (MathTex) ink box.
-            if self._type == 'mathtex' and 'part' in self.__dict__:
+            if self._type == 'mathtex' and 'glyph' in self.__dict__:
+                glyphs = _math_glyphs(self.text, self.font_size, self.__dict__.get('part_strings'))
+                width, height = glyphs[self.glyph][2:4] if self.glyph < len(glyphs) else (0, 0)
+            elif self._type == 'mathtex' and 'part' in self.__dict__:
                 width, height = _math_parts(self.text, self.part_strings, self.font_size)[self.part][2:]
             else:
                 width, height = (_math_box(self.text, self.font_size) if self._type == 'mathtex' else
@@ -2316,7 +2319,9 @@ class Mobject:
                 child.set_fill(color, raw)
         return self
 
-    def set_stroke(self, color=None, width=None, opacity=None, family=True):
+    def set_stroke(self, color=None, width=None, opacity=None, background=False, family=True):
+        if background:
+            return self.set_background_stroke(color, width, opacity, family=family)
         if width is not None:
             self._validate_width(width)
         raw = opacity
@@ -2414,8 +2419,33 @@ class Mobject:
         if kwargs.get('sheen_factor') is not None or kwargs.get('sheen_direction') is not None:
             self.set_sheen(self.sheen_factor if kwargs.get('sheen_factor') is None else kwargs['sheen_factor'],
                            kwargs.get('sheen_direction'), family=family)
+        if any(kwargs.get(key) is not None for key in
+               ('background_stroke_color', 'background_stroke_width', 'background_stroke_opacity')):
+            self.set_background_stroke(kwargs.get('background_stroke_color'), kwargs.get('background_stroke_width'),
+                                       kwargs.get('background_stroke_opacity'), family=family)
         self.set_fill(fill_color, fill_opacity, family=family)
         return self.set_stroke(stroke_color, stroke_width, stroke_opacity, family=family)
+
+    def set_background_stroke(self, color=None, width=None, opacity=None, family=True, **kwargs):
+        """Community's background stroke: drawn behind the fill (e.g. index labels, braces)."""
+        color = kwargs.pop('stroke_color', color)
+        width = kwargs.pop('stroke_width', width)
+        opacity = kwargs.pop('stroke_opacity', opacity)
+        if kwargs:
+            raise NotImplementedError('Unsupported background stroke options: ' + ', '.join(kwargs))
+        if width is not None:
+            self._validate_width(width)
+        if opacity is not None:
+            self._validate_opacity(opacity)
+        color = _paint(color)
+        for member in (self.get_family() if family else [self]):
+            if color is not None:
+                member.background_stroke_color = color
+            if width is not None:
+                member.background_stroke_width = width
+            if opacity is not None:
+                member.background_stroke_opacity = opacity
+        return self
 
     def get_color(self):
         return self.color
@@ -4615,7 +4645,7 @@ def _math_parts(text, parts, font_size):
     """Centers and sizes of each \\class part relative to the formula's ink center."""
     em = font_size * TEX_EM_PER_POINT
     metric = _MATH_METRICS.get(text)
-    if metric is not None and len(metric) == 3 and len(metric[2]) == len(parts):
+    if metric is not None and len(metric) >= 3 and metric[2] is not None and len(metric[2]) == len(parts):
         return [tuple(value * em for value in part) for part in metric[2]]
     _MATH_ESTIMATED.add(text)
     sizes = [_math_estimate(part, font_size) for part in parts]
@@ -4625,6 +4655,63 @@ def _math_parts(text, parts, font_size):
     for width, height in sizes:
         result.append((x + width / 2, 0, width, height))
         x += width + gap
+    return result
+
+
+_TEX_ZERO_GLYPH = {'left', 'right', 'displaystyle', 'textstyle', 'scriptstyle', 'scriptscriptstyle', 'quad',
+                   'qquad', 'mathrm', 'mathbf', 'mathit', 'mathsf', 'mathtt', 'mathcal', 'mathbb', 'mathfrak',
+                   'boldsymbol', 'operatorname', 'begin', 'end', 'limits', 'nolimits', 'class', 'color',
+                   'hspace', 'vspace', 'phantom', 'hphantom', 'vphantom', 'text', 'textbf', 'textit', 'texttt',
+                   'textrm', 'textsf', 'mbox', 'big', 'Big', 'bigg', 'Bigg', 'nonumber', 'notag', 'tag'}
+_TEX_NAMED_FUNCTIONS = {'sin', 'cos', 'tan', 'cot', 'sec', 'csc', 'log', 'ln', 'exp', 'lim', 'max', 'min',
+                        'det', 'sinh', 'cosh', 'tanh', 'arcsin', 'arccos', 'arctan', 'gcd', 'deg', 'dim',
+                        'ker', 'arg', 'sup', 'inf', 'Pr', 'hom', 'lg', 'liminf', 'limsup'}
+
+
+def _estimate_glyph_count(tex):
+    """How many glyph submobjects TeX would produce, until the browser counts MathJax's."""
+    import re
+    count = 0
+    tex = re.sub(r'\\(?:begin|end)\{[^}]*\}(?:\{[^}]*\})?|\\class\{[^}]*\}', '', tex)
+    for match in re.finditer(r'\\([A-Za-z]+)|\\(.)|([^\s{}^_&\\])', tex):
+        name, symbol, char = match.groups()
+        if name is not None:
+            if name in _TEX_NAMED_FUNCTIONS:
+                count += len(name)
+            elif name in ('sqrt',):
+                count += 2
+            elif name in ('frac', 'dfrac', 'tfrac', 'overline', 'underline', 'cfrac'):
+                count += 1
+            elif name not in _TEX_ZERO_GLYPH:
+                count += 1
+        elif symbol is not None:
+            if symbol not in ',;:! \\':
+                count += 1
+        else:
+            count += 1
+    # Delimiters after \left/\right were counted; a '.' there draws nothing.
+    count -= len(re.findall(r'\\(?:left|right)\.', tex))
+    return max(1, count)
+
+
+def _math_glyphs(text, font_size, part_strings=None):
+    """(cx, cy, w, h, part) of every glyph relative to the formula's ink center, in scene units."""
+    em = font_size * TEX_EM_PER_POINT
+    metric = _MATH_METRICS.get(text)
+    if metric is not None and len(metric) >= 4 and metric[3] is not None:
+        return [(cx * em, cy * em, w * em, h * em, int(part)) for cx, cy, w, h, part in metric[3]]
+    _MATH_ESTIMATED.add(text)
+    if part_strings and len(part_strings) > 1:
+        boxes = [(box, index, part_strings[index]) for index, box in enumerate(_math_parts(text, part_strings, font_size))]
+    else:
+        width, height = _math_box(text, font_size)
+        boxes = [((0, 0, width, height), -1, text)]
+    result = []
+    for (cx, cy, width, height), index, tex in boxes:
+        count = _estimate_glyph_count(tex)
+        step = width / count
+        for k in range(count):
+            result.append((cx - width / 2 + step * (k + .5), cy, step, height, index))
     return result
 
 
@@ -5006,11 +5093,87 @@ def _class_wrap(piece, index):
 
 
 class _MathTexPart(Text):
-    """One tex string of a multi-part MathTex, drawn from the shared typeset formula."""
+    """One tex string of a multi-part MathTex (or, with index None, the only string of a
+    single-string MathTex), drawn from the shared typeset formula. Indexing or iterating
+    splits it into glyph submobjects, as Community's SingleStringMathTex."""
     def __init__(self, text, index, part_strings, font_size, **kwargs):
         super().__init__(text, font_size=font_size, **kwargs)
-        self._type, self.part, self.part_strings = 'mathtex', index, list(part_strings)
-        self.tex_string = part_strings[index]
+        self._type = 'mathtex'
+        if index is not None:
+            self.part, self.part_strings = index, list(part_strings)
+            self.tex_string = part_strings[index]
+        else:
+            self.tex_string = text
+
+    def get_tex_string(self):
+        return self.tex_string
+
+    def _explode(self):
+        _explode_math(self)
+
+    def __getitem__(self, value):
+        self._explode()
+        if isinstance(value, slice):
+            return VGroup(*self.children[value])
+        if (isinstance(value, numbers.Integral) and not -len(self.children) <= value < len(self.children)
+                and self.text in _MATH_ESTIMATED):
+            # Glyphs are counted once the browser has typeset the formula (second pass).
+            return VMobject()
+        return self.children[value]
+
+    def __iter__(self):
+        self._explode()
+        return iter(list(self.children))
+
+    def __len__(self):
+        self._explode()
+        return len(self.children)
+
+
+class _MathTexGlyph(Text):
+    """One glyph (or rule) of a typeset formula, Community's path submobject."""
+    def __init__(self, text, glyph, font_size, part_strings=None, **kwargs):
+        super().__init__(text, font_size=font_size, **kwargs)
+        self._type, self.glyph = 'mathtex', glyph
+        if part_strings:
+            self.part_strings = list(part_strings)
+
+    def _explode(self):
+        pass
+
+
+def _explode_math(leaf):
+    """Split a formula leaf (a whole single-string formula or one part) into glyph leaves
+    placed by the browser-measured (or, before measurement, estimated) glyph boxes."""
+    if leaf._type != 'mathtex' or 'glyph' in leaf.__dict__:
+        return
+    part_strings = leaf.__dict__.get('part_strings')
+    glyphs = _math_glyphs(leaf.text, leaf.font_size, part_strings)
+    if 'part' in leaf.__dict__:
+        px, py = _math_parts(leaf.text, part_strings, leaf.font_size)[leaf.part][:2]
+        members = [(i, g) for i, g in enumerate(glyphs) if g[4] == leaf.part]
+    else:
+        px = py = 0
+        members = list(enumerate(glyphs))
+    style = {key: leaf.__dict__[key] for key in ('color', 'fill_color', 'stroke_color', 'fill_opacity',
+                                                'stroke_opacity', 'stroke_width', 'z_index')}
+    (a, b), (c, d) = _glyph_matrix(leaf.__dict__)
+    children = []
+    for index, (cx, cy, _, _, _) in members:
+        x, y = cx - px, cy - py
+        glyph = _MathTexGlyph(leaf.text, index, leaf.font_size, part_strings, **style)
+        glyph.position = list(leaf._point_to_world(Vector((a * x + b * y, c * x + d * y, 0))))
+        glyph.angle, glyph.geometry_scale, glyph.opacity = leaf.angle, leaf.geometry_scale, leaf.opacity
+        for key in ('glyph_stretch', 'glyph_matrix'):
+            if key in leaf.__dict__:
+                glyph.__dict__[key] = list(leaf.__dict__[key])
+        children.append(glyph)
+    # Existing members (e.g. background rectangles) keep their world placement.
+    others = [leaf._world_member(child) for child in leaf.children]
+    leaf.position, leaf.angle, leaf.geometry_scale, leaf.opacity = [0, 0, 0], 0, 1, 1
+    for key in ('glyph_stretch', 'glyph_matrix', '_family_pivot_cache', '_sampled_geometry_center'):
+        leaf.__dict__.pop(key, None)
+    leaf.children, leaf._type = others + children, 'vgroup'
 
 
 class TexTemplate:
@@ -5123,10 +5286,30 @@ class MathTex(Text):
     def _parts(self):
         return list(self.children) if self._type == 'vgroup' else [self]
 
+    def _split_single(self):
+        """Community's MathTex holds its string as a part: give the formula that part."""
+        if self._type != 'mathtex':
+            return
+        style = {key: self.__dict__[key] for key in ('color', 'fill_color', 'stroke_color', 'fill_opacity',
+                                                    'stroke_opacity', 'stroke_width', 'z_index')}
+        part = _MathTexPart(self.text, None, None, self.font_size, **style)
+        part.tex_string = self.tex_string
+        for key in ('position', 'angle', 'geometry_scale', 'opacity', 'glyph_stretch', 'glyph_matrix'):
+            if key in self.__dict__:
+                part.__dict__[key] = copy.deepcopy(self.__dict__[key])
+        others = [self._world_member(child) for child in self.children]
+        self.position, self.angle, self.geometry_scale, self.opacity = [0, 0, 0], 0, 1, 1
+        for key in ('glyph_stretch', 'glyph_matrix', '_family_pivot_cache', '_sampled_geometry_center'):
+            self.__dict__.pop(key, None)
+        self.children, self._type = others + [part], 'vgroup'
+
     def __getitem__(self, value):
-        if self._type != 'vgroup':
-            return self._parts()[value] if not isinstance(value, slice) else VGroup(*self._parts()[value])
+        self._split_single()
         return super().__getitem__(value)
+
+    def __iter__(self):
+        self._split_single()
+        return iter(self._parts())
 
     def __len__(self):
         return len(self._parts())
@@ -5164,7 +5347,22 @@ class MathTex(Text):
         return self
 
 
-SingleStringMathTex = MathTex
+class SingleStringMathTex(MathTex):
+    """Community's single tex string: its submobjects are glyphs directly."""
+    def __getitem__(self, value):
+        if self._type == 'mathtex':
+            _explode_math(self)
+        return Group.__getitem__(self, value)
+
+    def __iter__(self):
+        if self._type == 'mathtex':
+            _explode_math(self)
+        return iter(list(self.children))
+
+    def __len__(self):
+        if self._type == 'mathtex':
+            _explode_math(self)
+        return len(self.children)
 
 
 _TEX_FONT_COMMANDS = {'textbf': 'textbf', 'textit': 'textit', 'emph': 'textit', 'textsl': 'textit',
@@ -16096,7 +16294,7 @@ def index_labels(mobject, label_height=0.15, background_stroke_width=5, **kwargs
     labels = VGroup()
     for n, submob in enumerate(mobject):
         label = Integer(n, **kwargs)
-        label.set_stroke(BLACK, width=background_stroke_width)
+        label.set_stroke(BLACK, width=background_stroke_width, background=True)
         label.scale_to_fit_height(label_height)
         label.move_to(submob)
         labels.add(label)
@@ -16606,13 +16804,24 @@ def _set_math_metrics(math_metrics):
                        for v in values)
         for text, size in items:
             size = list(size)
-            parts = [list(part) for part in size[2]] if len(size) == 3 and isinstance(size[2], (list, tuple)) else None
-            if (not isinstance(text, str) or len(text) > 4096 or len(size) not in (2, 3) or
-                    not finite(size[:2], 0) or (len(size) == 3 and (parts is None or len(parts) > 256 or
-                    any(len(part) != 4 or not finite(part) or not finite(part[2:], 0) for part in parts)))):
-                raise ValueError('Math metrics must map expressions to finite [width, height(, parts)] in em')
-            metrics[text] = ((float(size[0]), float(size[1])) if parts is None else
-                             (float(size[0]), float(size[1]), [tuple(float(v) for v in part) for part in parts]))
+            parts = ([list(part) for part in size[2]] if len(size) >= 3 and isinstance(size[2], (list, tuple))
+                     else None)
+            glyphs = ([list(glyph) for glyph in size[3]] if len(size) == 4 and isinstance(size[3], (list, tuple))
+                      else None)
+            if (not isinstance(text, str) or len(text) > 4096 or len(size) not in (2, 3, 4) or
+                    not finite(size[:2], 0) or (len(size) >= 3 and parts is None and size[2] is not None) or
+                    (len(size) == 3 and parts is None) or
+                    (parts is not None and (len(parts) > 256 or
+                     any(len(part) != 4 or not finite(part) or not finite(part[2:], 0) for part in parts))) or
+                    (len(size) == 4 and (glyphs is None or len(glyphs) > 2000 or
+                     any(len(glyph) != 5 or not finite(glyph[:4]) or not finite(glyph[2:4], 0) or
+                         isinstance(glyph[4], bool) or not isinstance(glyph[4], _REAL) or
+                         glyph[4] != int(glyph[4]) or not -1 <= glyph[4] <= 256 for glyph in glyphs)))):
+                raise ValueError('Math metrics must map expressions to finite [width, height(, parts(, glyphs))] in em')
+            metrics[text] = (float(size[0]), float(size[1]),
+                             None if parts is None else [tuple(float(v) for v in part) for part in parts],
+                             None if glyphs is None else [tuple(float(v) for v in glyph[:4]) + (int(glyph[4]),)
+                                                          for glyph in glyphs])
             if len(metrics) > 1024:
                 raise ValueError('At most 1024 math metrics may be supplied')
     _MATH_METRICS.clear()

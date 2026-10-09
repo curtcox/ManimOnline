@@ -635,3 +635,19 @@ Polyhedra keep Community's Graph of Dot3D vertices and a face-rebuilding updater
 of outward triangles. get_center/get_critical_point/_z_extent/_handle_bounds share
 one bounds memo per outermost query (`_bounds_query`); never mutate geometry inside them.
 
+
+Glyph-level MathTex: ManimMath.glyphLeaves extracts MathJax's drawable leaves in TeX's
+(dvisvgm) order — mfrac/msqrt/mroot/munderover/mover children are visited in TeX order —
+and metrics() reports [w, h, parts|null, glyphs] where glyphs are [cx, cy, w, h, part].
+Python keeps formulas whole until indexed: MathTex[i] is a part (`_split_single` gives a
+single string its part) and part[j] explodes into `_MathTexGlyph` leaves (`glyph` index,
+drawn by the renderer from asset.glyphs). Before measurement `_estimate_glyph_count`
+places estimated glyphs and out-of-range indices return placeholders; keep the second
+render pass (math_estimated) working. Background strokes (`background_stroke_*`) render
+as a stroke-only copy behind the element.
+
+Community docstring corpus: extract every `.. manim::` example from an installed Manim
+0.22 and run it through both libraries (dry_run, low quality) to find failures and
+compare final bounds/durations; Text bounds differ by platform fonts, so compare them
+only on Linux with Liberation Sans. A TinyTeX install provides latex/dvisvgm for the
+reference side.

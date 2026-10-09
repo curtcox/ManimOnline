@@ -27,14 +27,78 @@ const ManimMath = {
       if (!asset.bbox) continue;
       const [x, y, width, height] = asset.bbox;
       const size = [width / 1000, height / 1000];
-      if (asset.parts && asset.parts.every(part => part.bbox)) {
-        // Part centers relative to the whole ink center, with y up as in Python.
-        size.push(asset.parts.map(({ bbox: [px, py, pw, ph] }) => [
-          (px + pw / 2 - x - width / 2) / 1000, -(py + ph / 2 - y - height / 2) / 1000, pw / 1000, ph / 1000]));
+      // Centers relative to the whole ink center, with y up as in Python.
+      const relative = ([px, py, pw, ph]) => [
+        (px + pw / 2 - x - width / 2) / 1000, -(py + ph / 2 - y - height / 2) / 1000, pw / 1000, ph / 1000];
+      const parts = asset.parts && asset.parts.every(part => part.bbox) ? asset.parts.map(part => relative(part.bbox)) : null;
+      if (parts) size.push(parts);
+      if (Array.isArray(asset.glyphs) && asset.glyphs.length <= 2000) {
+        // Glyph submobjects, in TeX's order, tagged with their part (-1 for single strings).
+        if (!parts) size.push(null);
+        size.push(asset.glyphs.map(glyph => [...relative(glyph.bbox), glyph.part]));
       }
       result[expression] = size;
     }
     return result;
+  },
+
+  /**
+   * Drawable leaves in TeX's (dvisvgm) order, each a self-contained SVG with its composed
+   * transform. MathJax draws fraction rules, radicals, limits and accents in a different
+   * order than TeX, so those nodes are visited in TeX's order.
+   */
+  glyphLeaves(svg) {
+    if (typeof document === 'undefined' || !document.body || typeof svg.cloneNode !== 'function') return null;
+    const host = document.createElement('div');
+    host.style.cssText = 'position:absolute;left:-10000px;top:0;visibility:hidden';
+    const probe = svg.cloneNode(true);
+    host.appendChild(probe);
+    document.body.appendChild(host);
+    try {
+      const drawable = new Set(['path', 'rect', 'line', 'polygon', 'polyline', 'circle', 'ellipse']);
+      const leaves = [];
+      const visit = node => {
+        let kids = [...node.children];
+        const role = node.getAttribute && node.getAttribute('data-mml-node');
+        if (role === 'mfrac' && kids.length === 3) kids = [kids[0], kids[2], kids[1]];
+        else if (role === 'msqrt' && kids.length === 3) kids = [kids[1], kids[2], kids[0]];
+        else if (role === 'mroot' && kids.length === 4) kids = [kids[1], kids[2], kids[3], kids[0]];
+        else if (role === 'munderover' && kids.length === 3) kids = [kids[2], kids[0], kids[1]];
+        else if (role === 'mover' && kids.length === 2) kids = [kids[1], kids[0]];
+        for (const kid of kids) {
+          if (!drawable.has(kid.localName)) visit(kid);
+          else if (kid.localName !== 'path' || (kid.getAttribute('d') || '').trim()) leaves.push(kid);
+        }
+      };
+      visit(probe);
+      const root = probe.getScreenCTM && probe.getScreenCTM();
+      if (!root || leaves.length > 2000) return null;
+      const inverse = root.inverse();
+      const result = [];
+      for (const leaf of leaves) {
+        const ctm = leaf.getScreenCTM();
+        if (!ctm) return null;
+        const m = inverse.multiply(ctm);
+        const box = leaf.getBBox();
+        const xs = [], ys = [];
+        for (const [px, py] of [[box.x, box.y], [box.x + box.width, box.y], [box.x, box.y + box.height],
+          [box.x + box.width, box.y + box.height]]) {
+          xs.push(m.a * px + m.c * py + m.e);
+          ys.push(m.b * px + m.d * py + m.f);
+        }
+        const bbox = [Math.min(...xs), Math.min(...ys), Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)];
+        if (!bbox.every(Number.isFinite)) return null;
+        const tagged = leaf.closest('[class^="manim-part-"]');
+        const match = tagged && /^manim-part-(\d+)$/.exec(tagged.getAttribute('class'));
+        const clone = leaf.cloneNode(true);
+        clone.setAttribute('transform', `matrix(${m.a} ${m.b} ${m.c} ${m.d} ${m.e} ${m.f})`);
+        result.push({ svg: `<svg xmlns="http://www.w3.org/2000/svg">${clone.outerHTML}</svg>`, bbox,
+          part: match ? Number(match[1]) : -1 });
+      }
+      return result;
+    } finally {
+      host.remove();
+    }
   },
 
   /** One SVG per \class{manim-part-i} group, each keeping only its own glyphs. */
@@ -139,6 +203,11 @@ const ManimMath = {
         size += svg.outerHTML.length;
         if (size > 2 * 1024 * 1024) throw new Error('Math output is too large. Simplify the formulas.');
         const asset = { svg: svg.outerHTML, viewBox, bbox: this.measure(svg) };
+        const leaves = this.glyphLeaves(svg);
+        if (leaves) {
+          asset.glyphs = leaves;
+          size += leaves.reduce((total, glyph) => total + glyph.svg.length, 0);
+        }
         if (expression.includes('\\class{manim-part-') && typeof svg.cloneNode === 'function') {
           asset.parts = this.splitParts(svg);
           size += asset.parts.reduce((total, part) => total + part.svg.length, 0);

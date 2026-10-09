@@ -82,3 +82,12 @@ test('multi-part formulas report part centers relative to the ink center', () =>
   assert.deepEqual(entry.slice(0, 2), [2, 1]);
   assert.deepEqual(entry[2].map(part => part.map(v => Math.round(v * 1000) / 1000 + 0)), [[-0.55, 0, 0.9, 1], [0.55, 0.1, 0.9, 0.6]]);
 });
+
+test('glyph boxes are reported in TeX order with their part, relative to the ink center', () => {
+  const glyphs = new Map([['x^2', { bbox: [0, -800, 1000, 1000],
+    glyphs: [{ bbox: [0, -500, 500, 500], part: -1 }, { bbox: [600, -800, 400, 400], part: -1 }] }]]);
+  const [entry] = Object.values(math.metrics(glyphs));
+  assert.equal(entry[2], null);
+  assert.deepEqual(entry[3].map(glyph => glyph.map(v => Math.round(v * 1000) / 1000 + 0)),
+    [[-0.25, -0.05, 0.5, 0.5, -1], [0.3, 0.3, 0.4, 0.4, -1]]);
+});
