@@ -1389,3 +1389,23 @@ download) only when a script mentions `np` or `numpy`. Preview APIs accept NumPy
 arrays and scalars (including `np.int64`) and return plain tuples/floats; frames
 are converted to plain JSON numbers. Mobject points are not stored as NumPy arrays,
 so code that mutates `mobject.points` in place is not supported.
+
+
+Try **Titles, braces, bullets and variables** (`examples/annotation_scene.py`).
+`Brace` uses Community's SVG brace outline and construction (sharpness, buff,
+any XY direction, tip/direction queries, `put_at_tip`, `get_tex`, `get_text`);
+`BraceLabel`, `BraceText` and `BraceBetweenPoints` are available. `Tex` typesets
+LaTeX text mode with `$math$` through MathJax `\text{}` runs (plus `\textbf`,
+`\textit`, `\emph`, `\texttt`, `\textrm`, `\textsf`; other text macros fail
+explicitly). `Title`, `BulletedList`, `Vector`, `LabeledDot`, `Variable`, `always`,
+`f_always`, `always_shift` and `always_rotate` follow Community. `.animate` now
+accepts any mobject method (not updater/checkpoint bookkeeping).
+
+The default frame is now Community's 14.22 × 8 units (it was 16 × 9), so
+`to_edge`, `Title` and other frame-relative placement match Manim, and strokes
+are drawn like Manim: `stroke_width × 0.01` frame units, unchanged by object
+scale and constant on screen while a moving camera zooms. Strokes therefore look
+thinner than before and scale with the player size. Bounds follow Community's
+rules: edges, centers and `next_to` use path anchors, while `width`/`height`
+include Bézier handles; rotated straight-edged shapes report the bounds of their
+rotated points.

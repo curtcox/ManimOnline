@@ -21,7 +21,7 @@ const ManimRenderer = {
     const camera = sceneData.camera || {};
     const width = camera.pixel_width ?? this.CANVAS_WIDTH;
     const height = camera.pixel_height ?? this.CANVAS_HEIGHT;
-    const frameHeight = camera.frame_height ?? 9;
+    const frameHeight = camera.frame_height ?? 8;
     const frameWidth = camera.frame_width ?? frameHeight * width / height;
     const center = camera.frame_center ?? [0, 0, 0];
     if (!Array.isArray(center) || center.length !== 3 || !center.every(Number.isFinite) || center[2] !== 0) throw new Error('Invalid preview camera center');
@@ -46,6 +46,11 @@ const ManimRenderer = {
     mainGroup.setAttribute('transform', `translate(${width / 2}, ${height / 2}) scale(${width / frameWidth / this.UNIT_SCALE}, ${-height / frameHeight / this.UNIT_SCALE})`);
     if (center[0] || center[1]) mainGroup.setAttribute('transform', mainGroup.getAttribute('transform') + ` translate(${-center[0] * this.UNIT_SCALE}, ${-center[1] * this.UNIT_SCALE})`);
     svg.appendChild(mainGroup);
+    // Community strokes are stroke_width * 0.01 frame units, constant on screen
+    // under camera zoom (relative to the configured frame width).
+    const reference = Number.isFinite(camera.reference_frame_width) && camera.reference_frame_width > 0
+      ? camera.reference_frame_width : frameWidth;
+    this._strokeUnit = 0.01 * this.UNIT_SCALE * frameWidth / reference;
 
     // Sort drawable leaves globally, keeping each leaf's ancestor transforms.
     // A child can sit behind or in front of a shape outside its VGroup.
@@ -71,14 +76,14 @@ const ManimRenderer = {
       const element = this.renderMobject(branch, mathGlyphs);
       if (element) mainGroup.appendChild(element);
     }
-
+    delete this._strokeUnit;
     return svg;
   },
 
   /**
    * Render a single mobject
    */
-  renderMobject(mobject, mathGlyphs) {
+  renderMobject(mobject, mathGlyphs, inheritedScale = 1) {
     const type = mobject.type;
     if (type === 'valuetracker' || type === 'mobject') return null;
     const position = mobject.position || [0, 0, 0];
@@ -129,7 +134,7 @@ const ManimRenderer = {
         element = this.renderMathTex(mobject, mathGlyphs);
         break;
       case 'vgroup':
-        element = this.renderVGroup(mobject, mathGlyphs);
+        element = this.renderVGroup(mobject, mathGlyphs, inheritedScale);
         break;
       default:
         console.warn(`Unknown mobject type: ${type}`);
@@ -176,8 +181,19 @@ const ManimRenderer = {
           }
         }
       }
-      for (const leaf of [element, ...element.querySelectorAll('*')]) {
-        leaf.setAttribute('vector-effect', leaf.getAttribute('stroke-dasharray') ? 'none' : 'non-scaling-stroke');
+      if (this._strokeUnit === undefined) {
+        // Standalone rendering keeps screen-pixel strokes.
+        for (const leaf of [element, ...element.querySelectorAll('*')]) {
+          leaf.setAttribute('vector-effect', leaf.getAttribute('stroke-dasharray') ? 'none' : 'non-scaling-stroke');
+        }
+      } else if (type !== 'vgroup') {
+        // Scene strokes are in local units, undoing this object's scale chain.
+        const scale = Math.abs(inheritedScale * (mobject.geometry_scale ?? 1)) *
+          (type === 'mathtex' ? (mobject.font_size || 48) / 96 * this.UNIT_SCALE / 1000 : 1);
+        for (const leaf of [element, ...element.querySelectorAll('*')]) {
+          const width = parseFloat(leaf.getAttribute('stroke-width'));
+          if (Number.isFinite(width)) leaf.setAttribute('stroke-width', scale > 0 ? width * this._strokeUnit / scale : 0);
+        }
       }
     }
 
@@ -186,7 +202,7 @@ const ManimRenderer = {
       for (const path of [element, ...element.querySelectorAll('line, path')]) {
         // Normalized dashes must scale with the path, including preview resizing.
         // A non-scaling stroke makes the visible fraction depend on viewport size.
-        path.setAttribute('vector-effect', 'none');
+        if (this._strokeUnit === undefined) path.setAttribute('vector-effect', 'none');
         path.setAttribute('pathLength', 1);
         path.setAttribute('stroke-dasharray', '1 1');
         path.setAttribute('stroke-dashoffset', 1 - progress);
@@ -541,11 +557,11 @@ const ManimRenderer = {
     return group;
   },
 
-  renderVGroup(mobject, mathGlyphs) {
+  renderVGroup(mobject, mathGlyphs, inheritedScale = 1) {
     const group = document.createElementNS(this.SVG_NS, 'g');
     if (mobject.children) {
       for (const child of mobject.children) {
-        const element = this.renderMobject(child, mathGlyphs);
+        const element = this.renderMobject(child, mathGlyphs, Math.abs(inheritedScale * (mobject.geometry_scale ?? 1)));
         if (element) {
           group.appendChild(element);
         }

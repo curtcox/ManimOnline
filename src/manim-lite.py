@@ -14,6 +14,7 @@ MAX_FRAMES = 901  # 900 timed samples plus a final seekable state.
 
 
 _REAL = numbers.Real  # Includes NumPy scalars; bool is excluded where it matters.
+_BOUNDS_WITH_HANDLES = False  # Set only while measuring width/height.
 
 
 def _plain_number(value):
@@ -148,8 +149,9 @@ def invert_color(color):
 class PreviewConfig:
     """Validated 2D preview settings; not the full Community config object."""
     def __init__(self, **kwargs):
+        # Community's default frame: 8 units tall, 16:9 (14.22 units wide).
         self.pixel_width, self.pixel_height = 800, 450
-        self.frame_height, self.background_color = 9, BLACK
+        self.frame_height, self.background_color = 8, BLACK
         for name, value in kwargs.items():
             setattr(self, name, value)
 
@@ -182,8 +184,12 @@ class PreviewConfig:
         setattr(self, name, value)
 
     def to_dict(self):
-        return {name: getattr(self, name) for name in
-                ('pixel_width','pixel_height','frame_width','frame_height','background_color')}
+        result = {name: getattr(self, name) for name in
+                  ('pixel_width','pixel_height','frame_width','frame_height','background_color')}
+        # Strokes keep Community's on-screen width relative to the configured frame,
+        # even while a moving camera zooms.
+        result['reference_frame_width'] = self.__dict__['frame_height'] * self.pixel_width / self.pixel_height
+        return result
 
 
 config = PreviewConfig()
@@ -268,7 +274,7 @@ class Mobject:
         for child in self.children:
             target = child.copy()
             pivot = target._geometry_center()
-            center_point = self._point_to_world(child.get_center())
+            center_point = self._point_to_world(child._pivot_point())
             target.position = list(center_point-pivot)
             target.angle += self.angle
             target.geometry_scale *= self.geometry_scale
@@ -279,7 +285,7 @@ class Mobject:
         # Invert translations only; keep the parent pose for animated layouts.
         shifts = []
         for child,target in zip(self.children,targets):
-            delta = target.get_center()-self._point_to_world(child.get_center())
+            delta = target._pivot_point()-self._point_to_world(child._pivot_point())
             shifts.append(Vector((delta[0]*math.cos(self.angle)+delta[1]*math.sin(self.angle),
                                   -delta[0]*math.sin(self.angle)+delta[1]*math.cos(self.angle),0))*(1/self.geometry_scale))
         if any(not math.isfinite(value) for delta in shifts for value in delta):
@@ -511,7 +517,7 @@ class Mobject:
         x, y, _ = direction
         return Vector((right if x > 0 else left if x < 0 else (left + right) / 2,
                        top if y > 0 else bottom if y < 0 else (bottom + top) / 2,
-                       self.get_center()[2]))
+                       self.position[2]))
 
     def get_critical_point(self, direction):
         direction = Vector(direction)
@@ -536,12 +542,22 @@ class Mobject:
     def get_bottom(self):
         return self.get_critical_point(DOWN)
 
+    def _handle_bounds(self):
+        # Community measures width/height over all points (handles included),
+        # while centers and edges use anchors only.
+        global _BOUNDS_WITH_HANDLES
+        previous, _BOUNDS_WITH_HANDLES = _BOUNDS_WITH_HANDLES, True
+        try:
+            return self._bounds()
+        finally:
+            _BOUNDS_WITH_HANDLES = previous
+
     def get_width(self):
-        left,_,right,_ = self._bounds()
+        left,_,right,_ = self._handle_bounds()
         return right-left
 
     def get_height(self):
-        _,bottom,_,top = self._bounds()
+        _,bottom,_,top = self._handle_bounds()
         return top-bottom
 
     @staticmethod
@@ -865,7 +881,9 @@ class Mobject:
         elif self._type in ('polygon', 'polyline'):
             points = self.vertices
         elif self._type == 'bezierpath':
-            points = [point for curve in self.curves for point in curve] + getattr(self, 'vertices', [])
+            # Community edges use anchors (get_points_defining_boundary); sizes include handles.
+            points = ([point for curve in self.curves for point in curve] if _BOUNDS_WITH_HANDLES else
+                      [point for curve in self.curves for point in (curve[0], curve[-1])]) + getattr(self, 'vertices', [])
         elif self._type == 'triangle':
             height = math.sqrt(3) / 2
             points = [(0, height * 2 / 3), (-0.5, -height / 3), (0.5, -height / 3)]
@@ -898,6 +916,15 @@ class Mobject:
     def _geometry_center(self):
         if '_sampled_geometry_center' in self.__dict__:
             return Vector(self._sampled_geometry_center)
+        # Pivots always use anchor bounds, even while measuring width/height.
+        global _BOUNDS_WITH_HANDLES
+        flag, _BOUNDS_WITH_HANDLES = _BOUNDS_WITH_HANDLES, False
+        try:
+            return self._anchor_center()
+        finally:
+            _BOUNDS_WITH_HANDLES = flag
+
+    def _anchor_center(self):
         left, bottom, right, top = self._local_bounds()
         center = Vector(((left + right) / 2, (bottom + top) / 2, 0))
         if self.children:
@@ -914,9 +941,17 @@ class Mobject:
             self.__dict__.pop('_family_pivot_cache',None)
         return center
 
+    def _pivot_point(self):
+        """World position of the internal transform pivot (local bounds center)."""
+        return Vector(self.position) + self._geometry_center()
+
     def get_center(self):
-        center = self._geometry_center()
-        return Vector(self.position) + center
+        # Community's center is the bounds center; it differs from the pivot only
+        # for rotated point-based outlines, whose bounds use rotated points.
+        if math.sin(2 * self.angle) and not self.children and self._own_bound_points():
+            left, bottom, right, top = self._bounds()
+            return Vector(((left + right) / 2, (bottom + top) / 2, self.position[2]))
+        return self._pivot_point()
 
     def get_points(self):
         """Independent world-space anchors/handles for supported XY outlines."""
@@ -1123,9 +1158,35 @@ class Mobject:
             raise ValueError('Path coordinates must be finite')
         return point
 
+    def _own_bound_points(self):
+        """Local points that define a point-based outline's bounds, or None."""
+        if self._type in ('polygon', 'polyline'):
+            return self.vertices
+        if self._type in ('line', 'arrow'):
+            return [self.start, self.end]
+        if self._type == 'bezierpath':
+            return ([p for curve in self.curves for p in curve] if _BOUNDS_WITH_HANDLES else
+                    [p for curve in self.curves for p in (curve[0], curve[-1])]) + getattr(self, 'vertices', [])
+        if self._type in ('square', 'rectangle', 'triangle'):
+            return [curve[0] for curve in _path_curves(self.to_dict() if self._type == 'triangle' else
+                    {'type': self._type, 'side_length': getattr(self, 'side_length', 0),
+                     'width': getattr(self, 'width', 0), 'height': getattr(self, 'height', 0)})]
+        return None
+
     def _bounds(self):
         left, bottom, right, top = self._local_bounds()
         center = self._geometry_center()
+        own = None
+        if math.sin(2 * self.angle) and not self.children:
+            own = self._own_bound_points()
+        if own:
+            # Rotated outlines: bound the rotated points, as Community does.
+            c, s_ = math.cos(self.angle), math.sin(self.angle)
+            moved = [(self.position[0] + center[0] + ((p[0] - center[0]) * c - (p[1] - center[1]) * s_) * self.geometry_scale,
+                      self.position[1] + center[1] + ((p[0] - center[0]) * s_ + (p[1] - center[1]) * c) * self.geometry_scale)
+                     for p in own]
+            return (min(p[0] for p in moved), min(p[1] for p in moved),
+                    max(p[0] for p in moved), max(p[1] for p in moved))
         points = []
         for x, y in ((left, bottom), (left, top), (right, bottom), (right, top)):
             dx, dy = (x - center[0]) * self.geometry_scale, (y - center[1]) * self.geometry_scale
@@ -1155,9 +1216,11 @@ class Mobject:
             self.__dict__.pop('_family_pivot_cache', None)
             return self
         self._geometry_center()
+        if about_point is None and self.get_center() != self._pivot_point():
+            about_point = self.get_center()  # Community scales about the bounds center.
         if about_point is not None:
             pivot = Vector(about_point)
-            center = self.get_center()
+            center = self._pivot_point()
             self.shift((center - pivot) * (scale_factor - 1))
         self.geometry_scale *= scale_factor
         return self
@@ -1182,9 +1245,11 @@ class Mobject:
         else:
             return self
         self._geometry_center()
+        if about_point is None and self.get_center() != self._pivot_point():
+            about_point = self.get_center()  # Community rotates about the bounds center.
         if about_point is not None:
             pivot = Vector(about_point)
-            center = self.get_center()
+            center = self._pivot_point()
             offset = center - pivot
             rotated = Vector((offset[0] * math.cos(angle) - offset[1] * math.sin(angle),
                               offset[0] * math.sin(angle) + offset[1] * math.cos(angle), offset[2]))
@@ -1352,11 +1417,11 @@ class Mobject:
         if not self.geometry_scale:
             raise NotImplementedError('Cannot attach world geometry to a collapsed parent')
         center = self._geometry_center()
-        offset = mobject.get_center() - Vector(self.position) - center
+        offset = mobject._pivot_point() - Vector(self.position) - center
         c, s = math.cos(-self.angle), math.sin(-self.angle)
         local = center + Vector((offset[0]*c - offset[1]*s, offset[0]*s + offset[1]*c, 0)) * (1 / self.geometry_scale)
         mobject.rotate(-self.angle).scale(1 / self.geometry_scale)
-        return mobject.move_to(local)
+        return mobject.shift(local - mobject._pivot_point())
 
     def generate_target(self, use_deepcopy=False):
         self.target = None  # Do not copy an earlier target into the new one.
@@ -1432,7 +1497,7 @@ class Mobject:
     def to_dict(self):
         center = self._geometry_center()
         result = copy.deepcopy({key: value for key, value in self.__dict__.items()
-                                if not isinstance(value, Mobject) and
+                                if not isinstance(value, Mobject) and not callable(value) and
                                 key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache')})
         result['type'] = result.pop('_type')
         result['geometry_center'] = list(center)
@@ -1491,6 +1556,39 @@ def always_redraw(func):
         raise TypeError('always_redraw factory must return a Mobject')
     # Use the updater argument so copies regenerate themselves, not the original.
     return mobject.add_updater(lambda current: current.become(func()))
+
+
+def always(method, *args, **kwargs):
+    mobject = getattr(method, '__self__', None)
+    if not isinstance(mobject, Mobject):
+        raise TypeError('always expects a method bound to a Mobject')
+    function = method.__func__
+    mobject.add_updater(lambda m: function(m, *args, **kwargs))
+    return mobject
+
+
+def f_always(method, *arg_generators, **kwargs):
+    mobject = getattr(method, '__self__', None)
+    if not isinstance(mobject, Mobject) or not all(callable(g) for g in arg_generators):
+        raise TypeError('f_always expects a bound Mobject method and callables')
+    function = method.__func__
+    mobject.add_updater(lambda m: function(m, *(g() for g in arg_generators), **kwargs))
+    return mobject
+
+
+def always_shift(mobject, direction=RIGHT, rate=0.1):
+    direction = Mobject._xy_vector(direction, 'Shift direction')
+    length = math.hypot(direction[0], direction[1])
+    unit = direction * (1 / length) if length else direction
+    NumberLine._real(rate, 'Shift rate')
+    mobject.add_updater(lambda m, dt: m.shift(unit * (dt * rate)))
+    return mobject
+
+
+def always_rotate(mobject, rate=20 * DEGREES, **kwargs):
+    NumberLine._real(rate, 'Rotation rate')
+    mobject.add_updater(lambda m, dt: m.rotate(dt * rate, **kwargs))
+    return mobject
 
 
 class VMobject(Mobject):
@@ -3211,6 +3309,62 @@ class MathTex(Text):
             raise ValueError('MathTex expressions are limited to 4096 characters')
         super().__init__(text, font_size=font_size, **kwargs)
         self._type = 'mathtex'
+        self.tex_string = text
+
+
+def _tex_text_to_math(text):
+    """Typeset LaTeX text mode with MathJax: text runs become \\text{...}."""
+    import re
+    parts, math_mode, current, i = [], False, '', 0
+    while i < len(text):
+        char = text[i]
+        if char == '\\' and i + 1 < len(text):
+            current += text[i:i+2]
+            i += 2
+            continue
+        if char == '$':
+            parts.append((math_mode, current))
+            current, math_mode = '', not math_mode
+            i += 2 if text[i:i+2] == '$$' else 1
+            continue
+        current += char
+        i += 1
+    if math_mode:
+        raise ValueError('Unbalanced $ in Tex string')
+    parts.append((False, current))
+    result = []
+    for is_math, chunk in parts:
+        if is_math:
+            result.append(chunk)
+            continue
+        # Keep common font commands; everything else is literal text.
+        for piece in re.split(r'(\\(?:textbf|textit|emph|texttt|textrm|textsf)\{[^{}]*\})', chunk):
+            if not piece:
+                continue
+            command = re.match(r'\\(textbf|textit|emph|texttt|textrm|textsf)\{([^{}]*)\}', piece)
+            if command:
+                name = {'emph': 'textit'}.get(command.group(1), command.group(1))
+                result.append('\\' + name + '{' + command.group(2) + '}')
+            else:
+                literal = piece.replace('\\\\', ' ').replace('~', ' ')
+                literal = re.sub(r'\\([%&#_{}$])', r'\1', literal)
+                if '\\' in literal or '{' in literal or '}' in literal:
+                    raise NotImplementedError('Tex supports text, $math$ and basic font commands in this preview')
+                result.append('\\text{' + literal + '}')
+    return ''.join(result)
+
+
+class Tex(MathTex):
+    """LaTeX text mode (with $math$), typeset by MathJax as \\text runs."""
+    def __init__(self, *tex_strings, arg_separator='', tex_environment='center', font_size=48, **kwargs):
+        if tex_environment not in ('center', None):
+            raise NotImplementedError('Tex environments other than center are not supported')
+        if not all(isinstance(value, str) for value in (*tex_strings, arg_separator)):
+            raise TypeError('Tex expects LaTeX strings')
+        source = arg_separator.join(tex_strings)
+        super().__init__(_tex_text_to_math(source), font_size=font_size, **kwargs)
+        self.tex_string = source
+
 
 
 class Group(Mobject):
@@ -3304,6 +3458,273 @@ class Underline(Line):
         super().__init__(LEFT, RIGHT, buff=buff, **kwargs)
         self.match_width(mobject)
         self.next_to(mobject, DOWN, buff=self.buff)
+
+
+
+def _svg_path_curves(d):
+    """Cubic curves from a relative/absolute SVG path using M, C, L, H, V and Z."""
+    import re
+    tokens = re.findall(r'[MmCcLlHhVvZz]|-?(?:\d+\.?\d*|\.\d+)(?:e-?\d+)?', d)
+    curves, start, point, command, index = [], None, Vector(ORIGIN), None, 0
+    def number():
+        nonlocal index
+        value = float(tokens[index])
+        index += 1
+        return value
+    def line_to(end):
+        nonlocal point
+        curves.append([list(point), list(point + (end - point) * (1/3)), list(point + (end - point) * (2/3)), list(end)])
+        point = end
+    while index < len(tokens):
+        if tokens[index].isalpha():
+            command = tokens[index]
+            index += 1
+            if command in 'Zz':
+                if start is not None and point != start:
+                    line_to(start)
+                point = start
+                continue
+        relative = command.islower()
+        base = point if relative else Vector(ORIGIN)
+        kind = command.upper()
+        if kind == 'M':
+            point = base + Vector((number(), number()))
+            start = point
+            command = 'l' if relative else 'L'
+        elif kind == 'C':
+            p1, p2, p3 = (base + Vector((number(), number())) for _ in range(3))
+            curves.append([list(point), list(p1), list(p2), list(p3)])
+            point = p3
+        elif kind == 'L':
+            line_to(base + Vector((number(), number())))
+        elif kind == 'H':
+            value = number()
+            line_to(Vector((point[0] + value if relative else value, point[1])))
+        elif kind == 'V':
+            value = number()
+            line_to(Vector((point[0], point[1] + value if relative else value)))
+        else:
+            raise ValueError('Unsupported SVG path command: ' + command)
+    return curves
+
+
+def _extent_points(mobject):
+    """World points (or text box corners) that define a family's extent."""
+    points = []
+    for member in mobject.get_family():
+        if member._type in ('text', 'mathtex'):
+            points.extend(member.get_critical_point(d) for d in (UL, UR, DL, DR))
+        elif member.has_points():
+            # Community's get_points_defining_boundary uses anchors, not handles.
+            points.extend(Vector(p) for i, p in enumerate(member.get_points()) if i % 4 in (0, 3))
+    return points
+
+
+class Brace(VMobject):
+    """Community's brace outline, fitted below a mobject in any XY direction."""
+    _TEMPLATE = ('m0.01216 0c-0.01152 0-0.01216 6.103e-4 -0.01216 0.01311v0.007762c0.06776 0.122 0.1799 0.1455 '
+                 '0.2307 0.1455h{0}c0.03046 3.899e-4 0.07964 0.00449 0.1246 0.02636 0.0537 0.02695 0.07418 0.05816 '
+                 '0.08648 0.07769 0.001562 0.002538 0.004539 0.002563 0.01098 0.002563 0.006444-2e-8 0.009421-2.47e-5 '
+                 '0.01098-0.002563 0.0123-0.01953 0.03278-0.05074 0.08648-0.07769 0.04491-0.02187 0.09409-0.02597 '
+                 '0.1246-0.02636h{0}c0.05077 0 0.1629-0.02346 0.2307-0.1455v-0.007762c-1.78e-6 -0.0125-6.365e-4 '
+                 '-0.01311-0.01216-0.01311-0.006444-3.919e-8 -0.009348 2.448e-5 -0.01091 0.002563-0.0123 0.01953-0.03278 '
+                 '0.05074-0.08648 0.07769-0.04491 0.02187-0.09416 0.02597-0.1246 0.02636h{1}c-0.04786 0-0.1502 0.02094'
+                 '-0.2185 0.1256-0.06833-0.1046-0.1706-0.1256-0.2185-0.1256h{1}c-0.03046-3.899e-4 -0.07972-0.004491'
+                 '-0.1246-0.02636-0.0537-0.02695-0.07418-0.05816-0.08648-0.07769-0.001562-0.002538-0.004467-0.002563'
+                 '-0.01091-0.002563z')
+
+    def __init__(self, mobject, direction=DOWN, buff=0.2, sharpness=2, stroke_width=0, fill_opacity=1.0,
+                 background_stroke_width=0, background_stroke_color=BLACK, **kwargs):
+        if not isinstance(mobject, Mobject):
+            raise TypeError('Brace expects a Mobject')
+        direction = Mobject._xy_vector(direction, 'Brace direction')
+        if not any(direction):
+            raise ValueError('Brace direction must be nonzero')
+        for value, name in ((buff, 'Brace buff'), (sharpness, 'Brace sharpness')):
+            NumberLine._real(value, name)
+        super().__init__(stroke_width=stroke_width, fill_opacity=fill_opacity, **kwargs)
+        self.buff = buff
+        angle = -math.atan2(direction[0], direction[1]) + PI
+        c, s_ = math.cos(-angle), math.sin(-angle)
+        points = [Vector((p[0]*c - p[1]*s_, p[0]*s_ + p[1]*c, 0)) for p in _extent_points(mobject)]
+        if not points:
+            raise ValueError('Cannot brace a mobject with no extent')
+        left = Vector((min(p[0] for p in points), min(p[1] for p in points), 0))
+        right = Vector((max(p[0] for p in points), left[1], 0))
+        target_width = right[0] - left[0]
+        linear = max(0, (target_width * sharpness - 0.90552) / 2)
+        curves = _svg_path_curves(self._TEMPLATE.format(linear, -linear))
+        VMobject.set_points(self, [p for curve in curves for p in curve])
+        self.flip(RIGHT)
+        bottom = self.get_bottom()
+        points = self.get_points()
+        self._tip_point_index = min(range(len(points)), key=lambda i: math.dist(points[i][:2], bottom[:2]))
+        self.stretch_to_fit_width(target_width)
+        self.shift(left - self.get_corner(UL) + DOWN * self.buff)
+        self.rotate(angle, about_point=ORIGIN)
+
+    def get_tip(self):
+        return Vector(self.get_points()[self._tip_point_index])
+
+    def get_direction(self):
+        vector = self.get_tip() - self.get_center()
+        length = math.hypot(vector[0], vector[1])
+        return vector * (1 / length) if length else Vector(DOWN)
+
+    def put_at_tip(self, mob, use_next_to=True, **kwargs):
+        if use_next_to:
+            mob.next_to(self.get_tip(), Vector(round(v) for v in self.get_direction()), **kwargs)
+        else:
+            mob.move_to(self.get_tip())
+            buff = kwargs.get('buff', DEFAULT_MOBJECT_TO_MOBJECT_BUFFER)
+            mob.shift(self.get_direction() * (mob.get_width() / 2.0 + buff))
+        return self
+
+    def get_text(self, *text, **kwargs):
+        label = Tex(*text)
+        self.put_at_tip(label, **kwargs)
+        return label
+
+    def get_tex(self, *tex, **kwargs):
+        label = MathTex(*tex)
+        self.put_at_tip(label, **kwargs)
+        return label
+
+
+class BraceBetweenPoints(Brace):
+    def __init__(self, point_1, point_2, direction=ORIGIN, **kwargs):
+        start, end = Mobject._xy_vector(point_1, 'Brace point'), Mobject._xy_vector(point_2, 'Brace point')
+        direction = Mobject._xy_vector(direction, 'Brace direction')
+        if not any(direction):
+            vector = end - start
+            direction = Vector((vector[1], -vector[0], 0))
+        super().__init__(Line(start, end), direction=direction, **kwargs)
+
+
+class BraceLabel(VGroup):
+    """A brace with a label at its tip."""
+    def __init__(self, obj, text, brace_direction=DOWN, label_constructor=None, font_size=DEFAULT_FONT_SIZE,
+                 buff=0.2, brace_config=None, **kwargs):
+        self.label_constructor = MathTex if label_constructor is None else label_constructor
+        super().__init__()
+        self.brace_direction = brace_direction
+        self.brace = Brace(obj, brace_direction, buff, **(brace_config or {}))
+        if isinstance(text, (tuple, list)):
+            self.label = self.label_constructor(*text, font_size=font_size, **kwargs)
+        else:
+            self.label = self.label_constructor(str(text), font_size=font_size)
+        self.brace.put_at_tip(self.label)
+        self.add(self.brace, self.label)
+
+    def creation_anim(self, label_anim=None, brace_anim=None):
+        label_anim = FadeIn if label_anim is None else label_anim
+        brace_anim = GrowFromCenter if brace_anim is None else brace_anim
+        return AnimationGroup(brace_anim(self.brace), label_anim(self.label))
+
+    def shift_brace(self, obj, **kwargs):
+        if isinstance(obj, list):
+            obj = self.get_group_class()(*obj)
+        brace = Brace(obj, self.brace_direction, **kwargs)
+        self.brace.become(brace)
+        self.brace._tip_point_index = brace._tip_point_index
+        self.brace.put_at_tip(self.label)
+        return self
+
+    def change_label(self, *text, **kwargs):
+        label = self.label_constructor(*text, **kwargs)
+        self.brace.put_at_tip(label)
+        self.label.become(label)
+        return self
+
+    def change_brace_label(self, obj, *text, **kwargs):
+        self.shift_brace(obj)
+        return self.change_label(*text, **kwargs)
+
+
+class BraceText(BraceLabel):
+    def __init__(self, obj, text, label_constructor=None, **kwargs):
+        super().__init__(obj, text, label_constructor=Text if label_constructor is None else label_constructor, **kwargs)
+
+
+class Title(VGroup):
+    """Tex at the top edge with an optional full-width underline."""
+    def __init__(self, *text_parts, include_underline=True, match_underline_width_to_text=False,
+                 underline_buff=MED_SMALL_BUFF, **kwargs):
+        super().__init__()
+        self.text = Tex(*text_parts, **kwargs).to_edge(UP)
+        self.add(self.text)
+        if include_underline:
+            underline = Line(LEFT, RIGHT).next_to(self.text, DOWN, buff=underline_buff)
+            if match_underline_width_to_text:
+                underline.match_width(self.text)
+            else:
+                underline.scale_to_fit_width(config.frame_width - 2)
+            self.underline = underline
+            self.add(underline)
+
+
+class BulletedList(VGroup):
+    """Tex items with bullet dots, arranged downward and left-aligned."""
+    def __init__(self, *items, buff=MED_LARGE_BUFF, dot_scale_factor=2, tex_environment=None, **kwargs):
+        super().__init__()
+        for item in items:
+            text = Tex(item, **kwargs)
+            dot = MathTex('\\cdot').scale(dot_scale_factor).next_to(text, LEFT, SMALL_BUFF)
+            self.add(VGroup(dot, text))
+        self.arrange(DOWN, aligned_edge=LEFT, buff=buff)
+
+    def fade_all_but(self, index_or_string, opacity=0.5):
+        rows = list(self.children)
+        if isinstance(index_or_string, str):
+            matches = [i for i, row in enumerate(rows) if index_or_string in row[1].tex_string]
+            if not matches:
+                raise ValueError(f'Item not found: {index_or_string!r}')
+            index_or_string = matches[0]
+        for i, row in enumerate(rows):
+            row.set_opacity(1 if i == index_or_string else opacity)
+        return self
+
+
+class VectorArrow(Arrow):
+    """Community's Vector: an arrow from the origin, exported to scenes as Vector."""
+    def __init__(self, direction=RIGHT, buff=0, **kwargs):
+        direction = Mobject._xy_vector(direction, 'Vector direction')
+        super().__init__(ORIGIN, direction, buff=buff, **kwargs)
+
+
+class LabeledDot(Dot):
+    """A dot sized to hold a MathTex (or given) label at its center."""
+    def __init__(self, label, radius=None, **kwargs):
+        rendered = MathTex(label, color=BLACK) if isinstance(label, str) else label
+        if not isinstance(rendered, Mobject):
+            raise TypeError('LabeledDot label must be a string or Mobject')
+        if radius is None:
+            radius = 0.1 + max(rendered.get_width(), rendered.get_height()) / 2
+        super().__init__(radius=radius, **kwargs)
+        rendered.move_to(self.get_center())
+        self.add(rendered)
+
+
+class Variable(VGroup):
+    """A label, an equals sign and a tracked DecimalNumber or Integer value."""
+    def __init__(self, var, label, var_type=None, num_decimal_places=2, **kwargs):
+        var_type = DecimalNumber if var_type is None else var_type
+        label = MathTex(label) if isinstance(label, str) else label
+        if not isinstance(label, Mobject):
+            raise TypeError('Variable label must be a string or Mobject')
+        equals = MathTex('=').next_to(label, RIGHT)
+        self.label = VGroup(label, equals)
+        self.tracker = ValueTracker(var)
+        if var_type is Integer:
+            self.value = Integer(self.tracker.get_value())
+        elif var_type is DecimalNumber:
+            self.value = DecimalNumber(self.tracker.get_value(), num_decimal_places=num_decimal_places)
+        else:
+            raise NotImplementedError('Variable supports DecimalNumber or Integer values')
+        tracker = self.tracker
+        self.value.add_updater(lambda v: v.set_value(tracker.get_value())).next_to(self.label, RIGHT)
+        super().__init__(**kwargs)
+        self.add(self.label, self.value)
 
 
 class ArcPolygonFromArcs(VMobject):
@@ -4514,10 +4935,10 @@ class ComplexPlane(NumberPlane):
         labels = self.get_coordinate_labels(*numbers,**kwargs)
         center = self._geometry_center()
         for label in labels:
-            offset = label.get_center()-Vector(self.position)-center
+            offset = label._pivot_point()-Vector(self.position)-center
             local = center+Vector((offset[0]*math.cos(self.angle)+offset[1]*math.sin(self.angle),
                                    -offset[0]*math.sin(self.angle)+offset[1]*math.cos(self.angle),0))*(1/self.geometry_scale)
-            label.move_to(local)
+            label.shift(local-label._pivot_point())
             label.angle -= self.angle
             label.geometry_scale /= self.geometry_scale
         self.add(labels)
@@ -5631,11 +6052,11 @@ class Animate(Transform):
     def __getattr__(self, name):
         if name.startswith('_'):
             raise AttributeError(name)
-        if name not in ('become', 'set_value', 'increment_value', 'shift', 'move_to', 'to_edge', 'to_corner',
-                        'align_on_border', 'center', 'align_to', 'set_coord', 'set_x', 'set_y', 'match_x',
-                        'match_y', 'match_coord', 'match_width', 'match_height', 'match_dim_size', 'flip',
-                        'match_color', 'match_style', 'set_color_by_gradient', 'set_colors_by_radial_gradient',
-                        'fade', 'fade_to', 'set_width', 'set_height', 'rescale_to_fit', 'scale_to_fit_width', 'scale_to_fit_height', 'stretch', 'apply_matrix', 'apply_function', 'apply_complex_function', 'stretch_to_fit_width', 'stretch_to_fit_height', 'replace', 'surround', 'set_length', 'move_arc_center_to', 'put_start_and_end_on', 'set_angle', 'next_to', 'arrange', 'arrange_submobjects', 'arrange_in_grid', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'pointwise_become_partial', 'set_points', 'append_points', 'clear_points', 'add_subpath', 'append_vectorized_mobject', 'start_new_path', 'close_path', 'set_points_as_corners', 'set_points_smoothly', 'make_smooth', 'make_jagged', 'change_anchor_mode', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
+        # Community animates any method applied to a copy; updater and checkpoint
+        # bookkeeping is not geometry and stays unsupported here.
+        if (name in ('add_updater', 'remove_updater', 'clear_updaters', 'suspend_updating', 'resume_updating',
+                     'save_state', 'generate_target', 'copy', 'update') or
+                not callable(getattr(self.mobject, name, None))):
             raise NotImplementedError(f'animate.{name} is not supported yet')
         def apply(*args, **kwargs):
             getattr(self.target, name)(*args, **kwargs)
@@ -6016,7 +6437,7 @@ class Scene:
     camera_class = PreviewConfig
 
     def __init__(self, camera_config=None):
-        self.camera = self.camera_class(**config.to_dict())
+        self.camera = self.camera_class(**{k: v for k, v in config.to_dict().items() if k != 'reference_frame_width'})
         for name, value in (camera_config or {}).items():
             setattr(self.camera, name, value)
         self.mobjects, self.frames = [], []
@@ -6289,7 +6710,9 @@ class MovingCameraScene(Scene):
 
 
 EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
-           'Triangle', 'Polygon', 'Polygram', 'RegularPolygram', 'RegularPolygon', 'Star', 'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'NumberPlane', 'ComplexPlane', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
+           'Triangle', 'Polygon', 'Polygram', 'RegularPolygram', 'RegularPolygon', 'Star', 'Brace', 'BraceBetweenPoints', 'BraceLabel', 'BraceText',
+           'Title', 'BulletedList', 'Tex', 'LabeledDot', 'Variable', 'always', 'f_always', 'always_shift', 'always_rotate',
+           'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'NumberPlane', 'ComplexPlane', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform',
@@ -6318,6 +6741,9 @@ def _render_scene(source, scene_name=None):
     module.__all__ = list(EXPORTS)
     for name in EXPORTS:
         setattr(module, name, globals()[name])
+    # Internally Vector is the coordinate tuple; scenes get Community's arrow.
+    module.Vector = VectorArrow
+    module.__all__.append('Vector')
     try:
         import numpy  # Loaded by the worker only when the source mentions it.
     except ImportError:

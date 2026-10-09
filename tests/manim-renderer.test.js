@@ -287,8 +287,9 @@ test('camera dimensions, frame extent and explicit background survive SVG render
   assert.equal(svg.children[0].getAttribute('data-manim-background'),'true');
   assert.equal(svg.children[1].getAttribute('transform'),'translate(300, 300) scale(1.5, -1.5)');
   assert.equal(svg.children[1].children[0].getAttribute('r'),'50');
+  // Community's default frame is 8 units tall.
   const defaultSVG = renderer.render({mobjects:[]});
-  assert.equal(defaultSVG.children[1].getAttribute('transform'),'translate(400, 225) scale(1, -1)');
+  assert.equal(defaultSVG.children[1].getAttribute('transform'),'translate(400, 225) scale(1.125, -1.125)');
   for(const camera of [{pixel_width:Infinity},{pixel_height:4097},{frame_height:0},{background_color:'url(bad)'}])
     assert.throws(()=>renderer.render({camera}),/Invalid preview camera/);
 });
@@ -418,4 +419,19 @@ test('curved arrow rendering uses sampled fitted shaft curves', () => {
   const path=renderer.renderMobject({type:'bezierpath',curves:[[[0,0],[1,1],[2,1],[3,0]]],
     shaft_curves:[[[.5,0],[1,2],[2,2],[2.5,0]]]});
   assert.equal(path.getAttribute('d'),'M 25,0 C 50,100 100,100 125,0');
+});
+
+test('scene strokes use Community frame units, undo object scale and stay constant under zoom', () => {
+  const scene = { camera: { pixel_width: 800, pixel_height: 450, frame_width: 16, frame_height: 9, reference_frame_width: 16 },
+    mobjects: [{ type: 'circle', radius: 1, stroke_width: 4 },
+      { type: 'vgroup', geometry_scale: 2, children: [{ type: 'circle', radius: 1, stroke_width: 4, geometry_scale: 0.5 }] }] };
+  const svg = renderer.render(scene);
+  const [plain, group] = svg.children[1].children;
+  // 4 * 0.01 scene units at 50 local units per scene unit.
+  assert.equal(plain.getAttribute('stroke-width'), '2');
+  assert.equal(plain.getAttribute('vector-effect'), null);
+  assert.equal(group.children[0].getAttribute('stroke-width'), '2');
+  const zoomed = renderer.render({ ...scene, camera: { ...scene.camera, frame_width: 8, frame_height: 4.5 } });
+  assert.equal(zoomed.children[1].children[0].getAttribute('stroke-width'), '1');
+  assert.equal(renderer.renderMobject({ type: 'circle', stroke_width: 4 }).getAttribute('vector-effect'), 'non-scaling-stroke');
 });

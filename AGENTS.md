@@ -509,3 +509,13 @@ NumPy: validations use _REAL (numbers.Real) / numbers.Integral, never (int, floa
 so NumPy scalars work; Vector normalizes scalars and render_scene's JSON default
 handles leftovers. The worker loads NumPy only for sources mentioning np/numpy;
 OfflineAssets.optional caches the wheel without making it a readiness requirement.
+
+
+Read `examples/annotation_scene.py` for braces, Title, Tex, bullets and Variable.
+Default frame height is 8 (Community). Renderer strokes are local-unit widths
+from camera.reference_frame_width; keep inheritedScale threading in renderMobject.
+_BOUNDS_WITH_HANDLES is only set by get_width/get_height; pivots always use
+anchors. get_center may differ from _pivot_point for rotated outlines; use
+_pivot_point in transform math. Scenes see the arrow as `Vector`; internally
+`Vector` is the coordinate tuple — never shadow it. A Manim 0.22 reference venv
+can be built with pango/TeX packages to check geometry numerically.

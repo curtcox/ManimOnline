@@ -242,3 +242,10 @@ for identity-pose groups. TransformMatching*, ApplyWave and Homotopy remain open
 
 NumPy is available as `np` (lazy Pyodide package) and preview APIs accept NumPy
 arrays/scalars. In-place mutation of NumPy point arrays remains unsupported.
+
+
+Brace family, Tex (text mode via MathJax), Title, BulletedList, Vector,
+LabeledDot, Variable and always_* helpers are implemented with Manim 0.22
+reference checks. The default frame (14.22 × 8), stroke widths and anchor/handle
+bounds rules now follow Community. ArcBrace, Tex environments and full LaTeX
+text macros remain open.

@@ -2134,3 +2134,31 @@ The worker calls `loadPackage('numpy')` only when the source matches
 not required for “Ready offline”. Verification: all 382 Python and 81 Node tests
 passed, and a Chromium/Pyodide render of a curve built from `np.linspace` and
 `np.sin` showed the traced sine curve and the dot moving along it.
+
+
+Try **Titles, braces, bullets and variables** (`examples/annotation_scene.py`).
+`Brace` parses Community's relative SVG path template (`m/c/h/v/z`), flips it,
+records the tip as the anchor nearest the bottom, stretches it to the target
+width and rotates it from the direction's angle; extents use anchors only. Values
+match Manim 0.22 for axis-aligned and diagonal braces, including a rotated circle.
+`Tex` converts text mode to MathJax: text runs become `\text{...}`, `$...$`
+segments stay math. `Vector` is exported to scenes as `Vector`; internally the
+coordinate tuple class keeps that name.
+
+Frame and stroke calibration: `PreviewConfig` now defaults to frame height 8
+(width 128/9). The camera JSON adds `reference_frame_width`, and the renderer
+draws scene strokes in local units as `stroke_width · 0.01 · UNIT_SCALE ·
+frame_width / reference_frame_width / (inherited object scale)`, without
+`non-scaling-stroke`; Create dashes therefore use the same widths. Standalone
+`renderMobject` calls keep the previous screen-pixel strokes.
+
+Bounds calibration: `width`/`height` measure all points (anchors and handles);
+`get_center`, edges and corners use anchors (`get_points_defining_boundary`).
+Rotated point-based outlines bound their transformed points, and `get_center`
+returns that bounds center (Community's pivot for default rotate/scale), while
+internal transform math uses `_pivot_point`. Rotated circles keep analytical
+bounds (Community measures their anchors, slightly smaller).
+
+Verification: all 386 Python and 82 Node tests passed. Local Pyodide playback in
+Chromium showed the title and rule, Community-shaped braces with tip labels, the
+bullet list, the animated `A = 8.0` variable and the diagonal vector.
