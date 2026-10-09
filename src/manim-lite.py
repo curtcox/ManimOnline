@@ -113,6 +113,8 @@ class Vector(tuple):
         if type(values) is cls:
             return values  # Immutable, so the same coordinates can be shared.
         values = list(values)
+        if len(values) == 1 and hasattr(values[0], '__len__'):
+            values = list(values[0])  # A single-row (1, 3) point array, as NumPy broadcasting allows.
         for index, value in enumerate(values):
             kind = type(value)
             if kind is not float and kind is not int:
@@ -2545,6 +2547,20 @@ class Mobject:
     def always(self):
         return _UpdaterBuilder(self)
 
+    @property
+    def points(self):
+        """World-space points as an (n, 3) array (a NumPy array when NumPy is loaded).
+
+        This is a copy: write back with ``mobject.points = array`` or set_points."""
+        return _point_array(self._point_rows())
+
+    @points.setter
+    def points(self, value):
+        self.set_points(value)
+
+    def _point_rows(self):
+        return [list(Vector(p)) for p in self.get_points()]
+
     set_default = classmethod(_set_default)
 
     def shuffle(self, recursive=False):
@@ -2608,8 +2624,29 @@ class Mobject:
             result['gradient_points'] = [[cx - ox, cy - oy], [cx + ox, cy + oy]]
 
 
+def _point_array(rows):
+    try:
+        import numpy
+    except ImportError:
+        return rows
+    return numpy.array(rows, dtype=float).reshape(len(rows), 3)
+
+
+def _point_rows_of(points):
+    rows = points.tolist() if hasattr(points, 'tolist') else [list(p) for p in points]
+    if rows and isinstance(rows[0], _REAL):
+        rows = [rows]
+    return rows
+
+
 class ValueTracker(Mobject):
     """An invisible finite real parameter, encoded in its x coordinate."""
+    def _point_rows(self):
+        return [[float(self.position[0]), 0.0, 0.0]]
+
+    def set_points(self, points):
+        return self.set_value(_point_rows_of(points)[0][0])
+
     def __init__(self, value=0, **kwargs):
         super().__init__(**kwargs)
         self._type = 'valuetracker'
@@ -9157,13 +9194,20 @@ class ChangeDecimalToValue(ChangingDecimal):
         super().__init__(decimal_mob, lambda a: start + (target_number - start) * a, **kwargs)
 
 
+def _frame_count(duration):
+    """len(np.arange(0, duration, 1 / FPS)): Community's sampled animation frames."""
+    return max(0, math.ceil(duration / (1 / FPS))) if duration > 0 else 0
+
+
 class Wait(Animation):
     """A pause inside play(), AnimationGroup or Succession."""
     def __init__(self, run_time=1, stop_condition=None, frozen_frame=None, rate_func=linear, **kwargs):
-        if stop_condition is not None:
-            raise NotImplementedError('Wait stop conditions are not supported')
+        if stop_condition is not None and not callable(stop_condition):
+            raise TypeError('stop_condition must be callable')
         NumberLine._real(run_time, 'Wait run_time', positive=True)
         super().__init__(None, run_time=run_time, rate_func=rate_func, **kwargs)
+        # Only a lone Wait passed to play() honors these, as in Community.
+        self.stop_condition, self.frozen_frame = stop_condition, frozen_frame
 
     def objects(self):
         return []
@@ -9715,6 +9759,10 @@ class Scene:
         unsupported = [key for key in kwargs if key not in self._PLAY_OPTIONS]
         if unsupported:
             raise NotImplementedError('Unsupported play options: ' + ', '.join(unsupported))
+        if len(animations) == 1 and type(animations[0]) is Wait:
+            # A lone Wait follows Community's static/updating wait logic.
+            wait = animations[0]
+            return self.wait(wait.run_time if run_time is None else run_time, wait.stop_condition, wait.frozen_frame)
         if not animations or any(not isinstance(a, (Animation, AnimationGroup)) for a in animations):
             raise TypeError('play() expects supported animations such as Create or Transform')
         if 'path_arc' in kwargs:
@@ -9729,8 +9777,9 @@ class Scene:
         durations = [a.run_time if run_time is None else run_time for a in animations]
         if any(not math.isfinite(d) or d < 0 or (d == 0 and not a._instant) for d, a in zip(durations, animations)):
             raise ValueError('Animation run_time must be positive and finite')
-        # Instant animations (Add) take no frames, as Community's zero run_time.
-        count = math.ceil(max(durations) * FPS) if max(durations) else 0
+        # Instant animations (Add) take no frames, as Community's zero run_time;
+        # other totals are at least one frame (validate_run_time).
+        count = max(1, _frame_count(max(durations))) if max(durations) else 0
         if count + len(self.frames) >= MAX_FRAMES:
             raise ValueError('Preview exceeds 60 seconds / 900 frames. Shorten the scene.')
         if rate_func is not None:
@@ -9754,7 +9803,7 @@ class Scene:
         # Community's last frame does (e.g. MaintainPositionRelativeTo a moving object).
         for animation in sorted(animations, key=lambda a: isinstance(a, UpdateFromFunc)):
             animation._complete(self)
-        self._update_mobjects(1 / FPS, {m: [m.to_dict()] for a in animations for m in a.objects()})
+        self._update_mobjects(0, {m: [m.to_dict()] for a in animations for m in a.objects()})
         # Community resumes the animated objects' updaters and runs update_mobjects(0),
         # so dependents such as Graph edges catch up with the committed state.
         self._update_mobjects(0)
@@ -9793,11 +9842,25 @@ class Scene:
             raise ValueError('Wait duration must be nonnegative and finite')
         if stop_condition is not None and not callable(stop_condition):
             raise TypeError('stop_condition must be callable')
-        count = math.ceil(duration * FPS)
+        if 0 < duration < 1 / FPS:
+            duration = 1 / FPS  # Community's validate_run_time: at least one frame.
+        static = self._wait_is_static(stop_condition, frozen_frame)
+        # Community freezes a static wait for int(duration * fps) frames without running
+        # updaters; other waits sample np.arange(0, duration, 1 / fps).
+        count = int(duration / (1 / FPS)) if static else _frame_count(duration)
         if count + len(self.frames) >= MAX_FRAMES and stop_condition is None and not self._skipping:
             raise ValueError('Preview exceeds 60 seconds / 900 frames. Shorten the scene.')
+        if static:
+            self._static_frames = {}
+            try:
+                for frame in range(count):
+                    self.capture()
+            finally:
+                self._static_frames = None
+            return
         safe = stop_condition is None and self._static_frames_safe()
         self._static_frames = {} if safe else None
+        self._update_mobjects(0)
         try:
             for frame in range(count):
                 self._update_mobjects(0 if frame == 0 else 1 / FPS)
@@ -9809,7 +9872,21 @@ class Scene:
         finally:
             self._static_frames = None
         if count:
-            self._update_mobjects(1 / FPS)
+            # Like Community's play_internal: no time passes after the last frame.
+            self._update_mobjects(0)
+
+    always_update_mobjects = False
+
+    def _wait_is_static(self, stop_condition, frozen_frame):
+        """Community's should_update_mobjects for a lone Wait."""
+        if frozen_frame is not None:
+            return bool(frozen_frame)
+        if stop_condition is not None or self.always_update_mobjects or getattr(self, 'updaters', None):
+            return False
+        roots = list(self.mobjects)
+        if isinstance(self.camera, MovingCamera) and self.camera.frame not in roots:
+            roots.append(self.camera.frame)
+        return not any(member.has_time_based_updater() for root in roots for member in root.get_family())
 
     def wait_until(self, stop_condition, max_time=60):
         return self.wait(max_time, stop_condition=stop_condition)
@@ -10541,6 +10618,13 @@ class VectorizedPoint(VMobject):
 
 class ComplexValueTracker(ValueTracker):
     """A tracker for a complex number, stored as the x and y coordinates."""
+    def _point_rows(self):
+        return [[float(self.position[0]), float(self.position[1]), 0.0]]
+
+    def set_points(self, points):
+        row = list(_point_rows_of(points)[0])
+        return self.set_value(complex(row[0], row[1]))
+
     def get_value(self):
         return complex(self.position[0], self.position[1])
 
@@ -14001,8 +14085,8 @@ class ChangeSpeed(AnimationGroup):
         if not isinstance(anim, (Animation, AnimationGroup)):
             raise TypeError('ChangeSpeed expects an animation')
         speedinfo = dict(speedinfo)
-        if any(isinstance(v, bool) or not isinstance(v, _REAL) or not v > 0 for v in speedinfo.values()):
-            raise ValueError('ChangeSpeed speed factors must be positive')
+        if any(isinstance(v, bool) or not isinstance(v, _REAL) or not v >= 0 for v in speedinfo.values()):
+            raise ValueError('ChangeSpeed speed factors must be nonnegative')
         if any(not 0 <= k <= 1 for k in speedinfo):
             raise ValueError('ChangeSpeed nodes must lie between 0 and 1')
         speedinfo.setdefault(0, 1)
@@ -14013,6 +14097,8 @@ class ChangeSpeed(AnimationGroup):
         self.rate_func_inner = anim.rate_func if rate_func is None else rate_func
         self.segments, current, previous, init = [], 0.0, 0.0, self.speedinfo[0]
         for node, final in list(self.speedinfo.items())[1:]:
+            if init + final <= 0:
+                raise ValueError('ChangeSpeed cannot stay at zero speed between two nodes')
             duration = node - previous
             length = 2 / (init + final) * duration
             self.segments.append((current, length, duration, previous, init, final))

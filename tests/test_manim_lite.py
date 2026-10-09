@@ -782,7 +782,8 @@ self.play(UntypeWithCursor(text, cursor))""")['frames']
 
     def test_scene_sections_scene_updaters_add_and_waits(self):
         frames=render("self.next_section('a')\nself.play(Create(Square()))\nself.next_section('skip', skip_animations=True)\nself.play(Create(Circle()))\nself.wait(1)\nself.next_section('b')\nself.wait(.5)")['frames']
-        self.assertEqual(len(frames),24)
+        # 15 Create frames, int(0.5 * 15) = 7 static-wait frames and the final capture.
+        self.assertEqual(len(frames),23)
         self.assertEqual(len(frames[15]['mobjects']),2)  # Skipped animations still apply.
         added=render("s=Square()\nc=Circle()\nself.play(Succession(Create(s), Add(c), FadeOut(s)))\nself.play(Add(Dot()))")['frames']
         self.assertEqual([m['type'] for m in added[-1]['mobjects']],['circle','circle'])
@@ -1088,7 +1089,8 @@ self.play(UntypeWithCursor(text, cursor))""")['frames']
         variable,vec=result['frames'][7]['mobjects']
         self.assertAlmostEqual(variable['children'][1]['number'],1.5+1.5*7/15)
         self.assertEqual(vec['type'],'arrow')
-        self.assertAlmostEqual(result['frames'][-1]['mobjects'][2]['position'][0],1,places=1)
+        # Community's play/wait give updaters no time after their last frame.
+        self.assertAlmostEqual(result['frames'][-1]['mobjects'][2]['position'][0],14/15)
 
     def test_numpy_inputs_scalars_and_np_export(self):
         try:
@@ -5050,12 +5052,12 @@ self.wait(1)""")
         tracker = lite.ValueTracker().add_updater(lambda m,dt:m.increment_value(dt))
         dot = lite.Dot().add_updater(lambda m:m.move_to(lite.RIGHT*tracker.get_value()))
         scene.add(tracker,dot).wait(2)
-        self.assertAlmostEqual(tracker.get_value(), 2)
-        self.assertAlmostEqual(dot.get_center()[0], 2)
+        self.assertAlmostEqual(tracker.get_value(), 2 - 1/lite.FPS)
+        self.assertAlmostEqual(dot.get_center()[0], 2 - 1/lite.FPS)
         self.assertEqual(len(scene.frames[15]['mobjects']), 1)
         self.assertAlmostEqual(scene.frames[15]['mobjects'][0]['position'][0], 1)
         scene.remove(tracker).wait(1)
-        self.assertAlmostEqual(tracker.get_value(), 2)
+        self.assertAlmostEqual(tracker.get_value(), 2 - 1/lite.FPS)
         group = lite.Group(tracker, lite.Circle())
         self.assertEqual(group.to_dict()['children'][0]['type'], 'valuetracker')
 
@@ -5074,11 +5076,12 @@ self.wait(1)""")
         scene = lite.Scene()
         dot = lite.Dot().add_updater(lambda m, dt:m.shift(lite.RIGHT * dt))
         scene.add(dot).wait(2)
-        self.assertAlmostEqual(dot.get_center()[0], 2)
+        # Manim 0.22: the first frame of each play/wait has dt=0 and none follows the last.
+        self.assertAlmostEqual(dot.get_center()[0], 2 - 1/lite.FPS)
         self.assertAlmostEqual(scene.frames[15]['mobjects'][0]['position'][0], 1)
         scene.play(lite.Create(lite.Circle()), run_time=1)
-        self.assertAlmostEqual(dot.get_center()[0], 3)
-        self.assertAlmostEqual(scene.frames[44]['mobjects'][0]['position'][0], 3 - 1/lite.FPS)
+        self.assertAlmostEqual(dot.get_center()[0], 3 - 2/lite.FPS)
+        self.assertAlmostEqual(scene.frames[44]['mobjects'][0]['position'][0], 3 - 2/lite.FPS)
         self.assertNotIn('updaters', dot.to_dict())
 
     def test_followers_query_sampled_animation_and_camera_tracks_during_play(self):
@@ -5096,8 +5099,8 @@ self.wait(1)""")
         self.assertEqual(follower.get_center(), lite.RIGHT*4+lite.UP)
         self.assertEqual(scene.camera.frame_center, lite.RIGHT*4)
         scene.wait(1)
-        self.assertAlmostEqual(dot.get_center()[1], -1)
-        self.assertAlmostEqual(scene.camera.frame_center[1], -1)
+        self.assertAlmostEqual(dot.get_center()[1], -1 + 1/lite.FPS)
+        self.assertAlmostEqual(scene.camera.frame_center[1], -1 + 1/lite.FPS)
 
     def test_updater_management_recursive_suspension_and_shared_family_dedup(self):
         events = []
@@ -5116,7 +5119,8 @@ self.wait(1)""")
         self.assertEqual(events, [0,0,'first'])
         events.clear()
         lite.Scene().add(group, lite.Group(child)).wait(1/lite.FPS)
-        self.assertEqual(events, [0,'first',1/lite.FPS,'first'])
+        # Community's updating wait: update(0) first, the dt=0 first frame, a final update(0).
+        self.assertEqual(events, [0,'first',0,'first',0,'first'])
         child.remove_updater(first).remove_updater(first)
         self.assertEqual(child.get_updaters(), [timed])
         group.clear_updaters()
@@ -5847,7 +5851,8 @@ self.wait(1)""")
                 self.play(lite.Rotate(self.shape, lite.PI), run_time=2)
         scene = Demo()
         result = scene.render()
-        self.assertEqual(events, [('setup', 0), ('construct', 8/15), ('tear_down', 38/15)])
+        # Manim 0.22: a static wait(0.5) freezes int(0.5 * 15) = 7 frames.
+        self.assertEqual(events, [('setup', 0), ('construct', 7/15), ('tear_down', 37/15)])
         self.assertEqual(scene.time, result['duration'])
         self.assertEqual(result['frames'][-1]['mobjects'][0]['color'], lite.GREEN)
         self.assertEqual(result['frames'][0]['mobjects'][0]['color'], lite.RED)  # Community's Circle default color
@@ -7618,8 +7623,8 @@ class ThreeDTests(unittest.TestCase):
         scene = Demo()
         scene.render()
         theta = scene.camera.theta_tracker.get_value()
-        # The updater accumulates rate*dt over the 15 sampled frames of wait(1).
-        self.assertAlmostEqual(theta - (-90 * lite.DEGREES), 0.5)
+        # rate*dt over wait(1)'s frames after the first (dt=0): Manim 0.22 gives 0.4667.
+        self.assertAlmostEqual(theta - (-90 * lite.DEGREES), 0.5 * 14 / 15)
         self.assertNotIn(scene.camera.theta_tracker, scene.mobjects)
         with self.assertRaises(ValueError):
             scene.begin_ambient_camera_rotation(about='foo')
