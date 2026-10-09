@@ -569,3 +569,7 @@ Community. Bookkeeping that holds tuples or non-JSON keys goes in `_frame_exclud
 `become` deep-copies target attributes with a memo mapping replaced descendants to
 live members; don't reintroduce stale child references. play() ends with a dt=0
 update pass after completion, matching Community.
+
+Read `examples/boolean_scene.py` for boolean outline operations. The engine lives in
+`_boolean`/`_BOOLEAN_RULES`; outputs must stay closed cubic contours with explicit
+subpath_lengths. Tests compare areas/bounds with skia-pathops results, not point order.

@@ -302,6 +302,37 @@ self.play(d[2].animate.shift(UP*2))""")
         with self.assertRaises(ValueError): graph.remove_vertices(9)
         json.dumps(graph.to_dict())
 
+    def test_boolean_operations_match_community_areas_and_bounds(self):
+        def area(mobject):
+            points,total=mobject.get_points(),0
+            for i in range(0,len(points)-3,4):
+                curve=[(p[0],p[1]) for p in points[i:i+4]]
+                samples=[lite._bez(curve,k/40) for k in range(41)]
+                total+=sum(p[0]*q[1]-q[0]*p[1] for p,q in zip(samples,samples[1:]))/2
+            return round(abs(total),3)
+        def bounds(mobject):
+            return [round(v+0.0,3) for v in (mobject.get_left()[0],mobject.get_right()[0],mobject.get_bottom()[1],mobject.get_top()[1])]
+        # Areas/bounds measured with Manim Community 0.22 (skia-pathops).
+        cases={'square-circle':(lambda:(lite.Square(2),lite.Circle(1).shift(lite.RIGHT)),[5.571,1.571,2.429,4.0]),
+               'circles':(lambda:(lite.Circle(1),lite.Circle(1).shift(lite.RIGHT)),[5.055,1.228,1.913,3.826]),
+               'shared edge':(lambda:(lite.Square(2),lite.Square(2).shift(lite.RIGHT*2)),[8.0,0,4.0,8.0]),
+               'hole':(lambda:(lite.Square(3),lite.Circle(.5)),[9.0,.785,8.215,8.215]),
+               'disjoint':(lambda:(lite.Square(1),lite.Circle(.5).shift(lite.RIGHT*3)),[1.785,0,1.0,1.785]),
+               'star':(lambda:(lite.Triangle().scale(2),lite.Star(outer_radius=1.5).shift(lite.UP*.3)),[5.574,2.148,3.048,3.426])}
+        for name,(make,expected) in cases.items():
+            for operation,value in zip((lite.Union,lite.Intersection,lite.Difference,lite.Exclusion),expected):
+                with self.subTest(name=name,operation=operation.__name__):
+                    self.assertEqual(area(operation(*make())),value)
+        circles=lite.Intersection(lite.Circle(1),lite.Circle(1).shift(lite.RIGHT))
+        self.assertEqual(bounds(circles),[0,1,-.866,.866])
+        holed=lite.Difference(lite.Square(3),lite.Circle(.5))
+        self.assertEqual(holed.subpath_lengths,[4,8])
+        self.assertEqual(area(lite.Union(lite.Square(1),lite.Square(1).shift(lite.RIGHT*.5),lite.Square(1).shift(lite.UP*.5))),2.0)
+        with self.assertRaises(ValueError): lite.Union(lite.Square())
+        with self.assertRaises(TypeError): lite.Difference(lite.Square(),3)
+        frame=render('u=Union(Circle(), Square().shift(RIGHT), fill_opacity=.5)\nself.play(Transform(u, Exclusion(Circle(), Square().shift(RIGHT))))')['frames'][-1]
+        self.assertEqual(frame['mobjects'][0]['type'],'bezierpath')
+
     def test_set_style_routes_fill_and_stroke(self):
         square=lite.Square().set_style(fill_color=lite.RED,fill_opacity=.5,stroke_color=lite.BLUE,
                                        stroke_width=6,stroke_opacity=.25,background_stroke_width=0)

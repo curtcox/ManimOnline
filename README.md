@@ -1488,3 +1488,8 @@ networkx exactly for `circular`, `shell`, `spiral`, `partite`, `tree`, and seede
 0 so previews are reproducible. `kamada_kawai`, `planar` and `spectral` need SciPy
 solvers and are not available; custom layout functions receive the browser graph
 structure instead of a networkx graph.
+
+The **Boolean shape operations** example covers `Union`, `Intersection`,
+`Difference` and `Exclusion`. Results keep cubic curves (circles stay smooth) and
+separate contours for holes; areas and bounds match Community's skia-pathops results,
+though the starting point and curve count of each contour differ.

@@ -2270,3 +2270,11 @@ attribute dicts such as `Graph.vertices` stay valid after `.animate` stages. Aft
 each `play()`, lite runs Community's resumed `update_mobjects(0)` pass. Classes may
 declare `_animate_overrides` (Community's `@override_animate`); Graph uses it for
 animated vertex/edge insertion and removal.
+
+Boolean operations normalize each operand's own contours (family members are ignored,
+as in Community) to positive total area, find cubic–cubic intersections by recursive
+subdivision (collinear overlaps report both overlap ends), split pieces exactly, and
+classify each piece's midpoint by nonzero winding against the other operand. Pieces
+lying on the other boundary are "same" or "opposite" by tangent direction, so shared
+edges merge correctly. Kept pieces are relinked into closed contours with explicit
+`subpath_lengths`. Union and Intersection fold pairwise over more than two operands.

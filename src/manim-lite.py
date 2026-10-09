@@ -9222,6 +9222,320 @@ class DiGraph(GenericGraph):
         return f'Directed graph on {len(self.vertices)} vertices and {len(self.edges)} edges'
 
 
+def _bez(c, t):
+    s = 1 - t
+    return (s * s * s * c[0][0] + 3 * s * s * t * c[1][0] + 3 * s * t * t * c[2][0] + t * t * t * c[3][0],
+            s * s * s * c[0][1] + 3 * s * s * t * c[1][1] + 3 * s * t * t * c[2][1] + t * t * t * c[3][1])
+
+
+def _bez_tangent(c, t):
+    s = 1 - t
+    return (3 * s * s * (c[1][0] - c[0][0]) + 6 * s * t * (c[2][0] - c[1][0]) + 3 * t * t * (c[3][0] - c[2][0]),
+            3 * s * s * (c[1][1] - c[0][1]) + 6 * s * t * (c[2][1] - c[1][1]) + 3 * t * t * (c[3][1] - c[2][1]))
+
+
+def _bez_split(c, t):
+    lerp = lambda p, q: (p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t)
+    a, b, e = lerp(c[0], c[1]), lerp(c[1], c[2]), lerp(c[2], c[3])
+    d, f = lerp(a, b), lerp(b, e)
+    m = lerp(d, f)
+    return (c[0], a, d, m), (m, f, e, c[3])
+
+
+def _bez_box(c):
+    xs, ys = [p[0] for p in c], [p[1] for p in c]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _bez_flat(c, tol):
+    """True when both handles lie within tol of the chord (a straight segment)."""
+    (x0, y0), (x3, y3) = c[0], c[3]
+    dx, dy = x3 - x0, y3 - y0
+    length = math.hypot(dx, dy)
+    if length < tol:
+        return all(math.hypot(p[0] - x0, p[1] - y0) < tol for p in c)
+    return all(abs((p[0] - x0) * dy - (p[1] - y0) * dx) / length < tol for p in (c[1], c[2]))
+
+
+def _segment_hits(p0, p1, q0, q1, tol):
+    """Parameters (s, u) where segments p and q meet, including collinear overlap ends."""
+    rx, ry = p1[0] - p0[0], p1[1] - p0[1]
+    sx, sy = q1[0] - q0[0], q1[1] - q0[1]
+    denom = rx * sy - ry * sx
+    qpx, qpy = q0[0] - p0[0], q0[1] - p0[1]
+    rr, ss = rx * rx + ry * ry, sx * sx + sy * sy
+    if rr < tol * tol or ss < tol * tol:
+        return []
+    if abs(denom) <= 1e-12 * math.sqrt(rr * ss):
+        # Parallel: only collinear overlaps meet; report the overlap's ends on both.
+        if abs(qpx * ry - qpy * rx) / math.sqrt(rr) > tol:
+            return []
+        hits = []
+        for point in (q0, q1):
+            s = ((point[0] - p0[0]) * rx + (point[1] - p0[1]) * ry) / rr
+            if -1e-9 <= s <= 1 + 1e-9:
+                hits.append((min(1, max(0, s)), 0.0 if point is q0 else 1.0))
+        for point in (p0, p1):
+            u = ((point[0] - q0[0]) * sx + (point[1] - q0[1]) * sy) / ss
+            if -1e-9 <= u <= 1 + 1e-9:
+                hits.append((0.0 if point is p0 else 1.0, min(1, max(0, u))))
+        return hits
+    s = (qpx * sy - qpy * sx) / denom
+    u = (qpx * ry - qpy * rx) / denom
+    if -1e-9 <= s <= 1 + 1e-9 and -1e-9 <= u <= 1 + 1e-9:
+        return [(min(1, max(0, s)), min(1, max(0, u)))]
+    return []
+
+
+def _cubic_hits(a, b, tol, ta=(0.0, 1.0), tb=(0.0, 1.0), depth=0, out=None):
+    """Intersection parameter pairs of two cubics, by recursive subdivision."""
+    out = [] if out is None else out
+    ax0, ay0, ax1, ay1 = _bez_box(a)
+    bx0, by0, bx1, by1 = _bez_box(b)
+    if ax0 > bx1 + tol or bx0 > ax1 + tol or ay0 > by1 + tol or by0 > ay1 + tol or len(out) > 64:
+        return out
+    if (_bez_flat(a, tol) and _bez_flat(b, tol)) or depth > 48:
+        for s, u in _segment_hits(a[0], a[3], b[0], b[3], tol):
+            out.append((ta[0] + s * (ta[1] - ta[0]), tb[0] + u * (tb[1] - tb[0])))
+        return out
+    asize, bsize = max(ax1 - ax0, ay1 - ay0), max(bx1 - bx0, by1 - by0)
+    if asize >= bsize and not _bez_flat(a, tol):
+        mid = (ta[0] + ta[1]) / 2
+        left, right = _bez_split(a, .5)
+        _cubic_hits(left, b, tol, (ta[0], mid), tb, depth + 1, out)
+        _cubic_hits(right, b, tol, (mid, ta[1]), tb, depth + 1, out)
+    else:
+        mid = (tb[0] + tb[1]) / 2
+        left, right = _bez_split(b, .5)
+        _cubic_hits(a, left, tol, ta, (tb[0], mid), depth + 1, out)
+        _cubic_hits(a, right, tol, ta, (mid, tb[1]), depth + 1, out)
+    return out
+
+
+def _boolean_contours(mobject):
+    """Closed XY cubic contours of a VMobject's own outline (Community ignores its family)."""
+    if not isinstance(mobject, Mobject):
+        raise TypeError('Boolean operations expect VMobjects')
+    contours = []
+    for path in mobject.get_subpaths():
+        curves = [tuple((float(p[0]), float(p[1])) for p in path[i:i + 4]) for i in range(0, len(path) - 3, 4)]
+        if not curves:
+            continue
+        if math.dist(curves[-1][3], curves[0][0]) > 1e-9:
+            start, end = curves[-1][3], curves[0][0]
+            curves.append((start, tuple(start[i] + (end[i] - start[i]) / 3 for i in range(2)),
+                           tuple(start[i] + (end[i] - start[i]) * 2 / 3 for i in range(2)), end))
+        contours.append(curves)
+    # Orient so the shape's total signed area is positive (outer contours counterclockwise).
+    area = sum(_contour_area(c) for c in contours)
+    if area < 0:
+        contours = [[tuple(reversed(curve)) for curve in reversed(c)] for c in contours]
+    return contours
+
+
+def _contour_area(curves):
+    total = 0.0
+    for curve in curves:
+        points = [_bez(curve, i / 8) for i in range(9)]
+        total += sum(p[0] * q[1] - q[0] * p[1] for p, q in zip(points, points[1:])) / 2
+    return total
+
+
+def _flatten(contours, steps=32):
+    return [[_bez(curve, i / steps) for curve in contour for i in range(steps)] for contour in contours]
+
+
+def _winding(point, polygons):
+    x, y, winding = point[0], point[1], 0
+    for polygon in polygons:
+        for (x0, y0), (x1, y1) in zip(polygon, polygon[1:] + polygon[:1]):
+            if y0 <= y < y1 and (x1 - x0) * (y - y0) - (x - x0) * (y1 - y0) > 0:
+                winding += 1
+            elif y1 <= y < y0 and (x1 - x0) * (y - y0) - (x - x0) * (y1 - y0) < 0:
+                winding -= 1
+    return winding
+
+
+def _nearest_on(point, contours):
+    """Distance from point to the nearest contour curve, and that curve's tangent there."""
+    best = (math.inf, None, None)
+    for contour in contours:
+        for curve in contour:
+            x0, y0, x1, y1 = _bez_box(curve)
+            if point[0] < x0 - best[0] or point[0] > x1 + best[0] or point[1] < y0 - best[0] or point[1] > y1 + best[0]:
+                continue
+            t = min((i / 16 for i in range(17)), key=lambda s: math.dist(_bez(curve, s), point))
+            for _ in range(6):
+                # Newton steps on the squared distance.
+                p, d = _bez(curve, t), _bez_tangent(curve, t)
+                h = 1e-6
+                d2 = _bez_tangent(curve, min(1, t + h))
+                dd = ((d2[0] - d[0]) / h, (d2[1] - d[1]) / h)
+                f = (p[0] - point[0]) * d[0] + (p[1] - point[1]) * d[1]
+                g = d[0] * d[0] + d[1] * d[1] + (p[0] - point[0]) * dd[0] + (p[1] - point[1]) * dd[1]
+                if not g:
+                    break
+                t = min(1, max(0, t - f / g))
+            distance = math.dist(_bez(curve, t), point)
+            if distance < best[0]:
+                best = (distance, _bez_tangent(curve, t), curve)
+    return best
+
+
+def _boolean_pieces(contours, others, tol):
+    """Split contours at every crossing with the other shape's contours."""
+    cuts = {}
+    for ci, contour in enumerate(contours):
+        for ki, curve in enumerate(contour):
+            for other in others:
+                for curve_b in other:
+                    for ta, _ in _cubic_hits(curve, curve_b, tol):
+                        cuts.setdefault((ci, ki), []).append(ta)
+    result = []
+    for ci, contour in enumerate(contours):
+        pieces = []
+        for ki, curve in enumerate(contour):
+            ts = sorted(t for t in cuts.get((ci, ki), []) if 1e-9 < t < 1 - 1e-9)
+            last, rest = 0.0, curve
+            for t in ts:
+                if t - last < 1e-9:
+                    continue
+                left, rest = _bez_split(rest, (t - last) / (1 - last))
+                pieces.append(left)
+                last = t
+            pieces.append(rest)
+        result.append(pieces)
+    return result
+
+
+def _classify(pieces, other_contours, tol):
+    polygons = _flatten(other_contours)
+    labels = []
+    for contour in pieces:
+        for piece in contour:
+            mid = _bez(piece, .5)
+            distance, tangent, _ = _nearest_on(mid, other_contours)
+            if distance < tol * 100 and tangent is not None:
+                own = _bez_tangent(piece, .5)
+                labels.append((piece, 'same' if own[0] * tangent[0] + own[1] * tangent[1] > 0 else 'opposite'))
+            else:
+                labels.append((piece, 'inside' if _winding(mid, polygons) else 'outside'))
+    return labels
+
+
+def _link_contours(pieces, tol):
+    """Chain kept pieces end-to-start into closed contours."""
+    key = lambda p: (round(p[0] / (tol * 1000)), round(p[1] / (tol * 1000)))
+    starts = {}
+    for index, piece in enumerate(pieces):
+        starts.setdefault(key(piece[0]), []).append(index)
+    used, loops = set(), []
+    def nearby(point):
+        kx, ky = key(point)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for index in starts.get((kx + dx, ky + dy), []):
+                    if index not in used and math.dist(pieces[index][0], point) < tol * 1000:
+                        yield index
+    for first in range(len(pieces)):
+        if first in used:
+            continue
+        loop, current = [], first
+        while current is not None:
+            used.add(current)
+            loop.append(pieces[current])
+            if math.dist(loop[-1][3], loop[0][0]) < tol * 1000 and len(loop) > 1:
+                break
+            current = next(nearby(loop[-1][3]), None)
+        # Close exactly: snap every join (and the seam) to a shared point.
+        for i in range(len(loop)):
+            following = loop[(i + 1) % len(loop)]
+            joint = loop[i][3] if i + 1 < len(loop) or math.dist(loop[i][3], following[0]) < tol * 1000 else None
+            if joint is not None:
+                loop[(i + 1) % len(loop)] = (joint,) + tuple(following[1:])
+        if sum(math.dist(c[0], c[3]) for c in loop) > tol:
+            loops.append(loop)
+    return loops
+
+
+def _boolean(subject, clip, keep):
+    """keep maps (own 'A'/'B', label) to None (drop), 1 (keep) or -1 (keep reversed)."""
+    scale = max([1.0] + [abs(v) for c in subject + clip for curve in c for p in curve for v in p])
+    tol = 1e-9 * scale
+    kept = []
+    for own, contours, others in (('A', subject, clip), ('B', clip, subject)):
+        for piece, label in _classify(_boolean_pieces(contours, others, tol), others, tol):
+            action = keep.get((own, label))
+            if action:
+                kept.append(piece if action > 0 else tuple(reversed(piece)))
+    return _link_contours(kept, tol)
+
+
+_BOOLEAN_RULES = {
+    'union': {('A', 'outside'): 1, ('B', 'outside'): 1, ('A', 'same'): 1},
+    'intersection': {('A', 'inside'): 1, ('B', 'inside'): 1, ('A', 'same'): 1},
+    'difference': {('A', 'outside'): 1, ('B', 'inside'): -1, ('A', 'opposite'): 1},
+    'exclusion': {('A', 'outside'): 1, ('B', 'outside'): 1, ('A', 'inside'): -1, ('B', 'inside'): -1},
+}
+
+
+class _BooleanOps(VMobject):
+    """Shared construction: run the operation, then store cubic contours."""
+    def _set_contours(self, contours):
+        points = [list(p) + [0] for contour in contours for curve in contour for p in curve]
+        VMobject.set_points(self, points)
+        self.__dict__.pop('subpath_lengths', None)
+        if len(contours) > 1:
+            self.subpath_lengths = [len(contour) for contour in contours]
+        return self
+
+    @staticmethod
+    def _operate(name, first, second):
+        if isinstance(first, list):
+            subject = first
+        else:
+            subject = _boolean_contours(first)
+        return _boolean(subject, _boolean_contours(second), _BOOLEAN_RULES[name])
+
+
+class Union(_BooleanOps):
+    """The region covered by any of the given outlines (sequential pairwise union)."""
+    def __init__(self, *vmobjects, **kwargs):
+        if len(vmobjects) < 2:
+            raise ValueError('At least 2 mobjects needed for Union.')
+        super().__init__(**kwargs)
+        contours = _boolean_contours(vmobjects[0])
+        for vmobject in vmobjects[1:]:
+            contours = self._operate('union', contours, vmobject)
+        self._set_contours(contours)
+
+
+class Intersection(_BooleanOps):
+    """The region covered by every given outline."""
+    def __init__(self, *vmobjects, **kwargs):
+        if len(vmobjects) < 2:
+            raise ValueError('At least 2 mobjects needed for Intersection.')
+        super().__init__(**kwargs)
+        contours = _boolean_contours(vmobjects[0])
+        for vmobject in vmobjects[1:]:
+            contours = self._operate('intersection', contours, vmobject)
+        self._set_contours(contours)
+
+
+class Difference(_BooleanOps):
+    """The subject's region outside the clip outline."""
+    def __init__(self, subject, clip, **kwargs):
+        super().__init__(**kwargs)
+        self._set_contours(self._operate('difference', subject, clip))
+
+
+class Exclusion(_BooleanOps):
+    """The region covered by exactly one of the two outlines."""
+    def __init__(self, subject, clip, **kwargs):
+        super().__init__(**kwargs)
+        self._set_contours(self._operate('exclusion', subject, clip))
+
+
 class _PCG64:
     """NumPy's default_rng(seed) stream (SeedSequence + PCG64), for exact Community noise."""
     _MULT = 0x2360ED051FC65DA44385DF649FCCF645
@@ -9651,7 +9965,7 @@ class _StreamLinesEnd(Animation):
 EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
            'Triangle', 'Polygon', 'Polygram', 'RegularPolygram', 'RegularPolygon', 'Star', 'Brace', 'BraceBetweenPoints', 'BraceLabel', 'BraceText',
            'Title', 'BulletedList', 'Tex', 'SingleStringMathTex', 'MarkupText', 'LabeledDot', 'Variable', 'always', 'f_always', 'always_shift', 'always_rotate',
-           'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'BarChart', 'PolarPlane', 'NumberPlane', 'ComplexPlane', 'VectorField', 'ArrowVectorField', 'StreamLines', 'sigmoid', 'ScreenRectangle', 'FullScreenRectangle', 'VectorizedPoint', 'ComplexValueTracker', 'UnitInterval', 'TangentialArc', 'CurvesAsSubmobjects', 'VDict', 'Cutout', 'ConvexHull', 'ArcBrace', 'LaggedStartMap', 'MaintainPositionRelativeTo', 'Blink', 'Broadcast', 'SpiralIn', 'AddTextWordByWord', 'Animation', 'line_intersection', 'angle_between_vectors', 'DEFAULT_LAGGED_START_LAG_RATIO', 'Graph', 'DiGraph', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
+           'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'BarChart', 'PolarPlane', 'NumberPlane', 'ComplexPlane', 'VectorField', 'ArrowVectorField', 'StreamLines', 'sigmoid', 'ScreenRectangle', 'FullScreenRectangle', 'VectorizedPoint', 'ComplexValueTracker', 'UnitInterval', 'TangentialArc', 'CurvesAsSubmobjects', 'VDict', 'Cutout', 'ConvexHull', 'ArcBrace', 'LaggedStartMap', 'MaintainPositionRelativeTo', 'Blink', 'Broadcast', 'SpiralIn', 'AddTextWordByWord', 'Animation', 'line_intersection', 'angle_between_vectors', 'DEFAULT_LAGGED_START_LAG_RATIO', 'Graph', 'DiGraph', 'Union', 'Intersection', 'Difference', 'Exclusion', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform',
