@@ -4746,9 +4746,50 @@ class Text(Mobject):
 
 
 class MarkupText(Text):
-    """Pango-style markup for <b>, <i>, <span> colors/weights/styles and entities."""
-    def __init__(self, text, **kwargs):
+    """Pango-style markup for <b>, <i>, <span> colors/weights/styles and entities, plus
+    Manim's <gradient> and <color> tags."""
+    @staticmethod
+    def _count_real_chars(text):
+        """Community's count of displayed characters (no tags, spaces or tabs)."""
+        import re
+        count, level = 0, 0
+        for char in re.sub('&[^;]+;', 'x', text):
+            if char == '<':
+                level += 1
+            if char == '>' and level > 0:
+                level -= 1
+            elif char not in ' \t' and level == 0:
+                count += 1
+        return count
+
+    @classmethod
+    def _extract_manim_tags(cls, markup, tag, attributes):
+        import re
+        pattern = '<' + tag + ''.join(r'\s+' + name + '="([^"]+)"' for name in attributes) + \
+                  r'(\s+offset="([^"]+)")?>(.+?)</' + tag + '>'
+        found = []
+        for match in re.finditer(pattern, markup, re.S):
+            start = cls._count_real_chars(markup[:match.start(0)])
+            end = start + cls._count_real_chars(match.group(len(attributes) + 3))
+            offsets = match.group(len(attributes) + 2).split(',') if match.group(len(attributes) + 2) else ['0']
+            start_offset = int(offsets[0]) if offsets[0] else 0
+            end_offset = int(offsets[1]) if len(offsets) == 2 and offsets[1] else 0
+            found.append((start - start_offset, end - start_offset - end_offset,
+                          [match.group(i + 1) for i in range(len(attributes))]))
+        markup = re.sub('<' + tag + '[^>]+>(.+?)</' + tag + '>', r'\1', markup, flags=re.S)
+        return markup, found
+
+    @staticmethod
+    def _parse_color(value):
+        if value.startswith('#'):
+            return ManimColor(value)
+        return ManimColor(_PALETTE.get(value.upper(), value))
+
+    def __init__(self, text, justify=False, **kwargs):
         import re, html
+        text, gradients = self._extract_manim_tags(str(text), 'gradient', ('from', 'to'))
+        text, colors = self._extract_manim_tags(text, 'color', ('col',))
+        self.justify = bool(justify)
         plain, styles, stack, at = '', [], [{}], 0
         for match in re.finditer(r'<(/?)(\w+)([^>]*)>|([^<]+)', str(text)):
             closing, tag, attributes, content = match.groups()
@@ -4789,6 +4830,17 @@ class MarkupText(Text):
                         glyph.set_color(value)
                     else:
                         setattr(glyph, key, value)
+        if colors or gradients:
+            # Community slices the displayed characters (spaces excluded).
+            self._explode()
+            chars = [glyph for glyph in self.children if glyph.text.strip()]
+            for start, end, (color,) in colors:
+                for glyph in chars[start:end]:
+                    glyph.set_color(self._parse_color(color))
+            for start, end, (first, last) in gradients:
+                selected = chars[start:end]
+                if selected:
+                    VGroup(*selected).set_color_by_gradient(self._parse_color(first), self._parse_color(last))
 
 
 def _number_text(number, options):
@@ -5115,45 +5167,94 @@ class MathTex(Text):
 SingleStringMathTex = MathTex
 
 
+_TEX_FONT_COMMANDS = {'textbf': 'textbf', 'textit': 'textit', 'emph': 'textit', 'textsl': 'textit',
+                      'texttt': 'texttt', 'textrm': 'textrm', 'textup': 'textrm', 'textnormal': 'text',
+                      'textsf': 'textsf', 'text': 'text', 'mbox': 'text'}
+_TEX_TEXT_SPACES = {' ', ',', ';', ':', '!', 'quad', 'qquad', 'enspace', 'thinspace', 'hfill', 'newline', '\\'}
+_TEX_TEXT_SYMBOLS = {'_': '_', 'ldots': '\u2026', 'dots': '\u2026', 'textendash': '\u2013', 'textemdash': '\u2014',
+                     'textquoteleft': '\u2018', 'textquoteright': '\u2019', 'textbullet': '\u2022',
+                     'copyright': '\u00a9', 'S': '\u00a7', 'P': '\u00b6', 'textdegree': '\u00b0',
+                     'LaTeX': 'LaTeX', 'TeX': 'TeX'}
+_TEX_MATH_ESCAPES = {'%': '\\%', '&': '\\&', '#': '\\#', '$': '\\$', '{': '\\{', '}': '\\}'}
+
+
 def _tex_text_to_math(text):
-    """Typeset LaTeX text mode with MathJax: text runs become \\text{...}."""
+    """Typeset LaTeX text mode with MathJax: text runs become \\text{...} (or font commands),
+    $math$ stays math, {groups} and Manim's {{ }} parts merge, and TeX specials are escaped."""
     import re
-    parts, math_mode, current, i = [], False, '', 0
-    while i < len(text):
-        char = text[i]
-        if char == '\\' and i + 1 < len(text):
-            current += text[i:i+2]
-            i += 2
-            continue
-        if char == '$':
-            parts.append((math_mode, current))
-            current, math_mode = '', not math_mode
-            i += 2 if text[i:i+2] == '$$' else 1
-            continue
-        current += char
-        i += 1
-    if math_mode:
-        raise ValueError('Unbalanced $ in Tex string')
-    parts.append((False, current))
-    result = []
-    for is_math, chunk in parts:
-        if is_math:
-            result.append(chunk)
-            continue
-        # Keep common font commands; everything else is literal text.
-        for piece in re.split(r'(\\(?:textbf|textit|emph|texttt|textrm|textsf)\{[^{}]*\})', chunk):
-            if not piece:
+    segments, i, n = [], 0, len(text)
+
+    def add_text(font, value):
+        if segments and segments[-1][0] == 'text' and segments[-1][1] == font:
+            segments[-1] = ('text', font, segments[-1][2] + value)
+        else:
+            segments.append(('text', font, value))
+
+    def parse(font, closing):
+        nonlocal i
+        while i < n:
+            char = text[i]
+            if char == '}':
+                i += 1
+                if closing:
+                    return
+                raise NotImplementedError('Tex supports text, $math$ and basic font commands in this preview')
+            if char == '{':
+                i += 1
+                parse(font, True)
                 continue
-            command = re.match(r'\\(textbf|textit|emph|texttt|textrm|textsf)\{([^{}]*)\}', piece)
-            if command:
-                name = {'emph': 'textit'}.get(command.group(1), command.group(1))
-                result.append('\\' + name + '{' + command.group(2) + '}')
-            else:
-                literal = piece.replace('\\\\', ' ').replace('~', ' ')
-                literal = re.sub(r'\\([%&#_{}$])', r'\1', literal)
-                if '\\' in literal or '{' in literal or '}' in literal:
+            if char == '$':
+                double = text.startswith('$$', i)
+                i += 2 if double else 1
+                start = i
+                while i < n and not (text[i] == '$' and text[i - 1] != '\\'):
+                    i += 1
+                if i >= n:
+                    raise ValueError('Unbalanced $ in Tex string')
+                segments.append(('math', None, text[start:i]))
+                i += 2 if double and text.startswith('$$', i) else 1
+                continue
+            if char == '\\':
+                match = re.match(r'\\([A-Za-z]+)\s*|\\(.)', text[i:], re.S)
+                if not match:
                     raise NotImplementedError('Tex supports text, $math$ and basic font commands in this preview')
-                result.append('\\text{' + literal + '}')
+                name = match.group(1) or match.group(2)
+                i += match.end()
+                if name in _TEX_FONT_COMMANDS:
+                    if i < n and text[i] == '{':
+                        i += 1
+                        parse(_TEX_FONT_COMMANDS[name], True)
+                    continue
+                if name in _TEX_TEXT_SPACES:
+                    add_text(font, ' ')
+                    continue
+                if name in _TEX_MATH_ESCAPES:
+                    segments.append(('math', None, _TEX_MATH_ESCAPES[name]))
+                    continue
+                if name in _TEX_TEXT_SYMBOLS and name not in ('LaTeX', 'TeX'):
+                    add_text(font, _TEX_TEXT_SYMBOLS[name])
+                    continue
+                raise NotImplementedError('Tex supports text, $math$ and basic font commands in this preview')
+            if char == '~':
+                add_text(font, ' ')
+            elif char in _TEX_MATH_ESCAPES:
+                segments.append(('math', None, _TEX_MATH_ESCAPES[char]))
+            elif char != '%':
+                add_text(font, char)
+            else:
+                # A TeX comment runs to the end of the line.
+                while i < n and text[i] != '\n':
+                    i += 1
+                continue
+            i += 1
+
+    parse('text', False)
+    result = []
+    for kind, font, value in segments:
+        if kind == 'math':
+            result.append(value)
+        elif value:
+            result.append('\\' + font + '{' + value + '}')
     return ''.join(result)
 
 

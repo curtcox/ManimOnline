@@ -8107,6 +8107,21 @@ class Demo(Scene):
         result = render("self.play(ApplyMatrix([[1, 1], [0, 2/3]], Text('Hello World!')), ApplyWave(MathTex('x^2')))")
         self.assertEqual(result['frames'][-1]['mobjects'][0]['glyph_matrix'], [1, 1, 0, 2 / 3])
 
+    def test_markup_gradient_tags_and_tex_text_mode_parsing(self):
+        # Manim 0.22 per-glyph colors.
+        text = lite.MarkupText('nice <gradient from="RED" to="YELLOW">intermediate</gradient> gradient',
+                               gradient=(lite.BLUE, lite.GREEN), justify=True)
+        self.assertEqual([str(g.color) for g in text.children],
+                         ['#58C4DD', '#59C3D7', '#5BC3D2', '#5DC3CD', '#FC6255', '#FB6C57', '#FB7759', '#FA825C',
+                          '#FA8D5E', '#F99860', '#F9A263', '#F8AD65', '#F8B867', '#F7C36A', '#F7CE6C', '#F7D96F',
+                          '#75C18A', '#77C185', '#79C180', '#7BC17B', '#7DC176', '#7FC171', '#81C16C', '#83C167'])
+        convert = lite._tex_text_to_math
+        self.assertEqual(convert(r'\texttt{time\_width={{0.2}}}'), r'\texttt{time_width=0.2}')
+        self.assertEqual(convert(r'50\% of \textbf{a \textit{b}}'), r'\text{50}\%\text{ of }\textbf{a }\textit{b}')
+        self.assertEqual(convert(r'cost $x^2$ \& more'), r'\text{cost }x^2\text{ }\&\text{ more}')
+        with self.assertRaises(NotImplementedError):
+            convert(r'\LaTeX')
+
 
 if __name__ == '__main__':
     unittest.main()
