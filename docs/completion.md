@@ -275,3 +275,9 @@ VectorField, ArrowVectorField and StreamLines are implemented with Community
 reference checks for positions, colors and traced lines. Raster background
 images, 3D fields and per-pixel stream coloring remain open; frame size limits
 dense stream fields.
+
+ConvexHull, Cutout, TangentialArc, ArcBrace, VDict, ScreenRectangle family,
+VectorizedPoint, ComplexValueTracker, UnitInterval, CurvesAsSubmobjects,
+LaggedStartMap, MaintainPositionRelativeTo, Blink, Broadcast, SpiralIn and
+AddTextWordByWord are implemented with Community reference checks where the
+output is deterministic.

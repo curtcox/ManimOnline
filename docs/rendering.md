@@ -2247,3 +2247,14 @@ static backgrounds and style-only animations (Create's `draw_progress`, opacity)
 no longer repeat their geometry. Typical gallery scenes shrink 2–10× below the
 12 MB transfer limit. Frame data is shared after expansion and must stay read-only.
 `render_scene` without `compact` still returns plain frames for tests and tools.
+
+Nonlinear point maps follow Community's `VMobject.apply_function`: anchors map
+exactly and each handle maps through a point 1% of the way from its anchor, scaled
+back by 100, so curves keep their tangents (ApplyWave on a single-cubic Line barely
+bends, exactly as in Community). Linear maps are unaffected. ConvexHull uses a
+monotone chain, counterclockwise from the lowest-leftmost vertex; Community's
+QuickHull order depends on set hashing and is not reproducible. AddTextWordByWord
+reveals whole words (Community's version iterates characters). In `play()`,
+UpdateFromFunc-based animations complete last so they see their neighbors' final
+states, and Succession samples UpdateFromFunc stages from a copy of the stage's
+starting state (Blink).

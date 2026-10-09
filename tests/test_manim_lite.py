@@ -144,6 +144,96 @@ self.play(stream.end_animation())""")
             self.assertEqual(expand(json.loads(compact)),json.loads(plain))
             self.assertLess(len(compact),len(plain)/2)
 
+    def test_screen_points_trackers_intervals_and_geometry_helpers(self):
+        screen=lite.ScreenRectangle()
+        self.assertEqual((round(screen.get_width(),3),screen.get_height(),round(screen.aspect_ratio,3)),(7.111,4,1.778))
+        screen.aspect_ratio=1
+        self.assertAlmostEqual(screen.get_width(),4)
+        full=lite.FullScreenRectangle()
+        self.assertEqual((round(full.get_width(),3),full.get_height()),(14.222,8))
+        point=lite.VectorizedPoint(lite.RIGHT*2)
+        self.assertEqual((point.get_width(),point.get_height()),(.01,.01))
+        self.assertPointAlmostEqual(point.set_location(lite.UP).get_location(),(0,1,0))
+        tracker=lite.ComplexValueTracker(1+2j)
+        self.assertEqual(tracker.set_value(3-1j).get_value(),3-1j)
+        self.assertEqual(tracker.increment_value(1j).get_value(),3+0j)
+        with self.assertRaises(ValueError): tracker.set_value(complex('nan'))
+        interval=lite.UnitInterval()
+        self.assertAlmostEqual(interval.get_length(),10)
+        self.assertEqual(interval.decimal_number_config['num_decimal_places'],1)
+        self.assertPointAlmostEqual(lite.line_intersection([lite.LEFT,lite.RIGHT],[lite.DOWN,lite.UP+lite.RIGHT]),(.5,0,0))
+        self.assertAlmostEqual(lite.angle_between_vectors(lite.RIGHT,lite.UP+lite.RIGHT),lite.PI/4)
+        with self.assertRaises(ValueError): lite.line_intersection([lite.LEFT,lite.RIGHT],[lite.UP,lite.UP+lite.RIGHT])
+        # TangentialArc corners measured with Manim Community 0.22.
+        l1,l2=lite.Line(lite.LEFT*2,lite.RIGHT*2),lite.Line(lite.DOWN*2+lite.LEFT,lite.UP*2+lite.RIGHT)
+        for corner,start,end in (((1,1),(.362,.724),(.809,0)),((-1,1),(-.309,0),(.138,.276)),
+                                 ((1,-1),(.309,0),(-.138,-.276)),((-1,-1),(-.362,-.724),(-.809,0))):
+            arc=lite.TangentialArc(l1,l2,radius=.5,corner=corner)
+            for value,expected in zip(list(arc.get_start()[:2])+list(arc.get_end()[:2]),start+end):
+                self.assertAlmostEqual(value,expected,places=3)
+        group=lite.VGroup(lite.Dot(lite.LEFT),lite.Dot(lite.RIGHT*3))
+        self.assertPointAlmostEqual(group.get_center_of_mass(),(1,0,0))
+        self.assertIs(group.set(width=2,color=lite.RED),group)
+        self.assertAlmostEqual(group.get_width(),2)
+        self.assertEqual(group[0].color,lite.RED)
+
+    def test_vdict_cutout_hull_curves_and_arc_brace(self):
+        mapping=lite.VDict([('a',lite.Circle()),('b',lite.Square())])
+        mapping['c']=lite.Dot()
+        mapping.remove('a')
+        self.assertEqual((len(mapping),'b' in mapping,'a' in mapping),(2,True,False))
+        self.assertIsInstance(mapping['c'],lite.Dot)
+        self.assertIs(mapping[0],mapping['b'])
+        with self.assertRaises(KeyError): mapping.remove('missing')
+        self.assertEqual(len(render('self.add(VDict({"x": Circle()}, show_keys=True))')['frames'][0]['mobjects']),1)
+        self.assertEqual((lite.Square().get_direction(),lite.Square().reverse_direction().get_direction()),('CCW','CW'))
+        self.assertEqual(lite.Square().force_direction('CW').get_direction(),'CW')
+        with self.assertRaises(ValueError): lite.Square().force_direction('up')
+        cut=lite.Cutout(lite.Square(4),lite.Circle(),lite.Square().shift(lite.RIGHT))
+        self.assertEqual((len(cut.get_points()),len(cut.get_subpaths())),(64,3))
+        hull=lite.ConvexHull((-2,-1,0),(2,-1,0),(0,2,0),(0,0,0),(1,.5,0))
+        self.assertEqual([tuple(v[:2]) for v in hull.get_vertices()],[(-2,-1),(2,-1),(0,2)])
+        with self.assertRaises(ValueError): lite.ConvexHull((0,0,0),(1,1,0),(2,2,0))
+        parts=lite.CurvesAsSubmobjects(lite.Circle(color=lite.RED))
+        self.assertEqual(len(parts),8)
+        self.assertEqual(parts[0].stroke_color,lite.RED)
+        self.assertAlmostEqual(parts.point_from_proportion(.3)[0],-.309,places=3)
+        # ArcBrace measured with Manim Community 0.22 (complex exponential of a brace).
+        brace=lite.ArcBrace()
+        self.assertEqual((round(brace.get_width(),3),round(brace.get_height(),3)),(.945,2.309))
+        brace=lite.ArcBrace(lite.Arc(radius=2,start_angle=0,angle=lite.PI/2))
+        self.assertEqual((round(brace.get_width(),3),round(brace.get_center()[0],3)),(2.4,1.199))
+
+    def test_spiral_broadcast_blink_word_reveal_and_relative_position(self):
+        shapes=lite.VGroup(lite.Square().shift(lite.LEFT*2),lite.Circle(fill_opacity=.5).shift(lite.RIGHT*2),lite.Triangle().shift(lite.UP))
+        spiral=lite.SpiralIn(shapes,rate_func=lite.linear)
+        # Mid-animation centers and opacities measured with Manim Community 0.22.
+        placed=spiral._place(shapes.copy(),.1)
+        for shape,center in zip(placed,[(-10.858,-12.457),(15.678,6.823),(-3.468,5.523)]):
+            self.assertAlmostEqual(shape.get_center()[0],center[0],places=3)
+            self.assertAlmostEqual(shape.get_center()[1],center[1],places=3)
+        self.assertEqual([round(s.fill_opacity,3) for s in placed],[0,.167,0])
+        scene=lite.Scene()
+        scene.play(spiral)
+        for shape,center in zip(shapes,[(-2,0),(2,0),(0,1)]):
+            self.assertAlmostEqual(shape.get_center()[0],center[0])
+        self.assertEqual(shapes[1].fill_opacity,.5)
+        frames=render("c = Circle()\nself.play(Broadcast(c, focal_point=RIGHT, n_mobs=3, run_time=2))")['frames']
+        self.assertEqual([(round(o['radius']*2*o['geometry_scale'],3),round(o['stroke_opacity'],3)) for o in frames[15]['mobjects']],
+                         [(1.772,.114),(1.0,.5),(.228,.886)])
+        self.assertEqual(frames[-1]['mobjects'],[])
+        blink=render("d = Dot()\nself.play(Blink(d, blinks=2), run_time=2.5)")['frames']
+        self.assertEqual([f['mobjects'][0]['fill_opacity'] for f in blink[1::8]],[1,0,1,0,1])
+        words=render("t=Text('hello brave new world')\nself.play(AddTextWordByWord(t))")['frames']
+        counts={len(''.join(l['text'] for l in f['mobjects'][0]['layout']['lines'])) for f in words if f['mobjects']}
+        self.assertTrue(counts <= {0,5,6,11,12,15,16,21})
+        follow=render("s=Square()\nd = Dot(UP*3)\nself.add(s,d)\nself.play(MaintainPositionRelativeTo(d, s), s.animate.shift(RIGHT*2))")['frames']
+        for frame in (follow[8],follow[-1]):
+            square,dot=frame['mobjects']
+            self.assertAlmostEqual(square['position'][0]+square['geometry_center'][0],dot['position'][0]+dot['geometry_center'][0])
+        lagged=lite.LaggedStartMap(lite.FadeIn,lite.VGroup(lite.Dot(),lite.Square()),run_time=2)
+        self.assertEqual((len(lagged.animations),lagged.run_time),(2,2))
+
     def test_set_style_routes_fill_and_stroke(self):
         square=lite.Square().set_style(fill_color=lite.RED,fill_opacity=.5,stroke_color=lite.BLUE,
                                        stroke_width=6,stroke_opacity=.25,background_stroke_width=0)
@@ -261,7 +351,8 @@ self.play(stream.end_animation())""")
         wave=render('l = Line(LEFT*3, RIGHT*3)\nself.add(l)\nself.play(ApplyWave(l, amplitude=.5), rate_func=linear)')
         middle=wave['frames'][15]['mobjects'][0]
         self.assertEqual(middle['type'],'bezierpath')
-        self.assertGreater(max(p[1] for c in middle['curves'] for p in c),.1)
+        # Community maps a Line's single cubic with derivative-following handles (Manim 0.22 value).
+        self.assertAlmostEqual(max(p[1] for c in middle['curves'] for p in c),0.023215744788869893)
         self.assertEqual(wave['frames'][-1]['mobjects'][0]['type'],'bezierpath')
         flow=lite.Scene()
         dot=lite.Dot(lite.RIGHT)
@@ -938,15 +1029,19 @@ assert isinstance(t.get_value(), (int, float))""")
     def test_function_mapping_controls_contours_and_atomic_failure(self):
         line=lite.Line((1,1,0),(3,1,0)).rotate(.2)
         old=line.get_points()
-        line.apply_function(lambda p:(p[0],p[1]+p[0]**2,0))
+        warp=lambda p:(p[0],p[1]+p[0]**2,0)
+        line.apply_function(warp)
         self.assertEqual(line._type,'bezierpath')
-        for actual,point in zip(line.get_points(),old):
-            self.assertPointAlmostEqual(actual,(point[0],point[1]+point[0]**2,0))
+        for actual,point in zip(line.get_points(),self.community_mapped(old,warp)):
+            self.assertPointAlmostEqual(actual,point)
         polygon=lite.Polygon((1,1,0),(3,1,0),(2,2,0))
         old=polygon.get_points()
-        polygon.apply_function(lambda p:(p[0],p[1]+p[0]**2,0))
-        for actual,point in zip(polygon.get_points(),old):
-            self.assertPointAlmostEqual(actual,(point[0],point[1]+point[0]**2,0))
+        polygon.apply_function(warp)
+        for actual,point in zip(polygon.get_points(),self.community_mapped(old,warp)):
+            self.assertPointAlmostEqual(actual,point)
+        for index,point in enumerate(old):
+            if index%4 in (0,3):  # Anchors map exactly.
+                self.assertPointAlmostEqual(polygon.get_points()[index],warp(point))
         # Only actual geometry points reach user callbacks, not the container origin.
         safe=lite.VGroup(lite.Line((1,1,0),(2,1,0)))
         safe.apply_function(lambda p:(1/p[0],p[1],0))
@@ -972,17 +1067,19 @@ assert isinstance(t.get_value(), (int, float))""")
         old=path.get_points()
         pivot=lite.Vector((1,1,0))
         path.apply_complex_function(lambda z:z*z,about_point=pivot)
-        for actual,point in zip(path.get_points(),old):
+        def square(point):
             value=complex(point[0]-1,point[1]-1)**2
-            self.assertPointAlmostEqual(actual,(value.real+1,value.imag+1,0))
+            return (value.real+1,value.imag+1,0)
+        for actual,point in zip(path.get_points(),self.community_mapped(old,square)):
+            self.assertPointAlmostEqual(actual,point)
         path.save_state()
         before=path.to_dict()
         path.apply_matrix([[1,.5],[0,1]]).restore()
         self.assertEqual(path.to_dict(),before)
         result=render('line = Line((1,1,0),(3,1,0))\nself.play(line.animate.apply_function(lambda p:(p[0],p[1]+p[0]**2,0)),run_time=2,rate_func=linear)')
         middle=result['frames'][15]['mobjects'][0]
-        for control in middle['curves'][0]:
-            # Geometry is stored relative to the retained line origin.
+        for control in (middle['curves'][0][0],middle['curves'][0][3]):
+            # Geometry is stored relative to the retained line origin; anchors map exactly.
             point=lite.Vector(control)+lite.Vector(middle['position'])
             self.assertAlmostEqual(point[1],1+.5*point[0]**2)
 
@@ -5932,6 +6029,17 @@ self.wait(1)""")
         text = (ROOT / 'examples/geometry/arc.md').read_text()
         result = json.loads(lite.render_scene(text.split('```py\n')[1].split('```')[0]))
         self.assertEqual(result['frames'][0]['mobjects'][0]['type'], 'arc')
+
+    @staticmethod
+    def community_mapped(points, function):
+        """Community's VMobject.apply_function: anchors map; handles follow 1% offsets."""
+        result=[]
+        for i in range(0,len(points),4):
+            a0,h1,h2,a1=[lite.Vector(p) for p in points[i:i+4]]
+            m0,m1=lite.Vector(function(a0)),lite.Vector(function(a1))
+            result+=[m0,m0+(lite.Vector(function(a0+(h1-a0)*.01))-m0)*100,
+                     m1+(lite.Vector(function(a1+(h2-a1)*.01))-m1)*100,m1]
+        return result
 
     def assertPointAlmostEqual(self, point, expected):
         for value, target in zip(point, expected):

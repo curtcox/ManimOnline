@@ -1470,3 +1470,12 @@ Community colors 2D stream lines from a raster of field colors; the preview
 approximates this with a gradient along each line's chord. Dense stream fields
 are costly: a few hundred lines can take tens of seconds to render. Repeated
 objects and unchanged geometry are pooled when frames leave the worker.
+
+The **Hulls, cutouts and attention effects** example covers `ConvexHull`,
+`Cutout`, `TangentialArc`, `ArcBrace`, `VDict`, `LaggedStartMap`, `Broadcast`,
+`Blink`, `SpiralIn` and `AddTextWordByWord`. Also available: `ScreenRectangle`,
+`FullScreenRectangle`, `VectorizedPoint`, `ComplexValueTracker`, `UnitInterval`,
+`CurvesAsSubmobjects`, `MaintainPositionRelativeTo`, `Mobject.set(...)`,
+`get_center_of_mass`, `get_direction`/`force_direction`, `line_intersection` and
+`angle_between_vectors`. Nonlinear `apply_function`/`apply_complex_function` maps
+now move handles like Community (along the map's local derivative).

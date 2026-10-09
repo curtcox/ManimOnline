@@ -555,3 +555,10 @@ The worker transfers pooled frames (`render_scene(..., compact=True)`, expanded 
 Never mutate frame data in the page, renderer, player, math or export code.
 `tests/unified-worker.test.js` covers the decoder; a Python test checks that the
 expanded pooled output equals plain render_scene output.
+
+Read `examples/effects_scene.py` for hulls, cutouts, tangent arcs, arc braces and
+attention effects. Nonlinear maps must keep Community's 1%-handle derivative rule;
+tests compare against `community_mapped`. VDict keeps `submob_dict` (excluded from
+frames) and still accepts plain Mobjects in add/remove for group internals.
+UpdateFromFunc animations complete last in play(); Succession stages built from
+them carry a starting-state copy for sampling.

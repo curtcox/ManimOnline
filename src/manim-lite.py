@@ -1,5 +1,6 @@
 """Small, explicit Manim subset for SVG frame playback (not full Manim)."""
 import bisect
+import cmath
 import copy
 import inspect
 import json
@@ -722,7 +723,18 @@ class Mobject:
                 new.vertices = [local(point) for point in old.vertices]
             elif kind in ('circle','ellipse','arc','square','rectangle','triangle','annulus','bezierpath','line','arrow','polygon','polyline'):
                 paths = _path_subpaths(snapshot,include_pending=False)
-                new.curves = [[local(point) for point in curve] for path in paths for curve in path]
+                if linear:
+                    new.curves = [[local(point) for point in curve] for path in paths for curve in path]
+                else:
+                    # Community's VMobject.apply_function pulls handles to 1% of their anchor
+                    # distance, maps, then scales back: handles follow the map's local derivative.
+                    def curve_map(curve):
+                        a0, h1, h2, a1 = (Vector(point) for point in curve)
+                        m0, m1 = local(a0), local(a1)
+                        near1, near2 = local(a0 + (h1 - a0) * .01), local(a1 + (h2 - a1) * .01)
+                        return [m0, [m0[i] + (near1[i] - m0[i]) * 100 for i in range(3)],
+                                [m1[i] + (near2[i] - m1[i]) * 100 for i in range(3)], m1]
+                    new.curves = [curve_map(curve) for path in paths for curve in path]
                 pending = (old.vertices if kind == 'bezierpath' else
                            old.vertices if kind == 'polyline' and len(old.vertices)==1 else [])
                 new.vertices = [local(point) for point in pending]
@@ -1071,6 +1083,39 @@ class Mobject:
 
     def has_no_points(self):
         return not self.has_points()
+
+    def get_cubic_bezier_tuples(self):
+        points = self.get_points()
+        return [tuple(Vector(p) for p in points[i:i + 4]) for i in range(0, len(points) - len(points) % 4, 4)]
+
+    def get_start_anchors(self):
+        return [curve[0] for curve in self.get_cubic_bezier_tuples()]
+
+    def get_end_anchors(self):
+        return [curve[3] for curve in self.get_cubic_bezier_tuples()]
+
+    def get_anchors(self):
+        return [point for curve in self.get_cubic_bezier_tuples() for point in (curve[0], curve[3])]
+
+    def get_center_of_mass(self):
+        points = [Vector(p) for member in self.get_family() for p in member.get_points()]
+        if not points:
+            return self.get_center()
+        return Vector(sum(p[i] for p in points) / len(points) for i in range(3))
+
+    def set(self, **kwargs):
+        """Community's set(attr=value): sizes and styles use their setters, others are stored."""
+        setters = {'width': self.scale_to_fit_width, 'height': self.scale_to_fit_height,
+                   'color': self.set_color, 'opacity': self.set_opacity, 'z_index': self.set_z_index,
+                   'fill_color': lambda v: self.set_fill(color=v), 'fill_opacity': lambda v: self.set_fill(opacity=v),
+                   'stroke_color': lambda v: self.set_stroke(color=v), 'stroke_width': lambda v: self.set_stroke(width=v),
+                   'stroke_opacity': lambda v: self.set_stroke(opacity=v)}
+        for name, value in kwargs.items():
+            if name in setters:
+                setters[name](value)
+            else:
+                setattr(self, name, value)
+        return self
 
     def get_num_curves(self):
         return self.get_num_points() // 4
@@ -1716,6 +1761,19 @@ class VMobject(Mobject):
         kwargs.setdefault('stroke_width', 4)
         super().__init__(**kwargs)
         self._type, self.vertices = 'polyline', []
+
+    def get_direction(self):
+        """Community's shoelace orientation of the start anchors: 'CW' or 'CCW'."""
+        anchors = self.get_start_anchors()
+        area = sum((b[0] - a[0]) * (b[1] + a[1]) / 2 for a, b in zip(anchors, anchors[1:]))
+        return 'CW' if area > 0 else 'CCW'
+
+    def force_direction(self, target_direction):
+        if target_direction not in ('CW', 'CCW'):
+            raise ValueError('Invalid input for force_direction. Use "CW" or "CCW"')
+        if self.get_direction() != target_direction:
+            self.reverse_direction()
+        return self
 
     @staticmethod
     def _corners(points):
@@ -7342,12 +7400,15 @@ class Succession(AnimationGroup):
         self._stages = []
         for animation in animations:
             staging.validate(animation)
+            # Update-function stages act on a live object; sample them from a copy of
+            # the stage's starting state instead.
+            source = animation.mobject.copy() if isinstance(animation, UpdateFromFunc) else None
             animation.prepare(staging)
             baseline = {originals[id(m)]: [m.to_dict()] for m in staging.mobjects
                         if originals[id(m)] in owned}
             # Remap only identity keys; start/terminal geometry stays snapshotted.
             prepared = copy.deepcopy(animation, originals.copy())
-            self._stages.append((baseline, prepared))
+            self._stages.append((baseline, prepared, source))
             animation._complete(staging)
         # Placeholder roots allow capture() to include later introductions. Their
         # states remain empty until the relevant stage; geometry stays untouched.
@@ -7361,10 +7422,14 @@ class Succession(AnimationGroup):
             if start <= time:
                 stage = index
         start, duration = self.timings[stage]
-        baseline, animation = self._stages[stage]
+        baseline, animation, source = self._stages[stage]
         result = {m: [] for m in self.objects()}
         result.update(baseline)
         result.update(animation.states((time - start) / duration))
+        if source is not None:
+            probe = source.copy()
+            animation._call(probe)
+            result[animation.mobject] = [probe.to_dict()]
         return result
 
     def finish(self, scene):
@@ -7748,15 +7813,13 @@ class AddTextLetterByLetter(Animation):
 
     def sample(self, alpha):
         result = _snapshot_copy(self.start)
+        progress = 1 - alpha if self._removing else alpha
         if result['type'] == 'vgroup':
             # Glyph children (Community's structure): reveal them in order.
-            count = len(result['children'])
-            shown = max(0, min(count, int(self.int_func((1 - alpha if self._removing else alpha) * count))))
-            result['children'] = result['children'][:shown]
+            result['children'] = result['children'][:self._shown(progress, len(result['children']))]
             return [result]
         layout = _text_layout(result)
-        glyphs = sum(1 for char in result['text'] if not char.isspace())
-        shown = max(0, min(glyphs, int(self.int_func((1 - alpha if self._removing else alpha) * glyphs))))
+        shown = self._shown(progress, sum(1 for char in result['text'] if not char.isspace()))
         em = layout['em'] / 1000
         for line in layout['lines']:
             kept = ''
@@ -7770,6 +7833,11 @@ class AddTextLetterByLetter(Animation):
             line['length'] = sum(_glyph_box(char, _SANS_GLYPHS)[0] for char in kept) * em
         result['layout'] = layout
         return [result]
+
+
+    def _shown(self, alpha, count):
+        """How many non-space glyphs are visible at this progress."""
+        return max(0, min(count, int(self.int_func(alpha * count))))
 
 
 class RemoveTextLetterByLetter(AddTextLetterByLetter):
@@ -8027,7 +8095,9 @@ class Scene:
                 overrides.update(animation.states(time / duration))
             self._update_mobjects(0 if frame == 0 else 1 / FPS, overrides)
             self.capture(overrides)
-        for animation in animations:
+        # Update-function animations finish last, seeing their neighbors' final states as
+        # Community's last frame does (e.g. MaintainPositionRelativeTo a moving object).
+        for animation in sorted(animations, key=lambda a: isinstance(a, UpdateFromFunc)):
             animation._complete(self)
         self._update_mobjects(1 / FPS, {m: [m.to_dict()] for a in animations for m in a.objects()})
 
@@ -8097,6 +8167,376 @@ class Scene:
 
 class MovingCameraScene(Scene):
     camera_class = MovingCamera
+
+
+DEFAULT_LAGGED_START_LAG_RATIO = 0.05
+
+
+def line_intersection(line1, line2):
+    """Community's XY intersection of two infinite lines, each given by two points."""
+    (a, b), (c, d) = [[Vector(p) for p in line] for line in (line1, line2)]
+    denominator = (a[0] - b[0]) * (c[1] - d[1]) - (a[1] - b[1]) * (c[0] - d[0])
+    if abs(denominator) < 1e-12:
+        raise ValueError('The lines are parallel, there is no unique intersection point.')
+    first, second = a[0] * b[1] - a[1] * b[0], c[0] * d[1] - c[1] * d[0]
+    return Vector(((first * (c[0] - d[0]) - (a[0] - b[0]) * second) / denominator,
+                   (first * (c[1] - d[1]) - (a[1] - b[1]) * second) / denominator, 0))
+
+
+def angle_between_vectors(v1, v2):
+    """Unsigned angle between two vectors, in [0, pi]."""
+    v1, v2 = Vector(v1), Vector(v2)
+    cross = (v1[1] * v2[2] - v1[2] * v2[1], v1[2] * v2[0] - v1[0] * v2[2], v1[0] * v2[1] - v1[1] * v2[0])
+    return 2 * math.atan2(math.hypot(*cross), sum(a * b for a, b in zip(v1, v2)) +
+                          math.sqrt(sum(a * a for a in v1) * sum(b * b for b in v2)))
+
+
+class ScreenRectangle(Rectangle):
+    def __init__(self, aspect_ratio=16.0 / 9.0, height=4, **kwargs):
+        super().__init__(width=aspect_ratio * height, height=height, **kwargs)
+
+    @property
+    def aspect_ratio(self):
+        return self.get_width() / self.get_height()
+
+    @aspect_ratio.setter
+    def aspect_ratio(self, value):
+        self.stretch_to_fit_width(value * self.get_height())
+
+
+class FullScreenRectangle(ScreenRectangle):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.scale_to_fit_height(config.frame_height)
+
+
+class VectorizedPoint(VMobject):
+    """An invisible point with Community's artificial 0.01 width and height."""
+    def __init__(self, location=ORIGIN, color=BLACK, fill_opacity=0, stroke_width=0,
+                 artificial_width=0.01, artificial_height=0.01, **kwargs):
+        super().__init__(color=color, fill_opacity=fill_opacity, stroke_width=stroke_width, **kwargs)
+        self.artificial_width, self.artificial_height = artificial_width, artificial_height
+        self.set_location(location)
+
+    def get_width(self):
+        return self.artificial_width
+
+    def get_height(self):
+        return self.artificial_height
+
+    def get_location(self):
+        return self.get_center()
+
+    def set_location(self, new_loc):
+        self.set_points_as_corners([new_loc, new_loc])
+        return self
+
+
+class ComplexValueTracker(ValueTracker):
+    """A tracker for a complex number, stored as the x and y coordinates."""
+    def get_value(self):
+        return complex(self.position[0], self.position[1])
+
+    def set_value(self, value):
+        try:
+            z = complex(value)
+        except (TypeError, ValueError):
+            raise ValueError('ComplexValueTracker requires a complex number') from None
+        if not (math.isfinite(z.real) and math.isfinite(z.imag)):
+            raise ValueError('ComplexValueTracker requires a finite complex number')
+        self.position[0], self.position[1] = float(z.real), float(z.imag)
+        return self
+
+    def increment_value(self, d_value):
+        return self.set_value(self.get_value() + complex(d_value))
+
+
+class UnitInterval(NumberLine):
+    def __init__(self, unit_size=10, numbers_with_elongated_ticks=None, decimal_number_config=None, **kwargs):
+        super().__init__(x_range=(0, 1, 0.1), unit_size=unit_size,
+                         numbers_with_elongated_ticks=[0, 1] if numbers_with_elongated_ticks is None
+                         else numbers_with_elongated_ticks,
+                         decimal_number_config={'num_decimal_places': 1} if decimal_number_config is None
+                         else decimal_number_config, **kwargs)
+
+
+class TangentialArc(ArcBetweenPoints):
+    """An arc of the given radius tangent to two lines, in the corner chosen by signs."""
+    def __init__(self, line1, line2, radius, corner=(1, 1), **kwargs):
+        NumberLine._real(radius, 'TangentialArc radius', positive=True)
+        intersection = line_intersection([line1.get_start(), line1.get_end()],
+                                         [line2.get_start(), line2.get_end()])
+        s1, s2 = corner
+        unit1, unit2 = line1.get_unit_vector() * s1, line2.get_unit_vector() * s2
+        corner_angle = angle_between_vectors(unit1, unit2)
+        distance = radius / math.tan(corner_angle / 2)
+        point1, point2 = intersection + unit1 * distance, intersection + unit2 * distance
+        cross = unit1[0] * unit2[1] - unit1[1] * unit2[0]
+        start, end = (point1, point2) if cross < 0 else (point2, point1)
+        super().__init__(start=start, end=end, radius=radius, **kwargs)
+
+
+class CurvesAsSubmobjects(VGroup):
+    """Each cubic curve of a path as its own child, styled like the source."""
+    def __init__(self, vmobject, **kwargs):
+        super().__init__(**kwargs)
+        parts = []
+        for curve in vmobject.get_cubic_bezier_tuples():
+            part = VMobject().set_points(list(curve))
+            part.match_style(vmobject, family=False)
+            parts.append(part)
+        self.add(*parts)
+
+    def point_from_proportion(self, alpha):
+        if alpha < 0 or alpha > 1:
+            raise ValueError(f'Alpha {alpha} not between 0 and 1.')
+        parts = [part for part in self.children if not part.has_no_points()]
+        if not parts:
+            raise ValueError('CurvesAsSubmobjects has no submobjects with points')
+        if alpha == 1:
+            return Vector(parts[-1].get_points()[-1])
+        lengths = [part.get_arc_length() for part in parts]
+        target, current = alpha * sum(lengths), 0
+        for part, length in zip(parts, lengths):
+            if current + length >= target:
+                return part.point_from_proportion((target - current) / length if length else 0)
+            current += length
+        return Vector(parts[-1].get_points()[-1])
+
+
+class VDict(VGroup):
+    """A VGroup addressed by keys; show_keys labels each value with a Tex key."""
+    def __init__(self, mapping_or_iterable=None, show_keys=False, **kwargs):
+        super().__init__(**kwargs)
+        self.show_keys = show_keys
+        self.submob_dict = {}
+        self.add(mapping_or_iterable or {})
+
+    def __repr__(self):
+        return f'{type(self).__name__}({self.submob_dict!r})'
+
+    def add(self, *mappings):
+        # Group internals may still add plain children; keyed additions use mappings.
+        if all(isinstance(m, Mobject) for m in mappings):
+            return super().add(*mappings) if mappings else self
+        if len(mappings) != 1:
+            raise TypeError('VDict.add expects one mapping or iterable of (key, value) pairs')
+        for key, value in dict(mappings[0]).items():
+            self.add_key_value_pair(key, value)
+        return self
+
+    def remove(self, *keys):
+        if keys and all(isinstance(k, Mobject) for k in keys):
+            for mobject in keys:
+                for key in [k for k, v in self.submob_dict.items() if v is mobject]:
+                    del self.submob_dict[key]
+            return super().remove(*keys)
+        for key in keys:
+            if key not in self.submob_dict:
+                raise KeyError(f"The given key '{key!s}' is not present in the VDict")
+            super().remove(self.submob_dict.pop(key))
+        return self
+
+    def __getitem__(self, key):
+        if key in self.submob_dict:
+            return self.submob_dict[key]
+        if isinstance(key, (int, slice)) and not isinstance(key, bool):
+            return super().__getitem__(key)
+        raise KeyError(key)
+
+    def __setitem__(self, key, value):
+        if key in self.submob_dict:
+            self.remove(key)
+        self.add([(key, value)])
+
+    def __delitem__(self, key):
+        del self.submob_dict[key]
+
+    def __contains__(self, key):
+        return key in self.submob_dict
+
+    def get_all_submobjects(self):
+        return self.submob_dict.values()
+
+    def add_key_value_pair(self, key, value):
+        if not isinstance(value, Mobject):
+            raise TypeError('VDict values must be Mobjects')
+        if self.show_keys:
+            value.add(Tex(str(key)).next_to(value, LEFT))
+        self.submob_dict[key] = value
+        super().add(value)
+        return self
+
+
+class Cutout(VMobject):
+    """A main outline with holes: each cut is forced to the opposite winding."""
+    def __init__(self, main_shape, *mobjects, **kwargs):
+        super().__init__(**kwargs)
+        self.append_points(main_shape.get_points())
+        direction = 'CCW' if main_shape.get_direction() == 'CW' else 'CW'
+        for mobject in mobjects:
+            # Each hole is a separate, oppositely wound contour (nonzero fill leaves it empty).
+            self.append_points(mobject.copy().force_direction(direction).get_points())
+
+
+def _convex_hull(points):
+    """Monotone-chain XY hull, counterclockwise from the lowest-leftmost vertex."""
+    unique = sorted({(float(p[0]), float(p[1])) for p in points})
+    if len(unique) < 3:
+        raise ValueError('Not enough points supplied to build Convex Hull!')
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+    lower, upper = [], []
+    for point in unique:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], point) <= 0:
+            lower.pop()
+        lower.append(point)
+    for point in reversed(unique):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], point) <= 0:
+            upper.pop()
+        upper.append(point)
+    hull = lower[:-1] + upper[:-1]
+    if len(hull) < 3:
+        raise ValueError('The points do not span the full coordinate dimension.')
+    start = min(range(len(hull)), key=lambda i: (hull[i][1], hull[i][0]))
+    return [Vector(point) for point in hull[start:] + hull[:start]]
+
+
+class ConvexHull(Polygram):
+    """The convex hull of XY points. Community's QuickHull vertex order depends on set
+    hashing; this one is counterclockwise from the lowest-leftmost vertex."""
+    def __init__(self, *points, tolerance=1e-5, **kwargs):
+        for point in points:
+            Mobject._xy_vector(point, 'ConvexHull point')
+        super().__init__(_convex_hull(points), **kwargs)
+
+
+class ArcBrace(Brace):
+    """Community's brace bent around an Arc through the complex exponential map."""
+    def __init__(self, arc=None, direction=RIGHT, **kwargs):
+        if arc is None:
+            arc = Arc(start_angle=-1, angle=2, radius=1)
+        end_angle = arc.start_angle + arc.arc_angle
+        line = Line(UP * arc.start_angle, UP * end_angle)
+        radius = arc.radius * arc.geometry_scale
+        if radius >= 1:
+            line.scale(radius, about_point=ORIGIN)
+            super().__init__(line, direction=direction, **kwargs)
+            self.scale(1 / radius, about_point=ORIGIN)
+        else:
+            super().__init__(line, direction=direction, **kwargs)
+        self.shift(RIGHT * math.log(radius if radius >= .3 else .3))
+        self.apply_complex_function(cmath.exp)
+        self.shift(arc.get_arc_center())
+
+
+class LaggedStartMap(LaggedStart):
+    def __init__(self, animation_class, mobject, arg_creator=None, run_time=2,
+                 lag_ratio=DEFAULT_LAGGED_START_LAG_RATIO, **kwargs):
+        arg_creator = arg_creator or (lambda mob: (mob,))
+        kwargs.pop('lag_ratio', None)
+        animations = [animation_class(*arg_creator(submob), **kwargs) for submob in mobject]
+        super().__init__(*animations, run_time=run_time, lag_ratio=lag_ratio)
+
+
+class MaintainPositionRelativeTo(UpdateFromFunc):
+    """Keep a mobject's offset from a tracked mobject (which may be animated alongside)."""
+    def __init__(self, mobject, tracked_mobject, **kwargs):
+        self.tracked_mobject = tracked_mobject
+        self.diff = mobject.get_center() - tracked_mobject.get_center()
+        super().__init__(mobject, self._follow, **kwargs)
+
+    def _follow(self, mobject):
+        mobject.shift(self.tracked_mobject.get_center() - mobject.get_center() + self.diff)
+
+
+class Blink(Succession):
+    def __init__(self, mobject, time_on=0.5, time_off=0.5, blinks=1, hide_at_end=False, **kwargs):
+        if isinstance(blinks, bool) or not isinstance(blinks, numbers.Integral) or not 1 <= blinks <= 100:
+            raise ValueError('blinks must be an integer from 1 to 100')
+        show = lambda: UpdateFromFunc(mobject, lambda mob: mob.set_opacity(1.0), run_time=time_on)
+        hide = lambda: UpdateFromFunc(mobject, lambda mob: mob.set_opacity(0.0), run_time=time_off)
+        animations = [anim for _ in range(blinks) for anim in (show(), hide())]
+        if not hide_at_end:
+            animations.append(show())
+        super().__init__(*animations, **kwargs)
+
+
+class Broadcast(LaggedStart):
+    """Copies grow from a focal point while fading, like ripples."""
+    def __init__(self, mobject, focal_point=ORIGIN, n_mobs=5, initial_opacity=1, final_opacity=0,
+                 initial_width=0.0, remover=True, lag_ratio=0.2, run_time=3, **kwargs):
+        if isinstance(n_mobs, bool) or not isinstance(n_mobs, numbers.Integral) or not 1 <= n_mobs <= 100:
+            raise ValueError('n_mobs must be an integer from 1 to 100')
+        self.focal_point, self.n_mobs = focal_point, n_mobs
+        self.initial_opacity, self.final_opacity, self.initial_width = initial_opacity, final_opacity, initial_width
+        filled = bool(mobject.fill_opacity)
+        animations = []
+        for _ in range(n_mobs):
+            mob = mobject.copy()
+            if filled:
+                mob.set_opacity(final_opacity)
+            else:
+                mob.set_stroke(opacity=final_opacity)
+            mob.move_to(focal_point)
+            mob.save_state()
+            mob.set(width=initial_width)
+            if filled:
+                mob.set_opacity(initial_opacity)
+            else:
+                mob.set_stroke(opacity=initial_opacity)
+            animations.append(Restore(mob, remover=remover))
+        super().__init__(*animations, run_time=run_time, lag_ratio=lag_ratio, **kwargs)
+
+
+class SpiralIn(Animation):
+    """Shapes spiral in from scaled-out positions, fading in over the first fraction."""
+    def __init__(self, shapes, scale_factor=8, fade_in_fraction=0.3, **kwargs):
+        NumberLine._real(fade_in_fraction, 'fade_in_fraction', positive=True)
+        self.shapes = shapes.copy()
+        self.scale_factor, self.fade_in_fraction = scale_factor, fade_in_fraction
+        self.shape_center = shapes.get_center()
+        self.moves = []
+        for shape in shapes:
+            final = shape.get_center()
+            initial = final + (final - self.shape_center) * scale_factor
+            shape.move_to(initial)
+            self.moves.append((final, initial))
+        super().__init__(shapes, introducer=True, **kwargs)
+
+    def _place(self, group, alpha):
+        for original, shape, (final, initial) in zip(self.shapes, group, self.moves):
+            shape.move_to(initial)
+            fill, stroke = original.fill_opacity, original.stroke_opacity
+            shape.shift((final - initial) * alpha)
+            shape.rotate(TAU * alpha, about_point=self.shape_center)
+            shape.rotate(-TAU * alpha, about_point=shape.get_center_of_mass())
+            shape.set_fill(opacity=min(fill, alpha * fill / self.fade_in_fraction))
+            shape.set_stroke(opacity=min(stroke, alpha * stroke / self.fade_in_fraction))
+        return group
+
+    def sample(self, alpha):
+        return [self._place(self.mobject.copy(), alpha).to_dict()]
+
+    def finish(self, scene):
+        self._place(self.mobject, 1)
+        for shape, (final, _) in zip(self.mobject, self.moves):
+            shape.move_to(final)  # A full turn returns each shape exactly home.
+
+
+class AddTextWordByWord(AddTextLetterByLetter):
+    """Reveal whole words of a Text in order (Community's version reveals characters)."""
+    def __init__(self, text_mobject, run_time=None, time_per_char=0.06, **kwargs):
+        super().__init__(text_mobject, run_time=run_time, time_per_char=time_per_char, **kwargs)
+        self.word_ends = []
+        count = 0
+        for word in text_mobject.text.split():
+            count += len(word)
+            self.word_ends.append(count)
+
+    def _shown(self, alpha, count):
+        words = max(0, min(len(self.word_ends), int(self.int_func(alpha * len(self.word_ends)))))
+        return min(count, self.word_ends[words - 1]) if words else 0
 
 
 class _PCG64:
@@ -8528,7 +8968,7 @@ class _StreamLinesEnd(Animation):
 EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
            'Triangle', 'Polygon', 'Polygram', 'RegularPolygram', 'RegularPolygon', 'Star', 'Brace', 'BraceBetweenPoints', 'BraceLabel', 'BraceText',
            'Title', 'BulletedList', 'Tex', 'SingleStringMathTex', 'MarkupText', 'LabeledDot', 'Variable', 'always', 'f_always', 'always_shift', 'always_rotate',
-           'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'BarChart', 'PolarPlane', 'NumberPlane', 'ComplexPlane', 'VectorField', 'ArrowVectorField', 'StreamLines', 'sigmoid', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
+           'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'BarChart', 'PolarPlane', 'NumberPlane', 'ComplexPlane', 'VectorField', 'ArrowVectorField', 'StreamLines', 'sigmoid', 'ScreenRectangle', 'FullScreenRectangle', 'VectorizedPoint', 'ComplexValueTracker', 'UnitInterval', 'TangentialArc', 'CurvesAsSubmobjects', 'VDict', 'Cutout', 'ConvexHull', 'ArcBrace', 'LaggedStartMap', 'MaintainPositionRelativeTo', 'Blink', 'Broadcast', 'SpiralIn', 'AddTextWordByWord', 'Animation', 'line_intersection', 'angle_between_vectors', 'DEFAULT_LAGGED_START_LAG_RATIO', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform',
