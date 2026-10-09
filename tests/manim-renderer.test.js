@@ -393,6 +393,18 @@ test('images render inline data upright and reject external references', () => {
   }
 });
 
+test('point clouds batch fixed-size squares by color', () => {
+  const data = {type:'pointcloud', cloud:[[0,0],[1,0],[2,1]], cloud_colors:['#FF0000','#FF0000','#00FF00'],
+    cloud_opacities:[1,1,.5], point_size:.02, geometry_scale:2, position:[0,0,0]};
+  const element = renderer.renderMobject(data);
+  const paths = element.querySelectorAll().filter(e => e.tag === 'path');
+  assert.equal(paths.length, 2);
+  assert.equal(paths[0].getAttribute('d').match(/M/g).length, 2);
+  assert.match(paths[1].getAttribute('style'), /fill:#00FF00;fill-opacity:0.5/);
+  // Squares keep their on-screen size when the cloud is scaled by 2.
+  assert.match(paths[0].getAttribute('d'), new RegExp(`h${.02 * renderer.UNIT_SCALE / 2}v`));
+});
+
 test('gradient validation rejects unsafe colors and a single stop keeps a solid paint', () => {
   for (const color of [[],['url(https://example.com/paint)'],['red'],Array(65).fill('#FFFFFF')]) {
     assert.throws(()=>renderer.renderMobject({type:'polygon',fill_color:color}),/Gradient colors/);

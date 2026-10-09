@@ -591,3 +591,7 @@ Read `examples/log_axes_scene.py` for log axes and colors. Colors are ManimColor
 str subclass); keep `_paint` in color setters. NumberLine.scaling is excluded from
 frames; Axes coordinate code must go through `_axis_shift` and the scaling functions.
 DecimalNumber units are a `unit_sign` child in local coordinates.
+
+Read `examples/point_cloud_scene.py` for point clouds, Add and sections. Only
+`_instant` animations may have zero run_time; capture() drops frames while a section
+skips animations. TexTemplate objects are accepted and ignored by MathJax.

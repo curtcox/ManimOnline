@@ -301,3 +301,7 @@ implemented with Community checks for timing, cursor placement and pole position
 
 ManimColor/HSV/RandomColorGenerator, LogBase/LinearBase axes and TeX numeric units are
 implemented with Community checks.
+
+Point clouds, Add, ShowPartial, sections/skip_animations, scene updaters, wait_until,
+replace, TexTemplate stubs and CoordinateSystem are implemented; audio and
+subcaptions are recorded only.

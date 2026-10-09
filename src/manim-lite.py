@@ -1209,6 +1209,11 @@ class Mobject:
             return (-half, -half, half, half)
         if self._type in ('rectangle', 'ellipse', 'image'):
             return (-self.width / 2, -self.height / 2, self.width / 2, self.height / 2)
+        if self._type == 'pointcloud':
+            if not self.cloud:
+                return (0, 0, 0, 0)
+            xs, ys = [p[0] for p in self.cloud], [p[1] for p in self.cloud]
+            return (min(xs), min(ys), max(xs), max(ys))
         if self._type in ('line', 'arrow'):
             points = [self.start, self.end]
         elif self._type in ('polygon', 'polyline'):
@@ -4097,10 +4102,65 @@ class _MathTexPart(Text):
         self.tex_string = part_strings[index]
 
 
+class TexTemplate:
+    """Community's LaTeX template. The preview typesets with MathJax, so preambles,
+    compilers and font packages are recorded but do not change the output."""
+    def __init__(self, tex_compiler='latex', description='', output_format='.dvi', documentclass=None,
+                 preamble=None, placeholder_text='YourTextHere', post_doc_commands='', **kwargs):
+        self.tex_compiler, self.description, self.output_format = tex_compiler, description, output_format
+        self.documentclass = documentclass or r'\documentclass[preview]{standalone}'
+        self.preamble = preamble if preamble is not None else (
+            '\\usepackage[english]{babel}\n\\usepackage{amsmath}\n\\usepackage{amssymb}')
+        self.placeholder_text, self.post_doc_commands = placeholder_text, post_doc_commands
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+    def add_to_preamble(self, txt, prepend=False):
+        self.preamble = (txt + '\n' + self.preamble) if prepend else (self.preamble + '\n' + txt)
+        return self
+
+    def add_to_document(self, txt):
+        self.post_doc_commands += txt
+        return self
+
+    @property
+    def body(self):
+        return '\n'.join((self.documentclass, self.preamble, '\\begin{document}',
+                           self.post_doc_commands, self.placeholder_text, '\\end{document}'))
+
+    def get_texcode_for_expression(self, expression):
+        return self.body.replace(self.placeholder_text, expression)
+
+    def get_texcode_for_expression_in_env(self, expression, environment):
+        begin, end = f'\\begin{{{environment}}}', f'\\end{{{environment}}}'
+        return self.body.replace(self.placeholder_text, f'{begin}\n{expression}\n{end}')
+
+    def copy(self):
+        return copy.deepcopy(self)
+
+
+class _TemplateNamespace:
+    """Named templates (TexTemplateLibrary, TexFontTemplates); each is a plain TexTemplate."""
+    def __init__(self, names):
+        self._names = names
+
+    def __getattr__(self, name):
+        if name.startswith('_') or (self._names and name not in self._names):
+            raise AttributeError(name)
+        return TexTemplate(description=name)
+
+
+TexTemplateLibrary = _TemplateNamespace(('default', 'threeb1b', 'ctex'))
+TexFontTemplates = _TemplateNamespace(())
+
+
 class MathTex(Text):
     """Formulas rendered as SVG paths by MathJax; several strings become parts."""
     def __init__(self, *tex_strings, arg_separator=' ', substrings_to_isolate=None, tex_to_color_map=None,
-                 font_size=48, tex_environment='align*', **kwargs):
+                 font_size=48, tex_environment='align*', tex_template=None, **kwargs):
+        # MathJax typesets in the browser; LaTeX templates (preamble, fonts) cannot apply.
+        if tex_template is not None and not isinstance(tex_template, TexTemplate):
+            raise TypeError('tex_template must be a TexTemplate')
         # Community converts non-string entries (e.g. matrix numbers) with str().
         tex_strings = tuple(value if isinstance(value, str) else str(value) for value in tex_strings
                             if isinstance(value, (str, numbers.Number)) or _reject_tex(value))
@@ -5670,7 +5730,11 @@ class NumberLine(VGroup):
         return self._add_world_decoration(labels,'numbers')
 
 
-class Axes(VGroup):
+class CoordinateSystem:
+    """Marker base for Axes-like coordinate systems (Community's CoordinateSystem)."""
+
+
+class Axes(VGroup, CoordinateSystem):
     """Two linear NumberLines with transform-aware XY coordinate conversion."""
     def __init__(self, x_range=None, y_range=None, x_length=None, y_length=None,
                  axis_config=None, x_axis_config=None, y_axis_config=None, tips=True, **kwargs):
@@ -7052,6 +7116,8 @@ def _painted_paths(data, path=(), nested=True):
 
 
 class Animation:
+    _instant = False  # Only Add may have a zero run_time.
+
     def __init__(self, mobject, run_time=1, rate_func=smooth, lag_ratio=0, remover=False,
                  introducer=False, name=None, suspend_mobject_updating=True, reverse_rate_function=False):
         if isinstance(lag_ratio, bool) or not isinstance(lag_ratio, _REAL) or not math.isfinite(lag_ratio) or lag_ratio < 0:
@@ -7797,7 +7863,8 @@ class AnimationGroup:
         self.timings = []
         start = 0
         for animation in animations:
-            if not math.isfinite(animation.run_time) or animation.run_time <= 0:
+            if (not math.isfinite(animation.run_time) or animation.run_time < 0 or
+                    (animation.run_time == 0 and not animation._instant)):
                 raise ValueError('Animation run_time must be positive and finite')
             self.timings.append((start, animation.run_time))
             start += lag_ratio * animation.run_time
@@ -7805,8 +7872,12 @@ class AnimationGroup:
         if not math.isfinite(self.natural_duration):
             raise ValueError('Animation timeline duration must be finite')
         self.run_time = self.natural_duration if run_time is None else run_time
-        if not math.isfinite(self.run_time) or self.run_time <= 0:
+        if not math.isfinite(self.run_time) or self.run_time < 0 or (self.run_time == 0 and not self._instant):
             raise ValueError('Animation run_time must be positive and finite')
+
+    @property
+    def _instant(self):
+        return all(animation._instant for animation in self.animations)
 
     def objects(self):
         return [m for animation in self.animations for m in animation.objects()]
@@ -7819,7 +7890,7 @@ class AnimationGroup:
         time = self.natural_duration if alpha >= 1 else (rate_func or self.rate_func)(max(0, alpha)) * self.natural_duration
         result = {}
         for animation, (start, duration) in zip(self.animations, self.timings):
-            result.update(animation.states((time - start) / duration))
+            result.update(animation.states((time - start) / duration if duration else (1 if time >= start else 0)))
         return result
 
     def finish(self, scene):
@@ -7886,7 +7957,7 @@ class Succession(AnimationGroup):
         baseline, animation, source = self._stages[stage]
         result = {m: [] for m in self.objects()}
         result.update(baseline)
-        result.update(animation.states((time - start) / duration))
+        result.update(animation.states((time - start) / duration if duration else 1))
         if source is not None:
             probe = source.copy()
             animation._call(probe)
@@ -8352,6 +8423,11 @@ class Flash(AnimationGroup):
                            for line in lines), **kwargs)
 
 
+class DefaultSectionType:
+    """Community's section type names (sections only mark frame ranges in the preview)."""
+    NORMAL = 'default.normal'
+
+
 class Scene:
     camera_class = PreviewConfig
 
@@ -8362,6 +8438,9 @@ class Scene:
         self.mobjects, self.frames = [], []
         self.foreground_mobjects = []
         self._elapsed_frames = 0
+        self.updaters, self.sounds, self.subcaptions = [], [], []
+        self.sections = [{'name': 'autocreated', 'type': DefaultSectionType.NORMAL, 'skip_animations': False, 'frame': 0}]
+        self._skipping = False
 
     @property
     def time(self):
@@ -8462,6 +8541,8 @@ class Scene:
         roots = list(self.mobjects)
         if isinstance(self.camera, MovingCamera) and self.camera.frame not in roots:
             roots.append(self.camera.frame)
+        for func in list(getattr(self, 'updaters', [])):
+            func(dt)  # Community's update_self runs scene-level updaters each frame.
         if not any(m.get_family_updaters() for m in roots):
             return
         saved, blocked = {}, set()
@@ -8504,6 +8585,10 @@ class Scene:
                 mobject.__dict__ = state
 
     def capture(self, overrides=None, *, advance_time=True):
+        if self._skipping and advance_time:
+            # next_section(skip_animations=True): time passes but no frames are kept.
+            self._elapsed_frames += 1
+            return
         if len(self.frames) >= MAX_FRAMES:
             raise ValueError('Preview exceeds 60 seconds / 900 frames. Shorten the scene.')
         objects = []
@@ -8538,9 +8623,10 @@ class Scene:
             raise TypeError('play() expects supported animations such as Create or Transform')
         self.validate(*animations)
         durations = [a.run_time if run_time is None else run_time for a in animations]
-        if any(not math.isfinite(d) or d <= 0 for d in durations):
+        if any(not math.isfinite(d) or d < 0 or (d == 0 and not a._instant) for d, a in zip(durations, animations)):
             raise ValueError('Animation run_time must be positive and finite')
-        count = max(1, math.ceil(max(durations) * FPS))
+        # Instant animations (Add) take no frames, as Community's zero run_time.
+        count = math.ceil(max(durations) * FPS) if max(durations) else 0
         if count + len(self.frames) >= MAX_FRAMES:
             raise ValueError('Preview exceeds 60 seconds / 900 frames. Shorten the scene.')
         if rate_func is not None:
@@ -8553,7 +8639,7 @@ class Scene:
             time = frame / FPS
             overrides = {}
             for animation, duration in zip(animations, durations):
-                overrides.update(animation.states(time / duration))
+                overrides.update(animation.states(time / duration if duration else 1))
             self._update_mobjects(0 if frame == 0 else 1 / FPS, overrides)
             self.capture(overrides)
         # Update-function animations finish last, seeing their neighbors' final states as
@@ -8589,17 +8675,101 @@ class Scene:
                     raise NotImplementedError('Animate members of rotated or transformed groups '
                                               'by animating the whole group')
 
-    def wait(self, duration=1):
+    def wait(self, duration=1, stop_condition=None, frozen_frame=None):
         if not math.isfinite(duration) or duration < 0:
             raise ValueError('Wait duration must be nonnegative and finite')
+        if stop_condition is not None and not callable(stop_condition):
+            raise TypeError('stop_condition must be callable')
         count = math.ceil(duration * FPS)
-        if count + len(self.frames) >= MAX_FRAMES:
+        if count + len(self.frames) >= MAX_FRAMES and stop_condition is None and not self._skipping:
             raise ValueError('Preview exceeds 60 seconds / 900 frames. Shorten the scene.')
         for frame in range(count):
             self._update_mobjects(0 if frame == 0 else 1 / FPS)
+            if stop_condition is not None and stop_condition():
+                break
+            if len(self.frames) >= MAX_FRAMES - 1:
+                raise ValueError('Preview exceeds 60 seconds / 900 frames. Shorten the scene.')
             self.capture()
         if count:
             self._update_mobjects(1 / FPS)
+
+    def wait_until(self, stop_condition, max_time=60):
+        return self.wait(max_time, stop_condition=stop_condition)
+
+    def pause(self, duration=1.0):
+        return self.wait(duration, frozen_frame=True)
+
+    def next_section(self, name='unnamed', section_type=None, skip_animations=False):
+        """Start a section; skip_animations keeps time and state but drops its frames."""
+        if not isinstance(name, str):
+            raise TypeError('Section names must be strings')
+        self._skipping = bool(skip_animations)
+        self.sections.append({'name': name, 'type': section_type or DefaultSectionType.NORMAL,
+                              'skip_animations': self._skipping, 'frame': len(self.frames)})
+
+    def add_sound(self, sound_file, time_offset=0, gain=None, **kwargs):
+        # The browser preview has no audio track; sounds are recorded but not played.
+        self.sounds.append({'file': str(sound_file), 'time': self.time + time_offset, 'gain': gain})
+
+    def add_subcaption(self, content, duration=1, offset=0):
+        NumberLine._real(duration, 'Subcaption duration', nonnegative=True)
+        self.subcaptions.append({'content': str(content), 'start': self.time + offset,
+                                 'end': self.time + offset + duration})
+
+    def add_updater(self, func):
+        if not callable(func):
+            raise TypeError('Scene updaters must be callable')
+        self.updaters.append(func)
+
+    def remove_updater(self, func):
+        self.updaters = [f for f in self.updaters if f is not func]
+
+    def update_self(self, dt):
+        for func in list(self.updaters):
+            func(dt)
+
+    def update_mobjects(self, dt):
+        self._update_mobjects(dt)
+
+    def should_update_mobjects(self):
+        return bool(self.updaters) or any(m.get_family_updaters() for m in self.mobjects)
+
+    def get_top_level_mobjects(self):
+        families = [m.get_family()[1:] for m in self.mobjects]
+        return [m for m in self.mobjects if not any(m in family for family in families)]
+
+    def get_mobject_family_members(self):
+        return [member for m in self.mobjects for member in m.get_family()]
+
+    def get_moving_mobjects(self, *animations):
+        moving = [member for a in animations for m in a.objects() for member in m.get_family()]
+        return list(dict.fromkeys(moving + [m for m in self.get_mobject_family_members() if m.updaters]))
+
+    def get_run_time(self, animations):
+        return max(a.run_time for a in animations)
+
+    def get_attrs(self, *keys):
+        return [getattr(self, key) for key in keys]
+
+    def replace(self, old_mobject, new_mobject):
+        """Swap a mobject in the scene (or inside a scene group) without changing order."""
+        if not isinstance(new_mobject, Mobject):
+            raise TypeError('replace expects Mobjects')
+        def swap(items):
+            for index, item in enumerate(items):
+                if item is old_mobject:
+                    items[index] = new_mobject
+                    return True
+                if swap(item.children):
+                    return True
+            return False
+        if not swap(self.mobjects):
+            raise ValueError('The mobject to replace is not in the scene')
+
+    def embed(self):
+        raise NotImplementedError('Interactive embedding is not available in the browser preview')
+
+    interactive_embed = embed
 
     def setup(self):
         pass
@@ -10650,6 +10820,28 @@ class ImageMobject(Mobject):
         return [list(self._point_to_world(Vector(p))) for p in ((-w, h, 0), (w, h, 0), (-w, -h, 0), (w, -h, 0))]
 
 
+class Add(Animation):
+    """Add mobjects instantly; useful inside Succession (Community's zero run_time)."""
+    _instant = True
+
+    def __init__(self, *mobjects, run_time=0.0, **kwargs):
+        if not mobjects or any(not isinstance(m, Mobject) for m in mobjects):
+            raise TypeError('Add expects Mobjects')
+        mobject = mobjects[0] if len(mobjects) == 1 else Group(*mobjects)
+        super().__init__(mobject, run_time=run_time, introducer=True, **kwargs)
+
+
+class ShowPartial(Animation):
+    """Abstract base of partial-drawing animations, as in Community."""
+    def __init__(self, mobject, **kwargs):
+        if not callable(getattr(mobject, 'pointwise_become_partial', None)):
+            raise TypeError(f'{type(self).__name__} only works for VMobjects.')
+        super().__init__(mobject, **kwargs)
+
+    def _get_bounds(self, alpha):
+        raise NotImplementedError('Please use Create or ShowPassingFlash')
+
+
 class TypeWithCursor(AddTextLetterByLetter):
     """Type a Text glyph by glyph with a cursor that follows the last shown glyph."""
     def __init__(self, text, cursor, buff=0.1, keep_cursor_y=True, leave_cursor_on=True, time_per_char=0.1,
@@ -11029,6 +11221,217 @@ class ChangeSpeed(AnimationGroup):
             return mobject.add_updater(lambda mob, dt: update_function(mob, cls.dt if cls.is_changing_dt else dt),
                                        index=index, call_updater=call_updater)
         return mobject.add_updater(update_function, index=index, call_updater=call_updater)
+
+
+DEFAULT_POINT_DENSITY_1D, DEFAULT_POINT_DENSITY_2D = 10, 25
+_POINT_CLOUD_LIMIT = 100000
+
+
+class PMobject(Mobject):
+    """Community's point cloud: colored points drawn as squares of stroke_width pixels
+    (at Community's 1920-pixel default width), unaffected by scaling like the Cairo camera."""
+    def __init__(self, stroke_width=DEFAULT_STROKE_WIDTH, **kwargs):
+        super().__init__(stroke_width=stroke_width, **kwargs)
+        self._type = 'pointcloud'
+        self.cloud, self.cloud_colors, self.cloud_opacities = [], [], []
+
+    def reset_points(self):
+        self.cloud, self.cloud_colors, self.cloud_opacities = [], [], []
+        return self
+
+    def add_points(self, points, rgbas=None, color=None, alpha=1.0):
+        points = [Vector(p) for p in points]
+        if len(self.cloud) + len(points) > _POINT_CLOUD_LIMIT:
+            raise ValueError('Point clouds are limited to 100000 points')
+        if any(not all(math.isfinite(v) for v in p) or p[2] for p in points):
+            raise ValueError('Point cloud points must be finite XY coordinates')
+        if rgbas is None:
+            colors = [ManimColor(color) if color else ManimColor(self.color)] * len(points)
+            alphas = [alpha] * len(points)
+        else:
+            rgbas = [list(r) for r in rgbas]
+            if len(rgbas) != len(points):
+                raise ValueError('points and rgbas must have same length')
+            colors, alphas = [ManimColor(tuple(float(v) for v in r[:3])) for r in rgbas], [float(r[3]) for r in rgbas]
+        # Points are stored in this object's local frame.
+        local = self._world_to_local([list(p) for p in points])
+        self.cloud += [[p[0], p[1]] for p in local]
+        self.cloud_colors += colors
+        self.cloud_opacities += alphas
+        return self
+
+    def _world_to_local(self, points):
+        if not self.cloud and not self.children:
+            self.position = [0, 0, 0]
+            self.angle, self.geometry_scale = 0, 1
+            return points
+        center = self._geometry_center()
+        cos, sin = math.cos(-self.angle), math.sin(-self.angle)
+        scale = self.geometry_scale or 1
+        result = []
+        for x, y, _ in points:
+            dx, dy = x - self.position[0] - center[0], y - self.position[1] - center[1]
+            result.append([center[0] + (dx * cos - dy * sin) / scale, center[1] + (dx * sin + dy * cos) / scale, 0])
+        return result
+
+    def get_points(self):
+        return self._points_to_world([[x, y, 0] for x, y in self.cloud])
+
+    def get_num_points(self):
+        return len(self.cloud)
+
+    def set_points(self, points):
+        return self.reset_points().add_points(points)
+
+    def set_color(self, color=PURE_YELLOW, family=True):
+        color = ManimColor(color)
+        self.cloud_colors = [color] * len(self.cloud)
+        super().set_color(color, family)
+        if family:
+            for child in self.children:
+                child.set_color(color)
+        return self
+
+    def get_color(self):
+        return self.cloud_colors[0] if self.cloud_colors else self.color
+
+    def get_stroke_width(self):
+        return self.stroke_width
+
+    def set_stroke_width(self, width, family=True):
+        self._validate_width(width)
+        self.stroke_width = width
+        if family:
+            for child in self.children:
+                if isinstance(child, PMobject):
+                    child.set_stroke_width(width)
+        return self
+
+    def set_color_by_gradient(self, *colors):
+        self.cloud_colors = list(color_gradient(colors, len(self.cloud)))
+        return self
+
+    def set_colors_by_radial_gradient(self, center=None, radius=1, inner_color=WHITE, outer_color=BLACK):
+        center = self.get_center() if center is None else Vector(center)
+        self.cloud_colors = [interpolate_color(inner_color, outer_color, math.dist(p[:2], center[:2]) / radius)
+                             for p in self.get_points()]
+        return self
+
+    def set_opacity(self, opacity, family=True):
+        self._validate_opacity(opacity)
+        self.cloud_opacities = [opacity] * len(self.cloud)
+        return super().set_opacity(opacity, family)
+
+    def _keep(self, indices):
+        self.cloud = [self.cloud[i] for i in indices]
+        self.cloud_colors = [self.cloud_colors[i] for i in indices]
+        self.cloud_opacities = [self.cloud_opacities[i] for i in indices]
+
+    def filter_out(self, condition):
+        points = self.get_points()
+        self._keep([i for i, p in enumerate(points) if not condition(Vector(p))])
+        return self
+
+    def thin_out(self, factor=5):
+        self._keep(range(0, len(self.cloud), max(1, int(factor))))
+        return self
+
+    def sort_points(self, function=lambda p: p[0]):
+        points = self.get_points()
+        self._keep(sorted(range(len(points)), key=lambda i: function(Vector(points[i]))))
+        return self
+
+    def fade_to(self, color, alpha, family=True):
+        self.cloud_colors = [interpolate_color(c, color, alpha) for c in self.cloud_colors]
+        for child in self.children:
+            child.fade_to(color, alpha, family)
+        return self
+
+    def point_from_proportion(self, alpha):
+        if not self.cloud:
+            raise ValueError('The point cloud has no points')
+        return Vector(self.get_points()[int(alpha * (len(self.cloud) - 1))])
+
+    def pointwise_become_partial(self, mobject, a, b):
+        count = len(mobject.cloud)
+        lower, upper = int(a * count), int(b * count)
+        self.cloud = [p[:] for p in mobject.cloud[lower:upper]]
+        self.cloud_colors = mobject.cloud_colors[lower:upper]
+        self.cloud_opacities = mobject.cloud_opacities[lower:upper]
+        return self
+
+    def get_point_mobject(self, center=None):
+        return Point(self.get_center() if center is None else center)
+
+    def to_dict(self):
+        result = super().to_dict()
+        if result['type'] == 'pointcloud':
+            # Community's camera thickens each point by stroke_width pixels at 1920 wide.
+            result['point_size'] = self.stroke_width * config.frame_width / 1920
+        return result
+
+
+class Mobject1D(PMobject):
+    def __init__(self, density=DEFAULT_POINT_DENSITY_1D, **kwargs):
+        NumberLine._real(density, 'Point density', positive=True)
+        self.density, self.epsilon = density, 1.0 / density
+        super().__init__(**kwargs)
+
+    def add_line(self, start, end, color=None):
+        start, end = Vector(start), Vector(end)
+        length = math.dist(start, end)
+        if length == 0:
+            points = [start]
+        else:
+            step = self.epsilon / length
+            points = [start + (end - start) * (i * step) for i in range(math.ceil(1 / step - 1e-12))]
+        return self.add_points(points, color=color)
+
+
+class Mobject2D(PMobject):
+    def __init__(self, density=DEFAULT_POINT_DENSITY_2D, **kwargs):
+        NumberLine._real(density, 'Point density', positive=True)
+        self.density, self.epsilon = density, 1.0 / density
+        super().__init__(**kwargs)
+
+
+class PGroup(PMobject):
+    def __init__(self, *pmobs, **kwargs):
+        if not all(isinstance(m, PMobject) for m in pmobs):
+            raise ValueError('All submobjects must be of type PMobject')
+        super().__init__(**kwargs)
+        self.add(*pmobs)
+
+    def fade_to(self, color, alpha, family=True):
+        if family:
+            for child in self.children:
+                child.fade_to(color, alpha, family)
+        return self
+
+
+class PointCloudDot(Mobject1D):
+    """A disk of points on concentric rings, as Community's PointCloudDot."""
+    def __init__(self, center=ORIGIN, radius=2.0, stroke_width=2, density=DEFAULT_POINT_DENSITY_1D,
+                 color=PURE_YELLOW, **kwargs):
+        NumberLine._real(radius, 'PointCloudDot radius', positive=True)
+        super().__init__(stroke_width=stroke_width, density=density, color=color, **kwargs)
+        self.radius = radius
+        points, r = [], self.epsilon
+        while r < radius - 1e-12:
+            count = int(2 * math.pi * (r + self.epsilon) / self.epsilon)
+            # np.linspace(0, 2pi, count) includes both ends.
+            points += [(r * math.cos(2 * math.pi * k / (count - 1)), r * math.sin(2 * math.pi * k / (count - 1)), 0)
+                       for k in range(count)] if count > 1 else [(r, 0, 0)] * count
+            r += self.epsilon
+        self.add_points(points)
+        self.shift(Vector(center))
+
+
+class Point(PMobject):
+    def __init__(self, location=ORIGIN, color=BLACK, **kwargs):
+        super().__init__(color=color, **kwargs)
+        self.location = list(Vector(location))
+        self.add_points([location])
 
 
 class _PCG64:
@@ -11460,7 +11863,7 @@ class _StreamLinesEnd(Animation):
 EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
            'Triangle', 'Polygon', 'Polygram', 'RegularPolygram', 'RegularPolygon', 'Star', 'Brace', 'BraceBetweenPoints', 'BraceLabel', 'BraceText',
            'Title', 'BulletedList', 'Tex', 'SingleStringMathTex', 'MarkupText', 'LabeledDot', 'Variable', 'always', 'f_always', 'always_shift', 'always_rotate',
-           'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'BarChart', 'PolarPlane', 'NumberPlane', 'ComplexPlane', 'VectorField', 'ArrowVectorField', 'StreamLines', 'sigmoid', 'ScreenRectangle', 'FullScreenRectangle', 'VectorizedPoint', 'ComplexValueTracker', 'UnitInterval', 'TangentialArc', 'CurvesAsSubmobjects', 'VDict', 'Cutout', 'ConvexHull', 'ArcBrace', 'LaggedStartMap', 'MaintainPositionRelativeTo', 'Blink', 'Broadcast', 'SpiralIn', 'AddTextWordByWord', 'Animation', 'line_intersection', 'angle_between_vectors', 'DEFAULT_LAGGED_START_LAG_RATIO', 'Graph', 'DiGraph', 'Union', 'Intersection', 'Difference', 'Exclusion', 'Code', 'SVGMobject', 'VMobjectFromSVGPath', 'ImageMobject', 'RESAMPLING_ALGORITHMS', 'ManimColor', 'HSV', 'RGBA', 'LinearBase', 'LogBase', 'RandomColorGenerator', 'random_color', 'random_bright_color', 'TypeWithCursor', 'UntypeWithCursor', 'AnimatedBoundary', 'ShowPassingFlashWithThinningStrokeWidth', 'FadeTransformPieces', 'ImplicitFunction', 'LabeledPolygram', 'ChangeSpeed', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
+           'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'BarChart', 'PolarPlane', 'NumberPlane', 'ComplexPlane', 'VectorField', 'ArrowVectorField', 'StreamLines', 'sigmoid', 'ScreenRectangle', 'FullScreenRectangle', 'VectorizedPoint', 'ComplexValueTracker', 'UnitInterval', 'TangentialArc', 'CurvesAsSubmobjects', 'VDict', 'Cutout', 'ConvexHull', 'ArcBrace', 'LaggedStartMap', 'MaintainPositionRelativeTo', 'Blink', 'Broadcast', 'SpiralIn', 'AddTextWordByWord', 'Animation', 'line_intersection', 'angle_between_vectors', 'DEFAULT_LAGGED_START_LAG_RATIO', 'Graph', 'DiGraph', 'Union', 'Intersection', 'Difference', 'Exclusion', 'Code', 'SVGMobject', 'VMobjectFromSVGPath', 'ImageMobject', 'RESAMPLING_ALGORITHMS', 'ManimColor', 'HSV', 'RGBA', 'LinearBase', 'LogBase', 'DefaultSectionType', 'Add', 'ShowPartial', 'TexTemplate', 'TexTemplateLibrary', 'TexFontTemplates', 'CoordinateSystem', 'PMobject', 'Mobject1D', 'Mobject2D', 'PGroup', 'PointCloudDot', 'Point', 'DEFAULT_POINT_DENSITY_1D', 'DEFAULT_POINT_DENSITY_2D', 'RandomColorGenerator', 'random_color', 'random_bright_color', 'TypeWithCursor', 'UntypeWithCursor', 'AnimatedBoundary', 'ShowPassingFlashWithThinningStrokeWidth', 'FadeTransformPieces', 'ImplicitFunction', 'LabeledPolygram', 'ChangeSpeed', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform',

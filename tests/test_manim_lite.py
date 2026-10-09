@@ -502,6 +502,48 @@ self.play(UntypeWithCursor(text, cursor))""")['frames']
         with self.assertRaises(ValueError): lite.LogBase().inverse_function(0)
         with self.assertRaises(ValueError): log_x.get_origin()
 
+    def test_scene_sections_scene_updaters_add_and_waits(self):
+        frames=render("self.next_section('a')\nself.play(Create(Square()))\nself.next_section('skip', skip_animations=True)\nself.play(Create(Circle()))\nself.wait(1)\nself.next_section('b')\nself.wait(.5)")['frames']
+        self.assertEqual(len(frames),24)
+        self.assertEqual(len(frames[15]['mobjects']),2)  # Skipped animations still apply.
+        added=render("s=Square()\nc=Circle()\nself.play(Succession(Create(s), Add(c), FadeOut(s)))\nself.play(Add(Dot()))")['frames']
+        self.assertEqual([m['type'] for m in added[-1]['mobjects']],['circle','circle'])
+        self.assertEqual(len(added),31)
+        stopped=render("d=Dot()\nd.add_updater(lambda m, dt: m.shift(RIGHT*dt))\nself.add(d)\nself.wait_until(lambda: d.get_x() > 1, max_time=5)\nself.replace(d, Square())")['frames']
+        self.assertLess(len(stopped),20)
+        self.assertEqual(stopped[-1]['mobjects'][0]['type'],'square')
+        scene=lite.Scene()
+        ticks=[]
+        scene.add_updater(lambda dt: ticks.append(dt))
+        scene.wait(.2)
+        self.assertGreater(len(ticks),2)
+        scene.add_sound('beep.wav'); scene.add_subcaption('hello',duration=2)
+        self.assertEqual((len(scene.sounds),scene.subcaptions[0]['end']),(1,scene.time+2))
+        group=lite.VGroup(lite.Square()); scene.add(group)
+        self.assertEqual(scene.get_top_level_mobjects(),[group])
+        self.assertTrue(scene.should_update_mobjects())
+        with self.assertRaises(NotImplementedError): scene.embed()
+        with self.assertRaises(ValueError): lite.Scene().play(lite.FadeIn(lite.Square(),run_time=0))
+
+    def test_point_clouds_match_community(self):
+        dot=lite.PointCloudDot(center=lite.RIGHT,radius=1)
+        # Point counts and extents measured with Manim Community 0.22.
+        self.assertEqual((dot.get_num_points(),round(dot.get_width(),3),dot.get_color()),(334,1.799,'#FFFF00'))
+        line=lite.Mobject1D()
+        line.add_line(lite.LEFT,lite.RIGHT*2,color=lite.RED)
+        self.assertEqual((line.get_num_points(),round(line.get_width(),3)),(30,2.9))
+        self.assertPointAlmostEqual(lite.Point(lite.UP).get_center(),(0,1,0))
+        cloud=lite.PMobject()
+        cloud.add_points([(0,0,0),(1,1,0),(2,0,0)],color=lite.BLUE)
+        cloud.scale(2)
+        self.assertPointAlmostEqual(cloud.get_points()[1],(1,1.5,0))
+        self.assertEqual(cloud.thin_out(2).get_num_points(),2)
+        snapshot=cloud.to_dict()
+        self.assertEqual((snapshot['type'],round(snapshot['point_size'],5)),('pointcloud',round(4*(8*16/9)/1920,5)))
+        with self.assertRaises(ValueError): lite.PGroup(lite.Square())
+        frame=render("self.play(FadeIn(PointCloudDot(radius=.5)))")['frames'][-1]
+        self.assertEqual(len(frame['mobjects'][0]['cloud']),86)  # Community count
+
     def test_set_style_routes_fill_and_stroke(self):
         square=lite.Square().set_style(fill_color=lite.RED,fill_opacity=.5,stroke_color=lite.BLUE,
                                        stroke_width=6,stroke_opacity=.25,background_stroke_width=0)
@@ -5793,8 +5835,10 @@ self.wait(1)""")
         self.assertEqual(lite.MathTex(12).text, '12')
         with self.assertRaises(TypeError):
             lite.MathTex(object())
-        with self.assertRaises(NotImplementedError):
+        with self.assertRaises(TypeError):
             lite.MathTex('x', tex_template='custom')
+        # Templates are accepted; MathJax typesets without the LaTeX preamble.
+        self.assertEqual(lite.MathTex('x', tex_template=lite.TexTemplateLibrary.ctex).text, 'x')
 
     def test_mathtex_creation_fades_and_changed_formula_crossfades(self):
         result = render("a = MathTex(r'\\frac{a}{b}')\nself.play(Create(a), run_time=2)\nself.play(Transform(a, MathTex('x^2', color=RED)), run_time=2)\nself.wait(1)")

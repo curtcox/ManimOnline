@@ -2315,3 +2315,11 @@ origin tick on scaled axes, sample scaled plots at `function(t)`, and invert in 
 coordinates. DecimalNumber's unit is a MathTex child (`unit_sign`) placed in the
 number's local frame, top-aligned for superscript units. point_from_proportion and
 MathTex size estimates were sped up for MoveAlongPath-heavy scenes.
+
+Point clouds serialize as `type: pointcloud` with local `cloud` points, per-point
+colors/opacities and `point_size` (stroke_width pixels at Community's 1920-pixel
+width); the renderer batches squares per color and divides by the inherited scale
+so points keep their size, like Cairo's pixel thickening. `Add` and groups made only
+of instant animations may have run_time 0 (no frames). Skipped sections still advance
+scene time and update state but keep no frames. Scene updaters run first in each
+update pass (Community's update_self).

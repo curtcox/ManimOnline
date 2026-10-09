@@ -1519,3 +1519,11 @@ scaling (coordinates, ticks, `10^k` labels and plots match Community), `ManimCol
 `to_rgb`, `from_hsv`, ...; names like `"red"` parse to Manim's palette as in
 Community), seeded `RandomColorGenerator`, and DecimalNumber units, which are now
 typeset as a TeX part after the digits like Community.
+
+The **Point clouds and scene sections** example covers `PMobject`, `Mobject1D`,
+`Mobject2D`, `PGroup`, `PointCloudDot` and `Point` (point counts match Community;
+points draw as fixed pixel-size squares), `Add` inside a `Succession`, and Scene
+APIs: `next_section(skip_animations=True)` (state applies, frames are dropped),
+scene-level `add_updater`, `wait_until`, `pause`, `replace`, and recorded-only
+`add_sound`/`add_subcaption`. `TexTemplate`, `TexTemplateLibrary` and
+`TexFontTemplates` are accepted, but MathJax ignores LaTeX preambles and fonts.

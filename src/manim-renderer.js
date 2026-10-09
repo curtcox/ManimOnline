@@ -133,6 +133,9 @@ const ManimRenderer = {
       case 'image':
         element = this.renderImage(mobject);
         break;
+      case 'pointcloud':
+        element = this.renderPointCloud(mobject, Math.abs(inheritedScale * (mobject.geometry_scale ?? 1)));
+        break;
       case 'mathtex':
         element = this.renderMathTex(mobject, mathGlyphs);
         break;
@@ -251,6 +254,41 @@ const ManimRenderer = {
     }
 
     return element;
+  },
+
+  /**
+   * Point clouds: one filled path of fixed-size squares per color/opacity, sized like
+   * Community's pixel thickening (not scaled with the object).
+   */
+  renderPointCloud(mobject, scale) {
+    const group = document.createElementNS(this.SVG_NS, 'g');
+    const cloud = Array.isArray(mobject.cloud) ? mobject.cloud : [];
+    const colors = Array.isArray(mobject.cloud_colors) ? mobject.cloud_colors : [];
+    const opacities = Array.isArray(mobject.cloud_opacities) ? mobject.cloud_opacities : [];
+    const side = (Number(mobject.point_size) || 0) * this.UNIT_SCALE / (scale > 0 ? scale : 1);
+    if (!(side > 0)) return group;
+    const half = side / 2;
+    const batches = new Map();
+    cloud.forEach((point, index) => {
+      const color = /^#[0-9a-f]{6}$/i.test(colors[index]) ? colors[index] : '#FFFFFF';
+      const opacity = Number.isFinite(opacities[index]) ? opacities[index] : 1;
+      const key = `${color}|${opacity}`;
+      const x = point[0] * this.UNIT_SCALE - half;
+      const y = point[1] * this.UNIT_SCALE - half;
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      if (!batches.has(key)) batches.set(key, []);
+      batches.get(key).push(`M${x} ${y}h${side}v${side}h${-side}z`);
+    });
+    for (const [key, parts] of batches) {
+      const [color, opacity] = key.split('|');
+      const path = document.createElementNS(this.SVG_NS, 'path');
+      path.setAttribute('d', parts.join(''));
+      // Point colors are per point, so they are set here rather than by the shared paint step.
+      path.setAttribute('data-point-color', color);
+      path.setAttribute('style', `fill:${color};fill-opacity:${opacity}`);
+      group.appendChild(path);
+    }
+    return group;
   },
 
   /** Raster images: only inline base64 image data, drawn upright in local units. */
