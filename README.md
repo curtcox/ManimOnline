@@ -1479,3 +1479,12 @@ The **Hulls, cutouts and attention effects** example covers `ConvexHull`,
 `get_center_of_mass`, `get_direction`/`force_direction`, `line_intersection` and
 `angle_between_vectors`. Nonlinear `apply_function`/`apply_complex_function` maps
 now move handles like Community (along the map's local derivative).
+
+The **Graph layouts and directed trees** example covers `Graph` and `DiGraph`:
+labels, vertex/edge configs, attached edges while vertices move, `change_layout`,
+and animated `add_vertices`, `add_edges` and `remove_vertices`. Layouts follow
+networkx exactly for `circular`, `shell`, `spiral`, `partite`, `tree`, and seeded
+`spring`/`random` (a port of NumPy's RandomState); unseeded spring/random use seed
+0 so previews are reproducible. `kamada_kawai`, `planar` and `spectral` need SciPy
+solvers and are not available; custom layout functions receive the browser graph
+structure instead of a networkx graph.

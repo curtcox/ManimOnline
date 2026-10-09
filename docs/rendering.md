@@ -2258,3 +2258,15 @@ reveals whole words (Community's version iterates characters). In `play()`,
 UpdateFromFunc-based animations complete last so they see their neighbors' final
 states, and Succession samples UpdateFromFunc stages from a copy of the stage's
 starting state (Blink).
+
+Graph/DiGraph store vertices and edges in dicts (excluded from frames through the
+`_frame_excluded` class attribute) and attach an `update_edges` updater. `_MT19937`
+ports NumPy's legacy RandomState stream, which networkx uses for integer seeds, and
+the dense Fruchterman–Reingold loop mirrors networkx's array arithmetic. Line now
+accepts Mobject endpoints (boundary anchors facing the other end, as Community's
+`get_points_defining_boundary` uses anchors) and `set_points_by_ends`.
+`become` maps references to replaced descendants onto the retained live members, so
+attribute dicts such as `Graph.vertices` stay valid after `.animate` stages. After
+each `play()`, lite runs Community's resumed `update_mobjects(0)` pass. Classes may
+declare `_animate_overrides` (Community's `@override_animate`); Graph uses it for
+animated vertex/edge insertion and removal.

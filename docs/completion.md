@@ -281,3 +281,6 @@ VectorizedPoint, ComplexValueTracker, UnitInterval, CurvesAsSubmobjects,
 LaggedStartMap, MaintainPositionRelativeTo, Blink, Broadcast, SpiralIn and
 AddTextWordByWord are implemented with Community reference checks where the
 output is deterministic.
+
+Graph and DiGraph are implemented with networkx/Community layout parity for the
+deterministic layouts; SciPy-based layouts and networkx graph objects are unavailable.

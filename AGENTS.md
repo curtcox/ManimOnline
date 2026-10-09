@@ -562,3 +562,10 @@ tests compare against `community_mapped`. VDict keeps `submob_dict` (excluded fr
 frames) and still accepts plain Mobjects in add/remove for group internals.
 UpdateFromFunc animations complete last in play(); Succession stages built from
 them carry a starting-state copy for sampling.
+
+Read `examples/graph_scene.py` for graph layouts, attached edges and animated graph
+editing. Keep `_MT19937`/`_PCG64` exact; layout tests compare against networkx via
+Community. Bookkeeping that holds tuples or non-JSON keys goes in `_frame_excluded`.
+`become` deep-copies target attributes with a memo mapping replaced descendants to
+live members; don't reintroduce stale child references. play() ends with a dt=0
+update pass after completion, matching Community.

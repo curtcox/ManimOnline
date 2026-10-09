@@ -234,6 +234,74 @@ self.play(stream.end_animation())""")
         lagged=lite.LaggedStartMap(lite.FadeIn,lite.VGroup(lite.Dot(),lite.Square()),run_time=2)
         self.assertEqual((len(lagged.animations),lagged.run_time),(2,2))
 
+    def test_graph_layouts_match_networkx_through_community(self):
+        def centers(graph):
+            return {v: tuple(round(c+0.0,3) for c in graph[v].get_center()[:2]) for v in graph.vertices}
+        graph=lite.Graph([1,2,3,4],[(1,2),(2,3),(3,4),(4,1)],layout='circular')
+        # Every expectation below was measured with Manim Community 0.22 / networkx 3.7.
+        self.assertEqual(centers(graph),{1:(2,0),2:(0,2),3:(-2,0),4:(0,-2)})
+        # networkx rounds circular angles to float32, so coordinates carry ~1e-7 noise.
+        for value,expected in zip(graph.edges[(1,2)].get_end(),(0,2,0)): self.assertAlmostEqual(value,expected,places=6)
+        expected={'shell':{1:(-2,0),2:(0,-2),3:(2,0),4:(0,2)},
+                  'spiral':{1:(-1.283,-1.371),2:(-.066,-.927),3:(.699,.298),4:(.651,2)}}
+        for name,layout in expected.items():
+            self.assertEqual(centers(graph.change_layout(name)),layout)
+        graph.change_layout('spring',layout_config={'seed':3})
+        self.assertEqual(centers(graph),{1:(-1.974,-1.235),2:(-1.252,1.99),3:(1.969,1.245),4:(1.258,-2)})
+        graph.change_layout('random',layout_config={'seed':3})
+        self.assertEqual(centers(graph),{1:(.203,.833),2:(-.836,.043),3:(1.572,1.585),4:(-1.498,-1.171)})
+        graph.change_layout('partite',partitions=[[1,2],[3]])
+        self.assertEqual(centers(graph),{1:(-1.2,-.8),2:(-1.2,.8),3:(.4,0),4:(2,0)})
+        graph.change_layout('shell',layout_config={'nlist':[[1],[2,3,4]]})
+        self.assertEqual(centers(graph),{1:(0,0),2:(-1,0),3:(.5,-.866),4:(.5,.866)})
+        tree=lite.Graph([1,2,3,4,5,6],[(1,2),(1,3),(2,4),(2,5),(3,6)],layout='tree',root_vertex=1)
+        self.assertEqual(centers(tree),{1:(-.5,2),2:(1,0),3:(-2,0),4:(2,-2),5:(0,-2),6:(-2,-2)})
+        big=lite.Graph(list(range(12)),[(i,(i*5+1)%12) for i in range(12)]+[(0,6),(3,9)],layout='spring',layout_config={'seed':7})
+        self.assertEqual([centers(big)[v] for v in (0,4,11)],[(-1.962,-.581),(1.27,-1.458),(.312,1.916)])
+        self.assertEqual(lite._MT19937(5).random_sample(2),[0.22199317108973948,0.8707323061773764])
+        directed=lite.DiGraph([1,2],[(1,2)],layout={1:lite.LEFT*2,2:lite.RIGHT*2})
+        edge=directed.edges[(1,2)]
+        self.assertPointAlmostEqual(edge.get_start(),(-1.92,0,0))
+        self.assertPointAlmostEqual(edge.get_end(),(1.92,0,0))
+        self.assertEqual(len(edge.get_tips()),1)
+        self.assertEqual(repr(directed),'Directed graph on 2 vertices and 1 edges')
+        for bad in (lambda: lite.Graph([1],[],layout='tree'),lambda: lite.Graph([1,2],[(1,2),(2,1)],layout='nope'),
+                    lambda: lite.Graph([1,2,3],[(1,2),(2,3),(3,1)],layout='tree',root_vertex=1)):
+            with self.assertRaises(ValueError): bad()
+        with self.assertRaises(NotImplementedError): lite.Graph([1,2],[(1,2)],layout='kamada_kawai')
+        labeled=lite.Graph([1,2],[(1,2)],labels=True,layout={1:lite.LEFT,2:lite.RIGHT})
+        self.assertIsInstance(labeled[1],lite.LabeledDot)
+
+    def test_graph_edges_follow_vertices_and_animated_editing(self):
+        result=render("""g = Graph([1,2,3],[(1,2),(2,3)], layout='circular')
+self.add(g)
+self.play(g[1].animate.move_to(UP*3))
+self.play(g.animate.add_vertices(4, positions={4: DOWN*2}))
+self.play(g.animate.add_edges((3,4),(4,1)))
+self.play(g.animate.remove_vertices(2))
+d = DiGraph([1,2],[(1,2)], layout={1:LEFT*2, 2:RIGHT*2}).shift(DOWN)
+self.add(d)
+self.play(d[2].animate.shift(UP*2))""")
+        frames=result['frames']
+        def world(node,key):
+            return [node['position'][i]+node['geometry_center'][i]+(node[key][i] if key else 0) for i in range(2)]
+        moving=frames[8]['mobjects'][0]['children']
+        dot,line=moving[0],moving[3]
+        # The first edge starts at vertex 1 while it is being animated.
+        start=[line['position'][i]+line['start'][i] for i in range(2)]
+        self.assertAlmostEqual(start[0],world(dot,None)[0],places=6)
+        self.assertAlmostEqual(start[1],world(dot,None)[1],places=6)
+        self.assertEqual([m['type'] for m in frames[20]['mobjects']],['vgroup','circle'])
+        self.assertEqual(''.join(c['type'][0] for c in frames[40]['mobjects'][0]['children']),'cccllcll')
+        self.assertEqual(''.join(c['type'][0] for c in frames[-1]['mobjects'][0]['children']),'cccll')
+        self.assertEqual(''.join(c['type'][0] for c in frames[-1]['mobjects'][1]['children']),'ccl')
+        graph=lite.Graph([1,2],[(1,2)],layout='circular')
+        self.assertEqual(len(graph.add_edges((2,3))),2)
+        self.assertEqual(sorted(graph.vertices),[1,2,3])
+        self.assertEqual(len(graph.remove_edges((1,2))),1)
+        with self.assertRaises(ValueError): graph.remove_vertices(9)
+        json.dumps(graph.to_dict())
+
     def test_set_style_routes_fill_and_stroke(self):
         square=lite.Square().set_style(fill_color=lite.RED,fill_opacity=.5,stroke_color=lite.BLUE,
                                        stroke_width=6,stroke_opacity=.25,background_stroke_width=0)

@@ -8,6 +8,7 @@ import math
 import numbers
 import operator
 import random
+import struct
 import sys
 import types
 
@@ -267,6 +268,9 @@ config = PreviewConfig()
 
 
 class Mobject:
+    # Subclass bookkeeping (e.g. Graph adjacency) that frames never store.
+    _frame_excluded = ()
+
     def __init__(self, color=WHITE, fill_opacity=0, stroke_width=2,
                  fill_color=None, stroke_color=None, stroke_opacity=1, z_index=0, **kwargs):
         if kwargs:
@@ -1097,6 +1101,15 @@ class Mobject:
     def get_anchors(self):
         return [point for curve in self.get_cubic_bezier_tuples() for point in (curve[0], curve[3])]
 
+    def get_boundary_point(self, direction):
+        """Community's family anchor farthest along direction (first one on ties)."""
+        direction = Vector(direction)
+        points = [p for member in self.get_family() for p in
+                  (member.get_anchors() or [Vector(q) for q in member.get_points()])]
+        if not points:
+            return self.get_center()
+        return max(points, key=lambda p: p[0] * direction[0] + p[1] * direction[1] + p[2] * direction[2])
+
     def get_center_of_mass(self):
         points = [Vector(p) for member in self.get_family() for p in member.get_points()]
         if not points:
@@ -1628,8 +1641,11 @@ class Mobject:
                 children.append(member)
             retained = {key:source.__dict__[key] for key in ('updaters','updating_suspended','_saved_state')
                         if key in source.__dict__}
+            # References to replaced descendants (e.g. Graph.vertices) resolve to the
+            # retained live members rather than the target's copies.
             state = copy.deepcopy({key:value for key,value in replacement.__dict__.items()
-                                   if key not in ('children','updaters','updating_suspended','_saved_state','_sampled_geometry_center')})
+                                   if key not in ('children','updaters','updating_suspended','_saved_state','_sampled_geometry_center')},
+                                  dict(replacements))
             if 'traced_point_func' in source.__dict__:
                 retained.update({key:source.__dict__[key] for key in
                                  ('traced_point_func', 'dissipating_time', 'time')})
@@ -1662,7 +1678,8 @@ class Mobject:
         center = self._geometry_center()
         result = _snapshot_copy({key: value for key, value in self.__dict__.items()
                                 if not _holds_mobject(value) and not callable(value) and
-                                key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache', '_flow_points')})
+                                key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache', '_flow_points') and
+                                key not in self._frame_excluded})
         result['type'] = result.pop('_type')
         result['geometry_center'] = list(center)
         result['children'] = [child.to_dict() for child in self.children]
@@ -2888,7 +2905,7 @@ class MovingCamera(PreviewConfig):
 
 class Line(TipableVMobject):
     def __init__(self, start=LEFT, end=RIGHT, buff=0, tip_length=.35, tip_style=None, **kwargs):
-        start,end = self._endpoints(start,end)
+        start,end = self._endpoints(*self._resolve_ends(start,end))
         ArrowTip._tip_dimension(tip_length,'length')
         if tip_style is not None and not isinstance(tip_style,dict):
             raise TypeError('tip_style must be a dictionary')
@@ -2911,6 +2928,32 @@ class Line(TipableVMobject):
         angle = math.atan2(vector[1],vector[0]) if any(vector) else 0
         tip.rotate(angle-tip.tip_angle)
         tip.shift(Vector(self.start if at_start else self.end)-tip.tip_point)
+
+    @staticmethod
+    def _pointify(mob_or_point, direction=None):
+        if isinstance(mob_or_point, Mobject):
+            return mob_or_point.get_center() if direction is None else mob_or_point.get_boundary_point(direction)
+        return Vector(mob_or_point)
+
+    @classmethod
+    def _resolve_ends(cls, start, end):
+        """Community's endpoints: a Mobject end stops at its boundary point facing the other end."""
+        if not isinstance(start, Mobject) and not isinstance(end, Mobject):
+            return start, end
+        rough = cls._pointify(end) - cls._pointify(start)
+        length = math.sqrt(sum(v * v for v in rough))
+        direction = rough / length if length else Vector(ORIGIN)
+        return cls._pointify(start, direction), cls._pointify(end, -direction)
+
+    def set_points_by_ends(self, start, end, buff=0, path_arc=0):
+        if path_arc:
+            raise NotImplementedError('set_points_by_ends supports straight lines (path_arc=0)')
+        start, end = self._endpoints(*self._resolve_ends(start, end))
+        span = math.dist(start, end)
+        if buff and span > 2 * buff:
+            offset = (end - start) * (buff / span)
+            start, end = start + offset, end - offset
+        return self.put_start_and_end_on(start, end)
 
     @staticmethod
     def _endpoints(start, end):
@@ -7312,6 +7355,10 @@ class Animate(Transform):
     def __getattr__(self, name):
         if name.startswith('_'):
             raise AttributeError(name)
+        override = type(self.mobject).__dict__.get('_animate_overrides', None) or getattr(type(self.mobject), '_animate_overrides', {})
+        if name in override and not self.operations:
+            # Community's @override_animate: the method builds its own animation.
+            return getattr(self.mobject, override[name])
         # Community animates any method applied to a copy; updater and checkpoint
         # bookkeeping is not geometry and stays unsupported here.
         if (name in ('add_updater', 'remove_updater', 'clear_updaters', 'suspend_updating', 'resume_updating',
@@ -8100,6 +8147,9 @@ class Scene:
         for animation in sorted(animations, key=lambda a: isinstance(a, UpdateFromFunc)):
             animation._complete(self)
         self._update_mobjects(1 / FPS, {m: [m.to_dict()] for a in animations for m in a.objects()})
+        # Community resumes the animated objects' updaters and runs update_mobjects(0),
+        # so dependents such as Graph edges catch up with the committed state.
+        self._update_mobjects(0)
 
     def validate(self, *animations):
         objects = [m for a in animations for m in a.objects()]
@@ -8539,6 +8589,639 @@ class AddTextWordByWord(AddTextLetterByLetter):
         return min(count, self.word_ends[words - 1]) if words else 0
 
 
+class _MT19937:
+    """NumPy's legacy RandomState(seed) stream, as networkx layouts use for integer seeds."""
+    def __init__(self, seed=0):
+        if isinstance(seed, bool) or not isinstance(seed, numbers.Integral) or not 0 <= seed < 2 ** 32:
+            raise ValueError('Layout seeds must be integers from 0 to 2**32 - 1')
+        state = [int(seed)]
+        for index in range(1, 624):
+            previous = state[-1]
+            state.append((1812433253 * (previous ^ (previous >> 30)) + index) & 0xFFFFFFFF)
+        self._state, self._index = state, 624
+
+    def _next32(self):
+        if self._index >= 624:
+            state = self._state
+            for i in range(624):
+                y = (state[i] & 0x80000000) | (state[(i + 1) % 624] & 0x7FFFFFFF)
+                state[i] = state[(i + 397) % 624] ^ (y >> 1) ^ (0x9908B0DF if y & 1 else 0)
+            self._index = 0
+        y = self._state[self._index]
+        self._index += 1
+        y ^= y >> 11
+        y ^= (y << 7) & 0x9D2C5680
+        y ^= (y << 15) & 0xEFC60000
+        return y ^ (y >> 18)
+
+    def random_sample(self, count):
+        return [((self._next32() >> 5) * 67108864.0 + (self._next32() >> 6)) / 9007199254740992.0
+                for _ in range(count)]
+
+
+def _float32(value):
+    """Round to the nearest float32, as NumPy does for float32 arrays."""
+    return struct.unpack('f', struct.pack('f', value))[0]
+
+
+class _GraphData:
+    """The networkx structure Community layouts consume: ordered nodes and adjacency."""
+    def __init__(self, directed=False):
+        self.directed, self._adj = directed, {}
+
+    def __len__(self):
+        return len(self._adj)
+
+    def __iter__(self):
+        return iter(self._adj)
+
+    def __contains__(self, node):
+        return node in self._adj
+
+    @property
+    def nodes(self):
+        return list(self._adj)
+
+    @property
+    def edges(self):
+        seen, result = set(), []
+        for u, neighbors in self._adj.items():
+            for v in neighbors:
+                if self.directed or (v, u) not in seen:
+                    seen.add((u, v))
+                    result.append((u, v))
+        return result
+
+    def add_node(self, node):
+        try:
+            hash(node)
+        except TypeError:
+            raise TypeError('Graph vertices must be hashable') from None
+        self._adj.setdefault(node, {})
+
+    def add_edge(self, u, v):
+        self.add_node(u)
+        self.add_node(v)
+        self._adj[u][v] = True
+        if not self.directed:
+            self._adj[v][u] = True
+
+    def remove_node(self, node):
+        del self._adj[node]
+        for neighbors in self._adj.values():
+            neighbors.pop(node, None)
+
+    def remove_edge(self, u, v):
+        self._adj[u].pop(v, None)
+        if not self.directed:
+            self._adj[v].pop(u, None)
+
+    def neighbors(self, node):
+        return list(self._adj[node])
+
+    def is_tree(self):
+        if not self._adj:
+            return False
+        undirected = {node: set() for node in self._adj}
+        count = 0
+        for u, v in self.edges:
+            undirected[u].add(v)
+            undirected[v].add(u)
+            count += 1
+        start = next(iter(undirected))
+        seen, stack = {start}, [start]
+        while stack:
+            for other in undirected[stack.pop()]:
+                if other not in seen:
+                    seen.add(other)
+                    stack.append(other)
+        return len(seen) == len(undirected) and count == len(undirected) - 1
+
+
+def _rescale_layout(points, scale):
+    """networkx rescale_layout: center on the mean, then fit the largest coordinate to scale."""
+    count = len(points)
+    means = [sum(p[i] for p in points) / count for i in range(2)]
+    points = [[p[0] - means[0], p[1] - means[1]] for p in points]
+    limit = max(abs(value) for p in points for value in p)
+    if limit > 0:
+        points = [[value * (scale / limit) for value in p] for p in points]
+    return points
+
+
+def _layout_scale(scale):
+    if isinstance(scale, (tuple, list)):
+        raise NotImplementedError('Per-axis layout scales are supported only by the tree layout')
+    NumberLine._real(scale, 'layout_scale', nonnegative=True)
+    return scale
+
+
+def _circular_layout(graph, scale=2, center=None, dim=2):
+    scale, nodes = _layout_scale(scale), graph.nodes
+    if len(nodes) < 2:
+        return {node: [0, 0] for node in nodes}
+    # NumPy computes linspace(0, 1, n + 1) * 2pi, then rounds the angles to float32.
+    angles = [_float32((i / len(nodes)) * 2 * math.pi) for i in range(len(nodes))]
+    return dict(zip(nodes, _rescale_layout([[math.cos(a), math.sin(a)] for a in angles], scale)))
+
+
+def _shell_layout(graph, nlist=None, rotate=None, scale=2, center=None, dim=2):
+    scale, nodes = _layout_scale(scale), graph.nodes
+    if len(nodes) < 2:
+        return {node: [0, 0] for node in nodes}
+    nlist = [list(nodes)] if nlist is None else [list(shell) for shell in nlist]
+    bump = scale / len(nlist)
+    radius = 0.0 if len(nlist[0]) == 1 else bump
+    rotate = math.pi / len(nlist) if rotate is None else rotate
+    first, result = rotate, {}
+    for shell in nlist:
+        for index, node in enumerate(shell):
+            theta = _float32(2 * math.pi * index / len(shell)) + first
+            result[node] = [radius * math.cos(theta), radius * math.sin(theta)]
+        radius += bump
+        first += rotate
+    return result
+
+
+def _spiral_layout(graph, scale=2, center=None, dim=2, resolution=0.35, equidistant=False):
+    scale, nodes = _layout_scale(scale), graph.nodes
+    if len(nodes) < 2:
+        return {node: [0, 0] for node in nodes}
+    points = []
+    if equidistant:
+        chord, step, theta = 1, 0.5, resolution
+        theta += chord / (step * theta)
+        for _ in nodes:
+            r = step * theta
+            theta += chord / r
+            points.append([math.cos(theta) * r, math.sin(theta) * r])
+    else:
+        points = [[d * math.cos(resolution * d), d * math.sin(resolution * d)] for d in map(float, range(len(nodes)))]
+    return dict(zip(nodes, _rescale_layout(points, scale)))
+
+
+def _partite_layout(graph, scale=2, partitions=None, align='vertical', **kwargs):
+    if not partitions:
+        raise ValueError('The partite layout requires partitions parameter to contain the partition of the vertices')
+    if kwargs:
+        raise NotImplementedError('Unsupported partite layout options: ' + ', '.join(kwargs))
+    scale, subset = _layout_scale(scale), {}
+    for index, part in enumerate(partitions):
+        for node in part:
+            if node not in graph:
+                raise ValueError('The partition must contain arrays of vertices in the graph')
+            subset[node] = index
+    layers = {}
+    for node in graph:
+        layers.setdefault(subset.get(node, len(partitions)), []).append(node)
+    layers = dict(sorted(layers.items()))
+    points, order = [], []
+    for i, layer in enumerate(layers.values()):
+        offset = ((len(layers) - 1) / 2, (len(layer) - 1) / 2)
+        points += [[i - offset[0], y - offset[1]] for y in range(len(layer))]
+        order += layer
+    points = _rescale_layout(points, scale)
+    if align == 'horizontal':
+        points = [p[::-1] for p in points]
+    return dict(zip(order, points))
+
+
+def _random_layout(graph, scale=2, seed=None, center=None, dim=2):
+    scale = _layout_scale(scale)
+    # Community leaves the seed to NumPy's global generator; previews default to 0.
+    values = _MT19937(0 if seed is None else seed).random_sample(2 * len(graph))
+    return {node: [2 * scale * (_float32(values[2 * i]) - .5), 2 * scale * (_float32(values[2 * i + 1]) - .5)]
+            for i, node in enumerate(graph)}
+
+
+def _spring_layout(graph, k=None, pos=None, fixed=None, iterations=50, threshold=1e-4, weight='weight',
+                   scale=2, center=None, dim=2, seed=None, method='auto', gravity=1.0):
+    """networkx's dense Fruchterman-Reingold spring layout with a RandomState seed."""
+    if pos is not None or fixed is not None or method == 'energy':
+        raise NotImplementedError('Spring layouts support seed, k, iterations and threshold options')
+    scale, nodes = _layout_scale(scale), graph.nodes
+    n = len(nodes)
+    if n > 500:
+        raise ValueError('Spring layouts are limited to 500 vertices')
+    if n < 2:
+        return {node: [0, 0] for node in nodes}
+    if isinstance(iterations, bool) or not isinstance(iterations, numbers.Integral) or not 0 <= iterations <= 1000:
+        raise ValueError('Spring layout iterations must be an integer from 0 to 1000')
+    index = {node: i for i, node in enumerate(nodes)}
+    adjacency = [[0.0] * n for _ in range(n)]
+    for u, v in graph.edges:
+        adjacency[index[u]][index[v]] = 1.0
+        if not graph.directed:
+            adjacency[index[v]][index[u]] = 1.0
+    # Community leaves the seed to NumPy's global generator; previews default to 0.
+    values = _MT19937(0 if seed is None else seed).random_sample(2 * n)
+    pos = [[values[2 * i], values[2 * i + 1]] for i in range(n)]
+    k = math.sqrt(1.0 / n) if k is None else k
+    t = max(max(p[0] for p in pos) - min(p[0] for p in pos), max(p[1] for p in pos) - min(p[1] for p in pos)) * .1
+    dt = t / (iterations + 1)
+    for _ in range(iterations):
+        moves = []
+        for i in range(n):
+            dx = dy = 0.0
+            xi, yi, row = pos[i][0], pos[i][1], adjacency[i]
+            for j in range(n):
+                ex, ey = xi - pos[j][0], yi - pos[j][1]
+                distance = max(.01, math.hypot(ex, ey))
+                force = k * k / distance ** 2 - row[j] * distance / k
+                dx += ex * force
+                dy += ey * force
+            length = max(.01, math.hypot(dx, dy))
+            moves.append((dx * t / length, dy * t / length))
+        for p, (mx, my) in zip(pos, moves):
+            p[0] += mx
+            p[1] += my
+        t -= dt
+        if math.sqrt(sum(mx * mx + my * my for mx, my in moves)) / n < threshold:
+            break
+    return dict(zip(nodes, _rescale_layout(pos, scale)))
+
+
+def _tree_layout(tree, root_vertex=None, scale=2, vertex_spacing=None, orientation='down'):
+    """Community's port of SageMath's tree layout."""
+    if root_vertex is None:
+        raise ValueError('The tree layout requires the root_vertex parameter')
+    if not tree.is_tree():
+        raise ValueError('The tree layout must be used with trees')
+    children = {root_vertex: tree.neighbors(root_vertex)}
+    stack, stick = [list(children[root_vertex])], [root_vertex]
+    parent = dict.fromkeys(children[root_vertex], root_vertex)
+    pos, obstruction = {}, [0.0] * len(tree)
+    o = -1 if orientation == 'down' else 1
+    def slide(v, dx):
+        level = [v]
+        while level:
+            following = []
+            for u in level:
+                x, y = pos[u]
+                x += dx
+                obstruction[y] = max(x + 1, obstruction[y])
+                pos[u] = x, y
+                following += children[u]
+            level = following
+    while stack:
+        current = stack[-1]
+        if not current:
+            p = stick.pop()
+            stack.pop()
+            cp = children[p]
+            y = o * len(stack)
+            if not cp:
+                x = obstruction[y]
+                pos[p] = x, y
+            else:
+                x = sum(pos[c][0] for c in cp) / float(len(cp))
+                pos[p] = x, y
+                ox = obstruction[y]
+                if x < ox:
+                    slide(p, ox - x)
+                    x = ox
+            obstruction[y] = x + 1
+            continue
+        t = current.pop()
+        pt = parent[t]
+        ct = [u for u in tree.neighbors(t) if u != pt]
+        for c in ct:
+            parent[c] = t
+        children[t] = list(ct)
+        stack.append(ct)
+        stick.append(t)
+    xs, ys = [p[0] for p in pos.values()], [p[1] for p in pos.values()]
+    center = ((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2)
+    width, height = max(xs) - min(xs), max(ys) - min(ys)
+    if vertex_spacing is None:
+        if isinstance(scale, _REAL) and (width > 0 or height > 0):
+            sx = sy = 2 * scale / max(width, height)
+        elif isinstance(scale, (tuple, list)):
+            sx = 2 * scale[0] / width if scale[0] is not None and width > 0 else 1
+            sy = 2 * scale[1] / height if scale[1] is not None and height > 0 else 1
+        else:
+            sx = sy = 1
+    else:
+        sx, sy = vertex_spacing
+    return {v: [(x - center[0]) * sx, (y - center[1]) * sy] for v, (x, y) in pos.items()}
+
+
+_GRAPH_LAYOUTS = {'circular': _circular_layout, 'shell': _shell_layout, 'spiral': _spiral_layout,
+                  'partite': _partite_layout, 'random': _random_layout, 'spring': _spring_layout,
+                  'tree': _tree_layout}
+
+
+def _determine_graph_layout(graph, layout='spring', layout_scale=2, layout_config=None):
+    layout_config = {} if layout_config is None else dict(layout_config)
+    if isinstance(layout, dict):
+        return {node: Vector(point) for node, point in layout.items()}
+    if isinstance(layout, str):
+        if layout in ('kamada_kawai', 'planar', 'spectral'):
+            raise NotImplementedError(f"The '{layout}' layout needs NumPy/SciPy solvers; "
+                                      'use circular, shell, spiral, spring, random, partite, tree or a dict')
+        if layout not in _GRAPH_LAYOUTS:
+            raise ValueError(f"The layout '{layout}' is neither a recognized layout, a layout function,"
+                             'nor a vertex placement dictionary.')
+        if layout_config.pop('dim', 2) != 2:
+            raise NotImplementedError('Graph layouts are two-dimensional in the browser preview')
+        result = _GRAPH_LAYOUTS[layout](graph, scale=layout_scale, **layout_config)
+        return {node: Vector((point[0], point[1], 0)) for node, point in result.items()}
+    if callable(layout):
+        # Custom layouts receive the browser graph structure (nodes, edges, neighbors), not networkx.
+        result = layout(graph, scale=layout_scale, **layout_config)
+        return {node: Vector(point) for node, point in result.items()}
+    raise ValueError(f"The layout '{layout}' is neither a recognized layout, a layout function,"
+                     'nor a vertex placement dictionary.')
+
+
+class _GraphAnimationGroup(AnimationGroup):
+    """An AnimationGroup that runs a callback after its stages finish (Community's _on_finish)."""
+    def __init__(self, *animations, on_finish=None, **kwargs):
+        super().__init__(*animations, **kwargs)
+        self._on_finish = on_finish
+
+    def finish(self, scene):
+        super().finish(scene)
+        if self._on_finish is not None:
+            self._on_finish(scene)
+
+
+class GenericGraph(VGroup):
+    """Community's Graph base: vertex and edge mobjects kept attached by an updater."""
+    _frame_excluded = ('_graph', '_layout', '_labels', '_vertex_config', '_edge_config', '_tip_config',
+                       'default_vertex_config', 'default_edge_config')
+    _animate_overrides = {'add_vertices': '_add_vertices_animation', 'remove_vertices': '_remove_vertices_animation',
+                          'add_edges': '_add_edges_animation', 'remove_edges': '_remove_edges_animation'}
+    _directed = False
+
+    def __init__(self, vertices, edges, labels=False, label_fill_color=BLACK, layout='spring', layout_scale=2,
+                 layout_config=None, vertex_type=Dot, vertex_config=None, vertex_mobjects=None, edge_type=Line,
+                 partitions=None, root_vertex=None, edge_config=None):
+        super().__init__()
+        vertices, edges = list(vertices), [tuple(e) for e in edges]
+        if len(vertices) > 500 or len(edges) > 5000:
+            raise ValueError('Graphs are limited to 500 vertices and 5000 edges')
+        graph = _GraphData(self._directed)
+        for vertex in vertices:
+            graph.add_node(vertex)
+        for edge in edges:
+            if len(edge) != 2:
+                raise ValueError('Graph edges must be pairs of vertices')
+            graph.add_edge(*edge)
+        self._graph = graph
+        if isinstance(labels, dict):
+            self._labels = labels
+        elif isinstance(labels, bool):
+            self._labels = {v: MathTex(str(v), color=label_fill_color) for v in vertices} if labels else {}
+        else:
+            raise TypeError('Graph labels must be a boolean or a dictionary')
+        if self._labels and vertex_type is Dot:
+            vertex_type = LabeledDot
+        vertex_mobjects = vertex_mobjects or {}
+        vertex_config = vertex_config or {}
+        default_vertex_config = {k: v for k, v in vertex_config.items() if k not in vertices}
+        self._vertex_config = {v: vertex_config.get(v, dict(default_vertex_config)) for v in vertices}
+        self.default_vertex_config = default_vertex_config
+        for v, label in self._labels.items():
+            self._vertex_config[v]['label'] = label
+        self.vertices = {v: vertex_type(**self._vertex_config[v]) for v in vertices}
+        self.vertices.update(vertex_mobjects)
+        self.change_layout(layout=layout, layout_scale=layout_scale, layout_config=layout_config,
+                           partitions=partitions, root_vertex=root_vertex)
+        edge_config = dict(edge_config or {})
+        default_tip_config = edge_config.pop('tip_config', {})
+        default_edge_config = {k: v for k, v in edge_config.items() if not isinstance(k, tuple)}
+        self._edge_config, self._tip_config = {}, {}
+        for e in edges:
+            if e in edge_config:
+                config = dict(edge_config[e])
+                self._tip_config[e] = config.pop('tip_config', dict(default_tip_config))
+                self._edge_config[e] = config
+            else:
+                self._tip_config[e] = dict(default_tip_config)
+                self._edge_config[e] = dict(default_edge_config)
+        self.default_edge_config = default_edge_config
+        self._populate_edge_dict(edges, edge_type)
+        self.add(*self.vertices.values())
+        self.add(*self.edges.values())
+        self.add_updater(self.update_edges)
+
+    def __getitem__(self, k):
+        try:
+            if k in self.vertices:
+                return self.vertices[k]
+            if k in self.edges:
+                return self.edges[k]
+        except TypeError:
+            pass
+        if isinstance(k, (int, slice)) and not isinstance(k, bool):
+            return super().__getitem__(k)  # Positional access for group internals.
+        raise ValueError(f'Could not find {k} in vertices or edges')
+
+    def _make_edge(self, u, v, edge_type, config, tip_config=None):
+        raise NotImplementedError('To be implemented in concrete subclasses')
+
+    def _populate_edge_dict(self, edges, edge_type):
+        self.edges = {(u, v): self._make_edge(u, v, edge_type, self._edge_config[(u, v)], self._tip_config[(u, v)])
+                      for u, v in edges}
+
+    def _create_vertex(self, vertex, position=None, label=False, label_fill_color=BLACK, vertex_type=Dot,
+                       vertex_config=None, vertex_mobject=None):
+        position = self.get_center() if position is None else Vector(position)
+        if vertex in self.vertices:
+            raise ValueError(f"Vertex identifier '{vertex}' is already used for a vertex in this graph.")
+        if label is True:
+            label = MathTex(str(vertex), color=label_fill_color)
+        elif vertex in self._labels:
+            label = self._labels[vertex]
+        elif not isinstance(label, Mobject):
+            label = None
+        config = dict(self.default_vertex_config)
+        config.update(vertex_config or {})
+        if label is not None:
+            config['label'] = label
+            if vertex_type is Dot:
+                vertex_type = LabeledDot
+        if vertex_mobject is None:
+            vertex_mobject = vertex_type(**config)
+        vertex_mobject.move_to(position)
+        return vertex, position, config, vertex_mobject
+
+    def _add_created_vertex(self, vertex, position, vertex_config, vertex_mobject):
+        if vertex in self.vertices:
+            raise ValueError(f"Vertex identifier '{vertex}' is already used for a vertex in this graph.")
+        self._graph.add_node(vertex)
+        self._layout[vertex] = position
+        if 'label' in vertex_config:
+            self._labels[vertex] = vertex_config['label']
+        self._vertex_config[vertex] = vertex_config
+        self.vertices[vertex] = vertex_mobject
+        vertex_mobject.move_to(position)
+        self.add(vertex_mobject)
+        return vertex_mobject
+
+    def _add_vertex(self, vertex, position=None, **kwargs):
+        return self._add_created_vertex(*self._create_vertex(vertex, position=position, **kwargs))
+
+    def _create_vertices(self, *vertices, positions=None, labels=False, label_fill_color=BLACK, vertex_type=Dot,
+                         vertex_config=None, vertex_mobjects=None):
+        base_positions = dict.fromkeys(vertices, self.get_center())
+        base_positions.update(positions or {})
+        positions = base_positions
+        vertex_mobjects = vertex_mobjects or {}
+        if isinstance(labels, bool):
+            labels = dict.fromkeys(vertices, labels)
+        else:
+            base_labels = dict.fromkeys(vertices, False)
+            base_labels.update(labels)
+            labels = base_labels
+        vertex_config = dict(self.default_vertex_config) if vertex_config is None else vertex_config
+        base = dict(self.default_vertex_config)
+        base.update({key: val for key, val in vertex_config.items() if key not in vertices})
+        configs = {v: vertex_config[v] if v in vertex_config else dict(base) for v in vertices}
+        return [self._create_vertex(v, position=positions[v], label=labels[v], label_fill_color=label_fill_color,
+                                    vertex_type=vertex_type, vertex_config=configs[v],
+                                    vertex_mobject=vertex_mobjects.get(v)) for v in vertices]
+
+    def add_vertices(self, *vertices, **kwargs):
+        return [self._add_created_vertex(*v) for v in self._create_vertices(*vertices, **kwargs)]
+
+    def _add_vertices_animation(self, *args, anim_args=None, **kwargs):
+        anim_args = dict(anim_args or {})
+        animation = anim_args.pop('animation', Create)
+        created = self._create_vertices(*args, **kwargs)
+        def on_finish(scene):
+            for entry in created:
+                scene.remove(entry[-1])
+                self._add_created_vertex(*entry)
+        return _GraphAnimationGroup(*(animation(entry[-1], **anim_args) for entry in created), on_finish=on_finish)
+
+    def _remove_vertex(self, vertex):
+        if vertex not in self.vertices:
+            raise ValueError(f"The graph does not contain a vertex with identifier '{vertex}'")
+        self._graph.remove_node(vertex)
+        self._layout.pop(vertex)
+        self._labels.pop(vertex, None)
+        self._vertex_config.pop(vertex)
+        edge_tuples = [e for e in self.edges if vertex in e]
+        for e in edge_tuples:
+            self._edge_config.pop(e)
+        removed = [self.edges.pop(e) for e in edge_tuples]
+        removed.append(self.vertices.pop(vertex))
+        self.remove(*removed)
+        return removed
+
+    def remove_vertices(self, *vertices):
+        return self.get_group_class()(*(m for v in vertices for m in self._remove_vertex(v)))
+
+    def _remove_vertices_animation(self, *vertices, anim_args=None):
+        anim_args = dict(anim_args or {})
+        animation = anim_args.pop('animation', Uncreate)
+        return AnimationGroup(*(animation(m, **anim_args) for m in self.remove_vertices(*vertices)))
+
+    def _add_edge(self, edge, edge_type=Line, edge_config=None):
+        edge_config = dict(self.default_edge_config) if edge_config is None else edge_config
+        added = [self._add_vertex(v) for v in edge if v not in self.vertices]
+        u, v = edge
+        self._graph.add_edge(u, v)
+        config = dict(self.default_edge_config)
+        config.update(edge_config)
+        tip_config = config.pop('tip_config', {})
+        self._edge_config[(u, v)], self._tip_config[(u, v)] = config, tip_config
+        mobject = self._make_edge(u, v, edge_type, config, tip_config)
+        self.edges[(u, v)] = mobject
+        self.add(mobject)
+        return added + [mobject]
+
+    def add_edges(self, *edges, edge_type=Line, edge_config=None, **kwargs):
+        edges = [tuple(e) for e in edges]
+        edge_config = edge_config or {}
+        base = dict(self.default_edge_config)
+        base.update({k: v for k, v in edge_config.items() if k not in edges})
+        configs = {}
+        for e in edges:
+            configs[e] = dict(base)
+            configs[e].update(edge_config.get(e, {}))
+        new_vertices = [v for v in dict.fromkeys(v for e in edges for v in e) if v not in self.vertices]
+        added = self.add_vertices(*new_vertices, **kwargs)
+        for edge in edges:
+            added += self._add_edge(edge, edge_type=edge_type, edge_config=configs[edge])[-1:]
+        return self.get_group_class()(*added)
+
+    def _add_edges_animation(self, *args, anim_args=None, **kwargs):
+        anim_args = dict(anim_args or {})
+        animation = anim_args.pop('animation', Create)
+        return AnimationGroup(*(animation(m, **anim_args) for m in self.add_edges(*args, **kwargs)))
+
+    def _remove_edge(self, edge):
+        if edge not in self.edges:
+            raise ValueError(f"The graph does not contain a edge '{edge}'")
+        mobject = self.edges.pop(edge)
+        self._graph.remove_edge(*edge)
+        self._edge_config.pop(edge, None)
+        self.remove(mobject)
+        return mobject
+
+    def remove_edges(self, *edges):
+        return self.get_group_class()(*(self._remove_edge(tuple(e)) for e in edges))
+
+    def _remove_edges_animation(self, *edges, anim_args=None):
+        anim_args = dict(anim_args or {})
+        animation = anim_args.pop('animation', Uncreate)
+        return AnimationGroup(*(animation(m, **anim_args) for m in self.remove_edges(*edges)))
+
+    @classmethod
+    def from_networkx(cls, nxgraph, **kwargs):
+        return cls(list(nxgraph.nodes), list(nxgraph.edges), **kwargs)
+
+    def change_layout(self, layout='spring', layout_scale=2, layout_config=None, partitions=None, root_vertex=None):
+        layout_config = {} if layout_config is None else dict(layout_config)
+        if partitions is not None and 'partitions' not in layout_config:
+            layout_config['partitions'] = partitions
+        if root_vertex is not None and 'root_vertex' not in layout_config:
+            layout_config['root_vertex'] = root_vertex
+        self._layout = _determine_graph_layout(self._graph, layout=layout, layout_scale=layout_scale,
+                                               layout_config=layout_config)
+        for v in self.vertices:
+            self[v].move_to(self._layout[v])
+        return self
+
+
+class Graph(GenericGraph):
+    """An undirected graph whose Line edges follow their vertices' centers."""
+    def _make_edge(self, u, v, edge_type, config, tip_config=None):
+        return edge_type(start=self[u].get_center(), end=self[v].get_center(), z_index=-1, **config)
+
+    def update_edges(self, graph):
+        for (u, v), edge in graph.edges.items():
+            # Community looks up "buff"/"path_arc" in the per-edge table, so both stay 0.
+            edge.set_points_by_ends(graph[u].get_center(), graph[v].get_center(), buff=0, path_arc=0)
+        return self
+
+    def __repr__(self):
+        return f'Undirected graph on {len(self.vertices)} vertices and {len(self.edges)} edges'
+
+
+class DiGraph(GenericGraph):
+    """A directed graph: arrow tips stop at the target vertex's boundary."""
+    _directed = True
+
+    def _make_edge(self, u, v, edge_type, config, tip_config=None):
+        edge = edge_type(start=self[u], end=self[v], z_index=-1, **config)
+        edge.add_tip(**(tip_config or {}))
+        return edge
+
+    def update_edges(self, graph):
+        for (u, v), edge in graph.edges.items():
+            tip = edge.pop_tips()[0]
+            edge.set_points_by_ends(graph[u], graph[v], buff=0, path_arc=0)
+            edge.add_tip(tip)
+        return self
+
+    def __repr__(self):
+        return f'Directed graph on {len(self.vertices)} vertices and {len(self.edges)} edges'
+
+
 class _PCG64:
     """NumPy's default_rng(seed) stream (SeedSequence + PCG64), for exact Community noise."""
     _MULT = 0x2360ED051FC65DA44385DF649FCCF645
@@ -8968,7 +9651,7 @@ class _StreamLinesEnd(Animation):
 EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
            'Triangle', 'Polygon', 'Polygram', 'RegularPolygram', 'RegularPolygon', 'Star', 'Brace', 'BraceBetweenPoints', 'BraceLabel', 'BraceText',
            'Title', 'BulletedList', 'Tex', 'SingleStringMathTex', 'MarkupText', 'LabeledDot', 'Variable', 'always', 'f_always', 'always_shift', 'always_rotate',
-           'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'BarChart', 'PolarPlane', 'NumberPlane', 'ComplexPlane', 'VectorField', 'ArrowVectorField', 'StreamLines', 'sigmoid', 'ScreenRectangle', 'FullScreenRectangle', 'VectorizedPoint', 'ComplexValueTracker', 'UnitInterval', 'TangentialArc', 'CurvesAsSubmobjects', 'VDict', 'Cutout', 'ConvexHull', 'ArcBrace', 'LaggedStartMap', 'MaintainPositionRelativeTo', 'Blink', 'Broadcast', 'SpiralIn', 'AddTextWordByWord', 'Animation', 'line_intersection', 'angle_between_vectors', 'DEFAULT_LAGGED_START_LAG_RATIO', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
+           'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'BarChart', 'PolarPlane', 'NumberPlane', 'ComplexPlane', 'VectorField', 'ArrowVectorField', 'StreamLines', 'sigmoid', 'ScreenRectangle', 'FullScreenRectangle', 'VectorizedPoint', 'ComplexValueTracker', 'UnitInterval', 'TangentialArc', 'CurvesAsSubmobjects', 'VDict', 'Cutout', 'ConvexHull', 'ArcBrace', 'LaggedStartMap', 'MaintainPositionRelativeTo', 'Blink', 'Broadcast', 'SpiralIn', 'AddTextWordByWord', 'Animation', 'line_intersection', 'angle_between_vectors', 'DEFAULT_LAGGED_START_LAG_RATIO', 'Graph', 'DiGraph', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform',
