@@ -493,3 +493,13 @@ _CM_GLYPHS (DecimalNumber); Scene.render attaches it as `layout` after capture a
 the renderer pins tspans with textLength. MathTex sizes come from per-render
 math_metrics (browser getBBox); unknown formulas are estimated and reported in
 math_estimated, and index.html re-renders once with measurements.
+
+
+Read `examples/animation_tour_scene.py` for rate functions, lagged animations,
+emphasis effects, arc swaps and targets. Animation._member_states implements
+Community's lag sub-alphas over _painted_paths; fades use nested=False to avoid
+compounding SVG opacity. Use Animation._complete (finish + remover) wherever an
+animation is completed. Scene.add/remove use Community restructuring and
+Scene._introduce only adds absent mobjects; capture() draws animated members
+inside their on-screen group, so Scene.validate rejects members of non-identity
+pose groups. play(rate_func=...) assigns animation.rate_func before prepare.

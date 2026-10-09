@@ -692,7 +692,7 @@ class Mobject:
     def replace(self, mobject, dim_to_match=0, stretch=False):
         if not isinstance(mobject,Mobject):
             raise TypeError('replace expects a Mobject')
-        if not mobject.get_num_points() and not mobject.children:
+        if not mobject.get_num_points() and not mobject.children and mobject._type not in ('text', 'mathtex'):
             raise ValueError('Cannot fit to a mobject with no points or children')
         length = mobject.length_over_dim(dim_to_match)
         center = mobject.get_center()
@@ -1347,6 +1347,11 @@ class Mobject:
         mobject.rotate(-self.angle).scale(1 / self.geometry_scale)
         return mobject.move_to(local)
 
+    def generate_target(self, use_deepcopy=False):
+        self.target = None  # Do not copy an earlier target into the new one.
+        self.target = self.copy()
+        return self.target
+
     def add_background_rectangle(self, color=None, opacity=0.75, **kwargs):
         rectangle = BackgroundRectangle(self, color=color, fill_opacity=opacity, **kwargs)
         self.background_rectangle = self._to_local_pose(rectangle)
@@ -1416,7 +1421,8 @@ class Mobject:
     def to_dict(self):
         center = self._geometry_center()
         result = copy.deepcopy({key: value for key, value in self.__dict__.items()
-                                if key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache')})
+                                if not isinstance(value, Mobject) and
+                                key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache')})
         result['type'] = result.pop('_type')
         result['geometry_center'] = list(center)
         result['children'] = [child.to_dict() for child in self.children]
@@ -2157,7 +2163,7 @@ class Circle(Arc):
         if not isinstance(stretch,bool):
             raise ValueError('stretch must be a boolean')
         NumberLine._real(buffer_factor,'Circle buffer factor',nonnegative=True)
-        if not mobject.get_num_points() and not mobject.children:
+        if not mobject.get_num_points() and not mobject.children and mobject._type not in ('text', 'mathtex'):
             raise ValueError('Cannot surround a mobject with no points or children')
         diameter = math.hypot(mobject.get_width(),mobject.get_height())*buffer_factor
         center = mobject.get_center()
@@ -4508,16 +4514,188 @@ class ComplexPlane(NumberPlane):
         return self
 
 
+# Community rate functions (manim.utils.rate_functions), including clamping.
+def _unit_interval(function):
+    def wrapper(t, *args, **kwargs):
+        return function(t, *args, **kwargs) if 0 <= t <= 1 else (0 if t < 0 else 1)
+    wrapper.__name__ = function.__name__
+    return wrapper
+
+
+def _zero(function):
+    def wrapper(t, *args, **kwargs):
+        return function(t, *args, **kwargs) if 0 <= t <= 1 else 0
+    wrapper.__name__ = function.__name__
+    return wrapper
+
+
+def sigmoid(x):
+    return 1.0 / (1 + math.exp(-x))
+
+
+@_unit_interval
 def linear(t):
     return t
 
 
-def smooth(t):
-    return t * t * (3 - 2 * t)
+@_unit_interval
+def smooth(t, inflection=10.0):
+    error = sigmoid(-inflection / 2)
+    return min(max((sigmoid(inflection * (t - 0.5)) - error) / (1 - 2 * error), 0), 1)
 
 
-def there_and_back(t):
-    return smooth(2 * t if t <= 0.5 else 2 * (1 - t))
+@_unit_interval
+def smoothstep(t):
+    return 3 * t ** 2 - 2 * t ** 3
+
+
+@_unit_interval
+def smootherstep(t):
+    return 6 * t ** 5 - 15 * t ** 4 + 10 * t ** 3
+
+
+@_unit_interval
+def smoothererstep(t):
+    return 35 * t ** 4 - 84 * t ** 5 + 70 * t ** 6 - 20 * t ** 7
+
+
+@_unit_interval
+def rush_into(t, inflection=10.0):
+    return 2 * smooth(t / 2.0, inflection)
+
+
+@_unit_interval
+def rush_from(t, inflection=10.0):
+    return 2 * smooth(t / 2.0 + 0.5, inflection) - 1
+
+
+@_unit_interval
+def slow_into(t):
+    return math.sqrt(1 - (1 - t) * (1 - t))
+
+
+@_unit_interval
+def double_smooth(t):
+    return 0.5 * smooth(2 * t) if t < 0.5 else 0.5 * (1 + smooth(2 * t - 1))
+
+
+@_zero
+def there_and_back(t, inflection=10.0):
+    return smooth(2 * t if t < 0.5 else 2 * (1 - t), inflection)
+
+
+@_zero
+def there_and_back_with_pause(t, pause_ratio=1.0 / 3):
+    a = 2.0 / (1.0 - pause_ratio)
+    if t < 0.5 - pause_ratio / 2:
+        return smooth(a * t)
+    if t < 0.5 + pause_ratio / 2:
+        return 1
+    return smooth(a - a * t)
+
+
+@_unit_interval
+def running_start(t, pull_factor=-0.5):
+    mt = 1 - t
+    return (15 * t**2 * mt**4 * pull_factor + 20 * t**3 * mt**3 * pull_factor +
+            15 * t**4 * mt**2 + 6 * t**5 * mt + t**6)
+
+
+def not_quite_there(func=smooth, proportion=0.7):
+    def result(t, *args, **kwargs):
+        return proportion * func(t, *args, **kwargs)
+    return result
+
+
+@_zero
+def wiggle(t, wiggles=2):
+    return there_and_back(t) * math.sin(wiggles * math.pi * t)
+
+
+def squish_rate_func(func, a=0.4, b=0.6):
+    def result(t, *args, **kwargs):
+        if a == b:
+            return a
+        new_t = 0.0 if t < a else 1.0 if t > b else (t - a) / (b - a)
+        return func(new_t, *args, **kwargs)
+    return result
+
+
+@_unit_interval
+def lingering(t):
+    return squish_rate_func(lambda t: t, 0, 0.8)(t)
+
+
+@_unit_interval
+def exponential_decay(t, half_life=0.1):
+    return 1 - math.exp(-t / half_life)
+
+
+def _ease_functions():
+    sqrt, c1 = math.sqrt, 1.70158
+    def bounce_out(t):
+        n1, d1 = 7.5625, 2.75
+        if t < 1 / d1:
+            return n1 * t * t
+        if t < 2 / d1:
+            return n1 * (t - 1.5 / d1) ** 2 + 0.75
+        if t < 2.5 / d1:
+            return n1 * (t - 2.25 / d1) ** 2 + 0.9375
+        return n1 * (t - 2.625 / d1) ** 2 + 0.984375
+    c4, c5 = 2 * math.pi / 3, 2 * math.pi / 4.5
+    functions = {
+        'ease_in_sine': lambda t: 1 - math.cos(t * math.pi / 2),
+        'ease_out_sine': lambda t: math.sin(t * math.pi / 2),
+        'ease_in_out_sine': lambda t: -(math.cos(math.pi * t) - 1) / 2,
+        'ease_in_quad': lambda t: t * t,
+        'ease_out_quad': lambda t: 1 - (1 - t) * (1 - t),
+        'ease_in_out_quad': lambda t: 2 * t * t if t < 0.5 else 1 - (-2 * t + 2) ** 2 / 2,
+        'ease_in_cubic': lambda t: t ** 3,
+        'ease_out_cubic': lambda t: 1 - (1 - t) ** 3,
+        'ease_in_out_cubic': lambda t: 4 * t ** 3 if t < 0.5 else 1 - (-2 * t + 2) ** 3 / 2,
+        'ease_in_quart': lambda t: t ** 4,
+        'ease_out_quart': lambda t: 1 - (1 - t) ** 4,
+        'ease_in_out_quart': lambda t: 8 * t ** 4 if t < 0.5 else 1 - (-2 * t + 2) ** 4 / 2,
+        'ease_in_quint': lambda t: t ** 5,
+        'ease_out_quint': lambda t: 1 - (1 - t) ** 5,
+        'ease_in_out_quint': lambda t: 16 * t ** 5 if t < 0.5 else 1 - (-2 * t + 2) ** 5 / 2,
+        'ease_in_expo': lambda t: 0 if t == 0 else 2 ** (10 * t - 10),
+        'ease_out_expo': lambda t: 1 if t == 1 else 1 - 2 ** (-10 * t),
+        'ease_in_out_expo': lambda t: (0 if t == 0 else 1 if t == 1 else 2 ** (20 * t - 10) / 2
+                                       if t < 0.5 else (2 - 2 ** (-20 * t + 10)) / 2),
+        'ease_in_circ': lambda t: 1 - sqrt(1 - t ** 2),
+        'ease_out_circ': lambda t: sqrt(1 - (t - 1) ** 2),
+        'ease_in_out_circ': lambda t: ((1 - sqrt(1 - (2 * t) ** 2)) / 2 if t < 0.5
+                                       else (sqrt(1 - (-2 * t + 2) ** 2) + 1) / 2),
+        'ease_in_back': lambda t: (c1 + 1) * t ** 3 - c1 * t * t,
+        'ease_out_back': lambda t: 1 + (c1 + 1) * (t - 1) ** 3 + c1 * (t - 1) ** 2,
+        'ease_in_out_back': lambda t: ((2 * t) ** 2 * ((c1 * 1.525 + 1) * 2 * t - c1 * 1.525) / 2 if t < 0.5 else
+                                       ((2 * t - 2) ** 2 * ((c1 * 1.525 + 1) * (t * 2 - 2) + c1 * 1.525) + 2) / 2),
+        'ease_in_elastic': lambda t: (0 if t == 0 else 1 if t == 1 else
+                                      -2 ** (10 * t - 10) * math.sin((t * 10 - 10.75) * c4)),
+        'ease_out_elastic': lambda t: (0 if t == 0 else 1 if t == 1 else
+                                       2 ** (-10 * t) * math.sin((t * 10 - 0.75) * c4) + 1),
+        'ease_in_out_elastic': lambda t: (0 if t == 0 else 1 if t == 1 else
+                                          -(2 ** (20 * t - 10) * math.sin((20 * t - 11.125) * c5)) / 2 if t < 0.5 else
+                                          2 ** (-20 * t + 10) * math.sin((20 * t - 11.125) * c5) / 2 + 1),
+        'ease_in_bounce': lambda t: 1 - bounce_out(1 - t),
+        'ease_out_bounce': bounce_out,
+        'ease_in_out_bounce': lambda t: ((1 - bounce_out(1 - 2 * t)) / 2 if t < 0.5
+                                         else (1 + bounce_out(2 * t - 1)) / 2),
+    }
+    result = {}
+    for name, function in functions.items():
+        function.__name__ = name
+        result[name] = _unit_interval(function)
+    return result
+
+
+globals().update(_ease_functions())
+rate_functions = types.SimpleNamespace(**{name: globals()[name] for name in (
+    'linear', 'smooth', 'smoothstep', 'smootherstep', 'smoothererstep', 'rush_into', 'rush_from',
+    'slow_into', 'double_smooth', 'there_and_back', 'there_and_back_with_pause', 'running_start',
+    'not_quite_there', 'wiggle', 'squish_rate_func', 'lingering', 'exponential_decay', 'sigmoid',
+    *_ease_functions())})
 
 
 def interpolate(start, end, alpha):
@@ -4824,12 +5002,50 @@ def _sample_transform(plan, alpha):
     return [result]
 
 
+def _painted_paths(data, path=(), nested=True):
+    """Preorder paths of drawable family members (Community's family_members_with_points)."""
+    painted = data['type'] not in ('vgroup', 'mobject', 'valuetracker')
+    result = [path] if painted else []
+    if nested or not painted:
+        for index, child in enumerate(data.get('children', [])):
+            result += _painted_paths(child, path + (index,), nested)
+    return result
+
+
 class Animation:
-    def __init__(self, mobject, run_time=1, rate_func=smooth):
+    def __init__(self, mobject, run_time=1, rate_func=smooth, lag_ratio=0, remover=False,
+                 introducer=False, name=None, suspend_mobject_updating=True, reverse_rate_function=False):
+        if isinstance(lag_ratio, bool) or not isinstance(lag_ratio, (int, float)) or not math.isfinite(lag_ratio) or lag_ratio < 0:
+            raise ValueError('lag_ratio must be nonnegative and finite')
+        if not callable(rate_func):
+            raise TypeError('rate_func must be callable')
+        self.reverse_rate_function = bool(reverse_rate_function)
         self.mobject, self.run_time, self.rate_func = mobject, run_time, rate_func
+        self.lag_ratio, self.remover, self.introducer, self.name = lag_ratio, bool(remover), introducer, name
+
+    def _member_states(self, data, alpha, rate_func, member, nested=True):
+        """Apply member(node, sub_alpha) to drawable members with Community's lag timing."""
+        paths = _painted_paths(data, nested=nested)
+        full = (len(paths) - 1) * self.lag_ratio + 1 if paths else 1
+        order = {path: index for index, path in enumerate(paths)}
+        def visit(node, path):
+            if path in order:
+                local = max(0, min(1, alpha * full - order[path] * self.lag_ratio))
+                member(node, rate_func(local), path)
+                if not nested:
+                    return
+            for index, child in enumerate(node.get('children', [])):
+                visit(child, path + (index,))
+        visit(data, ())
+        return data
+
+    def _complete(self, scene):
+        self.finish(scene)
+        if self.remover:
+            scene.remove(self.mobject)
 
     def begin(self, scene):
-        scene.add(self.mobject)
+        scene._introduce(self.mobject)
         self.start = self.mobject.to_dict()
 
     def sample(self, alpha):
@@ -4846,22 +5062,94 @@ class Animation:
         # Compute the held terminal frame without changing the live scene early.
         terminal = copy.deepcopy(self)
         staging = Scene().add(terminal.mobject)
-        terminal.finish(staging)
+        terminal._complete(staging)
         self._terminal = [m.to_dict() for m in staging.mobjects]
 
     def states(self, alpha, rate_func=None):
+        rate = rate_func or self.rate_func
+        if self.reverse_rate_function:
+            # Like Community, reversal also applies to a play() rate override.
+            forward = rate
+            rate = lambda t: forward(1 - t)
         if alpha >= 1:
             result = self._terminal
+        elif getattr(self, '_lagged', False):
+            # Lagged members apply the rate function to their own sub-alphas.
+            result = self.sample_members(max(0, alpha), rate)
         else:
-            result = self.sample((rate_func or self.rate_func)(max(0, alpha)))
+            result = self.sample(rate(max(0, alpha)))
         return {self.mobject: result}
 
 
+def _faded_group(mobjects, name):
+    if not mobjects:
+        raise ValueError('At least one mobject must be passed to ' + name)
+    if any(not isinstance(m, Mobject) for m in mobjects):
+        raise TypeError(name + ' expects Mobjects')
+    return mobjects[0] if len(mobjects) == 1 else Group(*mobjects)
+
+
 class FadeIn(Animation):
+    """Fade in, optionally from a shift, a starting position and a scale."""
+    _fading_in = True
+
+    def __init__(self, *mobjects, shift=None, target_position=None, scale=1, **kwargs):
+        super().__init__(_faded_group(mobjects, type(self).__name__), **kwargs)
+        if shift is not None:
+            shift = Mobject._xy_vector(shift, 'Fade shift')
+        if target_position is not None and not isinstance(target_position, Mobject):
+            target_position = Mobject._xy_vector(target_position, 'Fade target position')
+        NumberLine._real(scale, 'Fade scale')
+        self.shift_vector, self.target_position, self.scale_factor = shift, target_position, scale
+        self._lagged = self.lag_ratio > 0
+
+    def _faded(self):
+        # Community's _Fade: a target position is where a fade-in starts and a
+        # fade-out ends; a shift is applied backwards for fade-ins.
+        moved = self.mobject.copy()
+        if self.shift_vector is None and self.target_position is not None:
+            point = (self.target_position.get_center() if isinstance(self.target_position, Mobject)
+                     else self.target_position)
+            moved.shift(point - self.mobject.get_center())
+        elif self.shift_vector is not None:
+            moved.shift(self.shift_vector * (-1 if self._fading_in else 1))
+        if self.scale_factor != 1:
+            moved.scale(self.scale_factor)
+        return moved.to_dict()
+
+    def begin(self, scene):
+        super().begin(scene)
+        self.moved = (self.shift_vector is not None or self.target_position is not None
+                      or self.scale_factor != 1)
+        away = self._faded() if self.moved else self.start
+        self.first, self.last = (away, self.start) if self._fading_in else (self.start, away)
+
+    def _visibility(self, opacity, alpha):
+        return opacity * (alpha if self._fading_in else 1 - alpha)
+
     def sample(self, alpha):
-        result = copy.deepcopy(self.start)
-        result['opacity'] *= alpha
+        result = interpolate(self.first, self.last, alpha) if self.moved else copy.deepcopy(self.start)
+        result['opacity'] = self._visibility(self.start['opacity'], alpha)
         return [result]
+
+    def sample_members(self, alpha, rate_func):
+        def member(node, a, path):
+            start, end = _lookup(self.first, path), _lookup(self.last, path)
+            node.update(interpolate(_strip_children(start), _strip_children(end), a))
+            node['opacity'] = self._visibility(_lookup(self.start, path)['opacity'], a)
+        result = copy.deepcopy(self.start)
+        # Whole drawable subtrees fade together so nested opacity never compounds.
+        return [self._member_states(result, alpha, rate_func, member, nested=False)]
+
+
+def _lookup(data, path):
+    for index in path:
+        data = data['children'][index]
+    return data
+
+
+def _strip_children(data):
+    return {key: value for key, value in data.items() if key != 'children'}
 
 
 class GrowFromPoint(Animation):
@@ -4913,24 +5201,26 @@ class ShrinkToCenter(GrowFromCenter):
 
 
 class Create(Animation):
-    """Trace primitive outlines; groups reveal their children simultaneously."""
+    """Trace outlines; Community's default lag_ratio=1 draws members in sequence."""
+    _lagged = True
+
+    def __init__(self, mobject, lag_ratio=1.0, introducer=True, **kwargs):
+        super().__init__(mobject, lag_ratio=lag_ratio, introducer=introducer, **kwargs)
+
+    @staticmethod
+    def _reveal(node, progress):
+        if node['type'] in ('text', 'mathtex'):
+            node['opacity'] *= progress
+        else:
+            node['draw_progress'] = progress
+            node['fill_opacity'] *= progress
+
     def sample(self, alpha):
-        result = copy.deepcopy(self.start)
-        progress = max(0, min(1, alpha))
-        def reveal(data):
-            if data['type'] == 'vgroup':
-                for child in data['children']:
-                    reveal(child)
-            elif data['type'] in ('text', 'mathtex'):
-                data['opacity'] *= progress
-            else:
-                data['draw_progress'] = progress
-                data['fill_opacity'] *= progress
-            if data['type'] != 'vgroup':
-                for child in data.get('children',[]):
-                    reveal(child)
-        reveal(result)
-        return [result]
+        return self.sample_members(alpha, linear)
+
+    def sample_members(self, alpha, rate_func):
+        return [self._member_states(copy.deepcopy(self.start), alpha, rate_func,
+                                    lambda node, a, path: self._reveal(node, a))]
 
 
 class ShowPassingFlash(Animation):
@@ -4976,31 +5266,111 @@ class ShowPassingFlash(Animation):
 
 
 class Uncreate(Create):
+    def __init__(self, mobject, reverse_rate_function=True, remover=True, **kwargs):
+        super().__init__(mobject, reverse_rate_function=reverse_rate_function, remover=remover, **kwargs)
+
+
+class DrawBorderThenFill(Animation):
+    """Draw each member's outline, then interpolate to its fill and stroke."""
+    _lagged = True
+
+    def __init__(self, vmobject, run_time=2, rate_func=double_smooth, stroke_width=2,
+                 stroke_color=None, introducer=True, **kwargs):
+        super().__init__(vmobject, run_time=run_time, rate_func=rate_func, introducer=introducer, **kwargs)
+        Mobject._validate_width(stroke_width)
+        self.outline_width, self.outline_color = stroke_width, stroke_color
+
+    def _member(self, node, alpha, path):
+        # Community's integer_interpolate(0, 2, alpha): outline, then style.
+        phase = min(1, int(2 * alpha))
+        sub = 2 * alpha - phase
+        color = self.outline_color or (node.get('stroke_color') if node.get('stroke_width') else node.get('color'))
+        width, fill = node.get('stroke_width', 0), node.get('fill_opacity', 1)
+        stroke = node.get('stroke_color', node.get('color'))
+        glyph = node['type'] in ('text', 'mathtex')
+        if phase == 0:
+            node['fill_opacity'] = 0
+            node['stroke_width'] = self.outline_width
+            node['stroke_color'] = color
+            if glyph:
+                node['opacity'] *= sub
+            else:
+                node['draw_progress'] = sub
+        else:
+            node['fill_opacity'] = fill * sub
+            node['stroke_width'] = interpolate(self.outline_width, width, sub)
+            node['stroke_color'] = interpolate(color, stroke, sub) if isinstance(color, str) else stroke
+
     def sample(self, alpha):
-        return super().sample(1 - alpha)
+        return self.sample_members(alpha, linear)
+
+    def sample_members(self, alpha, rate_func):
+        return [self._member_states(copy.deepcopy(self.start), alpha, rate_func, self._member)]
+
+
+class Write(DrawBorderThenFill):
+    """Community's Write: lagged border-then-fill with length-based defaults.
+
+    Text and formulas have no glyph outlines in this preview; they show a stroked
+    outline fading in, then their fill."""
+    def __init__(self, vmobject, rate_func=linear, reverse=False, **kwargs):
+        length = len(vmobject._painted_members()) if isinstance(vmobject, Mobject) else 0
+        kwargs.setdefault('run_time', 1 if length < 15 else 2)
+        kwargs.setdefault('lag_ratio', min(4.0 / max(1.0, length), 0.2))
+        kwargs.setdefault('remover', reverse)
+        self.reverse = reverse
+        super().__init__(vmobject, rate_func=rate_func, introducer=not reverse,
+                         reverse_rate_function=reverse, **kwargs)
+
+
+class Unwrite(Write):
+    def __init__(self, vmobject, rate_func=linear, reverse=True, **kwargs):
+        super().__init__(vmobject, rate_func=rate_func, reverse=reverse, **kwargs)
+
+
+class FadeOut(FadeIn):
+    _fading_in = False
+
+    def __init__(self, *mobjects, **kwargs):
+        kwargs.setdefault('remover', True)
+        super().__init__(*mobjects, **kwargs)
 
     def finish(self, scene):
         scene.remove(self.mobject)
 
 
-# Text glyph path tracing is not implemented; Write remains an opacity reveal.
-class Write(FadeIn):
-    pass
+def _arc_factor(alpha, path_arc):
+    """Community's path_along_arc as a complex factor on each point's displacement."""
+    if abs(path_arc) < 1e-6:
+        return complex(alpha, 0)
+    scale = math.sin(alpha * path_arc / 2) / math.sin(path_arc / 2)
+    angle = (alpha - 1) * path_arc / 2
+    return complex(scale * math.cos(angle), scale * math.sin(angle))
 
 
-class FadeOut(Animation):
-    def sample(self, alpha):
-        result = copy.deepcopy(self.start)
-        result['opacity'] *= 1 - alpha
-        return [result]
-
-    def finish(self, scene):
-        scene.remove(self.mobject)
+def _apply_path_arc(sampled, start, end, alpha, path_arc):
+    # Each drawable member's center follows the arc; shapes keep their morph.
+    if (sampled['type'] in ('vgroup', 'mobject') and len(sampled.get('children', [])) ==
+            len(start.get('children', [])) == len(end.get('children', [])) and sampled['children']):
+        for node, a, b in zip(sampled['children'], start['children'], end['children']):
+            _apply_path_arc(node, a, b, alpha, path_arc)
+        return
+    centers = [Vector(data['position']) + Vector(data.get('geometry_center', ORIGIN)) for data in (start, end)]
+    delta = centers[1] - centers[0]
+    factor = _arc_factor(alpha, path_arc) - alpha
+    offset = (delta[0] * factor.real - delta[1] * factor.imag, delta[0] * factor.imag + delta[1] * factor.real, 0)
+    sampled['position'] = list(Vector(sampled['position']) + offset)
 
 
 class Transform(Animation):
-    def __init__(self, mobject, target_mobject, **kwargs):
+    def __init__(self, mobject, target_mobject, path_arc=0, path_arc_axis=OUT, **kwargs):
         super().__init__(mobject, **kwargs)
+        if not isinstance(target_mobject, Mobject):
+            raise TypeError('Transform expects a target Mobject')
+        NumberLine._real(path_arc, 'path_arc')
+        if Vector(path_arc_axis) not in (OUT, IN):
+            raise NotImplementedError('Transform paths support only OUT/IN arcs')
+        self.path_arc = path_arc if Vector(path_arc_axis) == OUT else -path_arc
         self.target = target_mobject.copy()
 
     def begin(self, scene):
@@ -5017,11 +5387,19 @@ class Transform(Animation):
                 self.start,self._path_target = start,target
 
     def sample(self, alpha):
+        end = self._path_target or self.target.to_dict()
         if self._transform_plan is None:
-            self._transform_plan = _transform_plan(self.start, self._path_target or self.target.to_dict())
-        return _sample_transform(self._transform_plan, alpha)
+            self._transform_plan = _transform_plan(self.start, end)
+        result = _sample_transform(self._transform_plan, alpha)
+        if self.path_arc and len(result) == 1 and 0 < alpha < 1:
+            _apply_path_arc(result[0], self.start, end, alpha, self.path_arc)
+        return result
 
     def finish(self, scene):
+        if abs(self.rate_func(1)) < 1e-9 and not self.reverse_rate_function:
+            # Like Community's final interpolate(rate_func(1)): a there-and-back
+            # transform ends where it started.
+            return
         # Preserve source and ordered child identities, callbacks and checkpoints.
         self.mobject.become(self.target)
 
@@ -5140,6 +5518,79 @@ class MoveAlongPath(Animation):
         self.mobject.move_to(self.path_snapshot.point_from_proportion(1))
 
 
+class ClockwiseTransform(Transform):
+    def __init__(self, mobject, target_mobject, path_arc=-PI, **kwargs):
+        super().__init__(mobject, target_mobject, path_arc=path_arc, **kwargs)
+
+
+class CounterclockwiseTransform(Transform):
+    def __init__(self, mobject, target_mobject, path_arc=PI, **kwargs):
+        super().__init__(mobject, target_mobject, path_arc=path_arc, **kwargs)
+
+
+class MoveToTarget(Transform):
+    def __init__(self, mobject, **kwargs):
+        if not isinstance(getattr(mobject, 'target', None), Mobject):
+            raise ValueError('MoveToTarget called on mobject without attribute \'target\'')
+        super().__init__(mobject, mobject.target, **kwargs)
+
+
+class CyclicReplace(Transform):
+    """Move each mobject to the next one's position along an arc."""
+    def __init__(self, *mobjects, path_arc=90 * DEGREES, **kwargs):
+        if len(mobjects) < 1 or any(not isinstance(m, Mobject) for m in mobjects):
+            raise TypeError('CyclicReplace expects mobjects')
+        self.group = Group(*mobjects)
+        super().__init__(self.group, self.group, path_arc=path_arc, **kwargs)
+
+    def begin(self, scene):
+        self.target = self.group.copy()
+        cycled = self.target.children[-1:] + self.target.children[:-1]
+        for moved, place in zip(cycled, self.group.children):
+            moved.move_to(place)
+        super().begin(scene)
+
+
+class Swap(CyclicReplace):
+    pass
+
+
+class FadeTransform(Transform):
+    """Crossfade while the source moves onto the target and the target grows from the source."""
+    def __init__(self, mobject, target_mobject, stretch=True, dim_to_match=1, **kwargs):
+        super().__init__(mobject, target_mobject, **kwargs)
+        if not isinstance(stretch, bool):
+            raise ValueError('stretch must be a boolean')
+        self.replacement, self.stretch, self.dim_to_match = target_mobject, stretch, dim_to_match
+
+    def _fit(self, mobject, reference):
+        try:
+            return mobject.replace(reference, self.dim_to_match, self.stretch)
+        except NotImplementedError:
+            # Glyphs cannot be stretched yet; fit one dimension instead.
+            return mobject.replace(reference, self.dim_to_match)
+
+    def begin(self, scene):
+        Animation.begin(self, scene)
+        self.source_end = self._fit(self.mobject.copy(), self.replacement).to_dict()
+        self.target_start = self._fit(self.replacement.copy(), self.mobject).to_dict()
+        self.target_end = self.replacement.to_dict()
+
+    def sample(self, alpha):
+        source = interpolate(self.start, self.source_end, alpha)
+        target = interpolate(self.target_start, self.target_end, alpha)
+        source['opacity'] *= 1 - alpha
+        target['opacity'] *= alpha
+        return [source, target]
+
+    def finish(self, scene):
+        scene.remove(self.mobject)
+        scene.add(self.replacement)
+
+    def objects(self):
+        return [self.mobject, self.replacement]
+
+
 class ReplacementTransform(Transform):
     def __init__(self, mobject, target_mobject, **kwargs):
         super().__init__(mobject, target_mobject, **kwargs)
@@ -5166,7 +5617,7 @@ class Animate(Transform):
         super().begin(scene)
 
     def __getattr__(self, name):
-        if name.startswith('__'):
+        if name.startswith('_'):
             raise AttributeError(name)
         if name not in ('become', 'set_value', 'increment_value', 'shift', 'move_to', 'to_edge', 'to_corner',
                         'align_on_border', 'center', 'align_to', 'set_coord', 'set_x', 'set_y', 'match_x',
@@ -5219,7 +5670,10 @@ class AnimationGroup:
 
     def finish(self, scene):
         for animation in self.animations:
-            animation.finish(scene)
+            animation._complete(scene)
+
+    def _complete(self, scene):
+        self.finish(scene)
 
 
 class LaggedStart(AnimationGroup):
@@ -5259,10 +5713,11 @@ class Succession(AnimationGroup):
             # Remap only identity keys; start/terminal geometry stays snapshotted.
             prepared = copy.deepcopy(animation, originals.copy())
             self._stages.append((baseline, prepared))
-            animation.finish(staging)
+            animation._complete(staging)
         # Placeholder roots allow capture() to include later introductions. Their
         # states remain empty until the relevant stage; geometry stays untouched.
-        scene.add(*owned)
+        for mobject in owned:
+            scene._introduce(mobject)
 
     def states(self, alpha, rate_func=None):
         time = self.natural_duration if alpha >= 1 else (rate_func or self.rate_func)(max(0, alpha)) * self.natural_duration
@@ -5281,7 +5736,268 @@ class Succession(AnimationGroup):
         scene.remove(*(m for m in self.objects() if m not in self._initial))
         for animation in self.animations:
             animation.prepare(scene)
-            animation.finish(scene)
+            animation._complete(scene)
+
+
+class ApplyMethod(Animate):
+    """Animate a bound Mobject method, applied to a copy when the stage begins."""
+    def __init__(self, method, *args, **kwargs):
+        mobject = getattr(method, '__self__', None)
+        if not isinstance(mobject, Mobject) or not callable(method):
+            raise TypeError('ApplyMethod expects a method bound to a Mobject')
+        options = {key: kwargs.pop(key) for key in list(kwargs)
+                   if key in ('run_time', 'rate_func', 'lag_ratio', 'remover', 'name', 'path_arc')}
+        super().__init__(mobject)
+        for key, value in options.items():
+            setattr(self, key, value)
+        self.operations.append((method.__name__, args, kwargs))
+
+
+class ScaleInPlace(ApplyMethod):
+    def __init__(self, mobject, scale_factor, **kwargs):
+        super().__init__(mobject.scale, scale_factor, **kwargs)
+
+
+class FadeToColor(ApplyMethod):
+    def __init__(self, mobject, color, **kwargs):
+        super().__init__(mobject.set_color, color, **kwargs)
+
+
+class Wait(Animation):
+    """A pause inside play(), AnimationGroup or Succession."""
+    def __init__(self, run_time=1, stop_condition=None, frozen_frame=None, rate_func=linear, **kwargs):
+        if stop_condition is not None:
+            raise NotImplementedError('Wait stop conditions are not supported')
+        NumberLine._real(run_time, 'Wait run_time', positive=True)
+        super().__init__(None, run_time=run_time, rate_func=rate_func, **kwargs)
+
+    def objects(self):
+        return []
+
+    def prepare(self, scene):
+        pass
+
+    def states(self, alpha, rate_func=None):
+        return {}
+
+    def _complete(self, scene):
+        pass
+
+
+class GrowFromEdge(GrowFromPoint):
+    def __init__(self, mobject, edge, **kwargs):
+        super().__init__(mobject, ORIGIN, **kwargs)
+        self.edge = Mobject._xy_vector(edge, 'Growth edge')
+
+    def begin(self, scene):
+        self.point = self.mobject.get_critical_point(self.edge)
+        super().begin(scene)
+
+
+class GrowArrow(GrowFromPoint):
+    def __init__(self, arrow, **kwargs):
+        super().__init__(arrow, ORIGIN, **kwargs)
+
+    def begin(self, scene):
+        self.point = Vector(self.mobject.get_start())
+        super().begin(scene)
+
+
+class SpinInFromNothing(GrowFromCenter):
+    """Grow from the center along Community's arc path (path_arc = angle)."""
+    def __init__(self, mobject, angle=PI / 2, **kwargs):
+        super().__init__(mobject, **kwargs)
+        self.angle = NumberLine._real(angle, 'Spin angle')
+
+    def sample(self, alpha):
+        factor = _arc_factor(alpha, self.angle)
+        current = self.original.copy().scale(abs(factor), about_point=self.point)
+        current.rotate(math.atan2(factor.imag, factor.real), about_point=self.point)
+        return [current.to_dict()]
+
+
+class Wiggle(Animation):
+    def __init__(self, mobject, scale_value=1.1, rotation_angle=0.01 * TAU, n_wiggles=6,
+                 scale_about_point=None, rotate_about_point=None, run_time=2, **kwargs):
+        super().__init__(mobject, run_time=run_time, **kwargs)
+        for value, name in ((scale_value, 'scale_value'), (rotation_angle, 'rotation_angle'), (n_wiggles, 'n_wiggles')):
+            NumberLine._real(value, name)
+        self.scale_value, self.rotation_angle, self.n_wiggles = scale_value, rotation_angle, n_wiggles
+        self.scale_about_point, self.rotate_about_point = scale_about_point, rotate_about_point
+
+    def begin(self, scene):
+        super().begin(scene)
+        self.original = self.mobject.copy()
+        center = self.original.get_center()
+        self.pivots = [center if p is None else Mobject._xy_vector(p, 'Wiggle point')
+                       for p in (self.scale_about_point, self.rotate_about_point)]
+
+    def sample(self, alpha):
+        current = self.original.copy()
+        current.scale(interpolate(1, self.scale_value, there_and_back(alpha)), about_point=self.pivots[0])
+        current.rotate(wiggle(alpha, self.n_wiggles) * self.rotation_angle, about_point=self.pivots[1])
+        return [current.to_dict()]
+
+    def finish(self, scene):
+        pass
+
+
+class FocusOn(Transform):
+    """A large transparent dot shrinking onto a point."""
+    def __init__(self, focus_point, opacity=0.2, color=GREY, run_time=2, **kwargs):
+        point = focus_point.get_center() if isinstance(focus_point, Mobject) else Mobject._xy_vector(focus_point, 'Focus point')
+        start = Dot(radius=config.frame_width / 2 + config.frame_height / 2, stroke_width=0,
+                    fill_color=color, fill_opacity=0)
+        target = Dot(radius=0, stroke_width=0).set_fill(color, opacity=opacity).move_to(point)
+        kwargs.setdefault('remover', True)
+        super().__init__(start, target, run_time=run_time, **kwargs)
+
+
+class UpdateFromFunc(Animation):
+    """Call update_function(mobject) on every frame of the stage."""
+    def __init__(self, mobject, update_function, suspend_mobject_updating=False, **kwargs):
+        if not callable(update_function):
+            raise TypeError('update_function must be callable')
+        super().__init__(mobject, **kwargs)
+        self.update_function = update_function
+
+    def _call(self, mobject):
+        self.update_function(mobject)
+
+    def prepare(self, scene):
+        scene._introduce(self.mobject)
+        self._alpha = 0
+        self._updater = lambda mobject: self._call(mobject)
+        self.mobject.add_updater(self._updater)
+
+    def states(self, alpha, rate_func=None):
+        # The live mobject is captured after updaters run with sampled neighbors.
+        self._alpha = (rate_func or self.rate_func)(max(0, min(1, alpha)))
+        return {}
+
+    def _complete(self, scene):
+        self._alpha = 1
+        self.mobject.remove_updater(self._updater)
+        self._call(self.mobject)
+        if self.remover:
+            scene.remove(self.mobject)
+
+
+class UpdateFromAlphaFunc(UpdateFromFunc):
+    """Call update_function(mobject, alpha) with the stage's eased progress."""
+    def _call(self, mobject):
+        self.update_function(mobject, self._alpha)
+
+
+class ShowIncreasingSubsets(Animation):
+    def __init__(self, group, suspend_mobject_updating=False, int_func=math.floor, **kwargs):
+        super().__init__(group, **kwargs)
+        self.int_func = int_func
+
+    def sample(self, alpha):
+        result = copy.deepcopy(self.start)
+        count = max(0, min(len(result['children']), int(self.int_func(alpha * len(result['children'])))))
+        result['children'] = result['children'][:count]
+        return [result]
+
+
+class ShowSubmobjectsOneByOne(ShowIncreasingSubsets):
+    def __init__(self, group, int_func=math.ceil, **kwargs):
+        super().__init__(group, int_func=int_func, **kwargs)
+
+    def sample(self, alpha):
+        result = copy.deepcopy(self.start)
+        index = int(self.int_func(alpha * len(result['children']))) - 1
+        result['children'] = result['children'][index:index + 1] if 0 <= index < len(result['children']) else []
+        return [result]
+
+    def finish(self, scene):
+        pass
+
+
+class AddTextLetterByLetter(Animation):
+    """Reveal a Text's characters in order, keeping its final layout fixed."""
+    _removing = False
+
+    def __init__(self, text, suspend_mobject_updating=False, int_func=math.ceil, rate_func=linear,
+                 time_per_char=0.1, run_time=None, **kwargs):
+        if not isinstance(text, Text) or text._type != 'text' or '_number_format' in text.__dict__:
+            raise TypeError('Letter-by-letter animations expect Text')
+        glyphs = sum(1 for char in text.text if not char.isspace())
+        if run_time is None:
+            run_time = max(0.06, time_per_char * glyphs)
+        super().__init__(text, run_time=run_time, rate_func=rate_func, **kwargs)
+        self.int_func = int_func
+
+    def sample(self, alpha):
+        result = copy.deepcopy(self.start)
+        layout = _text_layout(result)
+        glyphs = sum(1 for char in result['text'] if not char.isspace())
+        shown = max(0, min(glyphs, int(self.int_func((1 - alpha if self._removing else alpha) * glyphs))))
+        em = layout['em'] / 1000
+        for line in layout['lines']:
+            kept = ''
+            for char in line['text']:
+                if not char.isspace():
+                    if shown == 0:
+                        break
+                    shown -= 1
+                kept += char
+            line['text'] = kept
+            line['length'] = sum(_glyph_box(char, _SANS_GLYPHS)[0] for char in kept) * em
+        result['layout'] = layout
+        return [result]
+
+
+class RemoveTextLetterByLetter(AddTextLetterByLetter):
+    _removing = True
+
+    def __init__(self, text, remover=True, **kwargs):
+        super().__init__(text, remover=remover, **kwargs)
+
+
+class Circumscribe(Succession):
+    """Draw a temporary surrounding rectangle or circle around a mobject."""
+    def __init__(self, mobject, shape=None, fade_in=False, fade_out=False, time_width=0.3,
+                 buff=SMALL_BUFF, color=YELLOW, run_time=1, stroke_width=DEFAULT_STROKE_WIDTH, **kwargs):
+        shape = Rectangle if shape is None else shape
+        if shape is Rectangle:
+            frame = SurroundingRectangle(mobject, color=color, buff=buff, stroke_width=stroke_width)
+        elif shape is Circle:
+            frame = Circle(color=color, stroke_width=stroke_width).surround(mobject, buffer_factor=1)
+            radius = frame.get_width() / 2
+            if radius:
+                frame.scale((radius + buff) / radius)
+        else:
+            raise ValueError('shape should be either Rectangle or Circle.')
+        if fade_in and fade_out:
+            stages = (FadeIn(frame, run_time=run_time / 2), FadeOut(frame, run_time=run_time / 2))
+        elif fade_in:
+            frame.reverse_direction()
+            stages = (FadeIn(frame, run_time=run_time / 2), Uncreate(frame, run_time=run_time / 2))
+        elif fade_out:
+            stages = (Create(frame, run_time=run_time / 2), FadeOut(frame, run_time=run_time / 2))
+        else:
+            stages = (ShowPassingFlash(frame, time_width, run_time=run_time),)
+        super().__init__(*stages, **kwargs)
+
+
+class Flash(AnimationGroup):
+    """Short lines flashing outward from a point."""
+    def __init__(self, point, line_length=0.2, num_lines=12, flash_radius=0.1, line_stroke_width=3,
+                 color=YELLOW, time_width=1, run_time=1.0, **kwargs):
+        center = point.get_center() if isinstance(point, Mobject) else Mobject._xy_vector(point, 'Flash point')
+        if isinstance(num_lines, bool) or not isinstance(num_lines, int) or not 1 <= num_lines <= 360:
+            raise ValueError('num_lines must be an integer from 1 to 360')
+        lines = VGroup()
+        for index in range(num_lines):
+            line = Line(center, center + RIGHT * line_length).shift(RIGHT * flash_radius)
+            lines.add(line.rotate(index * TAU / num_lines, about_point=center))
+        lines.set_color(color).set_stroke(width=line_stroke_width)
+        self.lines = lines
+        flash_options = {key: kwargs.pop(key) for key in list(kwargs) if key in ('rate_func',)}
+        super().__init__(*(ShowPassingFlash(line, time_width=time_width, run_time=run_time, **flash_options)
+                           for line in lines), **kwargs)
 
 
 class Scene:
@@ -5299,16 +6015,47 @@ class Scene:
     def time(self):
         return self._elapsed_frames / FPS
 
+    @staticmethod
+    def _restructured(roots, removing):
+        """Community's restructuring: drop members and split groups that contain them."""
+        result = []
+        def visit(items, removing):
+            for mobject in items:
+                if mobject in removing:
+                    continue
+                hit = [m for m in removing if m in mobject.get_family()]
+                if not hit:
+                    result.append(mobject)
+                    continue
+                if mobject.angle or mobject.geometry_scale != 1 or any(mobject.position):
+                    raise NotImplementedError('Cannot split a rotated or transformed group; '
+                                              'add or remove the whole group')
+                visit(mobject.children, hit)
+        visit(roots, list(removing))
+        return result
+
+    def get_mobject_family_members(self):
+        return [m for root in self.mobjects for m in root.get_family()]
+
     def add(self, *mobjects):
-        for mobject in mobjects:
-            if mobject not in self.mobjects:
-                self.mobjects.append(mobject)
-        self.mobjects = [m for m in self.mobjects if m not in self.foreground_mobjects] + self.foreground_mobjects
+        if any(not isinstance(m, Mobject) for m in mobjects):
+            raise TypeError('Scene.add expects Mobjects')
+        new = list(dict.fromkeys(mobjects))
+        moving = [m for m in new if m not in self.foreground_mobjects] + self.foreground_mobjects
+        family = [member for m in moving for member in m.get_family()]
+        # Re-adding moves a mobject to the front; adding a group absorbs children
+        # that were added on their own, and adding a child splits its group.
+        self.mobjects = self._restructured(self.mobjects, family) + moving
         return self
 
+    def _introduce(self, mobject):
+        # Like Scene.add_mobjects_from_animations: on-screen members stay in place.
+        if mobject not in self.get_mobject_family_members():
+            self.add(mobject)
+
     def remove(self, *mobjects):
-        self.mobjects = [m for m in self.mobjects if m not in mobjects]
-        self.foreground_mobjects = [m for m in self.foreground_mobjects if m not in mobjects]
+        self.mobjects = self._restructured(self.mobjects, mobjects)
+        self.foreground_mobjects = self._restructured(self.foreground_mobjects, mobjects)
         return self
 
     def add_foreground_mobjects(self, *mobjects):
@@ -5408,10 +6155,19 @@ class Scene:
         if len(self.frames) >= MAX_FRAMES:
             raise ValueError('Preview exceeds 60 seconds / 900 frames. Shorten the scene.')
         objects = []
+        def states(mobject):
+            if overrides and mobject in overrides:
+                return [_refresh_tip_shafts(state) for state in overrides[mobject]]
+            if not overrides or not any(member in overrides for member in mobject.get_family()[1:]):
+                return [mobject.to_dict()]
+            # An animated member is drawn inside its on-screen group.
+            data = mobject.to_dict()
+            data['children'] = [state for child in mobject.children for state in states(child)]
+            return [_refresh_tip_shafts(data)]
         for mobject in self.mobjects:
             if isinstance(mobject, (CameraFrame, ValueTracker)):
                 continue
-            objects.extend(_refresh_tip_shafts(state) for state in (overrides[mobject] if overrides and mobject in overrides else [mobject.to_dict()]))
+            objects.extend(states(mobject))
         if isinstance(self.camera, MovingCamera):
             states = overrides.get(self.camera.frame) if overrides else None
             if states is not None and len(states) != 1:
@@ -5435,17 +6191,21 @@ class Scene:
         count = max(1, math.ceil(max(durations) * FPS))
         if count + len(self.frames) >= MAX_FRAMES:
             raise ValueError('Preview exceeds 60 seconds / 900 frames. Shorten the scene.')
+        if rate_func is not None:
+            # play() options override each animation, as in Community.
+            for animation in animations:
+                animation.rate_func = rate_func
         for animation in animations:
             animation.prepare(self)
         for frame in range(count):
             time = frame / FPS
             overrides = {}
             for animation, duration in zip(animations, durations):
-                overrides.update(animation.states(time / duration, rate_func))
+                overrides.update(animation.states(time / duration))
             self._update_mobjects(0 if frame == 0 else 1 / FPS, overrides)
             self.capture(overrides)
         for animation in animations:
-            animation.finish(self)
+            animation._complete(self)
         self._update_mobjects(1 / FPS, {m: [m.to_dict()] for a in animations for m in a.objects()})
 
     def validate(self, *animations):
@@ -5455,12 +6215,22 @@ class Scene:
         members = [m for obj in objects for m in family(obj)]
         if len({id(m) for m in members}) != len(members):
             raise ValueError('Use one animation per object in each play() call')
+        def ancestors(root, target, path=()):
+            if root is target:
+                return path
+            for child in root.children:
+                found = ancestors(child, target, path + (root,))
+                if found is not None:
+                    return found
+            return None
         for root in self.mobjects:
             for obj in objects:
-                if obj is not root and obj in family(root):
-                    raise NotImplementedError('Animate the whole scene-added group, not an individual child')
-                if root is not obj and root in family(obj):
-                    raise NotImplementedError('Remove scene-added children before animating their containing group')
+                chain = ancestors(root, obj) if obj is not root else None
+                # Animated members are drawn inside their group, so their parents
+                # must not add another pose to the animation's world coordinates.
+                if chain and any(m.angle or m.geometry_scale != 1 or any(m.position) for m in chain):
+                    raise NotImplementedError('Animate members of rotated or transformed groups '
+                                              'by animating the whole group')
 
     def wait(self, duration=1):
         if not math.isfinite(duration) or duration < 0:
@@ -5507,10 +6277,15 @@ class MovingCameraScene(Scene):
 
 
 EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
-           'Triangle', 'Polygon', 'Polygram', 'RegularPolygram', 'RegularPolygon', 'Star', 'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'NumberPlane', 'ComplexPlane', 'Create', 'Write', 'FadeIn',
+           'Triangle', 'Polygon', 'Polygram', 'RegularPolygram', 'RegularPolygon', 'Star', 'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'NumberPlane', 'ComplexPlane', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',
-           'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform', 'UP', 'DOWN', 'LEFT',
+           'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform',
+           'ClockwiseTransform', 'CounterclockwiseTransform', 'MoveToTarget', 'CyclicReplace', 'Swap',
+           'FadeTransform', 'ApplyMethod', 'ScaleInPlace', 'FadeToColor', 'Wait', 'GrowFromEdge', 'GrowArrow',
+           'SpinInFromNothing', 'Wiggle', 'FocusOn', 'UpdateFromFunc', 'UpdateFromAlphaFunc',
+           'ShowIncreasingSubsets', 'ShowSubmobjectsOneByOne', 'AddTextLetterByLetter',
+           'RemoveTextLetterByLetter', 'Circumscribe', 'Flash', 'UP', 'DOWN', 'LEFT',
            'RIGHT', 'ORIGIN', 'OUT', 'IN', 'UL', 'UR', 'DL', 'DR', 'BLUE', 'BLUE_D', 'RED', 'GREEN',
            'YELLOW', 'PURPLE', 'ORANGE', 'WHITE', 'BLACK', 'GRAY', 'GREY', 'PINK',
            'linear', 'smooth', 'there_and_back', 'PI', 'TAU', 'DEGREES',
@@ -5519,7 +6294,9 @@ EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'a
            'DEFAULT_STROKE_WIDTH', 'DEFAULT_FONT_SIZE', 'DEFAULT_DOT_RADIUS',
            'DEFAULT_SMALL_DOT_RADIUS', 'DEFAULT_ARROW_TIP_LENGTH', 'color_to_rgb', 'rgb_to_color',
            'rgb_to_hex', 'hex_to_rgb', 'interpolate_color', 'color_gradient', 'average_color',
-           'invert_color', 'NORMAL', 'ITALIC', 'OBLIQUE', 'BOLD', 'THIN', 'ULTRALIGHT', 'LIGHT',
+           'invert_color', 'rate_functions', 'smoothstep', 'smootherstep', 'smoothererstep', 'rush_into',
+           'rush_from', 'slow_into', 'double_smooth', 'there_and_back_with_pause', 'running_start',
+           'not_quite_there', 'wiggle', 'squish_rate_func', 'lingering', 'exponential_decay', 'NORMAL', 'ITALIC', 'OBLIQUE', 'BOLD', 'THIN', 'ULTRALIGHT', 'LIGHT',
            'SEMILIGHT', 'BOOK', 'MEDIUM', 'SEMIBOLD', 'ULTRABOLD', 'HEAVY', 'ULTRAHEAVY']
 EXPORTS += [name for name in _PALETTE if name not in EXPORTS]
 

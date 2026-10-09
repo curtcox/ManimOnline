@@ -18,6 +18,7 @@ const ExampleCatalog = Object.freeze([
   { id: 'positioning', label: 'Align to edges and color gradients', path: 'examples/positioning_scene.py' },
   { id: 'polygrams', label: 'Polygrams, stars and shape matchers', path: 'examples/polygram_scene.py' },
   { id: 'textlayout', label: 'Measured text and formula layout', path: 'examples/text_layout_scene.py' },
+  { id: 'animationtour', label: 'Entrances, emphasis, swaps and exits', path: 'examples/animation_tour_scene.py' },
   { id: 'stretch', label: 'Stretch nested vector shapes', path: 'examples/stretch_scene.py' },
   { id: 'surround', label: 'Surround moving shapes', path: 'examples/surround_scene.py' },
   { id: 'circleconstruction', label: 'Construct circles through three points', path: 'examples/circle_construction_scene.py' },

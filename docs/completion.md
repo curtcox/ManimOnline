@@ -230,3 +230,11 @@ Text, DecimalNumber/Integer and MathTex now have Community-calibrated ink bounds
 and sizes (Text from Liberation Sans metrics, numbers from TeX glyph layout,
 formulas measured by MathJax with a second render pass). Glyph-level text
 submobjects, t2c, MarkupText and Paragraph remain open.
+
+
+Community rate functions, lagged/remover/reversed animations, shifted fades,
+Write/DrawBorderThenFill phases, emphasis animations (Circumscribe, Flash,
+Wiggle, FocusOn), arc transforms and swaps, targets/ApplyMethod, function
+updates, subsets and letter-by-letter text now have tests and browser playback.
+Scene add/remove restructuring and in-place member animation follow Community
+for identity-pose groups. TransformMatching*, ApplyWave and Homotopy remain open.

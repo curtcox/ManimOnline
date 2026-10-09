@@ -1354,3 +1354,30 @@ and measured by MathJax: the first render estimates unmeasured formulas, then th
 page re-renders once with the measured sizes (cached for later renders).
 Per-character text APIs (`t2c`, indexing glyphs), MarkupText, Paragraph and exact
 system-font metrics are not implemented.
+
+
+Try **Entrances, emphasis, swaps and exits** (`examples/animation_tour_scene.py`).
+All Community rate functions are available (`rate_functions.ease_out_bounce`,
+`there_and_back_with_pause`, `running_start`, `squish_rate_func`, …; `smooth` is
+now Community's sigmoid curve rather than smoothstep). Animations accept
+`lag_ratio`, `remover` and `reverse_rate_function`; `Create` draws group members
+in sequence by default (`lag_ratio=1`), and `Write`/`Unwrite`/`DrawBorderThenFill`
+follow Community's outline-then-fill phases and length-based defaults (text shows
+a stroked outline, then its fill). `FadeIn`/`FadeOut` accept several mobjects,
+`shift`, `target_position` and `scale`. New animations: `GrowArrow`,
+`GrowFromEdge`, `SpinInFromNothing`, `Circumscribe`, `Flash`, `Wiggle`,
+`FocusOn`, `FadeTransform`, `ClockwiseTransform`, `CounterclockwiseTransform`,
+`Swap`/`CyclicReplace`, `MoveToTarget` with `generate_target()`, `ApplyMethod`,
+`ScaleInPlace`, `FadeToColor`, `UpdateFromFunc`, `UpdateFromAlphaFunc`,
+`ShowIncreasingSubsets`, `ShowSubmobjectsOneByOne`, `AddTextLetterByLetter`,
+`RemoveTextLetterByLetter` and `Wait`. `Transform` accepts `path_arc`.
+
+Scene membership now follows Community: re-adding a mobject brings it to the
+front, adding a group absorbs members that were added on their own, removing a
+member splits its group, and members of on-screen groups can be animated in
+place (e.g. `Indicate(equation[0])`). Members of rotated or transformed groups
+must still be animated through the whole group. `play(rate_func=...)` overrides
+each animation's rate function, and a transform whose rate function ends at 0
+(such as `there_and_back`) finishes at its starting state. Glyph-level
+`TransformMatchingShapes`/`TransformMatchingTex`, `ApplyWave` and `Homotopy`
+are not implemented.

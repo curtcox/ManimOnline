@@ -2092,3 +2092,34 @@ Chromium showed the title on the top edge with a fitted underline, left-aligned
 items, a surrounding box fitted to the MathJax-measured formula after the second
 pass, a serif counter beside it, and the math and number-line galleries at
 Community scale.
+
+
+Try **Entrances, emphasis, swaps and exits** (`examples/animation_tour_scene.py`).
+Rate functions are copied from Community and spot-checked against Manim 0.22.
+Lagged animations use Community's sub-alpha timing: drawable family members are
+ordered as `family_members_with_points` (preorder), `full = (n - 1) · lag + 1`,
+and member `i` receives `rate(alpha · full - i · lag)`. Fades treat each drawable
+subtree as one member so nested SVG opacity does not compound; Create and
+DrawBorderThenFill address every drawable member. `reverse_rate_function`
+survives a `play(rate_func=...)` override as in Community, and `remover` is
+applied after `finish` (including the held terminal frame).
+
+`path_arc` uses Community's `path_along_arc`, expressed per point displacement as
+the complex factor `sin(α·θ/2)/sin(θ/2) · e^{i(α-1)θ/2}`; the preview applies it to
+each drawable member's center, so translated shapes follow the arc exactly while
+morphing shapes keep their interpolated outline. `SpinInFromNothing` applies the
+same factor as a scale and rotation about the center. `UpdateFromFunc` and
+`UpdateFromAlphaFunc` register a temporary updater, so callbacks see other
+animations' sampled state through the existing updater exposure. Letter-by-letter
+text keeps the final ink layout fixed and truncates each line's pinned advance.
+
+Scene restructuring mirrors `Scene.get_restructured_mobject_list`: groups that
+contain an added or removed mobject are split into their remaining members.
+Splitting or animating inside a group with a non-identity pose (rotation, or
+legacy group-level transforms) raises `NotImplementedError` because those
+members are stored in parent-local coordinates.
+
+Verification: all 381 Python and 80 Node tests passed. Local Pyodide playback in
+Chromium showed the written title, sequential creation, the bouncing arrow,
+simultaneous Circumscribe/Flash/Wiggle, the arc swap, the paused MoveToTarget,
+the lagged scaled exits and an empty final frame.

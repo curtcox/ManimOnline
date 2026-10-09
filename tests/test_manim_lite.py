@@ -16,6 +16,141 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_animation_tour_gallery_and_there_and_back_transforms(self):
+        result=json.loads(lite.render_scene((ROOT/'examples/animation_tour_scene.py').read_text()))
+        self.assertEqual(result['duration'],12)
+        flashing=result['frames'][66]['mobjects']
+        self.assertEqual(len(flashing),16)
+        swapped=result['frames'][105]['mobjects'][3]['children']
+        self.assertPointAlmostEqual(swapped[0]['position'],(3,0,0))
+        self.assertAlmostEqual(swapped[1]['position'][0]+swapped[1]['geometry_center'][0],-2.87,places=2)
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+        back=render('s = Square()\nself.play(s.animate.shift(RIGHT*2), rate_func=there_and_back, run_time=2)\nassert s.get_center()[0] == 0')
+        self.assertAlmostEqual(back['frames'][15]['mobjects'][0]['position'][0],2)
+        self.assertEqual(back['frames'][-1]['mobjects'][0]['position'][0],0)
+
+    def test_community_rate_functions(self):
+        # Values checked against Manim Community 0.22.
+        self.assertAlmostEqual(lite.smooth(.25),0.0701037,places=6)
+        self.assertEqual((lite.smooth(-1),lite.smooth(2),lite.there_and_back(1.5)),(0,1,0))
+        self.assertAlmostEqual(lite.smoothstep(.25),0.15625)
+        self.assertAlmostEqual(lite.rate_functions.ease_out_bounce(.5),0.765625)
+        self.assertAlmostEqual(lite.rate_functions.ease_in_out_back(.25),-0.0996818,places=6)
+        self.assertAlmostEqual(lite.running_start(.5),0.0703125)
+        self.assertAlmostEqual(lite.double_smooth(.25),.5*lite.smooth(.5))
+        self.assertAlmostEqual(lite.there_and_back_with_pause(.5),1)
+        self.assertAlmostEqual(lite.squish_rate_func(lite.linear,.2,.6)(.4),.5)
+        self.assertAlmostEqual(lite.not_quite_there(lite.linear,.5)(1),.5)
+        self.assertAlmostEqual(lite.lingering(.4),.5)
+        self.assertEqual(lite.wiggle(0),0)
+        for name in ('ease_in_sine','ease_out_quad','ease_in_out_cubic','ease_in_expo','ease_out_circ','ease_in_elastic'):
+            function=getattr(lite.rate_functions,name)
+            self.assertAlmostEqual(function(0),0)
+            self.assertAlmostEqual(function(1),1)
+
+    def test_fade_shift_scale_target_lag_and_multiple_mobjects(self):
+        result=render('d = Dot()\nself.play(FadeIn(d, shift=UP), rate_func=linear)\nself.play(FadeOut(d, shift=RIGHT*2, scale=.5), rate_func=linear)')
+        middle=result['frames'][7]['mobjects'][0]
+        self.assertAlmostEqual(middle['position'][1],-1+7/15)
+        self.assertAlmostEqual(middle['opacity'],7/15)
+        out=result['frames'][22]['mobjects'][0]
+        self.assertAlmostEqual(out['position'][0],2*7/15)
+        self.assertAlmostEqual(out['geometry_scale'],1-.5*7/15)
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+        start=render('d = Dot(RIGHT)\nself.play(FadeIn(d, target_position=LEFT*3), rate_func=linear)')['frames'][0]['mobjects'][0]
+        self.assertAlmostEqual(start['position'][0],-3)
+        lagged=render('g = VGroup(Dot(LEFT), Dot(), Dot(RIGHT))\nself.play(FadeIn(g, lag_ratio=.5), rate_func=linear, run_time=2)')
+        children=lagged['frames'][15]['mobjects'][0]['children']
+        self.assertEqual([c['opacity'] for c in children],[1,.5,0])
+        both=render('a, b = Dot(LEFT), Dot(RIGHT)\nself.play(FadeIn(a, b))')
+        self.assertEqual(len(both['frames'][-1]['mobjects']),1)
+        self.assertEqual(len(both['frames'][-1]['mobjects'][0]['children']),2)
+        with self.assertRaises(ValueError): lite.FadeIn()
+        with self.assertRaises(ValueError): lite.FadeIn(lite.Dot(),lag_ratio=-1)
+
+    def test_write_draw_border_and_unwrite_follow_community_phases(self):
+        result=render('s = Square(fill_opacity=.8, color=RED)\nself.play(DrawBorderThenFill(s, rate_func=linear), run_time=2)')
+        first,second=[result['frames'][i]['mobjects'][0] for i in (7,22)]
+        self.assertAlmostEqual(first['draw_progress'],14/30)
+        self.assertEqual((first['fill_opacity'],first['stroke_width']),(0,2))
+        self.assertNotIn('draw_progress',second)
+        self.assertAlmostEqual(second['fill_opacity'],.8*(2*22/30-1))
+        write=lite.Write(lite.VGroup(*[lite.Square() for _ in range(20)]))
+        self.assertEqual((write.run_time,write.lag_ratio,write.rate_func),(2,.2,lite.linear))
+        self.assertEqual(lite.Write(lite.Text('Hi')).lag_ratio,.2)
+        text=render('t = Text("Hello")\nself.play(Write(t))')['frames'][3]['mobjects'][0]
+        self.assertEqual(text['fill_opacity'],0)
+        self.assertGreater(text['stroke_width'],0)
+        gone=render('t = Text("Bye")\nself.add(t)\nself.play(Unwrite(t))')
+        self.assertEqual(gone['frames'][0]['mobjects'][0]['fill_opacity'],1)
+        self.assertEqual(gone['frames'][-1]['mobjects'],[])
+        uncreate=render('c = Circle()\nself.add(c)\nself.play(Uncreate(c), rate_func=linear, run_time=2)')
+        self.assertEqual(uncreate['frames'][15]['mobjects'][0]['draw_progress'],.5)
+
+    def test_targets_methods_arcs_swaps_and_fade_transform(self):
+        square=lite.Square()
+        target=square.generate_target()
+        self.assertIsNot(target,square)
+        target.shift(lite.RIGHT*2).set_color(lite.RED)
+        json.dumps(square.to_dict())
+        scene=lite.Scene()
+        scene.play(lite.MoveToTarget(square))
+        self.assertPointAlmostEqual(square.get_center(),(2,0,0))
+        with self.assertRaises(ValueError): lite.MoveToTarget(lite.Circle())
+        dot=lite.Dot()
+        scene.play(lite.ApplyMethod(dot.shift,lite.UP),lite.ScaleInPlace(square,2),run_time=1)
+        self.assertPointAlmostEqual(dot.get_center(),(0,1,0))
+        self.assertAlmostEqual(square.get_width(),4)
+        scene.play(lite.FadeToColor(dot,lite.GREEN))
+        self.assertEqual(dot.color,lite.GREEN)
+        result=render('a, b = Dot(LEFT*2), Dot(RIGHT*2)\nself.add(a, b)\nself.play(Swap(a, b), rate_func=linear, run_time=2)\nassert len(self.mobjects) == 1')
+        group=result['frames'][15]['mobjects'][0]
+        left=lite.Vector(group['children'][0]['position'])
+        self.assertAlmostEqual(left[0],0,places=6)
+        self.assertGreater(abs(left[1]),.5)
+        self.assertPointAlmostEqual(result['frames'][-1]['mobjects'][0]['children'][0]['position'],(2,0,0))
+        arc=render('s = Square().shift(LEFT*2)\nself.play(CounterclockwiseTransform(s, Square().shift(RIGHT*2)), rate_func=linear, run_time=2)')
+        self.assertPointAlmostEqual(arc['frames'][15]['mobjects'][0]['position'],(0,-2,0))
+        fade=render('a = Square()\nb = Circle(radius=2).shift(RIGHT)\nself.add(a)\nself.play(FadeTransform(a, b), rate_func=linear, run_time=2)\nassert self.mobjects == [b]')
+        source,target=fade['frames'][15]['mobjects']
+        self.assertAlmostEqual(source['opacity'],.5)
+        self.assertAlmostEqual(target['opacity'],.5)
+        self.assertEqual(fade['frames'][-1]['mobjects'][0]['type'],'circle')
+        render('t = Text("A")\nself.add(t)\nself.play(FadeTransform(t, MathTex("x")))')
+
+    def test_emphasis_growth_updates_subsets_letters_and_wait(self):
+        result=render('s = Square()\nself.add(s)\nself.play(Circumscribe(s), run_time=1)\nself.play(Flash(ORIGIN, num_lines=8))\nself.play(Wiggle(s))\nself.play(FocusOn(s))')
+        self.assertEqual(len(result['frames'][7]['mobjects']),2)
+        self.assertEqual(len(result['frames'][22]['mobjects'][1]['children']) if result['frames'][22]['mobjects'][1]['type']=='vgroup' else 8,8)
+        wiggled=result['frames'][45]['mobjects'][0]
+        self.assertNotEqual(wiggled['geometry_scale'],1)
+        self.assertEqual(len(result['frames'][-1]['mobjects']),1)
+        arrow=render('a = Arrow(LEFT, RIGHT)\nself.play(GrowArrow(a), rate_func=linear, run_time=2)')['frames'][15]['mobjects'][0]
+        self.assertAlmostEqual(arrow['geometry_scale'],.5)
+        edge=render('s = Square()\nself.play(GrowFromEdge(s, DOWN), rate_func=linear, run_time=2)')['frames'][15]['mobjects'][0]
+        self.assertAlmostEqual(lite.Vector(edge['position'])[1]+edge['geometry_center'][1],-.5)
+        spin=render('s = Square()\nself.play(SpinInFromNothing(s), rate_func=linear, run_time=2)')['frames'][15]['mobjects'][0]
+        self.assertAlmostEqual(spin['angle'],-lite.PI/8)
+        self.assertAlmostEqual(spin['geometry_scale'],lite.math.sin(lite.PI/8)/lite.math.sin(lite.PI/4))
+        moving=render('t = ValueTracker(0)\nd = Dot()\nself.add(d)\nself.play(t.animate.set_value(4), UpdateFromFunc(d, lambda m: m.move_to(RIGHT*t.get_value())), rate_func=linear, run_time=2)')
+        self.assertAlmostEqual(moving['frames'][15]['mobjects'][0]['position'][0],2)
+        self.assertAlmostEqual(moving['frames'][-1]['mobjects'][0]['position'][0],4)
+        alpha=render('d = Dot()\nself.play(UpdateFromAlphaFunc(d, lambda m, a: m.move_to(UP*a)), rate_func=linear, run_time=2)')
+        self.assertAlmostEqual(alpha['frames'][15]['mobjects'][0]['position'][1],.5)
+        self.assertAlmostEqual(alpha['frames'][-1]['mobjects'][0]['position'][1],1)
+        subsets=render('g = VGroup(*[Dot(RIGHT*i) for i in range(4)])\nself.play(ShowIncreasingSubsets(g), rate_func=linear, run_time=2)')
+        self.assertEqual(len(subsets['frames'][15]['mobjects'][0]['children']),2)
+        letters=render('t = Text("Hi you")\nself.play(AddTextLetterByLetter(t))')
+        self.assertAlmostEqual(letters['duration'],.5,places=1)
+        partial=letters['frames'][4]['mobjects'][0]['layout']['lines'][0]
+        full=lite._text_layout(lite.Text('Hi you').__dict__)['lines'][0]
+        self.assertTrue(full['text'].startswith(partial['text']) and partial['text'] != full['text'])
+        self.assertAlmostEqual(partial['x'],full['x'])
+        with self.assertRaises(TypeError): lite.AddTextLetterByLetter(lite.MathTex('x'))
+        waited=render('d = Dot()\nself.add(d)\nself.play(Succession(Wait(1), d.animate.shift(UP)))')
+        self.assertEqual(waited['duration'],2)
+        self.assertAlmostEqual(waited['frames'][10]['mobjects'][0]['position'][1],0)
+
     def test_text_layout_gallery_places_text_numbers_and_measured_formula(self):
         source=(ROOT/'examples/text_layout_scene.py').read_text()
         result=json.loads(lite.render_scene(source,math_metrics={r'e^{i\pi} + 1 = 0':[4.2,1.05]}))
@@ -1507,7 +1642,7 @@ class SceneTests(unittest.TestCase):
         self.assertEqual(lite.ArcPolygonFromArcs().get_points(),[])
 
     def test_arc_polygon_creation_and_morph_include_own_path_and_children(self):
-        result = render("p = ArcPolygon((-1,0),(1,0),(0,2),angle=PI/3,fill_opacity=.5)\nself.play(Create(p),run_time=1)\nself.play(Transform(p,ArcPolygon((-1,0),(1,0),(0,2),angle=0,fill_opacity=.8)),run_time=2)")
+        result = render("p = ArcPolygon((-1,0),(1,0),(0,2),angle=PI/3,fill_opacity=.5)\nself.play(Create(p,lag_ratio=0),run_time=1)\nself.play(Transform(p,ArcPolygon((-1,0),(1,0),(0,2),angle=0,fill_opacity=.8)),run_time=2)")
         created = result['frames'][7]['mobjects'][0]
         self.assertGreater(created['draw_progress'],0)
         self.assertLess(created['fill_opacity'],.5)
@@ -4999,7 +5134,10 @@ self.wait(1)""")
         with self.assertRaises(ValueError):
             lite.Scene().play(lite.TransformFromCopy(source, target), lite.FadeIn(target))
         with self.assertRaises(NotImplementedError):
-            lite.Scene().add(lite.VGroup(target)).play(lite.TransformFromCopy(source, target))
+            lite.Scene().add(lite.VGroup(target).scale(2).rotate(1)).play(lite.TransformFromCopy(source, target))
+        scene = lite.Scene().add(lite.VGroup(target))
+        scene.play(lite.TransformFromCopy(source, target))
+        self.assertEqual(len(scene.mobjects), 1)
 
     def test_transform_from_copy_can_read_scene_added_group_child(self):
         source, target = lite.Circle(), lite.Circle().shift(lite.RIGHT * 2)
@@ -5411,7 +5549,7 @@ self.wait(1)""")
         self.assertPointAlmostEqual(result['frames'][15]['mobjects'][0]['position'], (0, 0, 0))
         self.assertPointAlmostEqual(result['frames'][15]['mobjects'][1]['position'], (-2, 0, 0))
         result = render('self.play(MoveAlongPath(Dot(), Line(LEFT * 2, RIGHT * 2)), run_time=4)')
-        self.assertPointAlmostEqual(result['frames'][15]['mobjects'][0]['position'], (-1.375, 0, 0))
+        self.assertPointAlmostEqual(result['frames'][15]['mobjects'][0]['position'], (-2+4*lite.smooth(.25), 0, 0))
 
     def test_paths_reject_invalid_proportions_geometry_and_unsupported_types(self):
         for alpha in (-0.1, 1.1, float('nan'), float('inf')):
@@ -5471,7 +5609,8 @@ self.wait(1)""")
         self.assertEqual([m['opacity'] for m in result['frames'][30]['mobjects']], [1, 0, 0])
         self.assertEqual([m['opacity'] for m in result['frames'][75]['mobjects']], [1, 1, 0.5])
         result = render('self.play(LaggedStart(FadeIn(Dot(LEFT), rate_func=linear), FadeIn(Dot(RIGHT), rate_func=linear), lag_ratio=1, run_time=4, rate_func=smooth))')
-        self.assertAlmostEqual(result['frames'][15]['mobjects'][0]['opacity'], 0.3125)
+        # Community's sigmoid smooth, applied to the group's timeline.
+        self.assertAlmostEqual(result['frames'][15]['mobjects'][0]['opacity'], lite.smooth(.25)*2)
 
     def test_group_holds_completed_creation_and_replacement_then_cleans_up(self):
         result = render('a, b, c = Circle(), Square().shift(RIGHT), Dot(UP)\nself.play(AnimationGroup(ReplacementTransform(a, b), Create(c, run_time=2)))\nself.play(b.animate.shift(UP))')
@@ -5491,8 +5630,13 @@ self.wait(1)""")
                      'a, b = Dot(), Square()\nself.play(ReplacementTransform(a, b), FadeIn(b))'):
             with self.assertRaisesRegex(ValueError, 'one animation'):
                 render(body)
-        with self.assertRaisesRegex(NotImplementedError, 'whole scene-added group'):
-            render('d = Dot()\nself.add(VGroup(d))\nself.play(FadeIn(d))')
+        # Members of an on-screen group animate inside it (Community semantics).
+        frame = render('d = Dot()\nself.add(VGroup(d, Square()))\nself.play(FadeIn(d), rate_func=linear)')['frames'][7]['mobjects']
+        self.assertEqual(len(frame), 1)
+        self.assertAlmostEqual(frame[0]['children'][0]['opacity'], 7/15)
+        self.assertEqual(frame[0]['children'][1]['opacity'], 1)
+        with self.assertRaisesRegex(NotImplementedError, 'rotated or transformed'):
+            render('d = Dot()\nself.add(VGroup(d).rotate(1))\nself.play(FadeIn(d))')
         for kwargs in ({'lag_ratio': -1}, {'lag_ratio': float('inf')}, {'run_time': 0}):
             with self.assertRaises(ValueError):
                 lite.AnimationGroup(lite.FadeIn(lite.Dot()), **kwargs)
@@ -5969,12 +6113,18 @@ self.wait(1)""")
         self.assertEqual(final['fill_opacity'], 0.8)
 
     def test_create_group_and_text_fallback(self):
-        result = render('self.play(Create(VGroup(Circle(), VGroup(Text("Title"), Square()))), run_time=2, rate_func=linear)')
+        source = 'self.play(Create(VGroup(Circle(), VGroup(Text("Title"), Square())){}), run_time=2, rate_func=linear)'
+        result = render(source.format(', lag_ratio=0'))
         group = result['frames'][15]['mobjects'][0]
         self.assertEqual(group['children'][0]['draw_progress'], 0.5)
         nested = group['children'][1]['children']
         self.assertEqual(nested[0]['opacity'], 0.5)
         self.assertEqual(nested[1]['draw_progress'], 0.5)
+        # Community's default lag_ratio=1 draws the three members in turn.
+        group = render(source.format(''))['frames'][15]['mobjects'][0]
+        nested = group['children'][1]['children']
+        self.assertEqual((group['children'][0]['draw_progress'], nested[0]['opacity'], nested[1]['draw_progress']),
+                         (1, 0.5, 0))
 
     def test_uncreate_reverses_drawing_and_removes_the_object(self):
         result = render('c = Circle()\nself.add(c)\nself.play(Uncreate(c), run_time=2, rate_func=linear)')
