@@ -74,3 +74,11 @@ test('compiled formulas are cached across renders and expose em metrics', async 
   assert.equal(first.get('z').bbox, null);
   assert.deepEqual(math.metrics(new Map([['w', { bbox: [10, -600, 450, 700] }], ['v', { bbox: null }]])), { w: [0.45, 0.7] });
 });
+
+test('multi-part formulas report part centers relative to the ink center', () => {
+  const glyphs = new Map([['\\class{manim-part-0}{a} \\class{manim-part-1}{b}', { bbox: [0, -800, 2000, 1000],
+    parts: [{ bbox: [0, -800, 900, 1000] }, { bbox: [1100, -700, 900, 600] }] }]]);
+  const [entry] = Object.values(math.metrics(glyphs));
+  assert.deepEqual(entry.slice(0, 2), [2, 1]);
+  assert.deepEqual(entry[2].map(part => part.map(v => Math.round(v * 1000) / 1000 + 0)), [[-0.55, 0, 0.9, 1], [0.55, 0.1, 0.9, 0.6]]);
+});

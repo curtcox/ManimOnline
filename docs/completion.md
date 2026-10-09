@@ -249,3 +249,8 @@ LabeledDot, Variable and always_* helpers are implemented with Manim 0.22
 reference checks. The default frame (14.22 × 8), stroke widths and anchor/handle
 bounds rules now follow Community. ArcBrace, Tex environments and full LaTeX
 text macros remain open.
+
+
+Multi-part MathTex (indexing, tex-based coloring/opacity, isolated substrings),
+TransformMatchingTex and TransformMatchingShapes are implemented with browser
+part measurement. Glyph-level submobjects inside parts remain open.

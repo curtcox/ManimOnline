@@ -1409,3 +1409,16 @@ thinner than before and scale with the player size. Bounds follow Community's
 rules: edges, centers and `next_to` use path anchors, while `width`/`height`
 include Bézier handles; rotated straight-edged shapes report the bounds of their
 rotated points.
+
+
+Try **Formula parts and matching transforms** (`examples/formula_parts_scene.py`).
+`MathTex` with several strings, `substrings_to_isolate` or `tex_to_color_map`
+now has Community-style parts: `eq[i]`, `get_part_by_tex`, `get_parts_by_tex`,
+`index_of_part_by_tex`, `set_color_by_tex`, `set_color_by_tex_to_color_map` and
+`set_opacity_by_tex`, and parts can be animated individually (`Indicate(eq[2])`).
+`TransformMatchingTex` slides parts with equal tex strings into place and fades
+the rest (with `key_map`, `transform_mismatches`); `TransformMatchingShapes`
+matches drawable members by normalized outline. Parts are typeset together with
+MathJax `\class`, so TeX spacing is unchanged; each part's position comes from
+the browser's measurement on the second render pass. Glyph-level indexing inside
+a part (`eq[0][1]`) is not implemented.

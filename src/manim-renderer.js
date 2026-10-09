@@ -527,14 +527,17 @@ const ManimRenderer = {
    * Render a VGroup (container)
    */
   renderMathTex(mobject, mathGlyphs) {
-    const asset = mathGlyphs && mathGlyphs.get(mobject.text);
-    if (!asset) throw new Error('MathTex glyphs have not been prepared.');
+    const whole = mathGlyphs && mathGlyphs.get(mobject.text);
+    if (!whole) throw new Error('MathTex glyphs have not been prepared.');
+    // A multi-part MathTex draws each \class part from the shared formula.
+    const asset = mobject.part === undefined ? whole : whole.parts?.[mobject.part];
+    if (!asset) throw new Error('MathTex part glyphs have not been prepared.');
     const parsed = new DOMParser().parseFromString(asset.svg, 'image/svg+xml');
     const group = document.createElementNS(this.SVG_NS, 'g');
     // Community's TeX em is font_size/96 scene units; MathJax uses 1000 units per em.
     const scale = (mobject.font_size || 48) / 96 * this.UNIT_SCALE / 1000;
     // Center the measured ink box, as Community centers dvisvgm output.
-    const [x, y, width, height] = asset.bbox || asset.viewBox;
+    const [x, y, width, height] = asset.bbox || whole.viewBox;
     group.setAttribute('transform', `scale(1, -1) scale(${scale}) translate(${-x - width / 2}, ${-y - height / 2})`);
     group.setAttribute('fill', mobject.color || '#FFFFFF');
     group.setAttribute('fill-opacity', mobject.fill_opacity ?? 1);

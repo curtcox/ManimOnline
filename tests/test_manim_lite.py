@@ -16,6 +16,39 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_multipart_mathtex_parts_colors_metrics_and_matching(self):
+        eq=lite.MathTex('x^2','+','y^2',color=lite.BLUE)
+        self.assertEqual((len(eq),eq.tex_strings,eq[2].tex_string),(3,['x^2','+','y^2'],'y^2'))
+        self.assertLess(eq[0].get_center()[0],eq[1].get_center()[0])
+        eq.set_color_by_tex('+',lite.RED)
+        self.assertEqual([p.color for p in eq],[lite.BLUE,lite.RED,lite.BLUE])
+        self.assertEqual(eq.index_of_part_by_tex('y'),2)
+        self.assertIsNone(eq.get_part_by_tex('q'))
+        isolated=lite.MathTex('a^2 + b^2 = c^2',substrings_to_isolate=['a','b','c'],tex_to_color_map={'c':lite.YELLOW})
+        self.assertEqual([p.tex_string for p in isolated],['a','^2 + ','b','^2 = ','c','^2'])
+        self.assertEqual(isolated.get_part_by_tex('c').color,lite.YELLOW)
+        single=lite.MathTex('x')
+        self.assertIs(single[0],single)
+        self.assertEqual(len(single),1)
+        classed=eq[0].text
+        # Browser metrics place parts exactly (em units, centers relative to the ink center).
+        source='from manim import *\nclass S(Scene):\n    def construct(self):\n        self.add(MathTex("x^2", "+", "y^2"))\n'
+        metrics={classed:[3,1,[[-1,.1,.9,.9],[0,0,.6,.6],[1,.1,.9,.9]]]}
+        frame=json.loads(lite.render_scene(source,math_metrics=metrics))['frames'][-1]['mobjects'][0]
+        self.assertEqual([c['part'] for c in frame['children']],[0,1,2])
+        self.assertAlmostEqual(frame['children'][0]['position'][0],-.5)
+        self.assertAlmostEqual(frame['children'][2]['position'][1],.05)
+        self.assertEqual(json.loads(lite.render_scene(source,math_metrics=metrics))['math_estimated'],[])
+        with self.assertRaises(ValueError): lite.render_scene(source,math_metrics={classed:[3,1,[[0,0,-1,1]]]})
+        result=render('a = MathTex("x^2", "+", "y^2")\nb = MathTex("y^2", "=", "z", "-", "x^2")\nself.add(a)\nself.play(TransformMatchingTex(a, b), rate_func=linear, run_time=2)\nassert self.mobjects == [b]')
+        middle=result['frames'][15]['mobjects']
+        self.assertEqual(len(middle),8)
+        self.assertTrue(all(isinstance(m['part'],int) for m in middle))
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['type'],'vgroup')
+        shapes=render('a = VGroup(Square(), Circle().shift(RIGHT*2))\nb = VGroup(Circle(radius=2).shift(LEFT), Triangle())\nself.add(a)\nself.play(TransformMatchingShapes(a, b))')
+        self.assertEqual([m['type'] for m in shapes['frames'][7]['mobjects']],['circle','square','polygon'])
+        with self.assertRaises(TypeError): lite.TransformMatchingTex(lite.Square(),lite.Circle()).begin(lite.Scene())
+
     def test_scene_bounds_match_community_reference_fixture(self):
         # tests/fixtures/community_reference.json holds bounds measured with Manim 0.22.
         data=json.loads((ROOT/'tests/fixtures/community_reference.json').read_text())
@@ -5094,9 +5127,20 @@ self.wait(1)""")
 
     def test_mathtex_serialization_and_constructor_validation(self):
         formula = lite.MathTex('a^2', '+ b^2', arg_separator=' ', color=lite.BLUE, font_size=36)
-        self.assertEqual(formula.to_dict()['type'], 'mathtex')
-        self.assertEqual(formula.text, 'a^2 + b^2')
-        self.assertEqual((formula.fill_opacity, formula.stroke_width), (1, 0))
+        # Several strings become Community-style parts drawn from one typeset formula.
+        data = formula.to_dict()
+        self.assertEqual(data['type'], 'vgroup')
+        self.assertEqual(formula.tex_string, 'a^2 + b^2')
+        self.assertEqual([(c['type'], c['part'], c['color'], c['font_size']) for c in data['children']],
+                         [('mathtex', 0, lite.BLUE, 36), ('mathtex', 1, lite.BLUE, 36)])
+        self.assertEqual(data['children'][0]['text'],
+                         r'\class{manim-part-0}{a}^{\class{manim-part-0}{2}} \class{manim-part-1}{+ b}^{\class{manim-part-1}{2}}')
+        # Pieces split inside braces stay valid TeX: braces and scripts remain structural.
+        self.assertEqual(lite._class_wrap('^{i', 1), r'^{\class{manim-part-1}{i}')
+        self.assertEqual(lite._class_wrap('} + 1', 3), r'}\class{manim-part-3}{ + 1}')
+        single = lite.MathTex('a^2 + b^2', color=lite.BLUE)
+        self.assertEqual((single.to_dict()['type'], single.text), ('mathtex', 'a^2 + b^2'))
+        self.assertEqual((single.fill_opacity, single.stroke_width), (1, 0))
         for size in (0, -1, float('nan'), float('inf')):
             with self.assertRaises(ValueError):
                 lite.MathTex('x', font_size=size)

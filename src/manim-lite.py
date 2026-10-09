@@ -898,8 +898,11 @@ class Mobject:
             points = [(0, height * 2 / 3), (-0.5, -height / 3), (0.5, -height / 3)]
         elif self._type in ('text', 'mathtex'):
             # Text is centered on its estimated (Text) or measured (MathTex) ink box.
-            width, height = (_math_box(self.text, self.font_size) if self._type == 'mathtex' else
-                             _text_extent(self.__dict__))
+            if self._type == 'mathtex' and 'part' in self.__dict__:
+                width, height = _math_parts(self.text, self.part_strings, self.font_size)[self.part][2:]
+            else:
+                width, height = (_math_box(self.text, self.font_size) if self._type == 'mathtex' else
+                                 _text_extent(self.__dict__))
             return (-width / 2, -height / 2, width / 2, height / 2)
         else:
             return (0, 0, 0, 0)
@@ -3260,18 +3263,41 @@ def _compute_text_layout(text, font_size, line_spacing, numeric):
             'family': 'serif' if numeric else 'sans'}
 
 
-def _math_box(text, font_size):
-    em = font_size * TEX_EM_PER_POINT
-    if text in _MATH_METRICS:
-        width, height = _MATH_METRICS[text]
-        return width * em, height * em
-    _MATH_ESTIMATED.add(text)
+def _math_estimate(text, font_size):
     # Rough placeholder until the browser measures the typeset formula.
     import re
-    body = re.sub(r'\\[a-zA-Z]+', 'x', text)
+    em = font_size * TEX_EM_PER_POINT
+    body = re.sub(r'\\class\{manim-part-\d+\}', '', text)
+    body = re.sub(r'\\[a-zA-Z]+', 'x', body)
     body = re.sub(r'[{}^_\s\\]', '', body)
     tall = 2 if re.search(r'\\(frac|sum|int|prod|binom|dfrac)', text) else 1
     return max(1, len(body)) * .55 * em, .75 * tall * em
+
+
+def _math_box(text, font_size):
+    em = font_size * TEX_EM_PER_POINT
+    if text in _MATH_METRICS:
+        width, height = _MATH_METRICS[text][:2]
+        return width * em, height * em
+    _MATH_ESTIMATED.add(text)
+    return _math_estimate(text, font_size)
+
+
+def _math_parts(text, parts, font_size):
+    """Centers and sizes of each \\class part relative to the formula's ink center."""
+    em = font_size * TEX_EM_PER_POINT
+    metric = _MATH_METRICS.get(text)
+    if metric is not None and len(metric) == 3 and len(metric[2]) == len(parts):
+        return [tuple(value * em for value in part) for part in metric[2]]
+    _MATH_ESTIMATED.add(text)
+    sizes = [_math_estimate(part, font_size) for part in parts]
+    gap = .15 * em
+    x = -(sum(width for width, _ in sizes) + gap * (len(sizes) - 1)) / 2
+    result = []
+    for width, height in sizes:
+        result.append((x + width / 2, 0, width, height))
+        x += width + gap
+    return result
 
 
 class Text(Mobject):
@@ -3359,19 +3385,176 @@ class Integer(DecimalNumber):
         return int(round(self.number))
 
 
+_PART_CLASS = '\\class{manim-part-%d}{%s}'
+
+
+def _class_wrap(piece, index):
+    """Tag a tex piece in place: braces and ^/_ stay structural, balanced runs get the class."""
+    out, buffer, i = [], '', 0
+    def flush():
+        nonlocal buffer
+        if buffer.strip():
+            out.append(_PART_CLASS % (index, buffer))
+        else:
+            out.append(buffer)
+        buffer = ''
+    def token(at):
+        # One TeX token starting at `at`: a command, an escaped char, a braced group or a char.
+        if piece[at] == '\\':
+            end = at + 1
+            while end < len(piece) and piece[end].isalpha():
+                end += 1
+            return piece[at:max(end, at + 2)]
+        if piece[at] == '{':
+            depth = 0
+            for end in range(at, len(piece)):
+                if piece[end] == '\\':
+                    continue
+                if piece[end] == '{' and (end == 0 or piece[end - 1] != '\\'):
+                    depth += 1
+                elif piece[end] == '}' and piece[end - 1] != '\\':
+                    depth -= 1
+                    if depth == 0:
+                        return piece[at:end + 1]
+            return None
+        return piece[at]
+    while i < len(piece):
+        char = piece[i]
+        if char in '^_':
+            flush()
+            out.append(char)
+            i += 1
+            while i < len(piece) and piece[i] == ' ':
+                i += 1
+            if i >= len(piece):
+                break
+            argument = token(i)
+            if argument is None:
+                continue  # An unmatched brace opens here; handled below.
+            inner = argument[1:-1] if argument.startswith('{') else argument
+            out.append('{' + _class_wrap(inner, index) + '}')
+            i += len(argument)
+            continue
+        if char == '{':
+            group = token(i)
+            if group is None:
+                flush()
+                out.append('{')
+                i += 1
+                continue
+            buffer += group
+            i += len(group)
+            continue
+        if char == '}':
+            flush()
+            out.append('}')
+            i += 1
+            continue
+        part = token(i)
+        buffer += part
+        i += len(part)
+    flush()
+    return ''.join(out)
+
+
+class _MathTexPart(Text):
+    """One tex string of a multi-part MathTex, drawn from the shared typeset formula."""
+    def __init__(self, text, index, part_strings, font_size, **kwargs):
+        super().__init__(text, font_size=font_size, **kwargs)
+        self._type, self.part, self.part_strings = 'mathtex', index, list(part_strings)
+        self.tex_string = part_strings[index]
+
+
 class MathTex(Text):
-    """A single formula rendered as SVG paths by the browser's math backend."""
-    def __init__(self, *tex_strings, arg_separator=' ', font_size=48, **kwargs):
+    """Formulas rendered as SVG paths by MathJax; several strings become parts."""
+    def __init__(self, *tex_strings, arg_separator=' ', substrings_to_isolate=None, tex_to_color_map=None,
+                 font_size=48, tex_environment='align*', **kwargs):
         if not all(isinstance(value, str) for value in (*tex_strings, arg_separator)):
             raise TypeError('MathTex expects TeX strings')
-        if not math.isfinite(font_size) or font_size <= 0:
+        if isinstance(font_size, bool) or not isinstance(font_size, _REAL) or not math.isfinite(font_size) or font_size <= 0:
             raise ValueError('MathTex font_size must be positive and finite')
-        text = arg_separator.join(tex_strings)
+        if tex_environment not in ('align*', None):
+            raise NotImplementedError('MathTex environments other than align* are not supported')
+        color_map = dict(tex_to_color_map or {})
+        isolate = [s for s in list(substrings_to_isolate or []) + list(color_map) if s]
+        parts = self._break_up(tex_strings, isolate)
+        text = arg_separator.join(parts)
         if len(text) > 4096:
             raise ValueError('MathTex expressions are limited to 4096 characters')
-        super().__init__(text, font_size=font_size, **kwargs)
-        self._type = 'mathtex'
-        self.tex_string = text
+        if len(parts) <= 1:
+            super().__init__(text, font_size=font_size, **kwargs)
+            self._type = 'mathtex'
+            self.tex_string, self.tex_strings = text, [text]
+        else:
+            # Each part is tagged with \class so MathJax keeps TeX spacing while
+            # the browser measures and draws every part separately.
+            classed = arg_separator.join(_class_wrap(part, i) for i, part in enumerate(parts))
+            super().__init__(classed, font_size=font_size, **kwargs)
+            self._type = 'vgroup'
+            self.tex_string, self.tex_strings = text, parts
+            style = {key: kwargs[key] for key in kwargs
+                     if key in ('color', 'fill_color', 'stroke_color', 'fill_opacity', 'stroke_width', 'stroke_opacity', 'z_index')}
+            members = []
+            for index, (cx, cy, _, _) in enumerate(_math_parts(classed, parts, font_size)):
+                member = _MathTexPart(classed, index, parts, font_size, **style)
+                members.append(member.move_to((cx, cy, 0)))
+            self.add(*members)
+        for tex, color in color_map.items():
+            self.set_color_by_tex(tex, color)
+
+    @staticmethod
+    def _break_up(tex_strings, isolate):
+        import re
+        if not isolate:
+            return [s for s in tex_strings if s] or ['']
+        pattern = '(' + '|'.join(re.escape(s) for s in sorted(isolate, key=len, reverse=True)) + ')'
+        return [piece for s in tex_strings for piece in re.split(pattern, s) if piece and piece.strip()] or ['']
+
+    def _parts(self):
+        return list(self.children) if self._type == 'vgroup' else [self]
+
+    def __getitem__(self, value):
+        if self._type != 'vgroup':
+            return self._parts()[value] if not isinstance(value, slice) else VGroup(*self._parts()[value])
+        return super().__getitem__(value)
+
+    def __len__(self):
+        return len(self._parts())
+
+    def get_parts_by_tex(self, tex, substring=True, case_sensitive=True):
+        def matches(part):
+            a, b = (tex, part.tex_string) if case_sensitive else (tex.lower(), part.tex_string.lower())
+            return a in b if substring else a == b
+        return VGroup(*[part for part in self._parts() if matches(part)]) if self._type == 'vgroup' else (
+            [self] if matches(self) else [])
+
+    def get_part_by_tex(self, tex, **kwargs):
+        parts = self.get_parts_by_tex(tex, **kwargs)
+        return parts[0] if len(parts) else None
+
+    def index_of_part_by_tex(self, tex, **kwargs):
+        part = self.get_part_by_tex(tex, **kwargs)
+        return -1 if part is None else self._parts().index(part)
+
+    def set_color_by_tex(self, tex, color, **kwargs):
+        for part in list(self.get_parts_by_tex(tex, **kwargs)):
+            part.set_color(color)
+        return self
+
+    def set_color_by_tex_to_color_map(self, texs_to_color_map, **kwargs):
+        for tex, color in texs_to_color_map.items():
+            self.set_color_by_tex(tex, color, **kwargs)
+        return self
+
+    def set_opacity_by_tex(self, tex, opacity=0.5, remaining_opacity=None, **kwargs):
+        if remaining_opacity is not None:
+            self.set_opacity(remaining_opacity)
+        for part in list(self.get_parts_by_tex(tex, **kwargs)):
+            part.set_opacity(opacity)
+        return self
+
+
+SingleStringMathTex = MathTex
 
 
 def _tex_text_to_math(text):
@@ -5204,6 +5387,9 @@ def interpolate(start, end, alpha):
         # Tip roles identify aligned child slots, rather than animated values.
         if '_tip_role' in end:
             result['_tip_role'] = end['_tip_role']
+        for key in ('part', 'part_strings'):
+            if key in start or key in end:
+                result[key] = copy.deepcopy(end.get(key) if alpha >= 1 or key not in start else start[key])
         if 'subpath_lengths' in start:
             result['subpath_lengths'] = copy.deepcopy(end.get('subpath_lengths', start['subpath_lengths'])
                                                       if alpha >= 1 else start['subpath_lengths'])
@@ -6013,6 +6199,117 @@ class MoveAlongPath(Animation):
         self.mobject.move_to(self.path_snapshot.point_from_proportion(1))
 
 
+class _TransformMatching(Animation):
+    """Morph parts with matching keys; fade the rest (Community's matching rules)."""
+    def __init__(self, mobject, target_mobject, transform_mismatches=False, fade_transform_mismatches=False,
+                 key_map=None, **kwargs):
+        if not isinstance(mobject, Mobject) or not isinstance(target_mobject, Mobject):
+            raise TypeError(type(self).__name__ + ' expects two mobjects')
+        if mobject is target_mobject:
+            raise ValueError('Source and target must be different mobjects')
+        super().__init__(mobject, **kwargs)
+        self.target_mobject, self.key_map = target_mobject, dict(key_map or {})
+        self.transform_mismatches = transform_mismatches or fade_transform_mismatches
+
+    def _keyed(self, mobject):
+        result = {}
+        for part in self.get_mobject_parts(mobject):
+            result.setdefault(self.get_mobject_key(part), []).append(part)
+        return result
+
+    def begin(self, scene):
+        super().begin(scene)
+        source, target = self._keyed(self.mobject), self._keyed(self.target_mobject)
+        pairs = []
+        for key in [k for k in source if k in target]:
+            pairs.extend(zip(source[key], target[key]))
+        for key1, key2 in self.key_map.items():
+            if key1 in source and key2 in target:
+                pairs.extend(zip(source.pop(key1), target.pop(key2)))
+        lost = [part for key in source if key not in target for part in source[key]]
+        new = [part for key in target if key not in source for part in target[key]]
+        if self.transform_mismatches and lost and new:
+            pairs.append((VGroup(*lost).copy(), VGroup(*new).copy()))
+            lost, new = [], []
+        self.plans, self.sliding = [], []
+        for a, b in pairs:
+            if {a._type, b._type} & {'text', 'mathtex'} or a._painted_members() != [a] or b._painted_members() != [b]:
+                # Glyphs from different formulas: slide both and cross-fade, so
+                # identical parts appear to move into place.
+                self.sliding.append((a.to_dict(), self._posed(a, b).to_dict(), self._posed(b, a).to_dict(), b.to_dict()))
+            else:
+                self.plans.append(_transform_plan(a.to_dict(), b.to_dict()))
+        # Unmatched sources fade toward the unmatched targets' center (origin if none).
+        goal = VGroup(*[part.copy() for part in new]).get_center() if new else Vector(ORIGIN)
+        self.leaving = [(part.to_dict(), part.copy().shift(goal - part.get_center()).to_dict()) for part in lost]
+        self.arriving = [part.to_dict() for part in new]
+
+    @staticmethod
+    def _posed(mobject, reference):
+        moved = mobject.copy()
+        if mobject.get_height() and reference.get_height():
+            moved.scale(reference.get_height() / mobject.get_height())
+        return moved.shift(reference.get_center() - moved.get_center())
+
+    def sample(self, alpha):
+        states = [state for plan in self.plans for state in _sample_transform(plan, alpha)]
+        for source, source_end, target_start, target in self.sliding:
+            leaving, arriving = interpolate(source, source_end, alpha), interpolate(target_start, target, alpha)
+            leaving['opacity'] = source['opacity'] * (1 - alpha)
+            arriving['opacity'] = target['opacity'] * alpha
+            states += [leaving, arriving]
+        for start, end in self.leaving:
+            state = interpolate(start, end, alpha)
+            state['opacity'] = start['opacity'] * (1 - alpha)
+            states.append(state)
+        for start in self.arriving:
+            state = copy.deepcopy(start)
+            state['opacity'] *= alpha
+            states.append(state)
+        return states
+
+    def finish(self, scene):
+        scene.remove(self.mobject)
+        scene.add(self.target_mobject)
+
+    def objects(self):
+        return [self.mobject, self.target_mobject]
+
+
+class TransformMatchingTex(_TransformMatching):
+    @staticmethod
+    def get_mobject_parts(mobject):
+        if isinstance(mobject, MathTex):
+            return mobject._parts()
+        if mobject._type in ('vgroup', 'mobject') or isinstance(mobject, Group):
+            return [p for child in mobject.children for p in TransformMatchingTex.get_mobject_parts(child)]
+        if not hasattr(mobject, 'tex_string'):
+            raise TypeError('TransformMatchingTex expects MathTex/Tex mobjects or groups of them')
+        return [mobject]
+
+    @staticmethod
+    def get_mobject_key(mobject):
+        return mobject.tex_string
+
+
+class TransformMatchingShapes(_TransformMatching):
+    @staticmethod
+    def get_mobject_parts(mobject):
+        return mobject._painted_members()
+
+    @staticmethod
+    def get_mobject_key(mobject):
+        # Shape identity up to position and size, like Community's normalized point hash.
+        if mobject._type in ('text', 'mathtex'):
+            return (mobject._type, mobject.text, getattr(mobject, 'part', None))
+        probe = mobject.copy()
+        probe.children = []
+        probe.center()
+        if probe.get_height():
+            probe.scale_to_fit_height(1)
+        return tuple(tuple(round(v, 3) + 0.0 for v in point[:2]) for point in probe.get_points())
+
+
 class ClockwiseTransform(Transform):
     def __init__(self, mobject, target_mobject, path_arc=-PI, **kwargs):
         super().__init__(mobject, target_mobject, path_arc=path_arc, **kwargs)
@@ -6773,13 +7070,13 @@ class MovingCameraScene(Scene):
 
 EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
            'Triangle', 'Polygon', 'Polygram', 'RegularPolygram', 'RegularPolygon', 'Star', 'Brace', 'BraceBetweenPoints', 'BraceLabel', 'BraceText',
-           'Title', 'BulletedList', 'Tex', 'LabeledDot', 'Variable', 'always', 'f_always', 'always_shift', 'always_rotate',
+           'Title', 'BulletedList', 'Tex', 'SingleStringMathTex', 'LabeledDot', 'Variable', 'always', 'f_always', 'always_shift', 'always_rotate',
            'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'NumberPlane', 'ComplexPlane', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform',
            'ClockwiseTransform', 'CounterclockwiseTransform', 'MoveToTarget', 'CyclicReplace', 'Swap',
-           'FadeTransform', 'ApplyMethod', 'ScaleInPlace', 'FadeToColor', 'Wait', 'GrowFromEdge', 'GrowArrow',
+           'FadeTransform', 'TransformMatchingTex', 'TransformMatchingShapes', 'ApplyMethod', 'ScaleInPlace', 'FadeToColor', 'Wait', 'GrowFromEdge', 'GrowArrow',
            'SpinInFromNothing', 'Wiggle', 'FocusOn', 'UpdateFromFunc', 'UpdateFromAlphaFunc',
            'ShowIncreasingSubsets', 'ShowSubmobjectsOneByOne', 'AddTextLetterByLetter',
            'RemoveTextLetterByLetter', 'Circumscribe', 'Flash', 'UP', 'DOWN', 'LEFT',
@@ -6842,13 +7139,18 @@ def _set_math_metrics(math_metrics):
         items = math_metrics.items() if hasattr(math_metrics, 'items') else None
         if items is None:
             raise TypeError('Math metrics must map expressions to [width, height] in em')
+        def finite(values, low=-1000):
+            return all(not isinstance(v, bool) and isinstance(v, _REAL) and math.isfinite(v) and low <= v <= 1000
+                       for v in values)
         for text, size in items:
             size = list(size)
-            if (not isinstance(text, str) or len(text) > 4096 or len(size) != 2 or
-                    any(isinstance(v, bool) or not isinstance(v, _REAL) or
-                        not math.isfinite(v) or not 0 <= v <= 1000 for v in size)):
-                raise ValueError('Math metrics must map expressions to finite [width, height] in em')
-            metrics[text] = (float(size[0]), float(size[1]))
+            parts = [list(part) for part in size[2]] if len(size) == 3 and isinstance(size[2], (list, tuple)) else None
+            if (not isinstance(text, str) or len(text) > 4096 or len(size) not in (2, 3) or
+                    not finite(size[:2], 0) or (len(size) == 3 and (parts is None or len(parts) > 256 or
+                    any(len(part) != 4 or not finite(part) or not finite(part[2:], 0) for part in parts)))):
+                raise ValueError('Math metrics must map expressions to finite [width, height(, parts)] in em')
+            metrics[text] = ((float(size[0]), float(size[1])) if parts is None else
+                             (float(size[0]), float(size[1]), [tuple(float(v) for v in part) for part in parts]))
             if len(metrics) > 1024:
                 raise ValueError('At most 1024 math metrics may be supplied')
     _MATH_METRICS.clear()

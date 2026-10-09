@@ -2177,3 +2177,21 @@ Rotated families (any member with a non-axis-aligned angle) now bound their
 transformed points, like Community, instead of rotating child boxes; arcs and
 ellipses use their cubic anchors (or all points for width/height). Text layouts
 are cached by content and size.
+
+
+Try **Formula parts and matching transforms** (`examples/formula_parts_scene.py`).
+Multi-part MathTex wraps each piece with `\class{manim-part-i}{...}` (MathJax
+`html` extension, now part of the offline asset list). `_class_wrap` keeps braces
+and `^`/`_` structural and tags balanced runs in place, so pieces split inside a
+group (`e^{i\pi}` isolating `\pi`) remain valid TeX. `ManimMath.splitParts`
+clones the typeset SVG once per part, removing the other parts' groups, and
+measures each clone; metrics carry `[width, height, [[cx, cy, w, h], ...]]` in em
+relative to the formula's ink center. Python places parts from those boxes (or
+left-to-right estimates before measurement); renderer nodes with `part` draw that
+part's SVG centered on its own box. TransformMatchingTex/Shapes pair parts by key:
+same-shape vector outlines use the morph planner, glyph parts slide and
+cross-fade (identical glyphs overlap), unmatched sources fade toward the
+unmatched targets' center (origin if none) and unmatched targets fade in place.
+Verification: all 387 Python and 83 Node tests passed; Chromium playback showed
+colored parts, Indicate/Circumscribe on single parts, parts sliding into
+`c² − b² = a²`, and `e^{iπ}+1=0` with an isolated π.

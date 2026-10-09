@@ -1,7 +1,8 @@
 /** Exact offline dependencies. Bump VERSION whenever any listed local file changes. */
 const OfflineAssets = {
-  VERSION: 'manimonline-offline-v86',
+  VERSION: 'manimonline-offline-v88',
   local: [
+    'examples/formula_parts_scene.py',
     'examples/annotation_scene.py',
     'examples/animation_tour_scene.py',
     'examples/text_layout_scene.py',
@@ -60,6 +61,7 @@ const OfflineAssets = {
   remote: [
     'https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js',
     'https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js',
+    'https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/input/tex/extensions/html.js',
     ...['pyodide.js', 'pyodide.asm.js', 'pyodide.asm.wasm', 'python_stdlib.zip', 'pyodide-lock.json']
       .map(file => 'https://cdn.jsdelivr.net/pyodide/v0.27.0/full/' + file)
   ],

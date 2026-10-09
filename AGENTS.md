@@ -524,3 +524,9 @@ can be built with pango/TeX packages to check geometry numerically.
 Fidelity guard: tests/fixtures/community_reference.json holds Manim 0.22 bounds
 for 27 snippets; add a case (and regenerate with the fixture's generator script)
 when changing geometry, layout or bounds behavior.
+
+
+Read `examples/formula_parts_scene.py` for multi-part MathTex. Parts are
+_MathTexPart children (type mathtex, `part` index) of a vgroup-typed MathTex; all
+share one \class-tagged expression string. Keep _class_wrap producing valid TeX.
+Metrics may be [w, h] or [w, h, parts]; interpolate keeps `part` discrete.

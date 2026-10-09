@@ -63,6 +63,10 @@ test('math glyphs render with transforms, styles, and no external SVG content', 
   assert.equal(shape.getAttribute('fill'), '#FF0000');
   assert.equal(shape.children[0].getAttribute('d'), 'M 0 0 L 1000 0');
   assert.equal(shape.children[0].getAttribute('onclick'), null);
+  glyphs.set('ab', { svg: '<svg/>', viewBox: [0, -700, 2000, 900], parts: [{ svg: '<svg/>', bbox: [0, -700, 900, 900] }, { svg: '<svg/>', bbox: [1000, -500, 1000, 500] }] });
+  const second = renderer.renderMobject({ type: 'mathtex', text: 'ab', part: 1, font_size: 96 }, glyphs);
+  assert.match(second.getAttribute('transform'), /translate\(-1500, 250\)/);
+  assert.throws(() => renderer.renderMobject({ type: 'mathtex', text: 'ab', part: 5 }, glyphs), /part glyphs/);
   path.localName = 'script';
   assert.throws(() => renderer.renderMobject({ type: 'mathtex', text: 'x' }, glyphs), /Unsupported math SVG/);
   assert.throws(() => renderer.renderMobject({ type: 'mathtex', text: 'y' }, glyphs), /not been prepared/);
