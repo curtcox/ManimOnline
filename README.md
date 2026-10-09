@@ -291,7 +291,7 @@ at the displayed frame and exports an 800 × 450 image with a black background.
 These are still images, not video exports. SVG retains vector formula paths;
 PNG includes those paths and the browser's rendered text.
 
-Full LaTeX documents, 3D, updaters, full NumPy integration, and MP4 export
+Full LaTeX documents, OpenGL rendering, full NumPy integration, and MP4 export
 are not implemented. The broader examples directory includes APIs
 outside this subset. Unsupported operations report Python errors.
 
@@ -1559,3 +1559,9 @@ lite vectors (tuples with arithmetic) and lists rather than NumPy arrays. Member
 moved, rotated or scaled shape now keep their world placement (Community semantics), and
 `restore()` keeps member identities like Community's `become(saved_state)`.
 
+The **3D axes, surfaces and solids** example covers `ThreeDScene` (`set_camera_orientation`,
+`move_camera`, ambient rotation, fixed-in-frame titles), `ThreeDAxes` with `plot_surface`
+colorscales and 3D `plot_parametric_curve`, and the solids `Sphere`, `Cube`, `Torus`,
+`Cylinder`, `Cone`, `Line3D` and `Arrow3D`. `Rotate` accepts any axis. Frames carry
+world-space geometry and the renderer applies Community's projection, start-corner shading
+and depth sorting, so camera moves are cheap; text stays an upright billboard in 3D.

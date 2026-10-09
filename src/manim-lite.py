@@ -39,6 +39,9 @@ _BOUNDS_WITH_HANDLES = False  # Set only while measuring width/height.
 
 
 _BOUNDS_MEMO = None  # Per-serialization cache of local bounds (see Mobject.to_dict).
+# Attributes that only ever hold coordinates: serialization skips the mobject scan.
+_POINT_KEYS = frozenset(('curves', 'vertices', 'position', 'start', 'end', 'shaft_start',
+                         'shaft_end', 'shaft_curves', 'cloud'))
 
 
 def _snapshot_copy(value):
@@ -1337,6 +1340,21 @@ class Mobject:
     def to_corner(self, corner=DL, buff=DEFAULT_MOBJECT_TO_EDGE_BUFFER):
         return self.align_on_border(corner, buff)
 
+    def shift_onto_screen(self, buff=DEFAULT_MOBJECT_TO_EDGE_BUFFER):
+        """Community's shift_onto_screen: pull any edge past the frame back inside."""
+        for vect in (UP, DOWN, LEFT, RIGHT):
+            dim = 0 if vect[0] else 1
+            limit = (config.frame_width if dim == 0 else config.frame_height) / 2 - buff
+            if sum(a * b for a, b in zip(self.get_edge_center(vect), vect)) > limit:
+                self.to_edge(vect, buff=buff)
+        return self
+
+    def is_off_screen(self):
+        return (self.get_left()[0] > config.frame_width / 2 or
+                self.get_right()[0] < -config.frame_width / 2 or
+                self.get_bottom()[1] > config.frame_height / 2 or
+                self.get_top()[1] < -config.frame_height / 2)
+
     def center(self):
         return self.shift(Vector(ORIGIN) - self.get_center())
 
@@ -1539,6 +1557,18 @@ class Mobject:
             _BOUNDS_WITH_HANDLES = flag
 
     def _anchor_center(self):
+        memo = _BOUNDS_MEMO
+        if memo is not None:
+            # Within one serialization the first call already applied any pivot
+            # compensation below, so later calls would return the same center.
+            key = ('center', id(self))
+            result = memo.get(key)
+            if result is None:
+                result = memo[key] = self._compute_anchor_center()
+            return Vector(result)
+        return self._compute_anchor_center()
+
+    def _compute_anchor_center(self):
         left, bottom, right, top = self._local_bounds()
         center = Vector(((left + right) / 2, (bottom + top) / 2, 0))
         if self.children:
@@ -1619,8 +1649,8 @@ class Mobject:
         return max(points, key=lambda p: p[0] * direction[0] + p[1] * direction[1] + p[2] * direction[2])
 
     def get_midpoint(self):
-        """Community's midpoint of the first start and last end anchor."""
-        return midpoint(self.get_start(), self.get_end()) if self.has_points() else self.get_center()
+        """Community's get_midpoint: the point halfway along the path."""
+        return self.point_from_proportion(0.5) if self.has_points() else self.get_center()
 
     def get_center_of_mass(self):
         points = [Vector(p) for member in self.get_family() for p in member.get_points()]
@@ -1734,6 +1764,18 @@ class Mobject:
             result.pointwise_become_partial(self,a,b)
         return result
 
+    def get_pieces(self, n_pieces):
+        """Community's get_pieces: n equal-parameter partial copies, no children."""
+        if isinstance(n_pieces, bool) or not isinstance(n_pieces, numbers.Integral) or n_pieces < 1:
+            raise ValueError('Piece count must be a positive integer')
+        if n_pieces > 1000:
+            raise ValueError('Piece count is limited to 1000')
+        template = self.copy()
+        template._replace_children([])
+        alphas = _linspace(0, 1, int(n_pieces) + 1)
+        return Group(*(template.copy().pointwise_become_partial(self, a1, a2)
+                       for a1, a2 in zip(alphas[:-1], alphas[1:])))
+
     def point_from_proportion(self, alpha):
         """Sample supported XY outlines by distance, then apply SVG geometry transforms."""
         if not math.isfinite(alpha) or not 0 <= alpha <= 1:
@@ -1746,9 +1788,11 @@ class Mobject:
             if alpha in (0, 1):
                 return self._point_to_world(Vector(self.curves[0][0] if alpha == 0 else self.curves[-1][-1]))
             lengths = []
+            # Baked 3D paths keep z; flat paths use the faster XY sampler.
+            bez = _bez3 if any(len(p) > 2 and p[2] for curve in self.curves for p in curve) else _bez
             for curve in self.curves:
                 # Plain-tuple sampling (_bez); Vector arithmetic here dominated MoveAlongPath.
-                samples = [_bez(curve, i / 20) for i in range(21)]
+                samples = [bez(curve, i / 20) for i in range(21)]
                 lengths.append(sum(math.dist(a, b) for a, b in zip(samples, samples[1:])))
             total = sum(lengths)
             if not math.isfinite(total):
@@ -1756,8 +1800,8 @@ class Mobject:
             remaining = alpha * total
             for curve, length in zip(self.curves, lengths):
                 if remaining <= length:
-                    x, y = _bez(curve, remaining / length if length else 0)
-                    return self._point_to_world(Vector((x, y, 0)))
+                    point = bez(curve, remaining / length if length else 0)
+                    return self._point_to_world(Vector((*point, 0)[:3]))
                 remaining -= length
             return self._point_to_world(Vector(self.curves[-1][-1]))
         if self._type == 'annulus':
@@ -1889,6 +1933,16 @@ class Mobject:
         return [self._point_to_world(p) for p in local]
 
     def _bounds(self):
+        memo = _BOUNDS_MEMO
+        if memo is not None:
+            key = ('bounds', id(self), _BOUNDS_WITH_HANDLES)
+            result = memo.get(key)
+            if result is None:
+                result = memo[key] = self._compute_bounds()
+            return result
+        return self._compute_bounds()
+
+    def _compute_bounds(self):
         if self.children and self._rotated_family():
             # Rotated families: bound their transformed points, as Community does.
             points = self._family_bound_points()
@@ -2302,7 +2356,7 @@ class Mobject:
     def _to_dict(self):
         center = self._geometry_center()
         result = _snapshot_copy({key: value for key, value in self.__dict__.items()
-                                if not _holds_mobject(value) and not callable(value) and
+                                if (key in _POINT_KEYS and type(value) is list or not _holds_mobject(value) and not callable(value)) and
                                 key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache', '_flow_points') and
                                 key not in self._frame_excluded})
         result['type'] = result.pop('_type')
@@ -5980,6 +6034,12 @@ class NumberLine(VGroup):
 
     n2p = number_to_point
 
+    def rotate_about_number(self, number, angle, axis=OUT, **kwargs):
+        return self.rotate(angle, axis, about_point=self.n2p(number), **kwargs)
+
+    def rotate_about_zero(self, angle, axis=OUT, **kwargs):
+        return self.rotate_about_number(0, angle, axis, **kwargs)
+
     def point_to_number(self, point):
         point = Vector(point)
         if not all(math.isfinite(v) for v in point):
@@ -6105,6 +6165,7 @@ class CoordinateSystem:
 
 class Axes(VGroup, CoordinateSystem):
     """Two linear NumberLines with transform-aware XY coordinate conversion."""
+    _frame_excluded = ('axis_config',)
     def __init__(self, x_range=None, y_range=None, x_length=None, y_length=None,
                  axis_config=None, x_axis_config=None, y_axis_config=None, tips=True, **kwargs):
         if not isinstance(tips,bool):
@@ -6113,18 +6174,9 @@ class Axes(VGroup, CoordinateSystem):
         common = dict(color=self.color,stroke_color=self.stroke_color,
                       stroke_width=self.stroke_width,stroke_opacity=self.stroke_opacity,
                       include_tip=tips,numbers_to_exclude=[0],exclude_origin_tick=True)
-        def merge(base, options):
-            result = copy.deepcopy(base)
-            if options is not None:
-                if not isinstance(options,dict):
-                    raise TypeError('Axis configuration must be a dictionary')
-                for key,value in options.items():
-                    if isinstance(value,dict) and isinstance(result.get(key),dict):
-                        result[key] = dict(result[key],**value)
-                    else:
-                        result[key] = copy.deepcopy(value)
-            return result
+        merge = self._merge_axis_options
         common = merge(common,axis_config)
+        self.axis_config = common
         x_options = merge(common,x_axis_config)
         y_options = merge(merge(common,dict(rotation=PI/2,label_direction=LEFT)),y_axis_config)
         for options in (x_options, y_options):
@@ -6151,6 +6203,19 @@ class Axes(VGroup, CoordinateSystem):
         self.shift(middle*(-1))
 
     @staticmethod
+    def _merge_axis_options(base, options):
+        result = copy.deepcopy(base)
+        if options is not None:
+            if not isinstance(options,dict):
+                raise TypeError('Axis configuration must be a dictionary')
+            for key,value in options.items():
+                if isinstance(value,dict) and isinstance(result.get(key),dict):
+                    result[key] = dict(result[key],**value)
+                else:
+                    result[key] = copy.deepcopy(value)
+        return result
+
+    @staticmethod
     def _origin_shift(axis_range):
         return max(axis_range[0],min(axis_range[1],0))
 
@@ -6168,9 +6233,24 @@ class Axes(VGroup, CoordinateSystem):
     def y_axis(self):
         return self._axis('y')
 
+    _AXIS_ROLES = ('x', 'y')
+
+    def _coordinate_axes(self):
+        # During construction the later axes may not exist yet.
+        result = []
+        for role in self._AXIS_ROLES:
+            axis = next((child for child in self.children
+                         if child.__dict__.get('_axes_role') == role), None)
+            if axis is None:
+                break
+            result.append(axis)
+        if len(result) < 2:
+            raise ValueError('Axes has no x and y axes')
+        return result
+
     @property
     def axes(self):
-        return VGroup(self.x_axis,self.y_axis)
+        return VGroup(*self._coordinate_axes())
 
     def get_axes(self):
         return self.axes
@@ -6205,7 +6285,7 @@ class Axes(VGroup, CoordinateSystem):
                     raise ValueError('Axes coordinate batches are limited to 1000 points')
                 return [self.coords_to_point(*point) for point in coords]
         if len(coords) not in (2,3):
-            raise ValueError('Axes coordinates need x, y and optionally zero z')
+            raise ValueError('Axes coordinates need x, y and optionally z')
         sequences = [value for value in coords if isinstance(value,(list,tuple))]
         if sequences:
             count = len(sequences[0])
@@ -6215,10 +6295,14 @@ class Axes(VGroup, CoordinateSystem):
                                           for value in coords)) for i in range(count)]
         for value in coords:
             NumberLine._real(value,'Axes coordinate')
-        if len(coords) == 3 and coords[2] != 0:
-            raise NotImplementedError('Axes supports only the XY plane')
-        origin = self.x_axis.n2p(self._axis_shift(self.x_axis))
-        return self._point_to_world(self.x_axis.n2p(coords[0])+self.y_axis.n2p(coords[1])-origin)
+        # Community sums each axis's offset from the origin; coordinates beyond
+        # the axis count (z on 2D Axes) are ignored.
+        axes = self._coordinate_axes()
+        origin = axes[0].n2p(self._axis_shift(axes[0]))
+        point = axes[0].n2p(coords[0])
+        for axis, value in zip(axes[1:], coords[1:]):
+            point = point + axis.n2p(value) - origin
+        return self._point_to_world(point)
 
     def _axis_shift(self, axis):
         """Community's origin shift, taken over the axis's scaled range."""
@@ -6234,7 +6318,7 @@ class Axes(VGroup, CoordinateSystem):
         origin = self.x_axis.n2p(self._axis_shift(self.x_axis))
         world = self._point_to_world(origin)
         vectors = [self._point_to_world(origin+axis.get_unit_vector())-world
-                   for axis in (self.x_axis,self.y_axis)]
+                   for axis in self._coordinate_axes()]
         return vectors
 
     def get_x_unit_size(self):
@@ -6293,13 +6377,18 @@ class Axes(VGroup, CoordinateSystem):
         self._geometry_center()
         return self
 
-    def get_x_axis_label(self, label, direction=UR, buff=.1, **kwargs):
+    def _get_axis_label(self, label, axis, edge, direction, buff=SMALL_BUFF):
+        """Community's _get_axis_label: next to the axis edge, then onto the screen."""
         label = label if isinstance(label,Mobject) else MathTex(str(label))
-        return label.next_to(self._point_to_world(self.x_axis.get_end()),direction,buff,**kwargs)
+        label.next_to(self._point_to_world(axis.get_edge_center(edge)),direction,buff)
+        label.shift_onto_screen(buff=MED_SMALL_BUFF)
+        return label
 
-    def get_y_axis_label(self, label, direction=UR, buff=.1, **kwargs):
-        label = label if isinstance(label,Mobject) else MathTex(str(label))
-        return label.next_to(self._point_to_world(self.y_axis.get_end()),direction,buff,**kwargs)
+    def get_x_axis_label(self, label, edge=UR, direction=UR, buff=SMALL_BUFF):
+        return self._get_axis_label(label,self.x_axis,edge,direction,buff)
+
+    def get_y_axis_label(self, label, edge=UR, direction=UP*.5+RIGHT, buff=SMALL_BUFF):
+        return self._get_axis_label(label,self.y_axis,edge,direction,buff)
 
     def get_axis_labels(self, x_label='x', y_label='y'):
         return VGroup(self.get_x_axis_label(x_label),self.get_y_axis_label(y_label))
@@ -6354,7 +6443,23 @@ class Axes(VGroup, CoordinateSystem):
     def plot_parametric_curve(self, function, **kwargs):
         if not callable(function):
             raise TypeError('Parametric plotting expects a callable returning XY coordinates')
-        return ParametricFunction(lambda t: self.c2p(function(t)),**kwargs)
+        dim = len(self._AXIS_ROLES)
+        return ParametricFunction(lambda t: self.c2p(*list(function(t))[:dim]),**kwargs)
+
+    def plot_surface(self, function, u_range=None, v_range=None, colorscale=None,
+                     colorscale_axis=2, **kwargs):
+        """Community's plot_surface: a Surface over (u, v) with height function(u, v)."""
+        if not callable(function):
+            raise TypeError('plot_surface expects a callable height function')
+        options = dict(kwargs)
+        if u_range is not None:
+            options['u_range'] = u_range
+        if v_range is not None:
+            options['v_range'] = v_range
+        surface = Surface(lambda u, v: self.c2p(u, v, function(u, v)), **options)
+        if colorscale:
+            surface.set_fill_by_value(axes=self.copy(), colorscale=colorscale, axis=colorscale_axis)
+        return surface
 
     @staticmethod
     def _scalar_graph_function(graph):
@@ -8042,11 +8147,14 @@ class Rotate(Animation):
         if not math.isfinite(angle):
             raise ValueError('Rotation angle must be finite')
         axis = Vector(axis)
-        if axis not in (OUT, IN):
-            raise NotImplementedError('Only 2D rotation about OUT or IN is supported')
+        if not all(math.isfinite(v) for v in axis) or not any(axis):
+            raise ValueError('Rotation axis must be finite and nonzero')
         if about_point is not None and about_edge is not None:
             raise ValueError('Pass about_point or about_edge, not both')
-        self.angle = angle if axis == OUT else -angle
+        # In-plane axes rotate in 3D: each sample bakes the rigid rotation, which
+        # is exactly Community's path_arc interpolation about that axis.
+        self.axis = OUT if axis in (OUT, IN) else axis
+        self.angle = angle if axis != IN else -angle
         self.about_point = Vector(about_point) if about_point is not None else None
         self.about_edge = None if about_edge is None else Mobject._xy_vector(about_edge, 'Pivot edge')
 
@@ -8059,11 +8167,11 @@ class Rotate(Animation):
 
     def sample(self, alpha):
         current = self.original.copy()
-        current.rotate(self.angle * alpha, about_point=self.about_point)
+        current.rotate(self.angle * alpha, self.axis, about_point=self.about_point)
         return [current.to_dict()]
 
     def finish(self, scene):
-        final = self.original.copy().rotate(self.angle, about_point=self.about_point)
+        final = self.original.copy().rotate(self.angle, self.axis, about_point=self.about_point)
         self.mobject.__dict__ = copy.deepcopy(final.__dict__)
 
 
@@ -8922,6 +9030,8 @@ class Scene:
         self.sections = [{'name': 'autocreated', 'type': DefaultSectionType.NORMAL, 'skip_animations': False, 'frame': 0}]
         self._skipping = False
         self._camera_views = []
+        # id(root) -> frame data, reused for unchanged roots inside one play/wait loop.
+        self._static_frames = None
 
     def _add_camera_view(self, display):
         """Community's MultiCamera.add_image_mobject_from_camera."""
@@ -9148,8 +9258,52 @@ class Scene:
         if advance_time:
             self._elapsed_frames += 1
 
+    def _static_frames_safe(self, animations=()):
+        """Whether roots untouched by these animations stay fixed for the whole loop.
+
+        Only built-in camera updaters may run, there must be no scene updaters, and no
+        animation may call user code that could edit other mobjects each frame."""
+        if self.updaters:
+            return False
+        pending = list(animations)
+        while pending:
+            animation = pending.pop()
+            if isinstance(animation, UpdateFromFunc):
+                return False
+            if isinstance(animation, AnimationGroup):
+                pending.extend(animation.animations)
+            elif isinstance(animation, TransformAnimations):
+                pending.extend((animation.start_anim, animation.end_anim))
+        for root in self.mobjects:
+            for member in root.get_family():
+                if any(not getattr(f, '_camera_updater', False) for f in member.updaters):
+                    return False
+        return True
+
+    def _root_frame_data(self, mobject, overrides):
+        """One root's frame entries; ThreeDScene flattens them to world leaves."""
+        return self._root_states(mobject, overrides)
+
     def _frame_objects(self, overrides):
-        """The scene's roots as snapshot dicts; ThreeDScene projects this output."""
+        """The scene's roots as frame entries, reusing unchanged roots within a loop."""
+        frame_center = getattr(self.camera, '_frame_center', None)
+        cache = self._static_frames
+        objects = []
+        for mobject in self.mobjects:
+            if isinstance(mobject, (CameraFrame, ValueTracker)) or mobject is frame_center:
+                continue
+            static = cache is not None and not (overrides and any(
+                member in overrides for member in mobject.get_family()))
+            if static and id(mobject) in cache:
+                objects.extend(cache[id(mobject)])
+                continue
+            data = self._root_frame_data(mobject, overrides)
+            if static:
+                cache[id(mobject)] = data
+            objects.extend(data)
+        return objects
+
+    def _root_states(self, root, overrides):
         def states(mobject):
             if overrides and mobject in overrides:
                 return [_refresh_tip_shafts(state) for state in overrides[mobject]]
@@ -9159,13 +9313,7 @@ class Scene:
             data = mobject.to_dict()
             data['children'] = [state for child in mobject.children for state in states(child)]
             return [_refresh_tip_shafts(data)]
-        frame_center = getattr(self.camera, '_frame_center', None)
-        objects = []
-        for mobject in self.mobjects:
-            if isinstance(mobject, (CameraFrame, ValueTracker)) or mobject is frame_center:
-                continue
-            objects.extend(states(mobject))
-        return objects
+        return states(root)
 
     _PLAY_OPTIONS = ('path_arc', 'lag_ratio', 'remover', 'introducer', 'name',
                      'suspend_mobject_updating', 'reverse_rate_function')
@@ -9198,13 +9346,17 @@ class Scene:
                 animation.rate_func = rate_func
         for animation in animations:
             animation.prepare(self)
-        for frame in range(count):
-            time = frame / FPS
-            overrides = {}
-            for animation, duration in zip(animations, durations):
-                overrides.update(animation.states(time / duration if duration else 1))
-            self._update_mobjects(0 if frame == 0 else 1 / FPS, overrides)
-            self.capture(overrides)
+        self._static_frames = {} if self._static_frames_safe(animations) else None
+        try:
+            for frame in range(count):
+                time = frame / FPS
+                overrides = {}
+                for animation, duration in zip(animations, durations):
+                    overrides.update(animation.states(time / duration if duration else 1))
+                self._update_mobjects(0 if frame == 0 else 1 / FPS, overrides)
+                self.capture(overrides)
+        finally:
+            self._static_frames = None
         # Update-function animations finish last, seeing their neighbors' final states as
         # Community's last frame does (e.g. MaintainPositionRelativeTo a moving object).
         for animation in sorted(animations, key=lambda a: isinstance(a, UpdateFromFunc)):
@@ -9251,13 +9403,18 @@ class Scene:
         count = math.ceil(duration * FPS)
         if count + len(self.frames) >= MAX_FRAMES and stop_condition is None and not self._skipping:
             raise ValueError('Preview exceeds 60 seconds / 900 frames. Shorten the scene.')
-        for frame in range(count):
-            self._update_mobjects(0 if frame == 0 else 1 / FPS)
-            if stop_condition is not None and stop_condition():
-                break
-            if len(self.frames) >= MAX_FRAMES - 1:
-                raise ValueError('Preview exceeds 60 seconds / 900 frames. Shorten the scene.')
-            self.capture()
+        safe = stop_condition is None and self._static_frames_safe()
+        self._static_frames = {} if safe else None
+        try:
+            for frame in range(count):
+                self._update_mobjects(0 if frame == 0 else 1 / FPS)
+                if stop_condition is not None and stop_condition():
+                    break
+                if len(self.frames) >= MAX_FRAMES - 1:
+                    raise ValueError('Preview exceeds 60 seconds / 900 frames. Shorten the scene.')
+                self.capture()
+        finally:
+            self._static_frames = None
         if count:
             self._update_mobjects(1 / FPS)
 
@@ -10033,7 +10190,8 @@ class ThreeDCamera(PreviewConfig):
                     'should_apply_shading', 'exponential_projection', 'max_allowable_norm',
                     'phi_tracker', 'theta_tracker', 'gamma_tracker', 'zoom_tracker',
                     'focal_distance_tracker', 'rotation_matrix', 'fixed_orientation_mobjects',
-                    'fixed_in_frame_mobjects', '_frame_center', '_orientation_key_count'}
+                    'fixed_in_frame_mobjects', '_frame_center', '_orientation_key_count',
+                    '_custom_orientation_centers'}
 
     def __init__(self, focal_distance=20.0, shading_factor=0.2, default_distance=5.0,
                  light_source_start_point=9 * DOWN + 7 * LEFT + 10 * OUT,
@@ -10151,6 +10309,8 @@ class ThreeDCamera(PreviewConfig):
                 raise TypeError('Fixed-orientation registration expects Mobjects')
             if center_func is not None:
                 func = center_func
+                # User centers may follow other mobjects, so frames are never reused.
+                object.__setattr__(self, '_custom_orientation_centers', True)
             elif use_static_center_func:
                 point = list(mobject.get_center())
                 func = lambda point=point: point
@@ -10240,7 +10400,10 @@ class ThreeDScene(Scene):
     def begin_ambient_camera_rotation(self, rate=0.02, about='theta'):
         NumberLine._real(rate, 'Camera rotation rate')
         tracker = self._camera_tracker(about)
-        tracker.add_updater(lambda m, dt: tracker.increment_value(rate * dt))
+        def rotate(m, dt):
+            return tracker.increment_value(rate * dt)
+        rotate._camera_updater = True  # Edits only the tracker (see _static_frames_safe).
+        tracker.add_updater(rotate)
         self.add(tracker)
 
     def stop_ambient_camera_rotation(self, about='theta'):
@@ -10260,6 +10423,7 @@ class ThreeDScene(Scene):
             theta_progress.increment_value(dt * rate)
             return m.set_value(origin_theta + 0.2 * math.sin(theta_progress.get_value()))
 
+        update_theta._camera_updater = True
         self.camera.theta_tracker.add_updater(update_theta)
         self.add(self.camera.theta_tracker)
         phi_progress = ValueTracker(0)
@@ -10268,6 +10432,7 @@ class ThreeDScene(Scene):
             phi_progress.increment_value(dt * rate)
             return m.set_value(origin_phi + 0.1 * math.cos(phi_progress.get_value()) - 0.1)
 
+        update_phi._camera_updater = True
         self.camera.phi_tracker.add_updater(update_phi)
         self.add(self.camera.phi_tracker)
 
@@ -10303,188 +10468,141 @@ class ThreeDScene(Scene):
             return self.mobjects
         return moving
 
-    def _frame_objects(self, overrides):
-        roots = super()._frame_objects(overrides)
+    def _static_frames_safe(self, animations=()):
+        return (not getattr(self.camera, '_custom_orientation_centers', False) and
+                super()._static_frames_safe(animations))
+
+    def capture(self, overrides=None, *, advance_time=True):
+        count = len(self.frames)
+        super().capture(overrides, advance_time=advance_time)
+        if len(self.frames) > count:
+            self.frames[-1]['camera']['three_d'] = self._three_d_camera(overrides)
+
+    def _three_d_camera(self, overrides):
+        """The sampled camera the renderer projects this frame's world leaves with."""
         camera = self.camera
         def tracked(tracker):
             states = overrides.get(tracker) if overrides else None
-            return states[0]['position'][0] if states else tracker.get_value()
-        phi, theta = tracked(camera.phi_tracker), tracked(camera.theta_tracker)
-        gamma, zoom = tracked(camera.gamma_tracker), tracked(camera.zoom_tracker)
-        focal_distance = tracked(camera.focal_distance_tracker)
+            return float(states[0]['position'][0] if states else tracker.get_value())
         states = overrides.get(camera._frame_center) if overrides else None
         if states:
             frame_center = Vector(states[0]['position']) + Vector(states[0]['geometry_center'])
         else:
             frame_center = Vector(camera.frame_center)
-        rot = _camera_rotation_matrix(phi, theta, gamma)
-        light_source = camera.light_source.get_center()
+        return {'phi': tracked(camera.phi_tracker), 'theta': tracked(camera.theta_tracker),
+                'gamma': tracked(camera.gamma_tracker), 'zoom': tracked(camera.zoom_tracker),
+                'focal_distance': tracked(camera.focal_distance_tracker),
+                'frame_center': [float(v) for v in frame_center],
+                'light_source': [float(v) for v in camera.light_source.get_center()],
+                'shading': bool(camera.should_apply_shading),
+                'exponential': bool(camera.exponential_projection)}
 
-        def project(point):
-            rotated = _apply_rows(rot, Vector(point) - frame_center)
-            if camera.exponential_projection:
-                factor = (math.exp(rotated[2] / focal_distance) if rotated[2] >= 0
-                          else focal_distance / (focal_distance - rotated[2]))
-            else:
-                factor = (1e6 if focal_distance - rotated[2] < 0
-                          else focal_distance / (focal_distance - rotated[2]))
-            return [rotated[0] * factor * zoom, rotated[1] * factor * zoom, rotated[2]]
+    def _root_frame_data(self, root, overrides):
+        """Flatten a root into world-space leaves; the renderer projects them.
 
-        # Each entry carries the emitted leaf dict plus its world points for
-        # shading and the depth sort.
+        Path leaves become identity-pose bezierpaths (line/arrow keep their type
+        and endpoints); text, formulas and images keep their glyphs and gain an
+        ``anchor3d`` world point. Static geometry is therefore identical across
+        camera moves and pools. Fixed-orientation leaves carry their reference
+        ``orient_center`` and z_index_as_group leaves their root's
+        ``depth_center``; the renderer sorts, shades and projects (Community's
+        ThreeDCamera)."""
+        roots = self._root_states(root, overrides)
+        camera = self.camera
         leaves = []
 
-        def shaded(color, world_points):
-            if not isinstance(color, str):
-                return [shaded(item, world_points) for item in color]
-            count = len(world_points)
-            # Community uses the start corner and the start-corner normal:
-            # anchors are the curve endpoints, so 2 * curve count.
-            if 2 * (count // 4) <= 2 or count < 4:
-                normal = UP
-            else:
-                normal = get_unit_normal(Vector(world_points[3]) - Vector(world_points[0]),
-                                         Vector(world_points[count - 4]) - Vector(world_points[0]))
-                if _norm(normal) == 0:
-                    normal = UP
-            # Community builds a two-stop gradient toward the end corner; this
-            # preview shades uniformly with the start-corner value instead.
-            rgb = get_shaded_rgb(_color_rgb(color), world_points[0], normal, light_source)
-            return _rgb_color([min(1, max(0, v)) for v in rgb])
-
-        def orientation_center(node, world_points):
+        def orientation_center(node, points):
             if node.get('_fixed_center') is not None:
-                return Vector(node['_fixed_center'])
+                return [float(v) for v in node['_fixed_center']]
             func = camera.fixed_orientation_mobjects.get(node.get('_fixed_orientation_key'))
             if func is not None:
-                return Vector(func())
-            return _bbox_center(world_points) if world_points else ORIGIN
+                return [float(v) for v in func()]
+            return list(_bbox_center(points)) if points else [0.0, 0.0, 0.0]
 
-        def emit_path(node, world_map, opacity, root_points):
+        def emit_path(node, world_map, opacity, group):
             kind = node['type']
-            out = _snapshot_copy(node)
+            out = dict(node)
             out['children'] = []
             out['opacity'] = opacity
-            paths = _path_subpaths(node, include_pending=False)
-            world_paths = [[[world_map(point) for point in curve] for curve in path]
-                           for path in paths]
-            # vertices are pending anchors only on bezierpaths (or a lone
-            # polyline vertex); on polygon/polyline they ARE the outline and
-            # are already covered by paths above.
-            pending = (node.get('vertices') or []) if (kind == 'bezierpath' or
-                       (kind == 'polyline' and len(node.get('vertices') or []) == 1)) else []
-            world_pending = [world_map(point) for point in pending]
-            world_points = [point for path in world_paths for curve in path for point in curve]
-            all_world = world_points + world_pending
-            root_points.extend(all_world)
-            fixed_frame = bool(node.get('_fixed_in_frame'))
-            delta = None
-            if fixed_frame:
-                # Unprojected: emit the world-space geometry unchanged.
-                out_paths, out_pending = world_paths, world_pending
+            if world_map is None and kind == 'bezierpath':
+                # Identity pose: the stored curves already are world points.
+                world = None
             else:
-                if node.get('_fixed_orientation'):
-                    delta = Vector(project(orientation_center(node, all_world))) - \
-                            Vector(orientation_center(node, all_world))
-                    out_paths = [[[list(Vector(point) + delta) for point in curve]
-                                  for curve in path] for path in world_paths]
-                    out_pending = [list(Vector(point) + delta) for point in world_pending]
-                else:
-                    out_paths = [[[project(point) for point in curve] for curve in path]
-                                 for path in world_paths]
-                    out_pending = [project(point) for point in world_pending]
-                if (camera.should_apply_shading and node.get('shade_in_3d') and world_points):
-                    out['fill_color'] = shaded(node.get('fill_color'), world_points)
-                    out['stroke_color'] = shaded(node.get('stroke_color'), world_points)
-            if kind in ('line', 'arrow'):
-                # Keep the type so the renderer still draws legacy arrow heads;
-                # baked world points get an identity pose.
-                out['type'] = kind
-                for key in ('start', 'end', 'shaft_start', 'shaft_end'):
-                    if node.get(key) is not None:
-                        world = world_map(node[key])
-                        out[key] = (list(world) if fixed_frame else
-                                    list(project(world)) if delta is None else
-                                    list(Vector(world) + delta))
-            else:
-                out['type'] = 'bezierpath'
-                out['curves'] = [curve for path in out_paths for curve in path]
-                out['vertices'] = out_pending
+                paths = _path_subpaths(node, include_pending=False)
+                pending = (node.get('vertices') or []) if (kind == 'bezierpath' or
+                           (kind == 'polyline' and len(node.get('vertices') or []) == 1)) else []
+                mapping = world_map or (lambda point: [point[0], point[1], point[2] if len(point) > 2 else 0])
+                out['curves'] = [[mapping(point) for point in curve] for path in paths for curve in path]
+                out['vertices'] = [mapping(point) for point in pending]
                 out.pop('subpath_lengths', None)
                 if len(paths) > 1:
                     out['subpath_lengths'] = [len(path) for path in paths]
+                if kind in ('line', 'arrow'):
+                    for key in ('start', 'end', 'shaft_start', 'shaft_end'):
+                        if node.get(key) is not None:
+                            out[key] = mapping(node[key])
+                world = True
+            if kind not in ('line', 'arrow'):
+                out['type'] = 'bezierpath'
             out['position'], out['angle'], out['geometry_scale'] = [0, 0, 0], 0, 1
             out['geometry_center'] = [0, 0, 0]
-            leaves.append({'node': out, 'world': all_world, 'fixed_frame': fixed_frame,
-                           'shade': bool(node.get('shade_in_3d')),
-                           'group': bool(node.get('_z_index_as_group'))})
+            if node.get('_fixed_orientation'):
+                points = [point for curve in out.get('curves') or () for point in curve]
+                out['orient_center'] = orientation_center(node, points + list(out.get('vertices') or ()))
+            # The lookup key is an object id: meaningless (and unstable) in frames.
+            out.pop('_fixed_orientation_key', None)
+            leaves.append(out)
+            group.append(out)
 
-        def emit_leaf(node, world_map, opacity, root_points):
-            # Text, formulas, images and other non-path units keep their glyph
-            # children; only the anchor projects (an upright-billboard
-            # approximation of Community's per-glyph projection).
-            out = _snapshot_copy(node)
+        def emit_leaf(node, world_map, opacity, group):
+            out = dict(node)
             out['opacity'] = opacity
-            anchor = world_map(node.get('geometry_center', ORIGIN))
-            root_points.append(anchor)
-            fixed_frame = bool(node.get('_fixed_in_frame'))
-            gc = node.get('geometry_center', ORIGIN)
-            if fixed_frame:
-                # Keep the node unprojected; place it at its world anchor.
-                out['position'] = list(Vector(anchor) - Vector(gc))
-            elif node.get('_fixed_orientation'):
-                center = orientation_center(node, [anchor])
-                target = Vector(anchor) + (Vector(project(center)) - center)
-                out['position'] = list(Vector(target) - Vector(gc))
-            else:
-                projected = project(anchor)
-                rotated = _apply_rows(rot, Vector(anchor) - frame_center)
-                factor = ((math.exp(rotated[2] / focal_distance) if rotated[2] >= 0
-                           else focal_distance / (focal_distance - rotated[2]))
-                          if camera.exponential_projection else
-                          (1e6 if focal_distance - rotated[2] < 0
-                           else focal_distance / (focal_distance - rotated[2])))
-                out['position'] = [projected[0] - gc[0], projected[1] - gc[1], 0]
-                out['geometry_scale'] = node.get('geometry_scale', 1) * factor * zoom
-            leaves.append({'node': out, 'world': [anchor], 'fixed_frame': fixed_frame,
-                           'shade': False, 'group': False})
+            gc = node.get('geometry_center') or [0, 0, 0]
+            anchor = list(world_map(gc)) if world_map else [gc[0], gc[1], gc[2] if len(gc) > 2 else 0]
+            out['anchor3d'] = anchor
+            out['position'] = [anchor[i] - (gc[i] if i < len(gc) else 0) for i in range(3)]
+            if node.get('_fixed_orientation'):
+                out['orient_center'] = orientation_center(node, [anchor])
+            out.pop('_fixed_orientation_key', None)
+            leaves.append(out)
+            group.append(out)
 
-        def walk(node, parent_map, opacity, root_points):
-            pose, _ = _snapshot_pose(node)
-            world_map = lambda point: parent_map(pose(point))
+        def identity(node):
+            return (not node.get('angle') and node.get('geometry_scale', 1) == 1 and
+                    not any(node.get('position') or ()))
+
+        def walk(node, parent_map, opacity, group):
+            if identity(node):
+                world_map = parent_map
+            else:
+                pose, _ = _snapshot_pose(node)
+                world_map = pose if parent_map is None else (lambda point, pose=pose: parent_map(pose(point)))
             node_opacity = opacity * node.get('opacity', 1)
             kind = node['type']
             if kind in _PATH_TYPES:
-                emit_path(node, world_map, node_opacity, root_points)
+                emit_path(node, world_map, node_opacity, group)
                 for child in node.get('children', []):
-                    walk(child, world_map, node_opacity, root_points)
+                    walk(child, world_map, node_opacity, group)
             elif kind in ('vgroup', 'mobject', 'valuetracker'):
                 for child in node.get('children', []):
-                    walk(child, world_map, node_opacity, root_points)
+                    walk(child, world_map, node_opacity, group)
             else:
-                emit_leaf(node, world_map, node_opacity, root_points)
+                emit_leaf(node, world_map, node_opacity, group)
 
-        identity = lambda point: list(point)
         for root in roots:
-            root_points = []
-            start = len(leaves)
-            walk(root, identity, 1, root_points)
-            # The z_index_as_group reference is the root's world bounds center.
-            root_center = _bbox_center(root_points) if root_points else ORIGIN
-            for entry in leaves[start:]:
-                entry['root_center'] = root_center
-
-        # Depth sort: Community sorts by z_key (rotated z of the reference
-        # center) over the z_index-ordered list; non-shaded and fixed-in-frame
-        # leaves keep their order at +inf.
-        leaves.sort(key=lambda entry: entry['node'].get('z_index', 0))
-        def depth_key(entry):
-            if entry['fixed_frame'] or not entry['shade']:
-                return float('inf')
-            center = entry['root_center'] if entry['group'] else _bbox_center(entry['world'])
-            return _apply_rows(rot, Vector(center) - frame_center)[2]
-        leaves.sort(key=depth_key)
-        return [dict(entry['node'], z_index=rank) for rank, entry in enumerate(leaves)]
+            group = []
+            walk(root, None, 1, group)
+            if any(leaf.get('_z_index_as_group') for leaf in group):
+                # Community's z_index_group reference: the root's world bounds center.
+                points = [point for leaf in group for point in
+                          ([leaf['anchor3d']] if 'anchor3d' in leaf else
+                           [p for curve in leaf.get('curves') or () for p in curve] +
+                           list(leaf.get('vertices') or ()))]
+                center = list(_bbox_center(points)) if points else [0, 0, 0]
+                for leaf in group:
+                    if leaf.get('_z_index_as_group'):
+                        leaf['depth_center'] = center
+        return leaves
 
 
 def _linspace(start, stop, count):
@@ -10913,6 +11031,112 @@ class Torus(Surface):
     def func(self, u, v):
         scale = self.R - self.r * math.cos(v)
         return [scale * math.cos(u), scale * math.sin(u), -self.r * math.sin(v)]
+
+
+class ThreeDAxes(Axes):
+    """Community's ThreeDAxes: Axes plus a z NumberLine rotated out of the plane.
+
+    Each axis also carries ``num_axis_pieces`` shaded shaft pieces (the shaft
+    itself gets zero stroke) so the 3D camera can depth-sort them against
+    surfaces, as Community's Cairo renderer does. Sheen is not modelled."""
+    _AXIS_ROLES = ('x', 'y', 'z')
+    _frame_excluded = ('axis_config', 'axis_labels')
+
+    def __init__(self, x_range=(-6, 6, 1), y_range=(-5, 5, 1), z_range=(-4, 4, 1),
+                 x_length=8 + 2.5, y_length=8 + 2.5, z_length=8 - 1.5,
+                 z_axis_config=None, z_normal=DOWN, num_axis_pieces=20,
+                 light_source=9 * DOWN + 7 * LEFT + 10 * OUT, depth=None, gloss=0.5, **kwargs):
+        if (isinstance(num_axis_pieces, bool) or not isinstance(num_axis_pieces, numbers.Integral)
+                or not 1 <= num_axis_pieces <= 1000):
+            raise ValueError('num_axis_pieces must be an integer from 1 to 1000')
+        normal, light = Vector(z_normal), Vector(light_source)
+        if not all(math.isfinite(v) for v in (*normal, *light)):
+            raise ValueError('ThreeDAxes z_normal and light_source must be finite')
+        super().__init__(x_range=x_range, x_length=x_length, y_range=y_range,
+                         y_length=y_length, **kwargs)
+        self.z_range, self.z_length = z_range, z_length
+        self.z_normal, self.num_axis_pieces = list(normal), int(num_axis_pieces)
+        self.light_source, self.dimension = list(light), 3
+        self.depth, self.gloss = depth, gloss
+        z_options = self._merge_axis_options(self.axis_config, z_axis_config)
+        z_options['exclude_origin_tick'] = isinstance(z_options.get('scaling') or LinearBase(), LinearBase)
+        z_options['length'] = z_length
+        z_axis = NumberLine(z_range, **z_options)
+        z_origin = self._origin_shift([z_axis.x_min, z_axis.x_max])
+        z_axis.shift(z_axis.n2p(z_origin) * -1)
+        z_axis.rotate_about_number(z_origin, -PI / 2, UP)
+        z_axis.rotate_about_number(z_origin, angle_of_vector(normal))
+        z_axis.shift(z_axis.n2p(z_origin) * -1)
+        z_axis.shift(self.x_axis.n2p(self._origin_shift([self.x_axis.x_min, self.x_axis.x_max])))
+        z_axis._axes_role = 'z'
+        self.add(z_axis)
+        self._add_3d_pieces()
+
+    def _add_3d_pieces(self):
+        for axis in self._coordinate_axes():
+            shaft = axis._part('shaft')
+            pieces = VGroup(*shaft.get_pieces(self.num_axis_pieces))
+            for piece in pieces:
+                piece.__dict__.pop('_number_line_role', None)
+            pieces._number_line_role = 'pieces'
+            axis.add(pieces)
+            shaft.set_stroke(width=0)
+            axis.set_shade_in_3d(True)
+
+    @property
+    def z_axis(self):
+        return self._axis('z')
+
+    def get_z_axis(self):
+        return self.z_axis
+
+    def point_to_coords(self, point):
+        if isinstance(point, (list, tuple)) and point and isinstance(point[0], (list, tuple)):
+            if len(point) > 1000:
+                raise ValueError('Axes coordinate batches are limited to 1000 points')
+            return [self.point_to_coords(value) for value in point]
+        point = Vector(point)
+        if not all(math.isfinite(v) for v in point):
+            raise ValueError('Axes point must be finite')
+        axes = self._coordinate_axes()
+        basis = self._basis()
+        determinant = _det3(basis)
+        if abs(determinant) < 1e-12:
+            raise ValueError('Cannot invert collapsed or coplanar ThreeDAxes')
+        shifts = [self._axis_shift(axis) for axis in axes]
+        raw = [axis.scaling.inverse_function(value) for axis, value in zip(axes, shifts)]
+        offset = point - self.c2p(*shifts)
+        result = []
+        for index in range(3):
+            columns = [list(vector) for vector in basis]
+            columns[index] = list(offset)
+            result.append(raw[index] + _det3(columns) / determinant)
+        result = [axis.scaling.function(value) for axis, value in zip(axes, result)]
+        for value in result:
+            NumberLine._real(value, 'Axes result')
+        return result
+
+    p2c = point_to_coords
+
+    def get_y_axis_label(self, label, edge=UR, direction=UR, buff=SMALL_BUFF,
+                         rotation=PI / 2, rotation_axis=OUT):
+        return self._get_axis_label(label, self.y_axis, edge, direction, buff).rotate(
+            rotation, axis=rotation_axis)
+
+    def get_z_axis_label(self, label, edge=OUT, direction=RIGHT, buff=SMALL_BUFF,
+                         rotation=PI / 2, rotation_axis=RIGHT):
+        return self._get_axis_label(label, self.z_axis, edge, direction, buff).rotate(
+            rotation, axis=rotation_axis)
+
+    def get_axis_labels(self, x_label='x', y_label='y', z_label='z'):
+        self.axis_labels = VGroup(self.get_x_axis_label(x_label), self.get_y_axis_label(y_label),
+                                  self.get_z_axis_label(z_label))
+        return self.axis_labels
+
+
+def _det3(rows):
+    (a, b, c), (d, e, f), (g, h, i) = (list(row)[:3] for row in rows)
+    return a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
 
 
 class UnitInterval(NumberLine):
@@ -11840,6 +12064,13 @@ def _bez(c, t):
     s = 1 - t
     return (s * s * s * c[0][0] + 3 * s * s * t * c[1][0] + 3 * s * t * t * c[2][0] + t * t * t * c[3][0],
             s * s * s * c[0][1] + 3 * s * s * t * c[1][1] + 3 * s * t * t * c[2][1] + t * t * t * c[3][1])
+
+
+def _bez3(c, t):
+    s = 1 - t
+    a, b, d = s * s * s, 3 * s * s * t, 3 * s * t * t
+    e = t * t * t
+    return tuple(a * c[0][i] + b * c[1][i] + d * c[2][i] + e * c[3][i] for i in range(3))
 
 
 def _bez_tangent(c, t):
@@ -14761,7 +14992,7 @@ class ManimBanner(VGroup):
                           UpdateFromAlphaFunc(self, slide_back, run_time=run_time / 3, rate_func=smooth))
 
 
-EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'ZoomedScene', 'VectorScene', 'LinearTransformationScene', 'ThreeDCamera', 'ThreeDScene', 'ThreeDVMobject', 'Surface', 'Sphere', 'Dot3D', 'Cube', 'Prism', 'Cone', 'Cylinder', 'Line3D', 'Arrow3D', 'Torus', 'angle_of_vector', 'ImageMobjectFromCamera', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
+EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'ZoomedScene', 'VectorScene', 'LinearTransformationScene', 'ThreeDCamera', 'ThreeDScene', 'ThreeDVMobject', 'Surface', 'Sphere', 'Dot3D', 'Cube', 'Prism', 'Cone', 'Cylinder', 'Line3D', 'Arrow3D', 'Torus', 'ThreeDAxes', 'angle_of_vector', 'ImageMobjectFromCamera', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
            'Triangle', 'Polygon', 'Polygram', 'RegularPolygram', 'RegularPolygon', 'Star', 'Brace', 'BraceBetweenPoints', 'BraceLabel', 'BraceText',
            'Title', 'BulletedList', 'Tex', 'SingleStringMathTex', 'MarkupText', 'LabeledDot', 'Variable', 'always', 'f_always', 'always_shift', 'always_rotate',
            'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'BarChart', 'PolarPlane', 'NumberPlane', 'ComplexPlane', 'VectorField', 'ArrowVectorField', 'StreamLines', 'sigmoid', 'ScreenRectangle', 'FullScreenRectangle', 'VectorizedPoint', 'ComplexValueTracker', 'UnitInterval', 'TangentialArc', 'CurvesAsSubmobjects', 'VDict', 'Cutout', 'ConvexHull', 'ArcBrace', 'LaggedStartMap', 'MaintainPositionRelativeTo', 'Blink', 'Broadcast', 'SpiralIn', 'AddTextWordByWord', 'Animation', 'line_intersection', 'angle_between_vectors', 'DEFAULT_LAGGED_START_LAG_RATIO', 'Graph', 'DiGraph', 'Union', 'Intersection', 'Difference', 'Exclusion', 'Code', 'SVGMobject', 'VMobjectFromSVGPath', 'ImageMobject', 'RESAMPLING_ALGORITHMS', 'ManimColor', 'HSV', 'RGBA', 'LinearBase', 'LogBase', 'DefaultSectionType', 'Add', 'ShowPartial', 'TexTemplate', 'TexTemplateLibrary', 'TexFontTemplates', 'CoordinateSystem', 'PMobject', 'Mobject1D', 'Mobject2D', 'PGroup', 'PointCloudDot', 'Point', 'DEFAULT_POINT_DENSITY_1D', 'DEFAULT_POINT_DENSITY_2D', 'RandomColorGenerator', 'random_color', 'random_bright_color', 'TypeWithCursor', 'UntypeWithCursor', 'AnimatedBoundary', 'ShowPassingFlashWithThinningStrokeWidth', 'FadeTransformPieces', 'ImplicitFunction', 'LabeledPolygram', 'ChangeSpeed', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',

@@ -612,3 +612,13 @@ adopts world-placed members into posed parents and remove releases them (see `_a
 `_release`); internal code that builds parent-local children must not call add on an
 already-posed parent with local coordinates. restore() is become(saved_state).
 
+
+Read `examples/three_d_scene.py` for ThreeDAxes, plot_surface, solids and camera
+motion. ThreeDScene frames hold world-space leaves (`_root_frame_data` flattens each
+root; text keeps an `anchor3d`) plus `camera.three_d`; `ManimRenderer.projectThreeD`
+shades, depth-sorts and projects them. Keep projection out of Python so static
+geometry pools across camera moves. `tests/fixtures/three_d_frames.json` feeds the JS
+projection tests; regenerate it with its generator when the frame format changes.
+Scene play/wait reuse unchanged roots' frame data (`_static_frames`) only when no user
+updaters, scene updaters or UpdateFromFunc animations could edit them; built-in camera
+updaters carry `_camera_updater`. 2D Axes ignore a z coordinate, like Community.

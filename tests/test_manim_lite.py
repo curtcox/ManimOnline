@@ -3841,7 +3841,7 @@ assert isinstance(t.get_value(), (int, float))""")
                         {'background_line_style':{'stroke_opacity':2}},
                         {'make_smooth_after_applying_functions':1}):
             with self.assertRaises(ValueError): lite.NumberPlane(**options)
-        with self.assertRaises(NotImplementedError): lite.NumberPlane().get_vector([1,1,1])
+        self.assertEqual(lite.NumberPlane().get_vector([1,1,1]).get_end(),lite.NumberPlane().get_vector([1,1]).get_end())
 
     def test_number_plane_sampled_animation_keeps_marker_on_grid(self):
         class Demo(lite.Scene):
@@ -4100,7 +4100,7 @@ assert isinstance(t.get_value(), (int, float))""")
         axes = lite.Axes(tips=False)
         for coords in ((1,),([1,2],[1]),(True,1),(1,float('inf')),([0]*1001,[0]*1001)):
             with self.assertRaises(ValueError): axes.c2p(*coords)
-        with self.assertRaises(NotImplementedError): axes.c2p(1,2,3)
+        self.assertEqual(axes.c2p(1,2,3),axes.c2p(1,2))  # Community ignores z on 2D Axes
         with self.assertRaises(ValueError): axes.p2c([float('nan'),0])
         with self.assertRaises(ValueError): axes.add_coordinates([1],[2],[3])
         axes.scale(0)
@@ -7309,11 +7309,25 @@ self.wait(1)""")
         self.assertEqual(lite.Rotate(lite.Square()).run_time, 1)
         self.assertEqual(lite.Rotate(lite.Square()).angle, lite.PI)
 
-    def test_rotation_about_own_center_and_rejects_3d_axis(self):
+    def test_rotation_about_own_center_and_3d_axis(self):
         result = render('s = Square().shift(RIGHT * 2)\nself.play(Rotate(s, TAU), run_time=2)')
         self.assertEqual(result['frames'][15]['mobjects'][0]['position'], [2, 0, 0])
-        with self.assertRaisesRegex(NotImplementedError, '2D rotation'):
-            render('self.play(Rotate(Square(), axis=UP))')
+        # An in-plane axis bakes the rigid 3D rotation (Community's path_arc about UP).
+        class Spin(lite.Scene):
+            def construct(self):
+                self.square = lite.Square()
+                self.play(lite.Rotate(self.square, lite.PI / 2, axis=lite.UP), run_time=1)
+        scene = Spin()
+        scene.render()
+        expected = lite.Square().rotate(lite.PI / 2, lite.UP).get_start_anchors()
+        for actual, point in zip(scene.square.get_start_anchors(), expected):
+            for a, b in zip(actual, point):
+                self.assertAlmostEqual(a, b)
+        middle = scene.frames[7]['mobjects'][0]['curves'][0][0]
+        # Mid-animation the corner (1,1,0) sits on its rigid arc about UP.
+        angle = lite.PI / 2 * lite.smooth(7 / 15)
+        self.assertAlmostEqual(middle[0], math.cos(angle))
+        self.assertAlmostEqual(middle[2], -math.sin(angle))
         with self.assertRaises(ValueError):
             lite.Rotate(lite.Square(), float('inf'))
 
@@ -7505,68 +7519,65 @@ class ThreeDTests(unittest.TestCase):
             self.assertPointAlmostEqual(actual, point)
         self.assertEqual(len(camera.get_value_trackers()), 5)
 
-    def test_frame_projection_matches_community(self):
+    def test_frames_hold_world_leaves_and_sampled_camera(self):
         class Demo(lite.ThreeDScene):
             def construct(self):
                 self.set_camera_orientation(phi=75 * lite.DEGREES, theta=-45 * lite.DEGREES)
-                self.add(lite.Square())
+                self.add(lite.Square().shift(lite.OUT), lite.Square(shade_in_3d=True))
                 self.wait(0.1)
         scene = Demo()
         scene.render()
-        leaves = [node for node in scene.frames[0]['mobjects']]
-        self.assertEqual([node['type'] for node in leaves], ['bezierpath'])
-        curves = leaves[0]['curves']
-        anchors = [curves[i][0] for i in range(4)]
-        # Manim 0.22: camera.project_points(square anchors) at phi=75, theta=-45.
-        expected = [[1.414213562373095, 0, 0], [0, 0.3426237654117778, -1.3660254037844388],
-                    [-1.414213562373095, 0, 0], [0, -0.3928581118281109, 1.3660254037844388]]
-        for actual, point in zip(anchors, expected):
-            self.assertPointAlmostEqual(actual, point)
+        frame = scene.frames[0]
+        leaves = frame['mobjects']
+        self.assertEqual([node['type'] for node in leaves], ['bezierpath', 'bezierpath'])
+        # Leaves stay in world space; the renderer projects them per frame.
+        self.assertPointAlmostEqual(leaves[0]['curves'][0][0], (1, 1, 1))
+        self.assertEqual(leaves[0]['position'], [0, 0, 0])
+        self.assertTrue(leaves[1]['shade_in_3d'])
+        camera = frame['camera']['three_d']
+        self.assertAlmostEqual(camera['phi'], 75 * lite.DEGREES)
+        self.assertAlmostEqual(camera['theta'], -45 * lite.DEGREES)
+        self.assertEqual(camera['light_source'], [-7.0, -9.0, 10.0])
+        self.assertEqual((camera['zoom'], camera['focal_distance'], camera['shading']), (1.0, 20.0, True))
 
-    def test_depth_sort_and_shading(self):
-        class Demo(lite.ThreeDScene):
-            def construct(self):
-                self.add(lite.Square(fill_color=lite.BLUE, shade_in_3d=True).shift(lite.OUT),
-                         lite.Square(shade_in_3d=True).shift(lite.IN))
-                self.wait(0.1)
-        scene = Demo()
-        scene.render()
-        leaves = scene.frames[0]['mobjects']
-        self.assertEqual(len(leaves), 2)
-        # Manim 0.22: at phi=0 the OUT square's depth key is larger, so it paints last.
-        self.assertEqual(leaves[1]['fill_color'], '#70DCF5')
-        self.assertEqual(leaves[1]['z_index'], 1)
-        class Flip(lite.ThreeDScene):
-            def construct(self):
-                self.set_camera_orientation(phi=180 * lite.DEGREES)
-                self.add(lite.Square(fill_color=lite.BLUE, shade_in_3d=True).shift(lite.OUT),
-                         lite.Square(shade_in_3d=True).shift(lite.IN))
-                self.wait(0.1)
-        flipped = Flip()
-        flipped.render()
-        leaves = flipped.frames[0]['mobjects']
-        # phi=180 views from below: the OUT square now paints first.
-        self.assertEqual(leaves[0]['fill_color'], '#70DCF5')
+    def test_three_d_frame_fixture_is_current(self):
+        spec = importlib.util.spec_from_file_location(
+            'generate_three_d_frames', ROOT / 'tests' / 'fixtures' / 'generate_three_d_frames.py')
+        generator = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(generator)
+        stored = json.loads((ROOT / 'tests' / 'fixtures' / 'three_d_frames.json').read_text())
+        current = generator.frames(lite)
+        def same(a, b):
+            if isinstance(a, float) or isinstance(b, float):
+                return abs(a - b) < 1e-9
+            if isinstance(a, list) and isinstance(b, list):
+                return len(a) == len(b) and all(same(x, y) for x, y in zip(a, b))
+            if isinstance(a, dict) and isinstance(b, dict):
+                return a.keys() == b.keys() and all(same(a[k], b[k]) for k in a)
+            return a == b
+        # Regenerate with tests/fixtures/generate_three_d_frames.py when this fails.
+        self.assertTrue(same(stored, current))
 
-    def test_fixed_in_frame_and_orientation_mobjects(self):
+    def test_fixed_members_and_group_depth_centers(self):
         class Demo(lite.ThreeDScene):
             def construct(self):
                 text = lite.Text('hi')
                 self.add_fixed_in_frame_mobjects(text)
                 dot = lite.Dot().shift(lite.RIGHT)
                 self.add_fixed_orientation_mobjects(dot)
-                self.set_camera_orientation(phi=75 * lite.DEGREES)
+                group = lite.VGroup(lite.Square().shift(lite.OUT), lite.Square().shift(lite.IN * 3))
+                group.set_shade_in_3d(True, z_index_as_group=True)
+                self.add(group)
                 self.wait(0.1)
         scene = Demo()
         scene.render()
-        leaves = scene.frames[0]['mobjects']
-        self.assertEqual([node['type'] for node in leaves], ['text', 'bezierpath'])
-        # The fixed-in-frame text keeps its unprojected anchor.
-        self.assertEqual(leaves[0]['position'], [0, 0, 0])
-        # Manim 0.22: camera.project_points(RIGHT) = RIGHT (RIGHT is unshifted by
-        # the default orientation's x rotation), so the dot stays at its anchor.
-        self.assertPointAlmostEqual(leaves[1]['curves'][0][0][0:2],
-                                    (1.08, 0), places=4)
+        text, dot, first, second = scene.frames[0]['mobjects']
+        self.assertTrue(text['_fixed_in_frame'])
+        self.assertEqual(text['anchor3d'], [0, 0, 0])
+        self.assertPointAlmostEqual(dot['orient_center'], (1, 0, 0))
+        # z_index_as_group leaves share their root's world bounds center.
+        self.assertEqual(first['depth_center'], second['depth_center'])
+        self.assertPointAlmostEqual(first['depth_center'], (0, 0, -1))
 
     def test_move_camera_animates_trackers(self):
         class Demo(lite.ThreeDScene):
@@ -7585,8 +7596,11 @@ class ThreeDTests(unittest.TestCase):
                 self.wait(0.1)
         still = Still()
         still.render()
-        # The animated final frame projects identically to set_camera_orientation.
+        # The animated final frame matches set_camera_orientation, and the
+        # unchanged square is the same world leaf throughout the move.
+        self.assertEqual(scene.frames[-1]['camera'], still.frames[0]['camera'])
         self.assertEqual(scene.frames[-1]['mobjects'], still.frames[0]['mobjects'])
+        self.assertIs(scene.frames[1]['mobjects'][0], scene.frames[5]['mobjects'][0])
         class Center(lite.ThreeDScene):
             def construct(self):
                 self.add(lite.Square())
@@ -7644,10 +7658,8 @@ self.wait(0.1)""")
         self.assertEqual(leaf['position'], [0, 0, 0])
         self.assertEqual(leaf['angle'], 0)
         self.assertEqual(leaf['geometry_scale'], 1)
-        self.assertEqual([node['z_index'] for node in frame['mobjects']],
-                         list(range(len(frame['mobjects']))))
         self.assertEqual(set(frame['camera']), {'pixel_width', 'pixel_height', 'frame_width',
-                                                'frame_height', 'background_color'})
+                                                'frame_height', 'background_color', 'three_d'})
 
 
 class ThreeDPrimitiveTests(unittest.TestCase):
@@ -7764,21 +7776,50 @@ class ThreeDPrimitiveTests(unittest.TestCase):
         for actual, point in zip(face.get_start_anchors(), expected):
             self.assertPointAlmostEqual(actual, point)
 
-    def test_cube_frame_order_and_shading(self):
-        class Demo(lite.ThreeDScene):
-            def construct(self):
-                self.set_camera_orientation(phi=75 * lite.DEGREES, theta=-30 * lite.DEGREES)
-                self.add(lite.Cube())
-                self.wait(0.1)
-        scene = Demo()
-        scene.render()
-        leaves = scene.frames[0]['mobjects']
-        self.assertEqual(len(leaves), 6)
-        # Manim 0.22: get_mobjects_to_display order is LEFT, UP, IN, OUT, DOWN,
-        # RIGHT, and camera.get_fill_rgbas(face)[0] gives these shaded hexes.
-        self.assertEqual([leaf['fill_color'] for leaf in leaves],
-                         ['#54C0D9', '#76E2FB', '#8BF7FF', '#49B5CE', '#4AB6CF', '#69D5EE'])
-        self.assertEqual([leaf['z_index'] for leaf in leaves], list(range(6)))
+    def test_three_d_axes_match_community(self):
+        axes = lite.ThreeDAxes()
+        # Manim 0.22 ThreeDAxes() measurements (rounded to 1e-4).
+        self.assertPointAlmostEqual(axes.c2p(1, 2, 3), (0.875, 2.1, 2.4375), 4)
+        self.assertPointAlmostEqual(axes.c2p(-2, 1), (-1.75, 1.05, 0), 4)
+        self.assertPointAlmostEqual(axes.p2c([1, 2, 3]), (1.1429, 1.9048, 3.6923), 4)
+        self.assertPointAlmostEqual(axes.z_axis.get_start(), (0, 0, -3.25), 4)
+        self.assertPointAlmostEqual(axes.z_axis.get_end(), (0, 0, 3.25), 4)
+        self.assertPointAlmostEqual(axes.get_corner(lite.UR + lite.OUT), (5.25, 5.25, 3.25), 4)
+        self.assertPointAlmostEqual(axes.get_corner(lite.DL + lite.IN), (-5.25, -5.25, -3.25), 4)
+        self.assertPointAlmostEqual(axes.get_z_axis_label(lite.Square(.3)).get_center(), (0.25, 0, 3.25), 4)
+        self.assertPointAlmostEqual(axes.get_y_axis_label(lite.Square(.3)).get_center(), (0.425, 3.6, 0), 4)
+        self.assertPointAlmostEqual(axes.get_x_axis_label(lite.Square(.3)).get_center(), (5.5, 0.425, 0), 4)
+        self.assertEqual(len(axes.axes), 3)
+        # Each axis carries 20 shaded shaft pieces for depth sorting.
+        pieces = axes.z_axis._part('pieces')
+        self.assertEqual(len(pieces), 20)
+        self.assertTrue(all(piece.shade_in_3d for piece in pieces))
+        small = lite.ThreeDAxes(x_range=(0, 4, 1), y_range=(-1, 3, 1), z_range=(0, 2, .5),
+                                x_length=4, y_length=4, z_length=3)
+        self.assertPointAlmostEqual(small.c2p(1, 2, 1), (-1, 1, 1.5), 4)
+        self.assertPointAlmostEqual(small.get_center(), (-0.0875, 0, 1.5), 4)
+        self.assertPointAlmostEqual(small.p2c(small.c2p(3, 0.5, 1.5)), (3, 0.5, 1.5), 9)
+        surface = small.plot_surface(lambda u, v: u * v / 4, u_range=(0, 2), v_range=(0, 2),
+                                     resolution=4, colorscale=[lite.BLUE, lite.GREEN, lite.RED])
+        self.assertPointAlmostEqual(surface.get_center(), (-1, 0, 0.75), 4)
+        self.assertEqual([str(face.get_fill_color()) for face in surface[:5]],
+                         ['#5AC3D5', '#5DC3CE', '#5FC3C7', '#62C3C0', '#5DC3CE'])
+        curve = small.plot_parametric_curve(lambda t: (t, t / 2, t / 4), t_range=(0, 2))
+        self.assertPointAlmostEqual(curve.get_end(), (0, 0, 0.75), 4)
+        with self.assertRaises(ValueError):
+            lite.ThreeDAxes(num_axis_pieces=0)
+
+    def test_two_d_axis_labels_follow_community_edges(self):
+        axes = lite.Axes(x_range=(0, 8), y_range=(0, 5), x_length=8, y_length=5)
+        # Manim 0.22: _get_axis_label positions, including shift_onto_screen.
+        self.assertPointAlmostEqual(axes.get_x_axis_label(lite.Square(.3)).get_center(), (4.25, -2.075, 0), 4)
+        self.assertPointAlmostEqual(axes.get_y_axis_label(lite.Square(.3)).get_center(), (-3.575, 2.7, 0), 4)
+        label = axes.get_x_axis_label(lite.Square(.3), edge=lite.DOWN, direction=lite.DOWN, buff=.5)
+        self.assertPointAlmostEqual(label.get_center(), (0, -3.325, 0), 4)
+        far = lite.Square(.3).shift(lite.RIGHT * 9)
+        self.assertTrue(far.is_off_screen())
+        self.assertAlmostEqual(far.shift_onto_screen().get_right()[0], lite.config.frame_width / 2 - 0.5)
+        self.assertEqual(len(lite.Line(lite.LEFT, lite.RIGHT).get_pieces(4)), 4)
 
     def test_sphere_frame_render(self):
         result = render_3d("""self.set_camera_orientation(phi=75 * DEGREES, theta=-30 * DEGREES)

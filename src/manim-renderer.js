@@ -72,7 +72,10 @@ const ManimRenderer = {
         for (const child of children) if (!child.behind_parent) collect(child, [...ancestors, parent], views);
       }
     };
-    for (const mobject of sceneData.mobjects || []) collect(mobject);
+    let roots = sceneData.mobjects || [];
+    // ThreeDScene frames hold world-space leaves; project them for this camera.
+    if (camera.three_d) roots = this.projectThreeD(roots, camera.three_d);
+    for (const mobject of roots) collect(mobject);
     // Stable sorting preserves scene/family order for equal z_index values.
     layers.sort((a, b) => a.z - b.z);
     const views = new Map();
@@ -93,6 +96,129 @@ const ManimRenderer = {
     }
     delete this._strokeUnit;
     return svg;
+  },
+
+  /**
+   * Community's ThreeDCamera applied to world-space leaves: start-corner shading,
+   * z_index then depth ordering, and rotate-then-perspective projection. Returns new
+   * identity-pose leaves ranked by z_index; the frame data itself is not modified.
+   */
+  projectThreeD(leaves, three) {
+    const numbers = [three.phi, three.theta, three.gamma, three.zoom, three.focal_distance];
+    const point3 = p => Array.isArray(p) && p.length === 3 && p.every(Number.isFinite);
+    if (!numbers.every(Number.isFinite) || !point3(three.frame_center) || !point3(three.light_source)) {
+      throw new Error('Invalid 3D camera');
+    }
+    const rotateZ = a => [[Math.cos(a), -Math.sin(a), 0], [Math.sin(a), Math.cos(a), 0], [0, 0, 1]];
+    const rotateX = a => [[1, 0, 0], [0, Math.cos(a), -Math.sin(a)], [0, Math.sin(a), Math.cos(a)]];
+    const multiply = (a, b) => a.map(row => [0, 1, 2].map(j => row[0] * b[0][j] + row[1] * b[1][j] + row[2] * b[2][j]));
+    const rot = multiply(rotateZ(three.gamma), multiply(rotateX(-three.phi), rotateZ(-three.theta - Math.PI / 2)));
+    const [cx, cy, cz] = three.frame_center;
+    const fd = three.focal_distance, zoom = three.zoom;
+    const rotate = p => {
+      const x = p[0] - cx, y = p[1] - cy, z = (p[2] ?? 0) - cz;
+      return rot.map(row => row[0] * x + row[1] * y + row[2] * z);
+    };
+    const factor = rz => three.exponential ? (rz >= 0 ? Math.exp(rz / fd) : fd / (fd - rz))
+      : (fd - rz < 0 ? 1e6 : fd / (fd - rz));
+    const project = p => {
+      const r = rotate(p);
+      const f = factor(r[2]) * zoom;
+      return [r[0] * f, r[1] * f, r[2]];
+    };
+    const sub = (a, b) => [a[0] - b[0], a[1] - b[1], (a[2] ?? 0) - (b[2] ?? 0)];
+    const norm = v => Math.hypot(v[0], v[1], v[2]);
+    const normalize = v => { const n = norm(v); return n > 0 ? v.map(c => c / n) : [0, 0, 0]; };
+    const center = points => [0, 1, 2].map(i => {
+      let low = Infinity, high = -Infinity;
+      for (const p of points) { const v = p[i] ?? 0; if (v < low) low = v; if (v > high) high = v; }
+      return points.length ? (low + high) / 2 : 0;
+    });
+    // Community's get_unit_normal, scaled by the largest component for stability.
+    const unitNormal = (v1, v2) => {
+      const tol = 1e-6;
+      const d1 = Math.max(...v1.map(Math.abs)), d2 = Math.max(...v2.map(Math.abs));
+      let u;
+      if (d1 === 0) {
+        if (d2 === 0) return [0, -1, 0];
+        u = v2.map(c => c / d2);
+      } else if (d2 === 0) {
+        u = v1.map(c => c / d1);
+      } else {
+        const a = v1.map(c => c / d1), b = v2.map(c => c / d2);
+        const cp = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+        const n = norm(cp);
+        if (n > tol) return cp.map(c => c / n);
+        u = a;
+      }
+      if (Math.abs(u[0]) < tol && Math.abs(u[1]) < tol) return [0, -1, 0];
+      const cp = [-u[0] * u[2], -u[1] * u[2], u[0] * u[0] + u[1] * u[1]];
+      const n = norm(cp);
+      return cp.map(c => c / n);
+    };
+    const shade = (color, points) => {
+      if (Array.isArray(color)) return color.map(item => shade(item, points));
+      if (typeof color !== 'string' || !/^#[0-9a-f]{6}$/i.test(color)) return color;
+      const count = points.length;
+      let normal = [0, 1, 0];
+      if (!(2 * Math.floor(count / 4) <= 2 || count < 4)) {
+        normal = unitNormal(sub(points[3], points[0]), sub(points[count - 4], points[0]));
+        if (norm(normal) === 0) normal = [0, 1, 0];
+      }
+      const toSun = normalize(sub(three.light_source, points[0]));
+      const unit = normalize(normal);
+      let light = 0.5 * (unit[0] * toSun[0] + unit[1] * toSun[1] + unit[2] * toSun[2]) ** 3;
+      if (light < 0) light *= 0.5;
+      // ManimColor.to_hex truncates each clamped channel.
+      return '#' + [1, 3, 5].map(i => Math.trunc(Math.min(1, Math.max(0, parseInt(color.slice(i, i + 2), 16) / 255 + light)) * 255)
+        .toString(16).toUpperCase().padStart(2, '0')).join('');
+    };
+    const entries = leaves.map(leaf => {
+      const fixed = Boolean(leaf._fixed_in_frame);
+      const orient = point3(leaf.orient_center) ? leaf.orient_center : null;
+      const out = { ...leaf };
+      let world;
+      if (point3(leaf.anchor3d)) {
+        world = [leaf.anchor3d];
+        const gc = leaf.geometry_center || [0, 0, 0];
+        if (orient) {
+          const shift = sub(project(orient), orient);
+          out.position = leaf.position.map((v, i) => v + shift[i]);
+        } else if (!fixed) {
+          const projected = project(leaf.anchor3d);
+          out.position = [projected[0] - gc[0], projected[1] - gc[1], 0];
+          out.geometry_scale = (leaf.geometry_scale ?? 1) * factor(rotate(leaf.anchor3d)[2]) * zoom;
+        }
+      } else {
+        const curves = leaf.curves || [];
+        world = curves.flat();
+        if (!fixed) {
+          const shift = orient ? sub(project(orient), orient) : null;
+          const map = shift ? p => [p[0] + shift[0], p[1] + shift[1], (p[2] ?? 0) + shift[2]] : project;
+          out.curves = curves.map(curve => curve.map(map));
+          if (leaf.vertices) out.vertices = leaf.vertices.map(map);
+          for (const key of ['start', 'end', 'shaft_start', 'shaft_end']) {
+            if (point3(leaf[key])) out[key] = map(leaf[key]);
+          }
+          if (three.shading && leaf.shade_in_3d && world.length) {
+            out.fill_color = shade(leaf.fill_color, world);
+            out.stroke_color = shade(leaf.stroke_color, world);
+          }
+        }
+        world = world.concat(leaf.vertices || []);
+      }
+      // Community sorts shaded paths by the rotated depth of their center; others
+      // (text, fixed-in-frame leaves) keep their order at the front.
+      let key = Infinity;
+      if (!fixed && leaf.shade_in_3d && !point3(leaf.anchor3d)) {
+        key = rotate(point3(leaf.depth_center) ? leaf.depth_center : center(world))[2];
+      }
+      return { out, key, z: leaf.z_index ?? 0 };
+    });
+    const order = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+    entries.sort((a, b) => order(a.z, b.z));
+    entries.sort((a, b) => order(a.key, b.key));
+    return entries.map((entry, rank) => ({ ...entry.out, z_index: rank }));
   },
 
   /**

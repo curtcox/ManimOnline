@@ -27,6 +27,7 @@ const ExampleCatalog = Object.freeze([
   { id: 'zoomed', label: 'Zoomed inset camera', path: 'examples/zoomed_scene.py' },
   { id: 'lineartransform', label: 'Linear transformations of the plane', path: 'examples/linear_transformation_scene.py' },
   { id: 'banner', label: 'Logo banner, sample spaces and utilities', path: 'examples/banner_scene.py' },
+  { id: 'threed', label: '3D axes, surfaces and solids', path: 'examples/three_d_scene.py' },
   { id: 'logaxes', label: 'Logarithmic axes and colors', path: 'examples/log_axes_scene.py' },
   { id: 'typing', label: 'Typing, boundaries and implicit curves', path: 'examples/typing_scene.py' },
   { id: 'svgimage', label: 'Inline SVG and pixel images', path: 'examples/svg_image_scene.py' },
