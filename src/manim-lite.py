@@ -8206,7 +8206,17 @@ class Rotate(Animation):
 
     def sample(self, alpha):
         current = self.original.copy()
-        current.rotate(self.angle * alpha, self.axis, about_point=self.about_point)
+        angle = self.angle * alpha
+        if angle % TAU and (self.axis != OUT or self.original._is_3d()):
+            # Mobject.rotate would bake these points through a validated copy and
+            # become(); the throwaway sample is baked in place instead.
+            if self.__dict__.get('_pivot') is None:
+                self._pivot = (Vector(self.about_point) if self.about_point is not None
+                               else self.original.get_center())
+            pivot, matrix = self._pivot, rotation_matrix(angle, self.axis)
+            current._bake_3d_map(lambda point: list(pivot + _apply_rows(matrix, Vector(point) - pivot)))
+        else:
+            current.rotate(angle, self.axis, about_point=self.about_point)
         return [current.to_dict()]
 
     def finish(self, scene):
@@ -12244,9 +12254,14 @@ class Graph(GenericGraph):
         return edge_type(start=self[u].get_center(), end=self[v].get_center(), z_index=-1, **config)
 
     def update_edges(self, graph):
+        centers = {}  # Edges never move vertices, so each center is measured once.
+        def center(vertex):
+            if vertex not in centers:
+                centers[vertex] = graph[vertex].get_center()
+            return centers[vertex]
         for (u, v), edge in graph.edges.items():
             # Community looks up "buff"/"path_arc" in the per-edge table, so both stay 0.
-            edge.set_points_by_ends(graph[u].get_center(), graph[v].get_center(), buff=0, path_arc=0)
+            edge.set_points_by_ends(center(u), center(v), buff=0, path_arc=0)
         return self
 
     def __repr__(self):
