@@ -6,6 +6,7 @@ import json
 import math
 import numbers
 import operator
+import random
 import sys
 import types
 
@@ -16,14 +17,58 @@ MAX_FRAMES = 901  # 900 timed samples plus a final seekable state.
 _REAL = numbers.Real  # Includes NumPy scalars; bool is excluded where it matters.
 
 
+_PLAIN_VALUE_TYPES = frozenset((int, float, str, bool, type(None)))
+
+
 def _holds_mobject(value):
     """True for mobject references (also inside lists/dicts), which frames never store."""
+    kind = type(value)
+    if kind in _PLAIN_VALUE_TYPES or kind.__name__ == 'Vector':
+        return False
     if isinstance(value, (list, tuple)):
-        return any(_holds_mobject(item) for item in value)
+        # Point arrays are large; skip plain items without a call per coordinate.
+        plain = _PLAIN_VALUE_TYPES
+        return any(_holds_mobject(item) for item in value if type(item) not in plain)
     if isinstance(value, dict):
         return any(_holds_mobject(item) for item in value.values())
-    return type(value).__name__ != 'Vector' and hasattr(value, 'get_family') and hasattr(value, 'to_dict')
+    return hasattr(value, 'get_family') and hasattr(value, 'to_dict')
 _BOUNDS_WITH_HANDLES = False  # Set only while measuring width/height.
+
+
+def _snapshot_copy(value):
+    """Deep-copy JSON-shaped frame data much faster than copy.deepcopy (no memo bookkeeping)."""
+    kind = type(value)
+    if kind is dict:
+        return {key: item if type(item) in _PLAIN_VALUE_TYPES else _snapshot_copy(item)
+                for key, item in value.items()}
+    if kind is list:
+        return [item if type(item) in _PLAIN_VALUE_TYPES else _snapshot_copy(item) for item in value]
+    if kind in _PLAIN_VALUE_TYPES or kind.__name__ == 'Vector':
+        return value  # Immutable.
+    if kind is tuple:
+        return tuple(_snapshot_copy(item) for item in value)
+    return copy.deepcopy(value)
+
+
+def _partial_cubics(points, a, b):
+    """Cubic curves covering parameters a..b (0 <= a <= b <= 1) of a flat 4-point-per-curve list."""
+    count = len(points) // 4
+    first, last = min(int(a*count),count-1), min(int(b*count),count-1)
+    lower, upper = a*count-first, b*count-last
+    curves = []
+    for i in range(first,last+1):
+        curve = points[i*4:i*4+4]
+        lo, hi = lower if i == first else 0, upper if i == last else 1
+        if lo == hi:
+            point = list(VMobject._bezier_point(curve,lo))
+            curves.append([point[:] for _ in range(4)])
+        else:
+            if hi < 1:
+                curve = _split_cubic(curve,hi)[0]
+            if lo > 0:
+                curve = _split_cubic(curve,lo/hi)[1]
+            curves.append(curve)
+    return curves, first, last
 
 
 def _plain_number(value):
@@ -57,6 +102,12 @@ class Vector(tuple):
 
     def __sub__(self, other):
         return Vector(a - b for a, b in zip(self, Vector(other)))
+
+    def __truediv__(self, value):
+        return Vector(x / value for x in self)
+
+    def __neg__(self):
+        return Vector(-x for x in self)
 
 
 UP, DOWN = Vector((0, 1, 0)), Vector((0, -1, 0))
@@ -1058,24 +1109,9 @@ class Mobject:
             if lengths:
                 self.subpath_lengths = lengths
             return self
-        count = len(points) // 4
-        if not count:
+        if not len(points) // 4:
             return self
-        first, last = min(int(a*count),count-1), min(int(b*count),count-1)
-        lower, upper = a*count-first, b*count-last
-        curves = []
-        for i in range(first,last+1):
-            curve = points[i*4:i*4+4]
-            lo, hi = lower if i == first else 0, upper if i == last else 1
-            if lo == hi:
-                point = list(VMobject._bezier_point(curve,lo))
-                curves.append([point[:] for _ in range(4)])
-            else:
-                if hi < 1:
-                    curve = _split_cubic(curve,hi)[0]
-                if lo > 0:
-                    curve = _split_cubic(curve,lo/hi)[1]
-                curves.append(curve)
+        curves, first, last = _partial_cubics(points, a, b)
         # Record boundaries before replacing self (the source may be self).
         lengths, offset = [], 0
         for path in _path_subpaths(vmobject.to_dict(),include_pending=False):
@@ -1579,9 +1615,9 @@ class Mobject:
 
     def to_dict(self):
         center = self._geometry_center()
-        result = copy.deepcopy({key: value for key, value in self.__dict__.items()
+        result = _snapshot_copy({key: value for key, value in self.__dict__.items()
                                 if not _holds_mobject(value) and not callable(value) and
-                                key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache')})
+                                key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache', '_flow_points')})
         result['type'] = result.pop('_type')
         result['geometry_center'] = list(center)
         result['children'] = [child.to_dict() for child in self.children]
@@ -6265,7 +6301,7 @@ def _fit_curve_endpoints(curves, start, end):
 def _path_curves(snapshot):
     kind = snapshot['type']
     if kind == 'bezierpath':
-        return copy.deepcopy(snapshot.get('shaft_curves',snapshot['curves']))
+        return _snapshot_copy(snapshot.get('shaft_curves',snapshot['curves']))
     if kind == 'annulus':
         outer = _path_curves({'type':'circle', 'radius':snapshot['outer_radius']})
         inner = _path_curves({'type':'circle', 'radius':snapshot['inner_radius']})
@@ -6616,7 +6652,7 @@ class FadeIn(Animation):
         return opacity * (alpha if self._fading_in else 1 - alpha)
 
     def sample(self, alpha):
-        result = interpolate(self.first, self.last, alpha) if self.moved else copy.deepcopy(self.start)
+        result = interpolate(self.first, self.last, alpha) if self.moved else _snapshot_copy(self.start)
         result['opacity'] = self._visibility(self.start['opacity'], alpha)
         return [result]
 
@@ -6625,7 +6661,7 @@ class FadeIn(Animation):
             start, end = _lookup(self.first, path), _lookup(self.last, path)
             node.update(interpolate(_strip_children(start), _strip_children(end), a))
             node['opacity'] = self._visibility(_lookup(self.start, path)['opacity'], a)
-        result = copy.deepcopy(self.start)
+        result = _snapshot_copy(self.start)
         # Whole drawable subtrees fade together so nested opacity never compounds.
         return [self._member_states(result, alpha, rate_func, member, nested=False)]
 
@@ -6707,7 +6743,7 @@ class Create(Animation):
         return self.sample_members(alpha, linear)
 
     def sample_members(self, alpha, rate_func):
-        return [self._member_states(copy.deepcopy(self.start), alpha, rate_func,
+        return [self._member_states(_snapshot_copy(self.start), alpha, rate_func,
                                     lambda node, a, path: self._reveal(node, a))]
 
 
@@ -6793,7 +6829,7 @@ class DrawBorderThenFill(Animation):
         return self.sample_members(alpha, linear)
 
     def sample_members(self, alpha, rate_func):
-        return [self._member_states(copy.deepcopy(self.start), alpha, rate_func, self._member)]
+        return [self._member_states(_snapshot_copy(self.start), alpha, rate_func, self._member)]
 
 
 class Write(DrawBorderThenFill):
@@ -6911,7 +6947,7 @@ class TransformFromCopy(Transform):
 
     def sample(self, alpha):
         if alpha == 0:
-            return [copy.deepcopy(self.start)]
+            return [_snapshot_copy(self.start)]
         return super().sample(alpha)
 
     def finish(self, scene):
@@ -6939,7 +6975,7 @@ class Indicate(Animation):
 
     def sample(self, alpha):
         if alpha == 0:
-            return [copy.deepcopy(self.start)]
+            return [_snapshot_copy(self.start)]
         return [interpolate(self.start, self.highlight, alpha)]
 
 
@@ -7675,7 +7711,7 @@ class ShowIncreasingSubsets(Animation):
         self.int_func = int_func
 
     def sample(self, alpha):
-        result = copy.deepcopy(self.start)
+        result = _snapshot_copy(self.start)
         count = max(0, min(len(result['children']), int(self.int_func(alpha * len(result['children'])))))
         result['children'] = result['children'][:count]
         return [result]
@@ -7686,7 +7722,7 @@ class ShowSubmobjectsOneByOne(ShowIncreasingSubsets):
         super().__init__(group, int_func=int_func, **kwargs)
 
     def sample(self, alpha):
-        result = copy.deepcopy(self.start)
+        result = _snapshot_copy(self.start)
         index = int(self.int_func(alpha * len(result['children']))) - 1
         result['children'] = result['children'][index:index + 1] if 0 <= index < len(result['children']) else []
         return [result]
@@ -7711,7 +7747,7 @@ class AddTextLetterByLetter(Animation):
         self.int_func = int_func
 
     def sample(self, alpha):
-        result = copy.deepcopy(self.start)
+        result = _snapshot_copy(self.start)
         if result['type'] == 'vgroup':
             # Glyph children (Community's structure): reveal them in order.
             count = len(result['children'])
@@ -8063,10 +8099,436 @@ class MovingCameraScene(Scene):
     camera_class = MovingCamera
 
 
+class _PCG64:
+    """NumPy's default_rng(seed) stream (SeedSequence + PCG64), for exact Community noise."""
+    _MULT = 0x2360ED051FC65DA44385DF649FCCF645
+
+    def __init__(self, seed=0):
+        m32, m128 = 0xFFFFFFFF, (1 << 128) - 1
+        if isinstance(seed, bool) or not isinstance(seed, numbers.Integral) or seed < 0:
+            raise ValueError('Random seeds must be nonnegative integers')
+        entropy, n = ([0] if seed == 0 else []), int(seed)
+        while n:
+            entropy.append(n & m32)
+            n >>= 32
+        hash_const = [0x43b0d7e5]
+        def hashmix(value):
+            value = (value ^ hash_const[0]) & m32
+            hash_const[0] = (hash_const[0] * 0x931e8875) & m32
+            value = (value * hash_const[0]) & m32
+            return value ^ (value >> 16)
+        def mix(x, y):
+            result = (0xca01f9dd * x - 0x4973f715 * y) & m32
+            return result ^ (result >> 16)
+        pool = [hashmix(entropy[i] if i < len(entropy) else 0) for i in range(4)]
+        for source in range(4):
+            for target in range(4):
+                if source != target:
+                    pool[target] = mix(pool[target], hashmix(pool[source]))
+        for source in range(4, len(entropy)):
+            for target in range(4):
+                pool[target] = mix(pool[target], hashmix(entropy[source]))
+        words, hash_b = [], 0x8b51f9dd
+        for index in range(8):
+            value = (pool[index % 4] ^ hash_b) & m32
+            hash_b = (hash_b * 0x58f38ded) & m32
+            value = (value * hash_b) & m32
+            words.append(value ^ (value >> 16))
+        state = [words[2 * i] | (words[2 * i + 1] << 32) for i in range(4)]
+        self._inc = ((((state[2] << 64) | state[3]) << 1) | 1) & m128
+        self._state = 0
+        self._step()
+        self._state = (self._state + ((state[0] << 64) | state[1])) & m128
+        self._step()
+
+    def _step(self):
+        self._state = (self._state * self._MULT + self._inc) & ((1 << 128) - 1)
+
+    def _next64(self):
+        self._step()
+        mask = (1 << 64) - 1
+        value, rotation = ((self._state >> 64) ^ self._state) & mask, self._state >> 122
+        return ((value >> rotation) | (value << ((64 - rotation) & 63))) & mask
+
+    def random(self, size=None):
+        draw = lambda: (self._next64() >> 11) * (1.0 / 9007199254740992.0)
+        return draw() if size is None else [draw() for _ in range(size)]
+
+
+DEFAULT_SCALAR_FIELD_COLORS = [_PALETTE[name] for name in ('BLUE_E', 'GREEN_C', 'YELLOW_C', 'RED_C')]
+_FIELD_POINT_LIMIT = 5000
+
+
+def _field_vector(value, name='Vector field output'):
+    try:
+        values = [_plain_number(v) for v in list(value)[:3]]
+    except TypeError:
+        raise TypeError(name + ' must be a coordinate sequence') from None
+    if len(values) < 2 or any(isinstance(v, bool) or not isinstance(v, _REAL) or not math.isfinite(v) for v in values):
+        raise ValueError(name + ' must contain finite real coordinates')
+    return Vector(values)
+
+
+def _field_ranges(x_range, y_range, z_range, three_dimensions):
+    """Community's [start, stop, step] lists, with the stop extended by one step (np.arange is exclusive)."""
+    if three_dimensions or z_range:
+        raise NotImplementedError('3D vector fields are not supported in the browser preview')
+    ranges = []
+    for values, default, name in ((x_range, config.frame_width / 2, 'x_range'),
+                                  (y_range, config.frame_height / 2, 'y_range')):
+        values = [math.floor(-default), math.ceil(default)] if not values else list(values)
+        if len(values) == 2:
+            values.append(.5)
+        if len(values) != 3 or any(isinstance(v, bool) or not isinstance(v, _REAL) or not math.isfinite(v) for v in values):
+            raise ValueError('Vector field ' + name + ' needs finite [start, stop] or [start, stop, step]')
+        if values[2] <= 0:
+            raise ValueError('Vector field ' + name + ' step must be positive')
+        values[1] += values[2]
+        ranges.append(values)
+    ranges.append([0, .5, .5])
+    counts = [max(0, math.ceil((stop - start) / step)) for start, stop, step in ranges]
+    if counts[0] * counts[1] > _FIELD_POINT_LIMIT:
+        raise ValueError('Vector fields are limited to %d sample points' % _FIELD_POINT_LIMIT)
+    axes = [[start + index * step for index in range(count)] for (start, stop, step), count in zip(ranges, counts)]
+    return ranges, axes
+
+
+class VectorField(VGroup):
+    """Community's VectorField base: a function sampled with magnitude color schemes and RK4 nudging."""
+    def __init__(self, func, color=None, color_scheme=None, min_color_scheme_value=0,
+                 max_color_scheme_value=2, colors=DEFAULT_SCALAR_FIELD_COLORS, **kwargs):
+        if not callable(func):
+            raise TypeError('VectorField func must be callable')
+        super().__init__(**kwargs)
+        self.func = func
+        self.submob_movement_updater = None
+        if color is None:
+            if color_scheme is not None and not callable(color_scheme):
+                raise TypeError('color_scheme must be callable')
+            for value in (min_color_scheme_value, max_color_scheme_value):
+                if isinstance(value, bool) or not isinstance(value, _REAL) or not math.isfinite(value):
+                    raise ValueError('Color scheme bounds must be finite real numbers')
+            if min_color_scheme_value == max_color_scheme_value:
+                raise ValueError('Color scheme bounds must differ')
+            colors = list(colors)
+            if not colors:
+                raise ValueError('Vector field colors must not be empty')
+            self.single_color = False
+            self.color_scheme = color_scheme or (lambda vec: math.sqrt(sum(v * v for v in _field_vector(vec))))
+            self.rgbs = [color_to_rgb(c) for c in colors]
+            self.min_color_scheme_value, self.max_color_scheme_value = min_color_scheme_value, max_color_scheme_value
+        else:
+            self.single_color = True
+            self.color = color
+
+    def pos_to_rgb(self, pos):
+        if self.single_color:
+            raise ValueError('A single-color vector field has no color scheme')
+        low, high = self.min_color_scheme_value, self.max_color_scheme_value
+        value = _plain_number(self.color_scheme(self.func(Vector(pos))))
+        if isinstance(value, bool) or not isinstance(value, _REAL) or not math.isfinite(value):
+            raise ValueError('color_scheme must return a finite real number')
+        value = max(min(low, high), min(max(low, high), value))
+        alpha = (value - low) / (high - low) * (len(self.rgbs) - 1)
+        first = self.rgbs[int(alpha)]
+        second = self.rgbs[min(int(alpha + 1), len(self.rgbs) - 1)]
+        alpha %= 1
+        return [a + (b - a) * alpha for a, b in zip(first, second)]
+
+    def pos_to_color(self, pos):
+        return _rgb_color(self.pos_to_rgb(pos))
+
+    @staticmethod
+    def shift_func(func, shift_vector):
+        shift_vector = Vector(shift_vector)
+        return lambda p: func(Vector(p) - shift_vector)
+
+    @staticmethod
+    def scale_func(func, scalar):
+        return lambda p: func(Vector(p) * scalar)
+
+    def fit_to_coordinate_system(self, coordinate_system):
+        return self.apply_function(lambda pos: coordinate_system.coords_to_point(*pos))
+
+    def _runge_kutta(self, point, step):
+        point = Vector(point)
+        k1 = _field_vector(self.func(point))
+        k2 = _field_vector(self.func(point + k1 * (step * .5)))
+        k3 = _field_vector(self.func(point + k2 * (step * .5)))
+        k4 = _field_vector(self.func(point + k3 * step))
+        return (k1 + k2 * 2 + k3 * 2 + k4) * (step / 6)
+
+    def nudge(self, mob, dt=1, substeps=1, pointwise=False):
+        if isinstance(substeps, bool) or not isinstance(substeps, numbers.Integral) or not 1 <= substeps <= 1000:
+            raise ValueError('nudge substeps must be an integer from 1 to 1000')
+        step = dt / substeps
+        for _ in range(substeps):
+            if pointwise:
+                mob.apply_function(lambda p: Vector(p) + self._runge_kutta(p, step))
+            else:
+                mob.shift(self._runge_kutta(mob.get_center(), step))
+        return self
+
+    def nudge_submobjects(self, dt=1, substeps=1, pointwise=False):
+        for mob in self.children:
+            self.nudge(mob, dt, substeps, pointwise)
+        return self
+
+    def get_nudge_updater(self, speed=1, pointwise=False):
+        return lambda mob, dt: self.nudge(mob, dt * speed, pointwise=pointwise)
+
+    def start_submobject_movement(self, speed=1, pointwise=False):
+        self.stop_submobject_movement()
+        self.submob_movement_updater = lambda mob, dt: mob.nudge_submobjects(dt * speed, pointwise=pointwise)
+        self.add_updater(self.submob_movement_updater)
+        return self
+
+    def stop_submobject_movement(self):
+        if self.submob_movement_updater is not None:
+            self.remove_updater(self.submob_movement_updater)
+        self.submob_movement_updater = None
+        return self
+
+    def get_colored_background_image(self, sampling_rate=5):
+        raise NotImplementedError('Raster background images are not supported in the browser preview')
+
+    def get_vectorized_rgba_gradient_function(self, start, end, colors):
+        rgbs = [color_to_rgb(c) for c in colors]
+        if not rgbs or start == end:
+            raise ValueError('Gradient functions need colors and distinct bounds')
+        def func(values, opacity=1.0):
+            result = []
+            for value in values:
+                alpha = max(0, min(1, (value - start) / (end - start))) * (len(rgbs) - 1)
+                index = int(alpha)
+                following = min(index + 1, len(rgbs) - 1)
+                result.append([a + (b - a) * (alpha % 1) for a, b in zip(rgbs[index], rgbs[following])] + [opacity])
+            return result
+        return func
+
+
+class ArrowVectorField(VectorField):
+    """Community's grid of Vectors, displayed at length_func(norm) and colored by magnitude."""
+    def __init__(self, func, color=None, color_scheme=None, min_color_scheme_value=0, max_color_scheme_value=2,
+                 colors=DEFAULT_SCALAR_FIELD_COLORS, x_range=None, y_range=None, z_range=None,
+                 three_dimensions=False, length_func=lambda norm: .45 * sigmoid(norm), opacity=1.0,
+                 vector_config=None, **kwargs):
+        ranges, axes = _field_ranges(x_range, y_range, z_range, three_dimensions)
+        self.x_range, self.y_range, self.z_range = ranges
+        super().__init__(func, color, color_scheme, min_color_scheme_value, max_color_scheme_value, colors, **kwargs)
+        if not callable(length_func):
+            raise TypeError('length_func must be callable')
+        self.length_func, self.opacity = length_func, opacity
+        self.vector_config = dict(vector_config or {})
+        self.add(*(self.get_vector(Vector((x, y, z))) for x in axes[0] for y in axes[1] for z in axes[2]))
+        self.set_opacity(opacity)
+
+    def get_vector(self, point):
+        point = Vector(point)
+        output = _field_vector(self.func(point))
+        norm = math.sqrt(sum(v * v for v in output))
+        if norm != 0:
+            output = output * (_plain_number(self.length_func(norm)) / norm)
+        vector = VectorArrow(Vector((output[0], output[1], 0)), **self.vector_config)
+        vector.shift(Vector((point[0], point[1], 0)))
+        vector.set_color(self.color if self.single_color else self.pos_to_color(point))
+        return vector
+
+
+class StreamLine(VMobject):
+    """A traced field line, with the simulated duration Community uses for flow timing."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.duration = 0
+        self.time = 0
+
+
+class StreamLines(VectorField):
+    """Community's Euler-traced stream lines from noisy grid starts (NumPy default_rng(0) noise)."""
+    def __init__(self, func, color=None, color_scheme=None, min_color_scheme_value=0, max_color_scheme_value=2,
+                 colors=DEFAULT_SCALAR_FIELD_COLORS, x_range=None, y_range=None, z_range=None,
+                 three_dimensions=False, noise_factor=None, n_repeats=1, dt=.05, virtual_time=3,
+                 max_anchors_per_line=100, padding=3, stroke_width=1, opacity=1, **kwargs):
+        ranges, axes = _field_ranges(x_range, y_range, z_range, three_dimensions)
+        self.x_range, self.y_range, self.z_range = ranges
+        super().__init__(func, color, color_scheme, min_color_scheme_value, max_color_scheme_value, colors, **kwargs)
+        for value, name in ((dt, 'dt'), (virtual_time, 'virtual_time')):
+            NumberLine._real(value, name, positive=True)
+        NumberLine._real(padding, 'padding', nonnegative=True)
+        for value, name in ((n_repeats, 'n_repeats'), (max_anchors_per_line, 'max_anchors_per_line')):
+            if isinstance(value, bool) or not isinstance(value, numbers.Integral) or value < 1:
+                raise ValueError(name + ' must be a positive integer')
+        max_steps = math.ceil(virtual_time / dt) + 1
+        lines = n_repeats * len(axes[0]) * len(axes[1])
+        if lines > _FIELD_POINT_LIMIT or lines * max_steps > 200000:
+            raise ValueError('StreamLines is limited to %d lines and 200000 traced steps' % _FIELD_POINT_LIMIT)
+        self.noise_factor = self.y_range[2] / 2 if noise_factor is None else noise_factor
+        self.n_repeats, self.virtual_time = n_repeats, virtual_time
+        self.max_anchors_per_line, self.padding, self.stroke_width = max_anchors_per_line, padding, stroke_width
+        self.flow_animation = None
+        half, rng = self.noise_factor / 2, _PCG64(0)
+        starts = []
+        for _ in range(n_repeats):
+            for x in axes[0]:
+                for y in axes[1]:
+                    for z in axes[2]:
+                        noise = rng.random(3)
+                        starts.append(Vector((x - half + self.noise_factor * noise[0],
+                                              y - half + self.noise_factor * noise[1],
+                                              z - half + self.noise_factor * noise[2])))
+        (x0, x1, xs), (y0, y1, ys), (z0, z1, zs) = ranges
+        def outside(p):
+            return (p[0] < x0 - padding or p[0] > x1 + padding - xs or p[1] < y0 - padding
+                    or p[1] > y1 + padding - ys or p[2] < z0 - padding or p[2] > z1 + padding - zs)
+        lines = []
+        for start in starts:
+            points = [start]
+            for _ in range(max_steps):
+                following = points[-1] + _field_vector(self.func(points[-1])) * dt
+                if outside(following):
+                    break
+                points.append(following)
+            line = StreamLine()
+            line.duration = max_steps * dt  # Community records the full step budget.
+            step = max(1, int(len(points) / max_anchors_per_line))
+            plane = [Vector((p[0], p[1], 0)) for p in points[::step]]
+            # A fresh line has no callbacks to preserve, so skip set_points_smoothly's copy/become.
+            line.set_points_as_corners(plane if len(plane) > 1 else plane * 2).make_smooth()
+            if self.single_color:
+                line.set_stroke(color=self.color, width=stroke_width, opacity=opacity)
+            else:
+                # Community samples a raster of field colors under each stroke; approximate it
+                # with a gradient along the line's chord, sampled at evenly spaced anchors.
+                samples = [points[min(len(points) - 1, round(i * (len(points) - 1) / 7))] for i in range(8)]
+                line.set_stroke(color=[self.pos_to_color(p) for p in samples], width=stroke_width, opacity=opacity)
+                line.gradient_points = [[points[0][0], points[0][1]], [points[-1][0], points[-1][1]]]
+            lines.append(line)
+        self.add(*lines)  # One family update; adding lines one at a time is quadratic.
+
+    @property
+    def stream_lines(self):
+        return [line for line in self.children if isinstance(line, StreamLine)]
+
+    def create(self, lag_ratio=None, run_time=None, **kwargs):
+        if run_time is None:
+            run_time = self.virtual_time
+        run_time = float(run_time(self.virtual_time) if callable(run_time) else run_time)
+        lines = self.stream_lines
+        if not lines:
+            raise ValueError('StreamLines has no lines to create')
+        if lag_ratio is None:
+            lag_ratio = run_time / 2 / len(self.children)
+        animations = [Create(line, run_time=run_time, **kwargs) for line in lines]
+        # Community shuffles with the global generator; a fixed seed keeps previews reproducible.
+        random.Random(0).shuffle(animations)
+        return AnimationGroup(*animations, lag_ratio=lag_ratio)
+
+    def start_animation(self, warm_up=True, flow_speed=1, time_width=.3, rate_func=linear,
+                        line_animation_class=None, **kwargs):
+        if line_animation_class not in (None, ShowPassingFlash):
+            raise NotImplementedError('StreamLines flow supports ShowPassingFlash only')
+        if kwargs:
+            raise NotImplementedError('Unsupported options: ' + ', '.join(kwargs))
+        NumberLine._real(flow_speed, 'flow_speed', positive=True)
+        NumberLine._real(time_width, 'time_width', nonnegative=True)
+        if not callable(rate_func):
+            raise TypeError('rate_func must be callable')
+        if self.flow_animation is not None:
+            self.remove_updater(self.flow_animation)
+        generator = random.Random(1)
+        for line in self.stream_lines:
+            if getattr(line, '_flow_source', None) is None:
+                line._flow_source = line.copy()
+            line.time = generator.random() * self.virtual_time * (-1 if warm_up else 1)
+            self._flash(line, line.time, flow_speed, time_width, rate_func)
+        def updater(mob, dt):
+            for line in mob.stream_lines:
+                line.time += dt * flow_speed
+                if line.time >= mob.virtual_time:
+                    line.time -= mob.virtual_time
+                mob._flash(line, line.time, flow_speed, time_width, rate_func)
+        self.add_updater(updater)
+        self.flow_animation, self.flow_speed, self.time_width = updater, flow_speed, time_width
+        self._flow_rate_func = rate_func
+        return self
+
+    @staticmethod
+    def _flash(line, time, flow_speed, time_width, rate_func=linear):
+        """Show ShowPassingFlash's window of the full line, from cached source points."""
+        run_time = line.duration / flow_speed
+        alpha = rate_func(max(0, min(1, time / run_time)))
+        upper = (1 + time_width) * alpha
+        lower, upper = max(0, upper - time_width), max(0, min(1, upper))
+        source = line._flow_source
+        points = source.__dict__.get('_flow_points')
+        if points is None:
+            points = source._flow_points = source.get_points()
+        curves = _partial_cubics(points, min(lower, upper), upper)[0] if len(points) >= 4 else []
+        VMobject.set_points(line, [point for curve in curves for point in curve])
+
+    def end_animation(self):
+        if self.flow_animation is None:
+            raise ValueError('You have to start the animation before fading it out.')
+        self.remove_updater(self.flow_animation)
+        self.flow_animation = None
+        return _StreamLinesEnd(self)
+
+
+class _StreamLinesEnd(Animation):
+    """Finish each flash cycle (or wait out warm-up), then redraw every full line, as in Community."""
+    def __init__(self, field):
+        self.field = field
+        speed, width = field.flow_speed, field.time_width
+        self.max_run_time = field.virtual_time / speed
+        # Community starts creation at the flash speed and eases out (ease_out_sine).
+        self.creation = self.max_run_time / (1 + width) * (math.sin(.001 * math.pi / 2) * 1000)
+        self.plans = []
+        for index, line in enumerate(field.children):
+            if isinstance(line, StreamLine):
+                delay = -line.time / speed if line.time <= 0 else self.max_run_time - line.time / speed
+                self.plans.append((index, line, line.time, delay))
+        run_time = max([delay for *_, delay in self.plans] + [0]) + self.creation
+        super().__init__(field, run_time=run_time, rate_func=linear)
+
+    def begin(self, scene):
+        super().begin(scene)
+        # Full-line snapshots and flash probes are reused on every sampled frame.
+        self.full = {index: line._flow_source.to_dict() for index, line, _, _ in self.plans}
+        self.probes = {}
+        for index, line, _, _ in self.plans:
+            probe = StreamLine()
+            probe.__dict__.update({key: value for key, value in line.__dict__.items() if key != 'children'})
+            probe.children = []
+            self.probes[index] = probe
+
+    def sample(self, alpha):
+        now = alpha * self.run_time
+        result = dict(self.start)
+        children = result['children'] = list(self.start['children'])
+        field = self.field
+        for index, line, start_time, delay in self.plans:
+            if now >= delay:
+                progress = math.sin(min(1, (now - delay) / self.creation) * math.pi / 2)
+                children[index] = dict(self.full[index], draw_progress=progress)
+            elif start_time <= 0:
+                children[index] = dict(children[index], stroke_opacity=0)
+            else:
+                probe = self.probes[index]
+                field._flash(probe, start_time + now * field.flow_speed, field.flow_speed,
+                             field.time_width, field._flow_rate_func)
+                children[index] = probe.to_dict()
+        return [result]
+
+    def finish(self, scene):
+        for _, line, _, _ in self.plans:
+            line.pointwise_become_partial(line._flow_source, 0, 1)
+            line.time = 0
+
+
 EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
            'Triangle', 'Polygon', 'Polygram', 'RegularPolygram', 'RegularPolygon', 'Star', 'Brace', 'BraceBetweenPoints', 'BraceLabel', 'BraceText',
            'Title', 'BulletedList', 'Tex', 'SingleStringMathTex', 'MarkupText', 'LabeledDot', 'Variable', 'always', 'f_always', 'always_shift', 'always_rotate',
-           'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'BarChart', 'PolarPlane', 'NumberPlane', 'ComplexPlane', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
+           'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'BarChart', 'PolarPlane', 'NumberPlane', 'ComplexPlane', 'VectorField', 'ArrowVectorField', 'StreamLines', 'sigmoid', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform',
@@ -8095,7 +8557,39 @@ EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'a
 EXPORTS += [name for name in _PALETTE if name not in EXPORTS]
 
 
-def _render_scene(source, scene_name=None):
+def _pooled_json(result, default):
+    """Encode frames with each distinct mobject snapshot stored once in a shared pool.
+
+    Nodes are pooled bottom-up: a pooled node's children are pool indices, and large
+    arrays become {"$pool": index} references, always lower than the node's own index. Static objects and unchanged group members repeat across frames; the
+    worker swaps indices for shared objects, so the page sees the ordinary frame format."""
+    dumps = json.JSONEncoder(allow_nan=False, default=default).encode
+    pool, index = [], {}
+    def store(text):
+        key = index.get(text)
+        if key is None:
+            key = index[text] = len(pool)
+            pool.append(text)
+        return key
+    def intern(node):
+        node = dict(node)
+        for name, value in node.items():
+            # Large arrays (curves, vertices) often outlive style-only changes such as
+            # draw_progress or opacity, so they are pooled as {"$pool": index} too.
+            if name != 'children' and type(value) is list and len(value) >= 8:
+                text = dumps(value)
+                if len(text) > 400:
+                    node[name] = {'$pool': store(text)}
+        children = node.get('children')
+        if isinstance(children, list) and children:
+            node['children'] = [intern(child) for child in children]
+        return store(dumps(node))
+    frames = [dumps(dict(frame, mobjects=[intern(m) for m in frame['mobjects']])) for frame in result['frames']]
+    head = dumps({key: value for key, value in result.items() if key != 'frames'})
+    return head[:-1] + ', "pool": [' + ', '.join(pool) + '], "frames": [' + ', '.join(frames) + ']}'
+
+
+def _render_scene(source, scene_name=None, compact=False):
     module = types.ModuleType('manim')
     module.__all__ = list(EXPORTS)
     for name in EXPORTS:
@@ -8130,6 +8624,8 @@ def _render_scene(source, scene_name=None):
         if isinstance(value, numbers.Real):
             return _plain_number(value)
         raise TypeError(f'Object of type {type(value).__name__} is not part of a preview frame')
+    if compact:
+        return _pooled_json(result, plain)
     return json.dumps(result, allow_nan=False, default=plain)
 
 
@@ -8158,13 +8654,15 @@ def _set_math_metrics(math_metrics):
     _MATH_ESTIMATED.clear()
 
 
-def render_scene(source, scene_name=None, math_metrics=None):
-    """Render frames; math_metrics holds browser-measured MathTex ink sizes in em."""
+def render_scene(source, scene_name=None, math_metrics=None, compact=False):
+    """Render frames; math_metrics holds browser-measured MathTex ink sizes in em.
+
+    compact=True pools repeated top-level snapshots (decoded by the worker)."""
     global config
     previous = config
     config = PreviewConfig()
     try:
         _set_math_metrics(math_metrics)
-        return _render_scene(source, scene_name)
+        return _render_scene(source, scene_name, compact)
     finally:
         config = previous

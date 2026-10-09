@@ -2223,3 +2223,27 @@ printed step. `add_coordinates` attaches only the azimuth labels because the rad
 numbers already belong to the axis (Community's group repeats the axis but its
 family deduplication renders it once). The MathTex estimator now stacks
 `\frac`/`\tfrac`/`\dfrac` operands.
+
+`VectorField` samples the user function with lite `Vector` points (they support
+`+ - * /` and negation) and accepts tuples, lists or NumPy arrays as outputs.
+`ArrowVectorField` and `StreamLines` reproduce Community's ranges (the stop is
+extended by one step), `0.45·sigmoid(norm)` arrow lengths and color interpolation;
+both are limited to 5000 sample points, and StreamLines to 200000 traced steps.
+StreamLines noise uses `_PCG64`, an exact pure-Python port of NumPy's SeedSequence
++ PCG64 `default_rng(seed).random()`. `create()` shuffles with a fixed seed (Community
+uses the global generator), and lines are introduced as top-level objects, so add the
+field before `start_animation()`. Flow frames reuse cached source points
+(`_flow_points`, excluded from frames) and `_StreamLinesEnd` samples the wait,
+flash continuation and `ease_out_sine` redraw for each line. A `gradient_points`
+pair on a snapshot makes the renderer use a user-space gradient along that chord.
+Frame snapshots now use `_snapshot_copy`, a JSON-shaped deep copy that is several
+times faster than `copy.deepcopy`, and `_holds_mobject` skips plain coordinates.
+
+The worker requests `render_scene(..., compact=True)`, which pools distinct mobject
+snapshots bottom-up: frames and children hold pool indices, and arrays longer than
+400 JSON characters become `{"$pool": index}` references. `expandPooledScene` in
+`src/unified-worker.js` restores the ordinary frame format with shared objects, so
+static backgrounds and style-only animations (Create's `draw_progress`, opacity)
+no longer repeat their geometry. Typical gallery scenes shrink 2–10× below the
+12 MB transfer limit. Frame data is shared after expansion and must stay read-only.
+`render_scene` without `compact` still returns plain frames for tests and tools.

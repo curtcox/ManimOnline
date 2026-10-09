@@ -152,10 +152,22 @@ const ManimRenderer = {
       const gradient = document.createElementNS(this.SVG_NS, 'linearGradient');
       const id = `manim-gradient-${this._gradientSerial = (this._gradientSerial || 0) + 1}`;
       gradient.setAttribute('id', id);
-      gradient.setAttribute('x1', '0%');
-      gradient.setAttribute('y1', '0%');
-      gradient.setAttribute('x2', '100%');
-      gradient.setAttribute('y2', '0%');
+      const ends = mobject.gradient_points;
+      if (Array.isArray(ends) && ends.length === 2 && ends.every(point => Array.isArray(point) &&
+          Number.isFinite(point[0]) && Number.isFinite(point[1])) &&
+          (ends[0][0] !== ends[1][0] || ends[0][1] !== ends[1][1])) {
+        // Local geometry endpoints, e.g. a stream line's chord, in the path's own coordinates.
+        gradient.setAttribute('gradientUnits', 'userSpaceOnUse');
+        gradient.setAttribute('x1', ends[0][0] * this.UNIT_SCALE);
+        gradient.setAttribute('y1', ends[0][1] * this.UNIT_SCALE);
+        gradient.setAttribute('x2', ends[1][0] * this.UNIT_SCALE);
+        gradient.setAttribute('y2', ends[1][1] * this.UNIT_SCALE);
+      } else {
+        gradient.setAttribute('x1', '0%');
+        gradient.setAttribute('y1', '0%');
+        gradient.setAttribute('x2', '100%');
+        gradient.setAttribute('y2', '0%');
+      }
       color.forEach((stopColor, index) => {
         const stop = document.createElementNS(this.SVG_NS, 'stop');
         stop.setAttribute('offset', `${100 * index / (color.length - 1)}%`);

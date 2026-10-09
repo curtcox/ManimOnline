@@ -270,3 +270,8 @@ position checks.
 
 BarChart and PolarPlane are implemented with Community reference checks;
 nonlinear polar warping (`apply_complex_function` on planes) remains open.
+
+VectorField, ArrowVectorField and StreamLines are implemented with Community
+reference checks for positions, colors and traced lines. Raster background
+images, 3D fields and per-pixel stream coloring remain open; frame size limits
+dense stream fields.

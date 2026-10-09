@@ -542,3 +542,16 @@ labels. PolarPlane.get_vector takes plane coordinates (as in Community), not wor
 points; use pr2pt with an Arrow from get_origin for polar vectors. Keep radius
 numbers attached once: get_coordinate_labels returns the axis like Community, but
 add_coordinates only adds the azimuth group, avoiding duplicate family members.
+
+Read `examples/vector_field_scene.py` for arrow fields, nudged particles and
+stream flow. Preserve `_PCG64` parity with NumPy's default_rng; Community's
+StreamLines noise depends on it. Add the StreamLines object to the scene before
+start_animation (its updater drives flow). Keep `_flow_points` out of frames and
+add lines with one `add(*lines)` call; per-line adds recompute family bounds
+quadratically. Use `_snapshot_copy` instead of copy.deepcopy for snapshot dicts.
+
+The worker transfers pooled frames (`render_scene(..., compact=True)`, expanded by
+`expandPooledScene`); repeated snapshots and large arrays become shared objects.
+Never mutate frame data in the page, renderer, player, math or export code.
+`tests/unified-worker.test.js` covers the decoder; a Python test checks that the
+expanded pooled output equals plain render_scene output.

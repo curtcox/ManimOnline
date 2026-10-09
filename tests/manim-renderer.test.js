@@ -362,6 +362,22 @@ test('area gradient fills and borders use self-contained unique SVG paint server
   assert.deepEqual(data.fill_color,['#FF0000','#00FF00','#0000FF']);
 });
 
+test('stream line gradients follow local chord endpoints in user space', () => {
+  const data = {type:'bezierpath', curves:[[[0,0],[1,0],[2,1],[3,1]]], fill_opacity:0,
+    stroke_color:['#236B8E','#FC6255'], stroke_width:1, gradient_points:[[0,0],[3,1]], position:[1,0,0]};
+  const element = renderer.renderMobject(data);
+  const gradient = element.querySelectorAll().find(e => e.tag === 'linearGradient');
+  assert.equal(gradient.getAttribute('gradientUnits'),'userSpaceOnUse');
+  assert.deepEqual(['x1','y1','x2','y2'].map(k=>Number(gradient.getAttribute(k))),
+                   [0,0,3*renderer.UNIT_SCALE,renderer.UNIT_SCALE]);
+  for (const ends of [[[0,0],[0,0]],[[0,0]],[[0,NaN],[1,1]]]) {
+    const fallback = renderer.renderMobject({...data, gradient_points:ends})
+      .querySelectorAll().find(e => e.tag === 'linearGradient');
+    assert.equal(fallback.getAttribute('gradientUnits'),null);
+    assert.equal(fallback.getAttribute('x2'),'100%');
+  }
+});
+
 test('gradient validation rejects unsafe colors and a single stop keeps a solid paint', () => {
   for (const color of [[],['url(https://example.com/paint)'],['red'],Array(65).fill('#FFFFFF')]) {
     assert.throws(()=>renderer.renderMobject({type:'polygon',fill_color:color}),/Gradient colors/);

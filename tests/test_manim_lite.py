@@ -59,6 +59,91 @@ class SceneTests(unittest.TestCase):
         frame=render('self.add(PolarPlane(size=4).add_coordinates())')['frames'][0]
         self.assertEqual(len(frame['mobjects']),1)
 
+    def test_numpy_default_rng_port_matches_reference_stream(self):
+        # numpy.random.default_rng(0).random(5) and a multi-word seed.
+        self.assertEqual(lite._PCG64(0).random(5),[0.6369616873214543,0.2697867137638703,0.04097352393619469,
+                                                   0.016527635528529094,0.8132702392002724])
+        self.assertEqual(lite._PCG64(12345678901234567890123).random(2),[0.9015032973944714,0.02036097445893159])
+        with self.assertRaises(ValueError): lite._PCG64(-1)
+
+    def test_arrow_vector_field_matches_community_grid_lengths_and_colors(self):
+        func=lambda pos: math.sin(pos[0]/2)*lite.UR+math.cos(pos[1]/2)*lite.LEFT
+        field=lite.ArrowVectorField(func)
+        self.assertEqual(len(field),561)
+        # Start/end points and colors of vectors 0, 100 and 300 measured with Manim Community 0.22.
+        for index,start,end,color in ((0,(-8,-4),(-7.697,-3.804),'#F7CD6C'),(100,(-5.5,3.5),(-5.628,3.259),'#61A274'),
+                                      (300,(.5,1.5),(.246,1.63),'#71B16E')):
+            vector=field[index]
+            for value,expected in zip(list(vector.get_start()[:2])+list(vector.get_end()[:2]),start+end):
+                self.assertAlmostEqual(value,expected,places=3)
+            self.assertEqual(vector.get_color(),color)
+        single=lite.ArrowVectorField(lambda p: p/2,x_range=[-2,2,1],y_range=[-1,1,1],color=lite.RED,length_func=lambda n: n/3)
+        self.assertEqual(len(single),15)
+        self.assertPointAlmostEqual(single[0].get_end(),(-2-1/3,-1-1/6,0))
+        self.assertEqual({v.get_color() for v in single},{lite.RED})
+        dot=lite.Dot(lite.RIGHT)
+        field.nudge(dot,dt=.5,substeps=3)
+        self.assertAlmostEqual(dot.get_center()[0],.709,places=3)
+        self.assertAlmostEqual(dot.get_center()[1],.208,places=3)
+        for bad in (lambda: lite.ArrowVectorField(3),lambda: lite.ArrowVectorField(func,x_range=[0,1,0]),
+                    lambda: lite.ArrowVectorField(func,x_range=[-100,100,.1]),
+                    lambda: lite.ArrowVectorField(func,min_color_scheme_value=1,max_color_scheme_value=1)):
+            with self.assertRaises((TypeError,ValueError)): bad()
+        with self.assertRaises(NotImplementedError): lite.ArrowVectorField(func,three_dimensions=True)
+        with self.assertRaises(ValueError): lite.ArrowVectorField(lambda p: (math.nan,0,0),x_range=[0,1],y_range=[0,1])
+
+    def test_stream_lines_trace_noisy_starts_and_flow(self):
+        func=lambda pos: math.sin(pos[0]/2)*lite.UR+math.cos(pos[1]/2)*lite.LEFT
+        stream=lite.StreamLines(func,stroke_width=2,max_anchors_per_line=30)
+        lines=stream.stream_lines
+        self.assertEqual(len(lines),561)
+        # First/last anchors and point counts from Manim Community 0.22 (default_rng(0) noise).
+        for index,first,last in ((0,(-7.966,-4.058),(-6.553,-3.028)),(50,(-7.123,3.966),(-5.741,3.936)),
+                                 (200,(-2.623,2.555),(-6.574,.83))):
+            points=lines[index].get_points()
+            self.assertEqual(len(points),120)
+            for value,expected in zip(list(points[0][:2])+list(points[-1][:2]),first+last):
+                self.assertAlmostEqual(value,expected,places=3)
+            self.assertAlmostEqual(lines[index].duration,3.05)
+        self.assertEqual(len(lines[0].stroke_color),8)
+        self.assertEqual(len(lines[0].gradient_points),2)
+        small=lite.StreamLines(func,x_range=[-2,2,1],y_range=[-1,1,1],virtual_time=1,color=lite.BLUE)
+        self.assertEqual(small.stream_lines[0].stroke_color,lite.BLUE)
+        with self.assertRaises(ValueError): small.end_animation()
+        result=render("""stream=StreamLines(lambda p: UP+RIGHT*.2,x_range=[-2,2,1],y_range=[-1,1,1],virtual_time=1)
+self.play(stream.create(),run_time=1)
+self.add(stream)
+stream.start_animation(warm_up=True,flow_speed=2)
+self.wait(.5)
+self.play(stream.end_animation())""")
+        last=result['frames'][-1]['mobjects'][0]
+        self.assertEqual(len(last['children']),15)
+        self.assertTrue(all(child.get('draw_progress',1)==1 and '_flow_points' not in child for child in last['children']))
+        flowing=result['frames'][20]['mobjects'][0]['children']
+        self.assertTrue(any(len(child['curves'])<len(last['children'][i]['curves']) for i,child in enumerate(flowing)))
+
+    def test_compact_pooled_frames_expand_to_plain_output(self):
+        def expand(data):
+            pool=data.pop('pool')
+            for position,node in enumerate(pool):
+                if isinstance(node,dict):
+                    for name,value in list(node.items()):
+                        if isinstance(value,dict) and '$pool' in value:
+                            self.assertLess(value['$pool'],position)
+                            node[name]=pool[value['$pool']]
+                    if isinstance(node.get('children'),list):
+                        self.assertTrue(all(index<position for index in node['children']))
+                        node['children']=[pool[index] for index in node['children']]
+            for frame in data['frames']:
+                frame['mobjects']=[pool[index] for index in frame['mobjects']]
+            return data
+        for name in ('vector_field_scene','chart_scene','text_layout_scene'):
+            source=(ROOT/'examples'/(name+'.py')).read_text()
+            plain=lite.render_scene(source)
+            compact=lite.render_scene(source,compact=True)
+            self.assertEqual(expand(json.loads(compact)),json.loads(plain))
+            self.assertLess(len(compact),len(plain)/2)
+
     def test_set_style_routes_fill_and_stroke(self):
         square=lite.Square().set_style(fill_color=lite.RED,fill_opacity=.5,stroke_color=lite.BLUE,
                                        stroke_width=6,stroke_opacity=.25,background_stroke_width=0)

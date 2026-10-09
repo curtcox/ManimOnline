@@ -16,6 +16,36 @@ async function initPyodide() {
   return runtimePromise;
 }
 
+/**
+ * Replace pooled frame indices with shared snapshot objects. Unchanged objects are
+ * shared across frames (structured cloning keeps the sharing), so consumers must
+ * treat frame data as read-only.
+ */
+function expandPooledScene(scene) {
+  if (!Array.isArray(scene.pool)) return scene;
+  const { pool, ...rest } = scene;
+  // Children and arrays were pooled before their parents, so each index is resolved.
+  pool.forEach((node, position) => {
+    if (!node || typeof node !== 'object' || Array.isArray(node)) return;
+    const resolve = index => {
+      if (!Number.isInteger(index) || index < 0 || index >= position) throw new Error('Invalid pooled frame data.');
+      return pool[index];
+    };
+    for (const [name, value] of Object.entries(node)) {
+      if (value && typeof value === 'object' && !Array.isArray(value) && '$pool' in value) node[name] = resolve(value.$pool);
+    }
+    if (Array.isArray(node.children)) node.children = node.children.map(resolve);
+  });
+  for (const frame of rest.frames) {
+    frame.mobjects = frame.mobjects.map(index => {
+      if (!Number.isInteger(index) || index < 0 || index >= pool.length) throw new Error('Invalid pooled frame data.');
+      return pool[index];
+    });
+  }
+  return rest;
+}
+if (typeof module !== 'undefined') module.exports = { expandPooledScene };
+
 // Serialize requests even during loading; Python cannot execute concurrently.
 let queue = Promise.resolve();
 self.onmessage = event => {
@@ -37,9 +67,9 @@ self.onmessage = event => {
       // Browser-measured MathTex ink sizes let Python place formulas exactly.
       runtime.globals.set('_math_metrics', runtime.toPy(options.mathMetrics || {}));
       try {
-        const result = await runtime.runPythonAsync('render_scene(_source, _scene_name, _math_metrics)');
+        const result = await runtime.runPythonAsync('render_scene(_source, _scene_name, _math_metrics, compact=True)');
         if (result.length > 12 * 1024 * 1024) throw new Error('Preview is too large. Use fewer objects or shorter animations.');
-        self.postMessage({ id, type: 'manim-result', sceneData: JSON.parse(result) });
+        self.postMessage({ id, type: 'manim-result', sceneData: expandPooledScene(JSON.parse(result)) });
       } finally {
         runtime.globals.delete('_source');
         runtime.globals.delete('_scene_name');

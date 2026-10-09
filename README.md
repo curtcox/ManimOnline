@@ -1460,3 +1460,13 @@ colors, `get_bar_labels`, animated `change_bar_values`) and `PolarPlane` (rings,
 spokes, radian/degree azimuth labels, `pr2pt`/`pt2pr`). Both reproduce Community
 geometry to text-metric differences. `Mobject.set_style` routes fill/stroke
 options, and hex colors truncate channels as Community does (`#7F7F7F` for mid-grey).
+
+The **Vector fields and stream lines** example covers `ArrowVectorField`
+(Community's sigmoid length, magnitude color scheme and grid), RK4 nudging of
+particles (`nudge`, `get_nudge_updater`, `start_submobject_movement`) and
+`StreamLines` with `create()`, `start_animation()` and `end_animation()`. Stream
+start points use a port of NumPy's `default_rng(0)`, so lines match Community.
+Community colors 2D stream lines from a raster of field colors; the preview
+approximates this with a gradient along each line's chord. Dense stream fields
+are costly: a few hundred lines can take tens of seconds to render. Repeated
+objects and unchanged geometry are pooled when frames leave the worker.
