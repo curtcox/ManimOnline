@@ -23,6 +23,7 @@ const ExampleCatalog = Object.freeze([
   { id: 'formulaparts', label: 'Formula parts and matching transforms', path: 'examples/formula_parts_scene.py' },
   { id: 'matrixtable', label: 'Matrices, determinants and tables', path: 'examples/matrix_table_scene.py' },
   { id: 'texteffects', label: 'Letter colors, markup and gradients', path: 'examples/text_effects_scene.py' },
+  { id: 'logaxes', label: 'Logarithmic axes and colors', path: 'examples/log_axes_scene.py' },
   { id: 'typing', label: 'Typing, boundaries and implicit curves', path: 'examples/typing_scene.py' },
   { id: 'svgimage', label: 'Inline SVG and pixel images', path: 'examples/svg_image_scene.py' },
   { id: 'code', label: 'Syntax-highlighted code', path: 'examples/code_scene.py' },

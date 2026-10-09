@@ -19,7 +19,7 @@ MAX_FRAMES = 901  # 900 timed samples plus a final seekable state.
 _REAL = numbers.Real  # Includes NumPy scalars; bool is excluded where it matters.
 
 
-_PLAIN_VALUE_TYPES = frozenset((int, float, str, bool, type(None)))
+_PLAIN_VALUE_TYPES = frozenset((int, float, str, bool, type(None)))  # ManimColor is added below
 
 
 def _holds_mobject(value):
@@ -117,6 +117,192 @@ LEFT, RIGHT = Vector((-1, 0, 0)), Vector((1, 0, 0))
 ORIGIN = Vector((0, 0, 0))
 OUT, IN = Vector((0, 0, 1)), Vector((0, 0, -1))
 UL, UR, DL, DR = UP + LEFT, UP + RIGHT, DOWN + LEFT, DOWN + RIGHT
+class ManimColor(str):
+    """Community's ManimColor as a hex string ('#RRGGBB') that also carries RGBA floats.
+
+    Being a str keeps every existing hex-string color path working; the methods
+    follow Community (truncating to_hex, interpolate, lighter/darker, ...)."""
+    def __new__(cls, value=None, alpha=1.0):
+        rgba = cls._parse(value, alpha)
+        text = '#' + ''.join('%02X' % int(min(1, max(0, v)) * 255) for v in rgba[:3])
+        color = str.__new__(cls, text)
+        color._rgba = rgba
+        return color
+
+    @staticmethod
+    def _parse(value, alpha=1.0):
+        import re
+        if value is None:
+            return (0.0, 0.0, 0.0, alpha)
+        if isinstance(value, ManimColor):
+            return value._rgba
+        if isinstance(value, str):
+            text = value.strip()
+            if text.upper() in _PALETTE and not text.startswith('#'):
+                return _PALETTE[text.upper()]._rgba
+            digits = text[1:] if text.startswith('#') else text[2:] if text.lower().startswith('0x') else None
+            if digits is not None and re.fullmatch(r'[0-9a-fA-F]+', digits) and len(digits) in (3, 4, 6, 8):
+                if len(digits) in (3, 4):
+                    digits = ''.join(c * 2 for c in digits)
+                values = [int(digits[i:i + 2], 16) / 255 for i in range(0, len(digits), 2)]
+                return tuple(values) if len(values) == 4 else tuple(values) + (alpha,)
+            raise ValueError(f'Unsupported color: {text[:40]}')
+        if isinstance(value, bool):
+            raise ValueError('Colors cannot be booleans')
+        if isinstance(value, numbers.Integral):
+            value = int(value)
+            if not 0 <= value <= 0xFFFFFF:
+                raise ValueError('Integer colors must be 0x000000 to 0xFFFFFF')
+            return ((value >> 16 & 255) / 255, (value >> 8 & 255) / 255, (value & 255) / 255, alpha)
+        try:
+            values = [_plain_number(v) for v in value]
+        except TypeError:
+            raise ValueError(f'Unsupported color: {value!r}') from None
+        if len(values) not in (3, 4) or any(isinstance(v, bool) or not isinstance(v, _REAL) or not math.isfinite(v) for v in values):
+            raise ValueError('Color tuples need three or four finite components')
+        if isinstance(values[0], numbers.Integral):
+            # Community reads integer tuples as 0-255 channels (truncating any floats).
+            values = [int(v) / 255 for v in values]
+        values = [float(v) for v in values]
+        return tuple(values) if len(values) == 4 else tuple(values) + (alpha,)
+
+    @classmethod
+    def parse(cls, color, alpha=1.0):
+        if isinstance(color, (list, tuple)) and color and not isinstance(color[0], _REAL):
+            return [cls(c, alpha) for c in color]
+        return cls(color, alpha)
+
+    def __repr__(self):
+        return f"ManimColor('{self.to_hex(self._rgba[3] != 1)}')"
+
+    def __reduce__(self):
+        return (ManimColor, (self.to_hex(True),))
+
+    def __deepcopy__(self, memo):
+        return self  # Immutable.
+
+    def to_hex(self, with_alpha=False):
+        values = self._rgba if with_alpha else self._rgba[:3]
+        return '#' + ''.join('%02X' % int(min(1, max(0, v)) * 255) for v in values)
+
+    def to_rgb(self):
+        return list(self._rgba[:3])
+
+    def to_rgba(self):
+        return list(self._rgba)
+
+    def to_int_rgb(self):
+        return [int(v * 255) for v in self._rgba[:3]]
+
+    def to_int_rgba(self):
+        return [int(v * 255) for v in self._rgba]
+
+    def to_rgba_with_alpha(self, alpha):
+        return list(self._rgba[:3]) + [alpha]
+
+    def to_int_rgba_with_alpha(self, alpha):
+        return [int(v * 255) for v in self._rgba[:3]] + [int(alpha * 255)]
+
+    def to_integer(self):
+        r, g, b = self.to_int_rgb()
+        return r << 16 | g << 8 | b
+
+    def to_hsv(self):
+        import colorsys
+        return list(colorsys.rgb_to_hsv(*self._rgba[:3]))
+
+    def to_hsl(self):
+        import colorsys
+        h, l, s = colorsys.rgb_to_hls(*self._rgba[:3])
+        return [h, s, l]
+
+    @classmethod
+    def from_rgb(cls, rgb, alpha=1.0):
+        return cls(tuple(rgb), alpha)
+
+    @classmethod
+    def from_rgba(cls, rgba):
+        return cls(tuple(rgba))
+
+    @classmethod
+    def from_hex(cls, hex_str, alpha=1.0):
+        return cls(hex_str, alpha)
+
+    @classmethod
+    def from_hsv(cls, hsv, alpha=1.0):
+        import colorsys
+        return cls(tuple(float(v) for v in colorsys.hsv_to_rgb(*hsv)), alpha)
+
+    @classmethod
+    def from_hsl(cls, hsl, alpha=1.0):
+        import colorsys
+        h, s, l = hsl
+        return cls(tuple(float(v) for v in colorsys.hls_to_rgb(h, l, s)), alpha)
+
+    def interpolate(self, other, alpha):
+        other = ManimColor(other)
+        return ManimColor(tuple(float(a * (1 - alpha) + b * alpha) for a, b in zip(self._rgba, other._rgba)))
+
+    def lighter(self, blend=0.2):
+        return self.interpolate(ManimColor('#FFFFFF'), blend).opacity(self._rgba[3])
+
+    def darker(self, blend=0.2):
+        return self.interpolate(ManimColor('#000000'), blend).opacity(self._rgba[3])
+
+    def opacity(self, opacity):
+        return ManimColor(tuple(float(v) for v in self._rgba[:3]) + (float(opacity),))
+
+    def invert(self, with_alpha=False):
+        r, g, b, a = self._rgba
+        return ManimColor((1.0 - r, 1.0 - g, 1.0 - b, 1.0 - a if with_alpha else a))
+
+    def contrasting(self, threshold=0.5, light=None, dark=None):
+        import colorsys
+        luminance = colorsys.rgb_to_yiq(*self._rgba[:3])[0]
+        if luminance < threshold:
+            return ManimColor('#FFFFFF') if light is None else ManimColor(light)
+        return ManimColor('#000000') if dark is None else ManimColor(dark)
+
+    def into(self, class_type):
+        return class_type(self) if class_type is not ManimColor else self
+
+    @staticmethod
+    def gradient(colors, length):
+        return color_gradient(colors, length)
+
+
+RGBA = ManimColor
+
+
+class HSV(ManimColor):
+    """A color built from (hue, saturation, value) components in [0, 1]."""
+    def __new__(cls, hsv, alpha=1.0):
+        import colorsys
+        if isinstance(hsv, str):
+            return ManimColor.__new__(cls, hsv, alpha)
+        values = list(hsv)
+        if len(values) not in (3, 4):
+            raise ValueError('HSV Color must be an array of 3 values')
+        rgb = tuple(float(v) for v in colorsys.hsv_to_rgb(*values[:3]))
+        return ManimColor.__new__(cls, rgb + (values[3] if len(values) == 4 else alpha,))
+
+    @property
+    def hue(self):
+        return self.to_hsv()[0]
+
+    @property
+    def saturation(self):
+        return self.to_hsv()[1]
+
+    @property
+    def value(self):
+        return self.to_hsv()[2]
+
+
+ManimColorDType = float
+ParsableManimColor = (str, tuple, list, int)
+
+
 # Manim Community's named palette (manim.utils.color.manim_colors).
 _PALETTE = {
     'WHITE': '#FFFFFF', 'GRAY_A': '#DDDDDD', 'GRAY_B': '#BBBBBB', 'GRAY_C': '#888888',
@@ -140,7 +326,46 @@ _PALETTE.update(GRAY=_PALETTE['GRAY_C'], LIGHTER_GRAY=_PALETTE['GRAY_A'], LIGHT_
                 DARK_GRAY=_PALETTE['GRAY_D'], DARKER_GRAY=_PALETTE['GRAY_E'], DARK_BLUE=_PALETTE['BLUE_E'])
 for _name in [n for n in _PALETTE if 'GRAY' in n]:
     _PALETTE[_name.replace('GRAY', 'GREY')] = _PALETTE[_name]
+_PALETTE = {name: ManimColor(value) for name, value in _PALETTE.items()}
 globals().update(_PALETTE)
+_PLAIN_VALUE_TYPES = _PLAIN_VALUE_TYPES | {ManimColor}
+# Community's _all_manim_colors, in order, so seeded RandomColorGenerator sequences match.
+_ALL_MANIM_COLORS = [ManimColor(value) for value in ['#FFFFFF', '#DDDDDD', '#DDDDDD', '#BBBBBB', '#BBBBBB', '#888888', '#888888', '#444444', '#444444', '#222222', '#222222', '#000000', '#DDDDDD', '#DDDDDD', '#BBBBBB', '#BBBBBB', '#888888', '#888888', '#444444', '#444444', '#222222', '#222222', '#FF0000', '#00FF00', '#0000FF', '#00FFFF', '#FF00FF', '#FFFF00', '#C7E9F1', '#9CDCEB', '#58C4DD', '#29ABCA', '#236B8E', '#58C4DD', '#236B8E', '#ACEAD7', '#76DDC0', '#5CD0B3', '#55C1A7', '#49A88F', '#5CD0B3', '#C9E2AE', '#A6CF8C', '#83C167', '#77B05D', '#699C52', '#83C167', '#FFF1B6', '#FFEA94', '#F7D96F', '#F4D345', '#E8C11C', '#F7D96F', '#F7C797', '#F9B775', '#F0AC5F', '#E1A158', '#C78D46', '#F0AC5F', '#F7A1A3', '#FF8080', '#FC6255', '#E65A4C', '#CF5044', '#FC6255', '#ECABC1', '#EC92AB', '#C55F73', '#A24D61', '#94424F', '#C55F73', '#CAA3E8', '#B189C6', '#9A72AC', '#715582', '#644172', '#9A72AC', '#D147BD', '#DC75CD', '#FF862F', '#CD853F', '#8B4513', '#736357', '#736357', '#ECE7E2', '#87C2A5', '#525893', '#E07A5F', '#343434']]
+
+
+class RandomColorGenerator:
+    """Random Manim palette colors; a seed gives Community's reproducible sequence."""
+    _singleton = None
+
+    def __init__(self, seed=None, sample_colors=None):
+        self.choice = random.choice if seed is None else random.Random(seed).choice
+        self.colors = _ALL_MANIM_COLORS if sample_colors is None else list(sample_colors)
+
+    def next(self):
+        return ManimColor(self.choice(self.colors))
+
+    @classmethod
+    def _random_color(cls):
+        if cls._singleton is None:
+            cls._singleton = cls()
+        return cls._singleton.next()
+
+
+def random_color():
+    return RandomColorGenerator._random_color()
+
+
+def random_bright_color():
+    return ManimColor(tuple(.5 + v / 2 for v in random_color().to_rgb()))
+
+
+def _paint(value):
+    """Community parses colors into ManimColor; gradient lists keep each stop."""
+    if value is None or isinstance(value, ManimColor):
+        return value
+    if isinstance(value, (list, tuple)) and value and not isinstance(value[0], numbers.Real):
+        return [_paint(v) for v in value]
+    return ManimColor(value)
 PI, TAU, DEGREES = math.pi, math.tau, math.pi / 180
 SMALL_BUFF, MED_SMALL_BUFF, MED_LARGE_BUFF, LARGE_BUFF = 0.1, 0.25, 0.5, 1
 DEFAULT_MOBJECT_TO_EDGE_BUFFER, DEFAULT_MOBJECT_TO_MOBJECT_BUFFER = MED_LARGE_BUFF, MED_SMALL_BUFF
@@ -150,6 +375,10 @@ DEFAULT_ARROW_TIP_LENGTH = 0.35
 
 
 def _color_rgb(color):
+    if isinstance(color, ManimColor):
+        return list(color._rgba[:3])
+    if isinstance(color, (tuple, list)) or (isinstance(color, str) and color.upper() in _PALETTE):
+        return list(ManimColor(color)._rgba[:3])
     if (not isinstance(color, str) or len(color) != 7 or color[0] != '#' or
             any(c not in '0123456789abcdefABCDEF' for c in color[1:])):
         raise ValueError('Colors must be six-digit hex strings such as #58C4DD')
@@ -158,7 +387,7 @@ def _color_rgb(color):
 
 def _rgb_color(rgb):
     # Community's ManimColor.to_hex truncates each channel (int(value * 255)).
-    return '#' + ''.join('%02X' % int(min(1, max(0, v)) * 255 + 1e-9) for v in rgb)
+    return ManimColor(tuple(float(min(1, max(0, v))) for v in rgb))
 
 
 def color_to_rgb(color):
@@ -276,6 +505,7 @@ class Mobject:
         if kwargs:
             raise NotImplementedError('Unsupported options: ' + ', '.join(kwargs))
         self.position = list(ORIGIN)
+        color, fill_color, stroke_color = _paint(color), _paint(fill_color), _paint(stroke_color)
         self.color = color
         self.fill_color = color if fill_color is None else fill_color
         self.stroke_color = color if stroke_color is None else stroke_color
@@ -1216,7 +1446,8 @@ class Mobject:
                 return self._point_to_world(Vector(self.curves[0][0] if alpha == 0 else self.curves[-1][-1]))
             lengths = []
             for curve in self.curves:
-                samples = [VMobject._bezier_point(curve, i / 20) for i in range(21)]
+                # Plain-tuple sampling (_bez); Vector arithmetic here dominated MoveAlongPath.
+                samples = [_bez(curve, i / 20) for i in range(21)]
                 lengths.append(sum(math.dist(a, b) for a, b in zip(samples, samples[1:])))
             total = sum(lengths)
             if not math.isfinite(total):
@@ -1224,7 +1455,8 @@ class Mobject:
             remaining = alpha * total
             for curve, length in zip(self.curves, lengths):
                 if remaining <= length:
-                    return self._point_to_world(VMobject._bezier_point(curve, remaining / length if length else 0))
+                    x, y = _bez(curve, remaining / length if length else 0)
+                    return self._point_to_world(Vector((x, y, 0)))
                 remaining -= length
             return self._point_to_world(Vector(self.curves[-1][-1]))
         if self._type == 'annulus':
@@ -1465,6 +1697,7 @@ class Mobject:
             raise ValueError('Stroke width must be nonnegative and finite')
 
     def set_color(self, color, family=True):
+        color = _paint(color)
         self.color = color
         self.fill_color = self.stroke_color = color
         if family:
@@ -1475,6 +1708,7 @@ class Mobject:
     def set_fill(self, color=None, opacity=None, family=True):
         if opacity is not None:
             self._validate_opacity(opacity)
+        color = _paint(color)
         if color is not None:
             self.fill_color = color
         if opacity is not None:
@@ -1489,6 +1723,7 @@ class Mobject:
             self._validate_width(width)
         if opacity is not None:
             self._validate_opacity(opacity)
+        color = _paint(color)
         if color is not None:
             self.stroke_color = color
         if width is not None:
@@ -3398,6 +3633,7 @@ THIN, ULTRALIGHT, LIGHT, SEMILIGHT, BOOK, MEDIUM = 'THIN', 'ULTRALIGHT', 'LIGHT'
 SEMIBOLD, ULTRABOLD, HEAVY, ULTRAHEAVY = 'SEMIBOLD', 'ULTRABOLD', 'HEAVY', 'ULTRAHEAVY'
 _MATH_METRICS = {}  # expression -> (width_em, height_em), measured by the browser
 _MATH_ESTIMATED = set()
+_MATH_ESTIMATE_CACHE = {}
 
 
 def _glyph_box(char, table):
@@ -3523,7 +3759,12 @@ def _math_box(text, font_size):
         width, height = _MATH_METRICS[text][:2]
         return width * em, height * em
     _MATH_ESTIMATED.add(text)
-    return _math_estimate(text, font_size)
+    key = (text, font_size)
+    if key not in _MATH_ESTIMATE_CACHE:
+        if len(_MATH_ESTIMATE_CACHE) > 4096:
+            _MATH_ESTIMATE_CACHE.clear()
+        _MATH_ESTIMATE_CACHE[key] = _math_estimate(text, font_size)
+    return _MATH_ESTIMATE_CACHE[key]
 
 
 def _math_parts(text, parts, font_size):
@@ -3715,10 +3956,33 @@ class DecimalNumber(Text):
             raise ValueError('Numeric unit must be a string of at most 256 characters')
         if not isinstance(font_size, _REAL) or not math.isfinite(font_size) or font_size <= 0:
             raise ValueError('Numeric font size must be positive and finite')
+        # Community typesets the unit as a separate TeX part after the digits.
         options = dict(num_decimal_places=num_decimal_places, include_sign=include_sign,
-                       group_with_commas=group_with_commas, show_ellipsis=show_ellipsis, unit=unit)
+                       group_with_commas=group_with_commas, show_ellipsis=show_ellipsis, unit=None)
         super().__init__(_number_text(number, options), font_size=font_size, **kwargs)
-        self.number, self._number_format = number, options
+        self.number, self._number_format, self.unit = number, options, unit
+        if unit:
+            sign = MathTex(unit, font_size=font_size, color=self.fill_color)
+            sign._number_role = 'unit'
+            self.add(sign)
+            self._place_unit()
+            # Community arranges digits and unit as one row centered where the number was.
+            self.shift(Vector(self.position) - self.get_center())
+
+    @property
+    def unit_sign(self):
+        return next((c for c in self.children if c.__dict__.get('_number_role') == 'unit'), None)
+
+    def _place_unit(self):
+        sign = self.unit_sign
+        if sign is None:
+            return
+        width, height = _text_extent(self.__dict__)
+        buff = 0.001 * self.font_size  # Community's digit_buff_per_font_unit spacing.
+        # Children of a shape live in its local frame, where the digits' ink is centered on 0.
+        x = width / 2 + buff + sign.get_width() / 2
+        y = (height - sign.get_height()) / 2 * (1 if self.unit.startswith('^') else -1)
+        sign.move_to(Vector((x, y, 0)))
 
     def get_value(self):
         return self.number
@@ -3726,6 +3990,7 @@ class DecimalNumber(Text):
     def set_value(self, number):
         text = _number_text(number, self._number_format)
         self.number, self.text = number, text
+        self._place_unit()
         return self
 
     def increment_value(self, delta_t=1):
@@ -5070,6 +5335,53 @@ class _SecantSlopeGroup(VGroup):
     secant_line = property(lambda self:self._component('secant_line'))
 
 
+class _ScaleBase:
+    def __init__(self, custom_labels=False):
+        self.custom_labels = custom_labels
+
+    def function(self, value):
+        raise NotImplementedError
+
+    def inverse_function(self, value):
+        raise NotImplementedError
+
+    def get_custom_labels(self, val_range, **kwargs):
+        raise NotImplementedError
+
+
+class LinearBase(_ScaleBase):
+    """Linear axis scaling: displayed values are scale_factor times positions."""
+    def __init__(self, scale_factor=1.0):
+        super().__init__()
+        self.scale_factor = scale_factor
+
+    def function(self, value):
+        return self.scale_factor * value
+
+    def inverse_function(self, value):
+        return value / self.scale_factor
+
+
+class LogBase(_ScaleBase):
+    """Logarithmic axis scaling: positions are exponents, labeled base^k by default."""
+    def __init__(self, base=10, custom_labels=True):
+        super().__init__()
+        NumberLine._real(base, 'LogBase base', positive=True)
+        self.base, self.custom_labels = base, custom_labels
+
+    def function(self, value):
+        return self.base ** value
+
+    def inverse_function(self, value):
+        if value <= 0:
+            raise ValueError('log(0) is undefined. Make sure the value is in the domain of the function')
+        return math.log(value, self.base)
+
+    def get_custom_labels(self, val_range, unit_decimal_places=0, **base_config):
+        return [Integer(self.base, unit='^{%s}' % f'{self.inverse_function(i):.{unit_decimal_places}f}', **base_config)
+                for i in val_range]
+
+
 class NumberLine(VGroup):
     """Linear XY coordinates, composed from a shaft, ticks and numeric labels."""
     def __init__(self, x_range=None, length=None, unit_size=1, include_ticks=True,
@@ -5078,7 +5390,10 @@ class NumberLine(VGroup):
                  tip_width=.35, tip_height=.35, include_numbers=False, font_size=36,
                  label_direction=DOWN, line_to_number_buff=.25,
                  decimal_number_config=None, numbers_to_exclude=None,
-                 numbers_to_include=None, label_constructor=None, **kwargs):
+                 numbers_to_include=None, label_constructor=None, scaling=None, **kwargs):
+        self.scaling = LinearBase() if scaling is None else scaling
+        if not isinstance(self.scaling, _ScaleBase):
+            raise TypeError('NumberLine scaling must be LinearBase, LogBase or another _ScaleBase')
         radius = max(1, round(config.frame_width/2))
         values = list(x_range) if x_range is not None else [-radius,radius,1]
         if len(values) == 2:
@@ -5140,7 +5455,14 @@ class NumberLine(VGroup):
         if include_ticks:
             self.add_ticks()
         if include_numbers or self.numbers_to_include is not None:
-            self.add_numbers(self.numbers_to_include)
+            if self.scaling.custom_labels:
+                ticks = self.get_tick_range()
+                labels = self.scaling.get_custom_labels(ticks, unit_decimal_places=self.decimal_number_config.get('num_decimal_places', 0))
+                self.add_labels(dict(zip(ticks, labels)))
+            else:
+                self.add_numbers(self.numbers_to_include)
+
+    _frame_excluded = ('scaling',)
 
     @staticmethod
     def _real(value, name, positive=False, nonnegative=False):
@@ -5221,6 +5543,7 @@ class NumberLine(VGroup):
         if isinstance(number,(list,tuple)):
             return [self.number_to_point(value) for value in self._numbers(number)]
         self._real(number,'NumberLine value')
+        number = self._real(self.scaling.inverse_function(number),'NumberLine value')
         result = self.get_start()+self.get_vector()*((number-self.x_min)/(self.x_max-self.x_min))
         if not all(math.isfinite(v) for v in result):
             raise ValueError('NumberLine coordinates must be finite')
@@ -5238,7 +5561,7 @@ class NumberLine(VGroup):
         if length == 0:
             raise ValueError('Cannot convert coordinates on a collapsed NumberLine')
         alpha = sum(a*(b/length) for a,b in zip(point-start,direction))/length
-        return self._real(self.x_min+alpha*(self.x_max-self.x_min),'NumberLine result')
+        return self._real(self.scaling.function(self.x_min+alpha*(self.x_max-self.x_min)),'NumberLine result')
 
     get_projection = Line.get_projection
 
@@ -5260,7 +5583,7 @@ class NumberLine(VGroup):
             lo = math.ceil(self.x_min/self.x_step-1e-9)
             hi = math.floor(self.x_max/self.x_step+1e-9)
             values = [i*self.x_step for i in range(lo,hi+1)]
-        return [value for value in values if
+        return [self.scaling.function(value) for value in values if
                 not (self.include_tip and abs(value-self.x_max) <= 1e-9)
                 and not (self.exclude_origin_tick and value == 0)]
 
@@ -5290,9 +5613,10 @@ class NumberLine(VGroup):
             if isinstance(child, Line):
                 child.put_start_and_end_on(local(child.get_start()),local(child.get_end()))
             else:
-                child.move_to(local(child.get_center()))
-                child.angle -= self.angle
-                child.geometry_scale /= self.geometry_scale
+                center = local(child.get_center())
+                child.move_to(center)
+                # Rotate/scale about the center so families (e.g. units) keep their layout.
+                child.rotate(-self.angle, about_point=center).scale(1/self.geometry_scale, about_point=center)
         decoration._number_line_role = role
         self.add(decoration)
         return self
@@ -5314,6 +5638,29 @@ class NumberLine(VGroup):
         options.setdefault('color',self.color)
         return DecimalNumber(x,font_size=self.font_size if font_size is None else font_size,
                              **options).next_to(self.n2p(x),direction=direction,buff=buff)
+
+    def add_labels(self, dict_values, direction=None, buff=None, font_size=None, label_constructor=None):
+        """Place given labels (strings or mobjects) at numbers, as Community's add_labels."""
+        direction = self._direction(self.label_direction if direction is None else direction)
+        buff = self.line_to_number_buff if buff is None else buff
+        constructor = self.label_constructor if label_constructor is None else label_constructor
+        labels = []
+        for x, label in dict(dict_values).items():
+            if isinstance(label, str):
+                label = constructor(label, font_size=self.font_size if font_size is None else font_size)
+            elif not isinstance(label, Mobject):
+                raise TypeError('NumberLine labels must be strings or Mobjects')
+            labels.append(label.next_to(self.n2p(x), direction=direction, buff=buff))
+        return self._add_world_decoration(VGroup(*labels), 'labels')
+
+    @property
+    def labels(self):
+        return self._part('labels')
+
+    @labels.setter
+    def labels(self, group):
+        # Community stores the label group; lite tags it so the child lookup finds it.
+        group._number_line_role = 'labels'
 
     def add_numbers(self, x_values=None, excluding=None, font_size=None, **kwargs):
         values = self.get_tick_range() if x_values is None else self._numbers(x_values)
@@ -5347,6 +5694,9 @@ class Axes(VGroup):
         common = merge(common,axis_config)
         x_options = merge(common,x_axis_config)
         y_options = merge(merge(common,dict(rotation=PI/2,label_direction=LEFT)),y_axis_config)
+        for options in (x_options, y_options):
+            # Community keeps the origin tick on scaled (e.g. LogBase) axes.
+            options['exclude_origin_tick'] = isinstance(options.get('scaling') or LinearBase(), LinearBase)
         if y_range is None:
             radius = max(1,round(config.frame_height/2))
             y_range = [-radius,radius,1]
@@ -5355,13 +5705,16 @@ class Axes(VGroup):
         x_axis = NumberLine(x_range,**x_options)
         y_axis = NumberLine(y_range,**y_options)
         for axis, role in ((x_axis,'x'),(y_axis,'y')):
-            axis.shift(axis.n2p(self._origin_shift(axis.x_range))*(-1))
+            # Community shifts by the scaled range (LogBase ranges are exponents).
+            scaled = [axis.scaling.function(axis.x_min), axis.scaling.function(axis.x_max)]
+            axis.shift(axis.n2p(self._origin_shift(scaled))*(-1))
             axis._axes_role = role
         self.add(x_axis,y_axis)
         self.x_range,self.y_range = x_axis.x_range[:],y_axis.x_range[:]
         self.num_sampled_graph_points_per_tick = 10
         # Center the coordinate rectangle, including ranges which exclude zero.
-        middle = self.c2p((x_axis.x_min+x_axis.x_max)/2,(y_axis.x_min+y_axis.x_max)/2)
+        middle = self.c2p(x_axis.scaling.function((x_axis.x_min+x_axis.x_max)/2),
+                          y_axis.scaling.function((y_axis.x_min+y_axis.x_max)/2))
         self.shift(middle*(-1))
 
     @staticmethod
@@ -5431,8 +5784,12 @@ class Axes(VGroup):
             NumberLine._real(value,'Axes coordinate')
         if len(coords) == 3 and coords[2] != 0:
             raise NotImplementedError('Axes supports only the XY plane')
-        origin = self.x_axis.n2p(self._origin_shift(self.x_axis.x_range))
+        origin = self.x_axis.n2p(self._axis_shift(self.x_axis))
         return self._point_to_world(self.x_axis.n2p(coords[0])+self.y_axis.n2p(coords[1])-origin)
+
+    def _axis_shift(self, axis):
+        """Community's origin shift, taken over the axis's scaled range."""
+        return self._origin_shift([axis.scaling.function(axis.x_min), axis.scaling.function(axis.x_max)])
 
     c2p = coords_to_point
 
@@ -5441,7 +5798,7 @@ class Axes(VGroup):
 
     def _basis(self):
         # Query the nested NumberLines in Axes-local space, then apply this parent.
-        origin = self.x_axis.n2p(self._origin_shift(self.x_axis.x_range))
+        origin = self.x_axis.n2p(self._axis_shift(self.x_axis))
         world = self._point_to_world(origin)
         vectors = [self._point_to_world(origin+axis.get_unit_vector())-world
                    for axis in (self.x_axis,self.y_axis)]
@@ -5469,9 +5826,13 @@ class Axes(VGroup):
         determinant = x[0]*y[1]-x[1]*y[0]
         if abs(determinant) < 1e-12:
             raise ValueError('Cannot invert parallel Axes')
-        offset = point-self.get_origin()
-        result = [(offset[0]*y[1]-offset[1]*y[0])/determinant/lx,
-                  (x[0]*offset[1]-x[1]*offset[0])/determinant/ly]
+        # Solve in the axes' raw (position) coordinates, then apply each axis scaling.
+        shifts = [self._axis_shift(self.x_axis), self._axis_shift(self.y_axis)]
+        raw = [axis.scaling.inverse_function(value) for axis, value in zip((self.x_axis, self.y_axis), shifts)]
+        offset = point-self.c2p(*shifts)
+        result = [raw[0]+(offset[0]*y[1]-offset[1]*y[0])/determinant/lx,
+                  raw[1]+(x[0]*offset[1]-x[1]*offset[0])/determinant/ly]
+        result = [axis.scaling.function(value) for axis, value in zip((self.x_axis, self.y_axis), result)]
         for value in result:
             NumberLine._real(value,'Axes result')
         return result
@@ -5547,8 +5908,13 @@ class Axes(VGroup):
         if x_range is None:
             values[2] = step
         values = ParametricFunction._range(values,step)
-        graph = ParametricFunction(lambda t: self.c2p(t,function(t)),t_range=values,
-                                   use_vectorized=use_vectorized,**kwargs)
+        scale = self.x_axis.scaling
+        if isinstance(scale,LinearBase):
+            point = lambda t: self.c2p(t,function(t))
+        else:
+            # Community samples scaled plots at scaling.function(t) over the raw range.
+            point = lambda t: self.c2p(scale.function(t),function(scale.function(t)))
+        graph = ParametricFunction(point,t_range=values,use_vectorized=use_vectorized,**kwargs)
         graph.underlying_function = function
         return graph
 
@@ -6176,8 +6542,8 @@ class ComplexPlane(NumberPlane):
             local = center+Vector((offset[0]*math.cos(self.angle)+offset[1]*math.sin(self.angle),
                                    -offset[0]*math.sin(self.angle)+offset[1]*math.cos(self.angle),0))*(1/self.geometry_scale)
             label.shift(local-label._pivot_point())
-            label.angle -= self.angle
-            label.geometry_scale /= self.geometry_scale
+            # Rotate/scale about the pivot so labels with unit parts keep their layout.
+            label.rotate(-self.angle, about_point=local).scale(1/self.geometry_scale, about_point=local)
         self.add(labels)
         del self._coordinate_labels
         self._geometry_center()
@@ -11094,7 +11460,7 @@ class _StreamLinesEnd(Animation):
 EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
            'Triangle', 'Polygon', 'Polygram', 'RegularPolygram', 'RegularPolygon', 'Star', 'Brace', 'BraceBetweenPoints', 'BraceLabel', 'BraceText',
            'Title', 'BulletedList', 'Tex', 'SingleStringMathTex', 'MarkupText', 'LabeledDot', 'Variable', 'always', 'f_always', 'always_shift', 'always_rotate',
-           'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'BarChart', 'PolarPlane', 'NumberPlane', 'ComplexPlane', 'VectorField', 'ArrowVectorField', 'StreamLines', 'sigmoid', 'ScreenRectangle', 'FullScreenRectangle', 'VectorizedPoint', 'ComplexValueTracker', 'UnitInterval', 'TangentialArc', 'CurvesAsSubmobjects', 'VDict', 'Cutout', 'ConvexHull', 'ArcBrace', 'LaggedStartMap', 'MaintainPositionRelativeTo', 'Blink', 'Broadcast', 'SpiralIn', 'AddTextWordByWord', 'Animation', 'line_intersection', 'angle_between_vectors', 'DEFAULT_LAGGED_START_LAG_RATIO', 'Graph', 'DiGraph', 'Union', 'Intersection', 'Difference', 'Exclusion', 'Code', 'SVGMobject', 'VMobjectFromSVGPath', 'ImageMobject', 'RESAMPLING_ALGORITHMS', 'TypeWithCursor', 'UntypeWithCursor', 'AnimatedBoundary', 'ShowPassingFlashWithThinningStrokeWidth', 'FadeTransformPieces', 'ImplicitFunction', 'LabeledPolygram', 'ChangeSpeed', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
+           'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'BarChart', 'PolarPlane', 'NumberPlane', 'ComplexPlane', 'VectorField', 'ArrowVectorField', 'StreamLines', 'sigmoid', 'ScreenRectangle', 'FullScreenRectangle', 'VectorizedPoint', 'ComplexValueTracker', 'UnitInterval', 'TangentialArc', 'CurvesAsSubmobjects', 'VDict', 'Cutout', 'ConvexHull', 'ArcBrace', 'LaggedStartMap', 'MaintainPositionRelativeTo', 'Blink', 'Broadcast', 'SpiralIn', 'AddTextWordByWord', 'Animation', 'line_intersection', 'angle_between_vectors', 'DEFAULT_LAGGED_START_LAG_RATIO', 'Graph', 'DiGraph', 'Union', 'Intersection', 'Difference', 'Exclusion', 'Code', 'SVGMobject', 'VMobjectFromSVGPath', 'ImageMobject', 'RESAMPLING_ALGORITHMS', 'ManimColor', 'HSV', 'RGBA', 'LinearBase', 'LogBase', 'RandomColorGenerator', 'random_color', 'random_bright_color', 'TypeWithCursor', 'UntypeWithCursor', 'AnimatedBoundary', 'ShowPassingFlashWithThinningStrokeWidth', 'FadeTransformPieces', 'ImplicitFunction', 'LabeledPolygram', 'ChangeSpeed', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform',

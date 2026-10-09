@@ -298,3 +298,6 @@ clip paths and image pixel interpolation in Transform remain open.
 TypeWithCursor/UntypeWithCursor, AnimatedBoundary, ChangeSpeed, ImplicitFunction,
 LabeledPolygram, ShowPassingFlashWithThinningStrokeWidth and FadeTransformPieces are
 implemented with Community checks for timing, cursor placement and pole positions.
+
+ManimColor/HSV/RandomColorGenerator, LogBase/LinearBase axes and TeX numeric units are
+implemented with Community checks.

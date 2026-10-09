@@ -460,6 +460,48 @@ self.play(UntypeWithCursor(text, cursor))""")['frames']
         self.assertEqual([len(m['children']) for m in pieces[7]['mobjects']],[3,3])
         self.assertEqual(len(pieces[-1]['mobjects'][0]['children']),3)
 
+    def test_manim_color_matches_community(self):
+        red=lite.ManimColor('#FF0000')
+        self.assertEqual((red,red.to_hex(),red.to_rgb(),red.to_int_rgb(),repr(red)),('#FF0000','#FF0000',[1,0,0],[255,0,0],"ManimColor('#FF0000')"))
+        # Parsing and method results measured with Manim Community 0.22.
+        for value,expected in (('red','#FC6255FF'),('RED','#FC6255FF'),('#f00','#FF0000FF'),('#ff000080','#FF000080'),
+                               ((1,0,0),'#010000FF'),((255,0,0),'#FF0000FF'),([.5,.5,.5,.5],'#7F7F7F7F'),(0xFF00FF,'#FF00FFFF')):
+            self.assertEqual(lite.ManimColor(value).to_hex(with_alpha=True),expected)
+        self.assertEqual([lite.RED.interpolate(lite.BLUE,.5),lite.RED.lighter(),lite.RED.darker(.3),lite.RED.invert()],
+                         ['#AA9399','#FC8177','#B0443B','#029DAA'])
+        self.assertEqual(lite.RED.opacity(.5).to_hex(True),'#FC62557F')
+        self.assertEqual((lite.RED.to_integer(),lite.RED.contrasting(),lite.ManimColor(None)),(16540245,'#000000','#000000'))
+        self.assertEqual([round(v,5) for v in lite.RED.to_hsv()],[.01297,.66270,.98824])
+        self.assertIsInstance(lite.RED,lite.ManimColor)
+        self.assertEqual([lite.RandomColorGenerator(3).next() for _ in range(1)],['#58C4DD'])
+        generator=lite.RandomColorGenerator(3)
+        self.assertEqual([generator.next() for _ in range(3)],['#58C4DD','#644172','#94424F'])
+        self.assertEqual(lite.Square(color='red').color,lite.RED)
+        self.assertEqual(lite.Square().set_fill((0,255,0)).fill_color,'#00FF00')
+        self.assertEqual(json.loads(json.dumps(lite.Square(color=lite.RED).to_dict()))['color'],'#FC6255')
+        with self.assertRaises(ValueError): lite.ManimColor('nope')
+
+    def test_log_scaled_axes_match_community(self):
+        axes=lite.Axes(x_range=[0,10,1],y_range=[-2,6,1],x_length=8,y_length=5,tips=False,
+                       y_axis_config={'scaling':lite.LogBase(custom_labels=True),'include_numbers':True})
+        # Coordinates and ticks measured with Manim Community 0.22.
+        for coords,point in (((1,1),(-3.2,-1.25)),((5,100),(0,0)),((0,.01),(-4,-2.5))):
+            self.assertPointAlmostEqual(axes.c2p(*coords)[:2],point)
+        self.assertEqual([round(v,4) for v in axes.p2c(axes.c2p(3,1000))],[3,1000])
+        self.assertEqual([round(v,4) for v in axes.y_axis.get_tick_range()],[.01,.1,1,10,100,1000,10000,100000,1000000])
+        self.assertEqual(len(axes.y_axis.labels),9)
+        self.assertEqual((axes.y_axis.labels[0].text,axes.y_axis.labels[0].unit),('10','^{-2}'))
+        graph=axes.plot(lambda x:2**x,x_range=[0,10])
+        self.assertEqual([round(v,3) for v in graph.get_end()[:2]],[4,.631])
+        log_x=lite.Axes(x_range=[-1,3,1],y_range=[0,10,2],x_axis_config={'scaling':lite.LogBase()},tips=False)
+        self.assertPointAlmostEqual(log_x.c2p(10,4)[:2],(0,-.6))
+        curve=log_x.plot(lambda x:math.log10(x)*3+2)
+        self.assertPointAlmostEqual(curve.get_start()[:2],(-6,-3.6))
+        self.assertPointAlmostEqual(curve.get_end()[:2],(6,3.6))
+        self.assertEqual(lite.LinearBase(2).function(3),6)
+        with self.assertRaises(ValueError): lite.LogBase().inverse_function(0)
+        with self.assertRaises(ValueError): log_x.get_origin()
+
     def test_set_style_routes_fill_and_stroke(self):
         square=lite.Square().set_style(fill_color=lite.RED,fill_opacity=.5,stroke_color=lite.BLUE,
                                        stroke_width=6,stroke_opacity=.25,background_stroke_width=0)
@@ -1183,7 +1225,9 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertEqual(lite.rgb_to_color((1,.5,0)),'#FF7F00')
         self.assertEqual(lite.rgb_to_color((255,128,0)),'#FF8000')
         self.assertPointAlmostEqual(lite.color_to_rgb('#ff0000'),(1,0,0))
-        for bad in (lambda:lite.interpolate_color('red',lite.WHITE,.5),lambda:lite.color_gradient([],2),
+        # Community parses palette names, so 'red' is its RED (#FC6255).
+        self.assertEqual(lite.interpolate_color('red',lite.WHITE,.5),lite.RED.interpolate(lite.WHITE,.5))
+        for bad in (lambda:lite.interpolate_color('not-a-color',lite.WHITE,.5),lambda:lite.color_gradient([],2),
                     lambda:lite.interpolate_color(lite.RED,lite.WHITE,float('inf'))):
             with self.assertRaises(ValueError): bad()
         group=lite.VGroup(*[lite.Square() for _ in range(3)],lite.VGroup(lite.Text('A')))
@@ -3325,16 +3369,17 @@ assert isinstance(t.get_value(), (int, float))""")
         plane = lite.ComplexPlane(x_range=[-3,3],y_range=[-2,2])
         options = {'num_decimal_places':1,'color':lite.RED,'direction':None,'buff':None}
         labels = plane.get_coordinate_labels(2j,2,-1j,-2,1+2j,2+1j,1+1j,**options)
-        self.assertEqual([label.text for label in labels],['2.0i','2.0','-1.0i','-2.0','2.0i','2.0','1.0'])
+        full=lambda label: label.text+(label.unit or '')  # Community typesets the unit as a TeX part.
+        self.assertEqual([full(label) for label in labels],['2.0i','2.0','-1.0i','-2.0','2.0i','2.0','1.0'])
         self.assertIs(plane.coordinate_labels,labels)
         self.assertNotIn('unit',options)
         self.assertNotIn('_coordinate_labels',plane.to_dict())
         self.assertEqual(len(plane.children),4)
         for label in labels: self.assertEqual(label.fill_color,lite.RED)
         labels = plane.get_coordinate_labels(1j,2,unit='m',num_decimal_places=0)
-        self.assertEqual([label.text for label in labels],['1i','2m'])
+        self.assertEqual([full(label) for label in labels],['1i','2m'])
         defaults = plane.get_coordinate_labels()
-        self.assertEqual([label.text for label in defaults],['-3','-2','-1','1','2','3','-2i','-1i','1i','2i'])
+        self.assertEqual([full(label) for label in defaults],['-3','-2','-1','1','2','3','-2i','-1i','1i','2i'])
         json.dumps(plane.to_dict(),allow_nan=False)
 
     def test_complex_labels_world_queries_and_attached_pivot_compensation(self):
@@ -3342,11 +3387,12 @@ assert isinstance(t.get_value(), (int, float))""")
         coordinates = [0,1+1j,-3-2j,3+2j]
         before = [plane.n2p(z) for z in coordinates]
         labels = plane.get_coordinate_labels(-3,2j,num_decimal_places=0)
-        expected = [label.get_center() for label in labels]
+        # Pivots, not bounding-box centers: a two-part label's box is not rotation invariant.
+        expected = [label._pivot_point() for label in labels]
         self.assertEqual([label.angle for label in labels],[0,0])
         plane.add_coordinates(-3,2j,num_decimal_places=0)
         for label,point in zip(plane.coordinate_labels,expected):
-            self.assertPointAlmostEqual(plane._point_to_world(label.get_center()),point)
+            self.assertPointAlmostEqual(plane._point_to_world(label._pivot_point()),point)
             self.assertAlmostEqual(label.angle+plane.angle,0)
             self.assertAlmostEqual(label.geometry_scale*plane.geometry_scale,1)
         for z,point in zip(coordinates,before): self.assertPointAlmostEqual(plane.n2p(z),point)
@@ -3390,7 +3436,7 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertPointAlmostEqual(final[1]['position'],(0,2,0))
         self.assertPointAlmostEqual(final[2]['position'],(0,-2,0))
         self.assertEqual(final[0]['angle'],0)
-        texts = [label['text'] for label in final[0]['children'][-1]['children']]
+        texts = [label['text']+''.join(c['text'] for c in label['children']) for label in final[0]['children'][-1]['children']]
         self.assertIn('2i',texts); self.assertIn('-2i',texts)
 
     def test_number_plane_grid_spacing_styles_and_roles(self):
@@ -3844,7 +3890,7 @@ assert isinstance(t.get_value(), (int, float))""")
             with self.assertRaises(ValueError): lite.NumberLine(**kwargs)
         with self.assertRaises(ValueError): lite.NumberLine([0,1,.00001])
         with self.assertRaises(NotImplementedError): lite.NumberLine(label_direction=lite.OUT)
-        with self.assertRaises(NotImplementedError): lite.NumberLine(scaling='logarithmic')
+        with self.assertRaises(TypeError): lite.NumberLine(scaling='logarithmic')
         line = lite.NumberLine([0,2]).rotate(.4).scale(2)
         before = line.to_dict()
         for values in ([0,float('nan')],[0]*1001):
@@ -4493,9 +4539,9 @@ self.wait(1)""")
         self.assertEqual(lite.DecimalNumber().text, '0.00')
         number = lite.DecimalNumber(1234.125, num_decimal_places=3, include_sign=True,
                                     show_ellipsis=True, unit=' kg')
-        self.assertEqual(number.text, '+1,234.125… kg')
+        self.assertEqual((number.text, number.unit_sign.text), ('+1,234.125…', ' kg'))
         number.set_value(-.0001)
-        self.assertEqual(number.text, '+0.000… kg')
+        self.assertEqual(number.text, '+0.000…')
         self.assertEqual(lite.DecimalNumber(-0.0).text, '0.00')
         self.assertEqual(lite.DecimalNumber(1234, group_with_commas=False).text, '1234.00')
         for value, expected in [(2.5, 2), (3.5, 4), (-2.5, -2)]:
@@ -4553,8 +4599,9 @@ self.wait(1)""")
         self.assertEqual(middle[1]['text'], '+1.00')
         self.assertEqual(middle[1]['position'], [1, 1, 0])
         self.assertEqual(middle[2]['text'], '1')
-        self.assertEqual(result['frames'][75]['mobjects'][3]['text'], '1,750 points')
-        self.assertEqual(result['frames'][-1]['mobjects'][3]['text'], '1,000 points')
+        self.assertEqual(result['frames'][75]['mobjects'][3]['text'], '1,750')
+        self.assertEqual(result['frames'][75]['mobjects'][3]['children'][0]['text'], ' points')
+        self.assertEqual(result['frames'][-1]['mobjects'][3]['text'], '1,000')
         self.assertEqual(result['frames'][0]['mobjects'][1]['text'], '-2.00')
 
     def test_become_keeps_identity_callbacks_checkpoint_and_independent_target(self):

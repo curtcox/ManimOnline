@@ -1512,3 +1512,10 @@ The **Typing, boundaries and implicit curves** example covers `TypeWithCursor`,
 including `ChangeSpeed.add_updater`), `ImplicitFunction`, `LabeledPolygram` (Community's
 polylabel) and `ShowPassingFlashWithThinningStrokeWidth`; `FadeTransformPieces` is
 also available.
+
+The **Logarithmic axes and colors** example covers `LogBase`/`LinearBase` axis
+scaling (coordinates, ticks, `10^k` labels and plots match Community), `ManimColor`
+(colors are now `ManimColor` strings with `interpolate`, `lighter`, `darker`, `invert`,
+`to_rgb`, `from_hsv`, ...; names like `"red"` parse to Manim's palette as in
+Community), seeded `RandomColorGenerator`, and DecimalNumber units, which are now
+typeset as a TeX part after the digits like Community.

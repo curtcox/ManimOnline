@@ -2305,3 +2305,13 @@ smooths. LabeledPolygram ports Community's polylabel, including its min-distance
 priority queue, so poles match. TypeWithCursor adds the cursor as the text's last
 member like Community and samples glyph visibility from copies. `get_points` now
 transforms all points with one pivot computation (previously quadratic).
+
+`ManimColor` subclasses `str` (the truncated `#RRGGBB` hex) and carries RGBA floats, so
+frames and string-based code are unchanged while Community's methods work. Mobject
+color setters parse values through it. NumberLine accepts `scaling`: positions use
+`inverse_function`, ticks/point_to_number use `function`, and LogBase custom labels are
+`Integer(base, unit="^{k}")`. Axes take origin shifts over the scaled range, keep the
+origin tick on scaled axes, sample scaled plots at `function(t)`, and invert in raw
+coordinates. DecimalNumber's unit is a MathTex child (`unit_sign`) placed in the
+number's local frame, top-aligned for superscript units. point_from_proportion and
+MathTex size estimates were sped up for MoveAlongPath-heavy scenes.

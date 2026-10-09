@@ -586,3 +586,8 @@ are security boundaries for shared links. Circle's default color is RED (Communi
 Read `examples/typing_scene.py` for typing cursors, animated boundaries, ChangeSpeed and
 implicit curves. Use `_points_to_world` for batches of points; per-point
 `_point_to_world` recomputes the pivot and is quadratic on long paths.
+
+Read `examples/log_axes_scene.py` for log axes and colors. Colors are ManimColor (a
+str subclass); keep `_paint` in color setters. NumberLine.scaling is excluded from
+frames; Axes coordinate code must go through `_axis_shift` and the scaling functions.
+DecimalNumber units are a `unit_sign` child in local coordinates.
