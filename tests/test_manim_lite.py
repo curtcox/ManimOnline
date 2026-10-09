@@ -16,6 +16,52 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_text_effects_gallery_renders_glyph_groups(self):
+        result=json.loads(lite.render_scene((ROOT/'examples/text_effects_scene.py').read_text()))
+        title=result['frames'][25]['mobjects'][0]
+        self.assertEqual(title['type'],'vgroup')
+        self.assertEqual([c['text'] for c in title['children']][:5],list('Hello'))
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+
+    def test_text_glyphs_t2c_markup_and_glyph_animation(self):
+        # Reference glyph centers: Manim Community 0.22, font='Liberation Sans'.
+        text=lite.Text('Hello world')
+        width=text.get_width()
+        self.assertEqual(len(text),10)
+        self.assertEqual(text._type,'vgroup')
+        for glyph,expected in zip(text,[(-1.414,-.009),(-.989,-.062),(-.728,.003),(-.58,.003),(-.32,-.062),(.291,-.062)]):
+            for a,b in zip(glyph.get_center()[:2],expected):
+                self.assertAlmostEqual(a,b,delta=.002)
+        self.assertAlmostEqual(text.get_width(),width)
+        lines=lite.Text('Ab\ncd')
+        for glyph,expected in zip(lines,[(-.172,.316),(.243,.325),(-.223,-.387),(.117,-.325)]):
+            for a,b in zip(glyph.get_center()[:2],expected):
+                self.assertAlmostEqual(a,b,delta=.002)
+        moved=lite.Text('Hi').scale(2).rotate(lite.PI/2).shift(lite.RIGHT)
+        before=moved.get_center()
+        self.assertLess(moved[0].get_center()[1],moved[1].get_center()[1])
+        self.assertPointAlmostEqual(moved.get_center(),before)
+        colored=lite.Text('Hello world',t2c={'world':lite.RED,'[0:1]':lite.BLUE},t2w={'ell':lite.BOLD})
+        self.assertEqual([g.color for g in colored][:6],[lite.BLUE,lite.WHITE,lite.WHITE,lite.WHITE,lite.WHITE,lite.RED])
+        self.assertEqual(colored[1].weight,lite.BOLD)
+        graded=lite.Text('abc',gradient=(lite.PURE_RED,lite.PURE_BLUE))
+        self.assertEqual([g.color for g in graded],lite.color_gradient([lite.PURE_RED,lite.PURE_BLUE],3))
+        markup=lite.MarkupText('<b>Bold</b> and <span foreground="#FF0000">red</span> &amp;')
+        self.assertEqual(markup.text,'Bold and red &')
+        self.assertEqual((markup[0].weight,markup[7].color),(lite.BOLD,'#FF0000'))
+        with self.assertRaises(NotImplementedError): lite.MarkupText('<blink>x</blink>')
+        self.assertEqual(lite.DecimalNumber(1.5)._type,'text')
+        written=render('t = Text("Hello")\nself.play(Write(t), run_time=1)')
+        frame=written['frames'][6]['mobjects'][0]
+        self.assertEqual(frame['type'],'text')
+        exploded=render('t = Text("Hello")\nt[0].set_color(RED)\nself.play(Write(t), run_time=1)')
+        glyphs=exploded['frames'][6]['mobjects'][0]['children']
+        self.assertEqual(glyphs[0]['color'],lite.RED)
+        self.assertGreater(glyphs[0]['opacity'],glyphs[-1]['opacity'])
+        letters=render('t = Text("abc")\nt[1]\nself.play(AddTextLetterByLetter(t))')
+        self.assertEqual(len(letters['frames'][2]['mobjects'][0]['children']),2)
+        self.assertEqual(letters['frames'][-1]['mobjects'][0]['children'][2]['text'],'c')
+
     def test_matrix_table_gallery_renders_and_cleans_up(self):
         result=json.loads(lite.render_scene((ROOT/'examples/matrix_table_scene.py').read_text()))
         self.assertEqual(result['duration'],8)

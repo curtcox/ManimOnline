@@ -3341,7 +3341,8 @@ def _math_parts(text, parts, font_size):
 
 
 class Text(Mobject):
-    def __init__(self, text, font_size=48, line_spacing=-1, font='', slant=NORMAL, weight=NORMAL, **kwargs):
+    def __init__(self, text, font_size=48, line_spacing=-1, font='', slant=NORMAL, weight=NORMAL,
+                 t2c=None, t2f=None, t2g=None, t2s=None, t2w=None, gradient=None, disable_ligatures=False, **kwargs):
         if isinstance(font_size, bool) or not isinstance(font_size, _REAL) or not math.isfinite(font_size) or font_size <= 0:
             raise ValueError('font_size must be positive and finite')
         if isinstance(line_spacing, bool) or not isinstance(line_spacing, _REAL) or not math.isfinite(line_spacing):
@@ -3366,6 +3367,125 @@ class Text(Mobject):
             self.slant = slant
         if weight != NORMAL:
             self.weight = weight
+        styles = [(t2f, 'font'), (t2s, 'slant'), (t2w, 'weight'), (t2c, 'color'), (t2g, 'gradient')]
+        if gradient or any(mapping for mapping, _ in styles):
+            self._explode()
+            if gradient:
+                self.set_color_by_gradient(*gradient)
+            for mapping, kind in styles:
+                for key, value in (mapping or {}).items():
+                    glyphs = [g for g in self.children if g._char_index in self._indices(key)]
+                    if kind == 'color':
+                        for glyph in glyphs:
+                            glyph.set_color(value)
+                    elif kind == 'gradient':
+                        VGroup(*glyphs).set_color_by_gradient(*value) if glyphs else None
+                    else:
+                        for glyph in glyphs:
+                            setattr(glyph, kind, value)
+
+    def _indices(self, key):
+        """Original-text character indices for a t2* key: a substring or '[start:stop]'."""
+        import re
+        match = re.fullmatch(r'\[(-?\d*):(-?\d*)\]', key)
+        if match:
+            start = int(match.group(1)) if match.group(1) else None
+            stop = int(match.group(2)) if match.group(2) else None
+            return set(range(len(self.text))[start:stop])
+        indices, at = set(), self.text.find(key)
+        while key and at >= 0:
+            indices.update(range(at, at + len(key)))
+            at = self.text.find(key, at + 1)
+        return indices
+
+    def _explode(self):
+        """Split into Community-style glyph children placed by the same ink layout."""
+        if self._type != 'text' or '_number_format' in self.__dict__:
+            return
+        layout = _text_layout(self.__dict__)
+        em = layout['em'] / 1000
+        style = {key: self.__dict__[key] for key in ('color', 'fill_color', 'stroke_color', 'fill_opacity',
+                                                    'stroke_opacity', 'stroke_width', 'z_index')}
+        options = {key: self.__dict__[key] for key in ('font', 'slant', 'weight', 'line_spacing') if key in self.__dict__}
+        glyphs, index = [], 0
+        for line in layout['lines']:
+            x = line['x']
+            for char in line['text']:
+                advance, x0, x1, y0, y1 = _glyph_box(char, _SANS_GLYPHS)
+                if not char.isspace() and (x1 > x0 or y1 > y0):
+                    glyph = Text(char, font_size=self.font_size, **options, **style)
+                    center = Vector((x + (x0 + x1) / 2 * em, line['y'] + (y0 + y1) / 2 * em, 0))
+                    glyph.position = list(self._point_to_world(center))
+                    glyph.angle, glyph.geometry_scale, glyph.opacity = self.angle, self.geometry_scale, self.opacity
+                    if 'glyph_stretch' in self.__dict__:
+                        glyph.glyph_stretch = list(self.glyph_stretch)
+                    glyph._char_index = index
+                    glyphs.append(glyph)
+                x += advance * em
+                index += 1
+            index += 1  # the newline
+        self.position, self.angle, self.geometry_scale, self.opacity = [0, 0, 0], 0, 1, 1
+        self.__dict__.pop('glyph_stretch', None)
+        self.__dict__.pop('_family_pivot_cache', None)
+        self.children, self._type = glyphs, 'vgroup'
+
+    def __getitem__(self, value):
+        self._explode()
+        return super().__getitem__(value)
+
+    def __iter__(self):
+        self._explode()
+        return iter(self.split())
+
+    def __len__(self):
+        self._explode()
+        return len(self.split())
+
+
+class MarkupText(Text):
+    """Pango-style markup for <b>, <i>, <span> colors/weights/styles and entities."""
+    def __init__(self, text, **kwargs):
+        import re, html
+        plain, styles, stack, at = '', [], [{}], 0
+        for match in re.finditer(r'<(/?)(\w+)([^>]*)>|([^<]+)', str(text)):
+            closing, tag, attributes, content = match.groups()
+            if content is not None:
+                content = html.unescape(content)
+                styles.extend([dict(stack[-1])] * len(content))
+                plain += content
+            elif closing:
+                if len(stack) > 1:
+                    stack.pop()
+            else:
+                style = dict(stack[-1])
+                tag = tag.lower()
+                if tag in ('b', 'bold'):
+                    style['weight'] = BOLD
+                elif tag in ('i', 'italic'):
+                    style['slant'] = ITALIC
+                elif tag == 'span':
+                    for name, value in re.findall(r'(\w+)\s*=\s*["\']([^"\']*)["\']', attributes):
+                        if name in ('foreground', 'fgcolor', 'color'):
+                            style['color'] = value.upper() if value.startswith('#') else _PALETTE.get(value.upper(), value)
+                        elif name in ('font_weight', 'weight') and value.upper() in globals():
+                            style['weight'] = value.upper()
+                        elif name in ('font_style', 'style') and value.upper() in (NORMAL, ITALIC, OBLIQUE):
+                            style['slant'] = value.upper()
+                        elif name in ('font', 'font_family', 'face'):
+                            style['font'] = value
+                elif tag not in ('u', 'small', 'big', 's', 'tt', 'sub', 'sup'):
+                    raise NotImplementedError(f'MarkupText does not support <{tag}> in this preview')
+                stack.append(style)
+        super().__init__(plain, **kwargs)
+        self.markup = str(text)
+        if any(styles):
+            self._explode()
+            for glyph in self.children:
+                for key, value in styles[glyph._char_index].items():
+                    if key == 'color':
+                        glyph.set_color(value)
+                    else:
+                        setattr(glyph, key, value)
 
 
 def _number_text(number, options):
@@ -7342,7 +7462,8 @@ class AddTextLetterByLetter(Animation):
 
     def __init__(self, text, suspend_mobject_updating=False, int_func=math.ceil, rate_func=linear,
                  time_per_char=0.1, run_time=None, **kwargs):
-        if not isinstance(text, Text) or text._type != 'text' or '_number_format' in text.__dict__:
+        if (not isinstance(text, Text) or isinstance(text, MathTex) or text._type not in ('text', 'vgroup')
+                or '_number_format' in text.__dict__):
             raise TypeError('Letter-by-letter animations expect Text')
         glyphs = sum(1 for char in text.text if not char.isspace())
         if run_time is None:
@@ -7352,6 +7473,12 @@ class AddTextLetterByLetter(Animation):
 
     def sample(self, alpha):
         result = copy.deepcopy(self.start)
+        if result['type'] == 'vgroup':
+            # Glyph children (Community's structure): reveal them in order.
+            count = len(result['children'])
+            shown = max(0, min(count, int(self.int_func((1 - alpha if self._removing else alpha) * count))))
+            result['children'] = result['children'][:shown]
+            return [result]
         layout = _text_layout(result)
         glyphs = sum(1 for char in result['text'] if not char.isspace())
         shown = max(0, min(glyphs, int(self.int_func((1 - alpha if self._removing else alpha) * glyphs))))
@@ -7699,7 +7826,7 @@ class MovingCameraScene(Scene):
 
 EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
            'Triangle', 'Polygon', 'Polygram', 'RegularPolygram', 'RegularPolygon', 'Star', 'Brace', 'BraceBetweenPoints', 'BraceLabel', 'BraceText',
-           'Title', 'BulletedList', 'Tex', 'SingleStringMathTex', 'LabeledDot', 'Variable', 'always', 'f_always', 'always_shift', 'always_rotate',
+           'Title', 'BulletedList', 'Tex', 'SingleStringMathTex', 'MarkupText', 'LabeledDot', 'Variable', 'always', 'f_always', 'always_shift', 'always_rotate',
            'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'NumberPlane', 'ComplexPlane', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',

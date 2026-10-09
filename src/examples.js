@@ -22,6 +22,7 @@ const ExampleCatalog = Object.freeze([
   { id: 'annotations', label: 'Titles, braces, bullets and variables', path: 'examples/annotation_scene.py' },
   { id: 'formulaparts', label: 'Formula parts and matching transforms', path: 'examples/formula_parts_scene.py' },
   { id: 'matrixtable', label: 'Matrices, determinants and tables', path: 'examples/matrix_table_scene.py' },
+  { id: 'texteffects', label: 'Letter colors, markup and gradients', path: 'examples/text_effects_scene.py' },
   { id: 'stretch', label: 'Stretch nested vector shapes', path: 'examples/stretch_scene.py' },
   { id: 'surround', label: 'Surround moving shapes', path: 'examples/surround_scene.py' },
   { id: 'circleconstruction', label: 'Construct circles through three points', path: 'examples/circle_construction_scene.py' },

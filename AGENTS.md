@@ -530,3 +530,9 @@ Read `examples/formula_parts_scene.py` for multi-part MathTex. Parts are
 _MathTexPart children (type mathtex, `part` index) of a vgroup-typed MathTex; all
 share one \class-tagged expression string. Keep _class_wrap producing valid TeX.
 Metrics may be [w, h] or [w, h, parts]; interpolate keeps `part` discrete.
+
+
+Read `examples/text_effects_scene.py` for glyph-level Text. Text._explode turns a
+text leaf into a vgroup of single-glyph Text children (pose moved onto glyphs,
+_char_index kept) only when indexed/iterated or styled per glyph; keep leaves
+unexploded otherwise to limit frame size.

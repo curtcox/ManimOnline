@@ -262,3 +262,8 @@ ChangeDecimalToValue, …) and labeled connectors are implemented with tests.
 
 Matrix family, get_det_text, Table family and Paragraph are implemented with
 Community reference checks; glyph stretching is axis-aligned only.
+
+
+Glyph-level Text (indexing, t2c/t2w/t2s/t2f/t2g, gradient), MarkupText basics
+and per-glyph Write/AddTextLetterByLetter are implemented with Community glyph
+position checks.

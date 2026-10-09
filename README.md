@@ -1443,3 +1443,14 @@ lines on Community's baseline pitch with left/center/right alignment. Text and
 formulas can now be stretched along their own axes (`stretch_to_fit_height`),
 which brackets and parentheses rely on; stretching rotated glyphs (a shear) is
 still unsupported.
+
+
+Try **Letter colors, markup and gradients** (`examples/text_effects_scene.py`).
+`Text` behaves like Community's group of glyphs: indexing, slicing, iteration and
+`len()` split it into single-glyph `Text` children placed by the same layout
+(glyph centers agree with Manim to about 0.001 units for Liberation Sans).
+`t2c`, `t2w`, `t2s`, `t2f`, `t2g` (substring or `"[start:stop]"` keys) and
+`gradient` color or style individual glyphs, and `Write` then staggers glyphs.
+`MarkupText` supports `<b>`, `<i>`, `<span>` foreground/weight/style/font and
+HTML entities. Unindexed text stays a single element, so long text remains cheap
+to animate. `DecimalNumber` digits are not split into glyphs.
