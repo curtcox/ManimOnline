@@ -82,6 +82,74 @@ class Demo(ZoomedScene):
                               "        super().__init__(zoomed_camera_config={'fov': 1})\n"
                               "    def construct(self): pass")
 
+    def test_linear_transformation_scene_matches_community_matrices_and_arcs(self):
+        source = """from manim import *
+class Demo(LinearTransformationScene):
+    def __init__(self, **kwargs):
+        LinearTransformationScene.__init__(self, show_coordinates=True, leave_ghost_vectors=True, **kwargs)
+    def construct(self):
+        self.log = []
+        line = self.plane.family_members_with_points()[5]
+        def record(dt):
+            points = line.get_points()
+            middle = points[len(points) // 2]
+            self.log.append((*list(self.j_hat.get_end())[:2], middle[0], middle[1]))
+        self.add_updater(record)
+        self.apply_matrix([[0, -1], [1, 0.5]])
+        self.remove_updater(record)
+        v = Vector([1, 2])
+        self.add_vector(v)
+        self.apply_inverse([[0, -1], [1, 0.5]])
+        self.result = (self.i_hat.get_end(), self.j_hat.get_end(), v.get_end(), len(self.ghost_vectors),
+                       self.get_unit_square().get_center())
+"""
+        namespace = {}
+        exec(compile(source.replace('from manim import *', ''), '<test>', 'exec'),
+             dict(vars(lite), Vector=lite.VectorArrow), namespace)
+        scene = namespace['Demo']()
+        scene.render()
+        # Manim 0.22 samples (scene updaters see the interpolated, arcing points).
+        for index, expected in ((5, (-0.016, 1.003, 4.648, 5.113)), (22, (-0.556, 0.939, 0.554, 7.741)),
+                                (40, (-0.993, 0.515, -4.867, 7.302))):
+            for actual, value in zip(scene.log[index], expected):
+                self.assertAlmostEqual(actual, value, places=3)
+        i_hat, j_hat, v, ghosts, square = scene.result
+        for actual, expected in ((i_hat, (1, 0)), (j_hat, (0, 1)), (v, (2.5, -1)), (square, (0.5, 0.5))):
+            self.assertAlmostEqual(actual[0], expected[0])
+            self.assertAlmostEqual(actual[1], expected[1])
+        self.assertEqual(ghosts, 2)
+
+    def test_vector_scene_helpers_and_nonlinear_preparation(self):
+        square = lite.Square()
+        square.insert_n_curves(2)
+        points = square.get_points()
+        # Community's bezier_remap splits the first and third curves of four.
+        self.assertEqual([[round(v, 4) + 0 for v in points[i][:2]] for i in range(0, len(points), 4)],
+                         [[1, 1], [0, 1], [-1, 1], [-1, -1], [0, -1], [1, -1]])
+        plane = lite.NumberPlane(x_range=(-2, 2, 1), y_range=(-1, 1, 1))
+        plane.prepare_for_nonlinear_transform(10)
+        self.assertTrue(all(member.get_num_curves() >= 10 for member in plane.family_members_with_points()))
+        self.assertAlmostEqual(lite.angle_of_vector((0, -2, 0)), -lite.PI / 2)
+        self.assertEqual(lite.MathTex('x^2').get_tex_string(), 'x^2')
+        self.assertEqual(lite.config.frame_x_radius, lite.config.frame_width / 2)
+        label = lite.VectorArrow([2, 1]).coordinate_label()
+        self.assertEqual(len(label.get_entries()), 2)
+        self.assertGreater(label.get_left()[0], 2)
+        result = render('self.play(Transform(Dot(LEFT), Dot(RIGHT)), path_arc=PI, run_time=0.2)')
+        middle = result['frames'][1]['mobjects'][0]
+        self.assertLess(middle["position"][1] + middle["geometry_center"][1], -0.3)  # CCW from LEFT passes below
+        with self.assertRaises(NotImplementedError):
+            render('self.play(FadeIn(Dot()), warp=1)')
+        frames = json.loads(lite.render_scene("""from manim import *
+class Demo(VectorScene):
+    def construct(self):
+        self.lock_in_faded_grid()
+        self.add(Dot())
+        self.wait(0.1)
+"""))['frames']
+        self.assertEqual([node['type'] for node in frames[-1]['mobjects']][-1], 'circle')
+        self.assertGreater(len(frames[-1]['mobjects']), 2)
+
     def test_width_and_height_assignment_rescales_uniformly_like_community(self):
         circle = lite.Circle()
         circle.width = 4
@@ -220,7 +288,11 @@ self.play(stream.end_animation())""")
         def expand(data):
             pool=data.pop('pool')
             for position,node in enumerate(pool):
-                if isinstance(node,dict):
+                if isinstance(node,dict) and '$xy' in node:
+                    points=[[x,y,0] for x,y in zip(node['$xy'][::2],node['$xy'][1::2])]
+                    k=node.get('k',0)
+                    pool[position]=[points[i:i+k] for i in range(0,len(points),k)] if k else points
+                elif isinstance(node,dict):
                     for name,value in list(node.items()):
                         if isinstance(value,dict) and '$pool' in value:
                             self.assertLess(value['$pool'],position)
@@ -235,7 +307,16 @@ self.play(stream.end_animation())""")
             source=(ROOT/'examples'/(name+'.py')).read_text()
             plain=lite.render_scene(source)
             compact=lite.render_scene(source,compact=True)
-            self.assertEqual(expand(json.loads(compact)),json.loads(plain))
+            def close(a, b):
+                # Pooled geometry arrays are rounded to 1e-5 scene units.
+                if isinstance(a, float) or isinstance(b, float):
+                    return abs(a - b) <= 6e-6
+                if isinstance(a, list) and isinstance(b, list):
+                    return len(a) == len(b) and all(close(x, y) for x, y in zip(a, b))
+                if isinstance(a, dict) and isinstance(b, dict):
+                    return a.keys() == b.keys() and all(close(a[k], b[k]) for k in a)
+                return a == b
+            self.assertTrue(close(expand(json.loads(compact)),json.loads(plain)))
             self.assertLess(len(compact),len(plain)/2)
 
     def test_screen_points_trackers_intervals_and_geometry_helpers(self):
@@ -5527,11 +5608,15 @@ self.wait(1)""")
         group, other = lite.VGroup(child), lite.Dot()
         scene = lite.Scene().add(group).add_foreground_mobject(other)
         for method in (scene.add_foreground_mobjects, scene.remove_foreground_mobjects):
-            for args, error in (((other, child), NotImplementedError), ((other, 1), TypeError)):
+            for args, error in (((group, child), NotImplementedError), ((other, 1), TypeError)):
                 with self.assertRaises(error):
                     method(*args)
                 self.assertEqual(scene.mobjects, [group, other])
                 self.assertEqual(scene.foreground_mobjects, [other])
+        # Community splits a member out of its scene group when it moves to the foreground.
+        scene.add_foreground_mobjects(child)
+        self.assertEqual(scene.mobjects, [other, child])
+        self.assertEqual(scene.foreground_mobjects, [other, child])
 
     def test_foreground_gallery_preserves_group_then_releases_cleans_and_clears(self):
         result = json.loads(lite.render_scene((ROOT / 'examples/foreground_scene.py').read_text()))
@@ -5758,15 +5843,16 @@ self.wait(1)""")
         other = lite.Dot()
         scene = lite.Scene().add(group, other)
         for method in (scene.bring_to_front, scene.bring_to_back):
-            with self.assertRaisesRegex(NotImplementedError, 'whole scene groups'):
-                method(other, child)
+            with self.assertRaisesRegex(NotImplementedError, 'group or its members'):
+                method(group, child)
             self.assertEqual(scene.mobjects, [group, other])
             with self.assertRaisesRegex(TypeError, 'Mobjects'):
                 method(1)
+        # Like Community, moving a member splits it out of its scene group.
+        self.assertEqual(lite.Scene().add(group, other).bring_to_front(other, child).mobjects, [other, child])
+        self.assertEqual(lite.Scene().add(group, other).bring_to_back(other, child).mobjects, [other, child])
         scene = lite.Scene().add(child)
-        with self.assertRaises(NotImplementedError):
-            scene.bring_to_front(group)
-        self.assertEqual(scene.mobjects, [child])
+        self.assertEqual(scene.bring_to_front(group).mobjects, [group])
 
     def test_layer_gallery_preserves_geometry_and_restores_individual_depths(self):
         result = json.loads(lite.render_scene((ROOT / 'examples/layer_scene.py').read_text()))

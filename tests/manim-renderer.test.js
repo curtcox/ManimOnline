@@ -514,3 +514,15 @@ test('camera views draw the scene through the zoomed frame inside the display bo
   assert.throws(() => renderer.render({ ...scene, camera: { ...scene.camera,
     views: [{ id: 1, source: [0, 0, 0, 1], display: [0, 0, 1, 1], background: '#000000', background_opacity: 1 }] } }));
 });
+
+test('children added to the back of text paint behind its glyphs', () => {
+  const svg = renderer.render({ camera: { pixel_width: 800, pixel_height: 450, frame_width: 16, frame_height: 9 },
+    mobjects: [{ type: 'rectangle', width: 2, height: 1, children: [
+      { type: 'circle', radius: 0.2, behind_parent: true }, { type: 'square', side_length: 0.3 }] }] });
+  const layers = svg.children[1].children;
+  const has = (element, tag) => [element, ...element.querySelectorAll()].some(node => node.tag === tag);
+  assert.equal(layers.length, 3);
+  assert.ok(has(layers[0], 'circle'));
+  assert.ok(!has(layers[1], 'circle'));
+  assert.ok(has(layers[2], 'rect') || has(layers[2], 'path'));
+});

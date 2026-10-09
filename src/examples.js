@@ -25,6 +25,7 @@ const ExampleCatalog = Object.freeze([
   { id: 'texteffects', label: 'Letter colors, markup and gradients', path: 'examples/text_effects_scene.py' },
   { id: 'pointclouds', label: 'Point clouds and scene sections', path: 'examples/point_cloud_scene.py' },
   { id: 'zoomed', label: 'Zoomed inset camera', path: 'examples/zoomed_scene.py' },
+  { id: 'lineartransform', label: 'Linear transformations of the plane', path: 'examples/linear_transformation_scene.py' },
   { id: 'logaxes', label: 'Logarithmic axes and colors', path: 'examples/log_axes_scene.py' },
   { id: 'typing', label: 'Typing, boundaries and implicit curves', path: 'examples/typing_scene.py' },
   { id: 'svgimage', label: 'Inline SVG and pixel images', path: 'examples/svg_image_scene.py' },

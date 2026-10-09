@@ -35,3 +35,17 @@ test('plain scenes pass through and invalid pool references are rejected', () =>
     { pool: [{ type: 'line' }], frames: [{ mobjects: ['0'] }] }
   ]) assert.throws(() => expandPooledScene(bad), /Invalid pooled frame data/);
 });
+
+test('flat XY pool entries expand to planar points and grouped curves', () => {
+  const scene = expandPooledScene({
+    pool: [{ $xy: [0, 0, 1, 0, 1, 1, 0, 1], k: 4 }, { $xy: [2, 3, 4, 5] },
+           { type: 'bezierpath', curves: { $pool: 0 }, vertices: { $pool: 1 } }],
+    frames: [{ mobjects: [2], camera: {} }]
+  });
+  const node = scene.frames[0].mobjects[0];
+  assert.deepEqual(node.curves, [[[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]]]);
+  assert.deepEqual(node.vertices, [[2, 3, 0], [4, 5, 0]]);
+  for (const bad of [{ $xy: [1, 2, 3] }, { $xy: [0, 0, 1, 1], k: 3 }, { $xy: [0, 'x'] }]) {
+    assert.throws(() => expandPooledScene({ pool: [bad], frames: [] }), /Invalid pooled/);
+  }
+});

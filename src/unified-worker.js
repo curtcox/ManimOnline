@@ -27,6 +27,21 @@ function expandPooledScene(scene) {
   // Children and arrays were pooled before their parents, so each index is resolved.
   pool.forEach((node, position) => {
     if (!node || typeof node !== 'object' || Array.isArray(node)) return;
+    if ('$xy' in node) {
+      // Planar points travel as flat XY pairs, optionally grouped k per item (curves).
+      const flat = node.$xy, k = node.k ?? 0;
+      if (!Array.isArray(flat) || flat.length % 2 || !flat.every(Number.isFinite) ||
+          !Number.isInteger(k) || k < 0 || k > 64 || (k && (flat.length / 2) % k)) throw new Error('Invalid pooled frame data.');
+      const points = [];
+      for (let i = 0; i < flat.length; i += 2) points.push([flat[i], flat[i + 1], 0]);
+      if (!k) pool[position] = points;
+      else {
+        const groups = [];
+        for (let i = 0; i < points.length; i += k) groups.push(points.slice(i, i + k));
+        pool[position] = groups;
+      }
+      return;
+    }
     const resolve = index => {
       if (!Number.isInteger(index) || index < 0 || index >= position) throw new Error('Invalid pooled frame data.');
       return pool[index];
@@ -70,7 +85,7 @@ self.onmessage = event => {
       runtime.globals.set('_math_metrics', runtime.toPy(options.mathMetrics || {}));
       try {
         const result = await runtime.runPythonAsync('render_scene(_source, _scene_name, _math_metrics, compact=True)');
-        if (result.length > 12 * 1024 * 1024) throw new Error('Preview is too large. Use fewer objects or shorter animations.');
+        if (result.length > 32 * 1024 * 1024) throw new Error('Preview is too large. Use fewer objects or shorter animations.');
         self.postMessage({ id, type: 'manim-result', sceneData: expandPooledScene(JSON.parse(result)) });
       } finally {
         runtime.globals.delete('_source');

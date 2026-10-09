@@ -2245,7 +2245,9 @@ snapshots bottom-up: frames and children hold pool indices, and arrays longer th
 `src/unified-worker.js` restores the ordinary frame format with shared objects, so
 static backgrounds and style-only animations (Create's `draw_progress`, opacity)
 no longer repeat their geometry. Typical gallery scenes shrink 2–10× below the
-12 MB transfer limit. Frame data is shared after expansion and must stay read-only.
+32 MB transfer limit (raised from 12 MB for warped planes). Pooled geometry arrays are
+rounded to 1e-5 scene units, and planar point lists travel as `{"$xy": [x, y, ...],
+"k": k}` (k points per item, e.g. 4 per cubic), expanded back to `[x, y, 0]` lists. Frame data is shared after expansion and must stay read-only.
 `render_scene` without `compact` still returns plain frames for tests and tools.
 
 Nonlinear point maps follow Community's `VMobject.apply_function`: anchors map
@@ -2342,4 +2344,23 @@ matrix-mapped groups keep world-space children. `Mobject.width`/`height` are
 properties: reads return stored analytical dimensions when present (local), else
 world extents; assignment calls `rescale_to_fit`. Internal geometry writes must use
 `__dict__`.
+
+VectorScene / LinearTransformationScene are ports of Community's classes. Matrix
+helpers use plain lists (`_matrix_rows`, `_matrix_inverse`, `_transpose`);
+transformation functions return lite `Vector`s. `apply_function` plays
+ApplyPointwiseFunction on transformable mobjects plus piece Transforms of vectors,
+labels and moving mobjects, with play() options set on every animation as in
+Community's `compile_animations` (`path_arc`, `lag_ratio`, `remover`, ...).
+`path_arc` is now applied per point (Community's `path_along_arc`, straight below
+0.01 rad) for aligned paths, polygons and line endpoints, in each member's parent
+frame and then mapped back through the interpolated pose; analytical shapes, text and
+images move their centers along the arc. Scene-level updaters run after mobject
+updaters and see interpolated samples (Community's update_self order).
+`insert_n_curves` follows Community's bezier_remap split counts;
+`prepare_for_nonlinear_transform` exists on NumberPlane/PolarPlane.
+`lock_in_faded_grid` bakes snapshots into `_background_snapshots`, drawn first in
+every later frame. `bring_to_front` is Community's re-add (members split out of
+scene groups). `add_to_back` on text/formula leaves marks children `behind_parent`,
+which the renderer paints before the glyphs (Community glyphs are submobjects).
+Serialization memoizes local bounds per `to_dict` call (`_BOUNDS_MEMO`).
 

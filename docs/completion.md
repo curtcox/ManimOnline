@@ -307,3 +307,4 @@ replace, TexTemplate stubs and CoordinateSystem are implemented; audio and
 subcaptions are recorded only.
 
 - ZoomedScene (vector inset views, Community frame/display geometry and per-frame aspect sync) is implemented; pixel-level camera images (`get_pixel_array`) are not.
+- VectorScene and LinearTransformationScene are implemented (matrix, inverse and nonlinear plane transformations, ghost vectors, labels); Community's mid-animation arc positions are matched numerically.

@@ -601,3 +601,9 @@ Read `examples/zoomed_scene.py` for ZoomedScene. The display is a pure container
 syncs the zoomed frame to the display's whole-pixel aspect and writes `camera.views`.
 The renderer draws views as clipped, transformed re-renders (no pixels). Assigning
 `width`/`height` rescales (Community); write analytical dimensions via `__dict__`.
+
+Read `examples/linear_transformation_scene.py` for LinearTransformationScene. path_arc
+is per point in `_arc_geometry` (parent frame, then inverse sampled pose). Scene
+updaters run after mobject updaters inside the exposed sample pass. Keep transport
+encodings (`$pool`, `$xy`) confined to `_pooled_json`/`expandPooledScene`.
+

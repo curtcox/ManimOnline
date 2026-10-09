@@ -63,10 +63,13 @@ const ManimRenderer = {
         for (let i = ancestors.length - 1; i >= 0; i--) {
           branch = { ...ancestors[i], children: [branch] };
         }
-        layers.push({ branch, leaf: mobject, views, z: mobject.z_index ?? 0 });
-        // Geometry-bearing families paint their own path and their descendants.
+        // Geometry-bearing families paint their own path and their descendants;
+        // children added to the back of text paint behind its glyphs.
         const parent = { ...mobject, type: 'vgroup' };
-        for (const child of mobject.children || []) collect(child, [...ancestors, parent], views);
+        const children = mobject.children || [];
+        for (const child of children) if (child.behind_parent) collect(child, [...ancestors, parent], views);
+        layers.push({ branch, leaf: mobject, views, z: mobject.z_index ?? 0 });
+        for (const child of children) if (!child.behind_parent) collect(child, [...ancestors, parent], views);
       }
     };
     for (const mobject of sceneData.mobjects || []) collect(mobject);

@@ -38,6 +38,9 @@ def _holds_mobject(value):
 _BOUNDS_WITH_HANDLES = False  # Set only while measuring width/height.
 
 
+_BOUNDS_MEMO = None  # Per-serialization cache of local bounds (see Mobject.to_dict).
+
+
 def _snapshot_copy(value):
     """Deep-copy JSON-shaped frame data much faster than copy.deepcopy (no memo bookkeeping)."""
     kind = type(value)
@@ -465,6 +468,22 @@ class PreviewConfig:
     def frame_width(self, value):
         self.frame_height = value * self.pixel_height / self.pixel_width
 
+    @property
+    def frame_x_radius(self):
+        return self.frame_width / 2
+
+    @frame_x_radius.setter
+    def frame_x_radius(self, value):
+        self.frame_width = 2 * value
+
+    @property
+    def frame_y_radius(self):
+        return self.frame_height / 2
+
+    @frame_y_radius.setter
+    def frame_y_radius(self, value):
+        self.frame_height = 2 * value
+
     def __setattr__(self, name, value):
         if name in ('pixel_width', 'pixel_height'):
             if isinstance(value, bool) or not isinstance(value, numbers.Integral) or not 1 <= value <= 4096:
@@ -475,7 +494,7 @@ class PreviewConfig:
         elif name == 'background_color':
             if not isinstance(value, str) or len(value) != 7 or value[0] != '#' or any(c not in '0123456789abcdefABCDEF' for c in value[1:]):
                 raise ValueError('Background color must be a six-digit hex color')
-        else:
+        elif name not in ('frame_x_radius', 'frame_y_radius'):
             raise NotImplementedError('Unsupported preview configuration: ' + name)
         object.__setattr__(self, name, value)
 
@@ -549,6 +568,10 @@ class Mobject:
         self._validate_children(mobjects)
         unique = list(dict.fromkeys(mobjects))
         self._replace_children(unique + [m for m in self.children if m not in unique])
+        if self._type in ('text', 'mathtex'):
+            # Community glyphs are submobjects, so these paint behind the text.
+            for mobject in unique:
+                mobject.behind_parent = True
         return self
 
     def remove(self, *mobjects):
@@ -1279,6 +1302,16 @@ class Mobject:
         return False
 
     def _local_bounds(self):
+        memo = _BOUNDS_MEMO
+        if memo is None:
+            return self._compute_local_bounds()
+        key = (id(self), _BOUNDS_WITH_HANDLES)
+        result = memo.get(key)
+        if result is None:
+            result = memo[key] = self._compute_local_bounds()
+        return result
+
+    def _compute_local_bounds(self):
         if not self.children:
             return self._own_local_bounds()
         bounds = [child._bounds() for child in self.children if not child._is_pointless()]
@@ -1405,6 +1438,35 @@ class Mobject:
 
     def get_num_curves(self):
         return self.get_num_points() // 4
+
+    def insert_n_curves(self, n):
+        """Community's bezier_remap: split curves into equal-parameter pieces."""
+        if isinstance(n, bool) or not isinstance(n, numbers.Integral) or not 0 <= n <= 10000:
+            raise ValueError('insert_n_curves expects an integer from 0 to 10000')
+        points = self.get_points()
+        count = len(points) // 4
+        if not n or not count:
+            return self
+        lengths = list(self.__dict__.get('subpath_lengths') or [count])
+        total = count + n
+        splits = [0] * count
+        for index in range(total):
+            splits[index * count // total] += 1
+        curves = []
+        for index in range(count):
+            remaining, parts = points[4 * index:4 * index + 4], splits[index]
+            for part in range(parts - 1):
+                left, remaining = _split_cubic(remaining, 1 / (parts - part))
+                curves.append(left)
+            curves.append(remaining)
+        new_lengths, offset = [], 0
+        for length in lengths:
+            new_lengths.append(sum(splits[offset:offset + length]))
+            offset += length
+        VMobject.set_points(self, [list(p) for curve in curves for p in curve] + list(points[4 * count:]))
+        if len(new_lengths) > 1:
+            self.subpath_lengths = new_lengths
+        return self
 
     def get_start(self):
         points = self.get_points()
@@ -1983,6 +2045,17 @@ class Mobject:
         return Animate(self)
 
     def to_dict(self):
+        global _BOUNDS_MEMO
+        if _BOUNDS_MEMO is not None:
+            return self._to_dict()
+        # Nothing moves while a family serializes, so local bounds are computed once.
+        _BOUNDS_MEMO = {}
+        try:
+            return self._to_dict()
+        finally:
+            _BOUNDS_MEMO = None
+
+    def _to_dict(self):
         center = self._geometry_center()
         result = _snapshot_copy({key: value for key, value in self.__dict__.items()
                                 if not _holds_mobject(value) and not callable(value) and
@@ -4198,6 +4271,9 @@ TexFontTemplates = _TemplateNamespace(())
 
 class MathTex(Text):
     """Formulas rendered as SVG paths by MathJax; several strings become parts."""
+    def get_tex_string(self):
+        return self.tex_string
+
     def __init__(self, *tex_strings, arg_separator=' ', substrings_to_isolate=None, tex_to_color_map=None,
                  font_size=48, tex_environment='align*', tex_template=None, **kwargs):
         # MathJax typesets in the browser; LaTeX templates (preamble, fonts) cannot apply.
@@ -4672,6 +4748,21 @@ class VectorArrow(Arrow):
     def __init__(self, direction=RIGHT, buff=0, **kwargs):
         direction = Mobject._xy_vector(direction, 'Vector direction')
         super().__init__(ORIGIN, direction, buff=buff, **kwargs)
+
+    def coordinate_label(self, integer_labels=True, n_dim=2, color=None, **kwargs):
+        """A column Matrix of the end coordinates beside the tip, as in Community."""
+        end = list(self.get_end())
+        values = [int(round(v)) if integer_labels else v for v in end][:n_dim]
+        label = Matrix([[value] for value in values], **kwargs)
+        label.scale(LARGE_BUFF - 0.2)
+        if end[0] >= 0:
+            shift = Vector(end) - (Vector(label.get_left()) + DEFAULT_MOBJECT_TO_MOBJECT_BUFFER * LEFT)
+        else:
+            shift = Vector(end) - (Vector(label.get_right()) + DEFAULT_MOBJECT_TO_MOBJECT_BUFFER * RIGHT)
+        label.shift(shift)
+        if color is not None:
+            label.set_color(color)
+        return label
 
 
 class Paragraph(VGroup):
@@ -6354,6 +6445,15 @@ class BarChart(Axes):
 
 class PolarPlane(Axes):
     """Community's PolarPlane: rings and spokes over radial axes, with azimuth labels."""
+
+    def prepare_for_nonlinear_transform(self, num_inserted_curves=50):
+        """Give every path at least num_inserted_curves cubic pieces before warping."""
+        for mobject in self.family_members_with_points():
+            count = mobject.get_num_curves()
+            if num_inserted_curves > count:
+                mobject.insert_n_curves(num_inserted_curves - count)
+        return self
+
     def __init__(self, radius_max=None, size=None, radius_step=1, azimuth_step=None, azimuth_units='PI radians',
                  azimuth_compact_fraction=True, azimuth_offset=0, azimuth_direction='CCW',
                  azimuth_label_buff=SMALL_BUFF, azimuth_label_font_size=24, radius_config=None,
@@ -6477,6 +6577,15 @@ class PolarPlane(Axes):
 
 class NumberPlane(Axes):
     """A linear Cartesian grid using the same local coordinates as its axes."""
+
+    def prepare_for_nonlinear_transform(self, num_inserted_curves=50):
+        """Give every path at least num_inserted_curves cubic pieces before warping."""
+        for mobject in self.family_members_with_points():
+            count = mobject.get_num_curves()
+            if num_inserted_curves > count:
+                mobject.insert_n_curves(num_inserted_curves - count)
+        return self
+
     def __init__(self, x_range=None, y_range=None, x_length=None, y_length=None,
                  background_line_style=None, faded_line_style=None, faded_line_ratio=1,
                  make_smooth_after_applying_functions=True, **kwargs):
@@ -6840,7 +6949,19 @@ rate_functions = types.SimpleNamespace(**{name: globals()[name] for name in (
     *_ease_functions())})
 
 
+_FAST_NUMBERS = (int, float)
+
+
 def interpolate(start, end, alpha):
+    kind = type(start)
+    if kind in _FAST_NUMBERS and type(end) in _FAST_NUMBERS:
+        return start + (end - start) * alpha
+    if kind is list and type(end) is list and len(start) == len(end):
+        # Coordinate lists dominate morphs; keep their numbers on a fast path.
+        return [a + (b - a) * alpha if type(a) in _FAST_NUMBERS and type(b) in _FAST_NUMBERS
+                else interpolate(a, b, alpha) for a, b in zip(start, end)]
+    if kind is str and type(end) is str and not (start.startswith('#') and end.startswith('#')):
+        return end if alpha >= 1 else start
     if isinstance(start, _REAL) and isinstance(end, _REAL):
         return start + (end - start) * alpha
     if isinstance(start, list) and isinstance(end, list) and len(start) == len(end):
@@ -7029,7 +7150,7 @@ def _align_path_snapshots(start, target):
     if start['type'] == target['type'] and start['type'] not in ('polyline', 'polygon', 'bezierpath'):
         return None  # Matching primitives retain their analytical interpolation.
     # Align untrimmed curved-arrow geometry; capture fits it to sampled tips.
-    start,target = copy.deepcopy(start),copy.deepcopy(target)
+    start,target = _snapshot_copy(start),_snapshot_copy(target)
     for snapshot in (start,target):
         if snapshot.get('_curved_tip_path'):
             snapshot.pop('shaft_curves',None)
@@ -7047,7 +7168,7 @@ def _align_path_snapshots(start, target):
     counts = [max(len(a), len(b)) for a, b in zip(paths1, paths2)]
     result = []
     for snapshot, paths in ((start, paths1), (target, paths2)):
-        aligned = copy.deepcopy(snapshot)
+        aligned = _snapshot_copy(snapshot)
         aligned['type'] = 'bezierpath'
         aligned['curves'] = [curve for path, count in zip(paths, counts)
                              for curve in _subdivide_curves(path, count)]
@@ -7064,9 +7185,9 @@ def _transform_plan(start, target):
     if start['type'] == 'vgroup' or target['type'] == 'vgroup':
         def as_group(snapshot):
             if snapshot['type'] == 'vgroup':
-                return copy.deepcopy(snapshot)
+                return _snapshot_copy(snapshot)
             group = VGroup().to_dict()
-            group['children'] = [copy.deepcopy(snapshot)]
+            group['children'] = [_snapshot_copy(snapshot)]
             return group
         start, target = as_group(start), as_group(target)
         count = max(len(start['children']), len(target['children']))
@@ -7074,7 +7195,7 @@ def _transform_plan(start, target):
             if not children:
                 # An empty family grows/shrinks at each corresponding child's
                 # own center, without moving the containing group's pivot.
-                result = copy.deepcopy(other)
+                result = _snapshot_copy(other)
                 for child in result:
                     child['opacity'] = 0
                     child['geometry_scale'] = 0
@@ -7082,7 +7203,7 @@ def _transform_plan(start, target):
             result, seen = [], set()
             for index in range(count):
                 source_index = index * len(children) // count
-                child = copy.deepcopy(children[source_index])
+                child = _snapshot_copy(children[source_index])
                 if source_index in seen:
                     child['opacity'] = 0
                 seen.add(source_index)
@@ -7095,19 +7216,19 @@ def _transform_plan(start, target):
         target.pop('children')
         return ('group', start, target, children)
     if start.get('children') or target.get('children'):
-        own_start,own_target = copy.deepcopy(start),copy.deepcopy(target)
+        own_start,own_target = _snapshot_copy(start),_snapshot_copy(target)
         own_start['children'],own_target['children'] = [],[]
         first,last = VGroup().to_dict(),VGroup().to_dict()
         first['children'],last['children'] = start['children'],target['children']
         if start.get('_arc_polygon_outline') or target.get('_arc_polygon_outline'):
             def outline(snapshot):
                 source = Mobject()
-                source.__dict__.update(copy.deepcopy(snapshot))
+                source.__dict__.update(_snapshot_copy(snapshot))
                 source._type = snapshot['type']
                 source.children = []
                 source._sampled_geometry_center = Vector(snapshot['geometry_center'])
                 points = source.get_points()
-                result = copy.deepcopy(snapshot)
+                result = _snapshot_copy(snapshot)
                 result.update(type='bezierpath',curves=[points[i:i+4] for i in range(0,len(points),4)],
                               vertices=[],position=list(ORIGIN),angle=0,geometry_scale=1,
                               geometry_center=list(ORIGIN))
@@ -7128,23 +7249,79 @@ def _transform_plan(start, target):
     return ('interpolate' if matching else 'fade', start, target, [])
 
 
-def _sample_transform(plan, alpha):
+def _sample_transform(plan, alpha, path_arc=0):
     kind, start, target, children = plan
     if kind == 'family':
-        own = _sample_transform(children[0],alpha)
-        members = _sample_transform(children[1],alpha)[0]['children']
+        own = _sample_transform(children[0],alpha,path_arc)
+        members = _sample_transform(children[1],alpha,path_arc)[0]['children']
         own[0]['children'] = members
         return own
     if kind == 'fade':
-        first, last = copy.deepcopy(start), copy.deepcopy(target)
+        first, last = _snapshot_copy(start), _snapshot_copy(target)
         first['opacity'] *= 1 - alpha
         last['opacity'] *= alpha
         return [first, last]
     result = interpolate(start, target, alpha)
     if kind == 'group':
         result['children'] = [snapshot for child in children
-                              for snapshot in _sample_transform(child, alpha)]
+                              for snapshot in _sample_transform(child, alpha, path_arc)]
+    elif abs(path_arc) >= STRAIGHT_PATH_THRESHOLD and 0 < alpha < 1:
+        _arc_geometry(result, start, target, alpha, path_arc)
     return [result]
+
+
+STRAIGHT_PATH_THRESHOLD = 0.01
+
+
+def _snapshot_pose(node):
+    """Local-to-parent map of a snapshot's pose and, when invertible, its inverse."""
+    px, py = node['position'][:2]
+    gx, gy = node.get('geometry_center', ORIGIN)[:2]
+    scale, angle = node['geometry_scale'], node['angle']
+    c, s = scale * math.cos(angle), scale * math.sin(angle)
+    forward = lambda p: [px + gx + c * (p[0] - gx) - s * (p[1] - gy),
+                         py + gy + s * (p[0] - gx) + c * (p[1] - gy), 0]
+    if not scale:
+        return forward, None
+    d = scale * scale
+    inverse = lambda p: [gx + (c * (p[0] - px - gx) + s * (p[1] - py - gy)) / d,
+                         gy + (-s * (p[0] - px - gx) + c * (p[1] - py - gy)) / d, 0]
+    return forward, inverse
+
+
+def _arc_geometry(result, start, target, alpha, path_arc):
+    """Community's path_along_arc: every point follows an arc in the parent frame."""
+    factor = _arc_factor(alpha, path_arc)
+    kind = result['type']
+    fields = {'bezierpath': ('curves', 'vertices'), 'polygon': ('vertices',), 'polyline': ('vertices',),
+              'line': ('start', 'end'), 'arrow': ('start', 'end')}.get(kind)
+    if fields is None or start['type'] != kind or target['type'] != kind:
+        # Analytical shapes, text and images: the center follows the arc.
+        centers = [Vector(data['position']) + Vector(data.get('geometry_center', ORIGIN)) for data in (start, target)]
+        delta = centers[1] - centers[0]
+        offset = factor - alpha
+        result['position'] = list(Vector(result['position']) + (delta[0] * offset.real - delta[1] * offset.imag,
+                                                                delta[0] * offset.imag + delta[1] * offset.real, 0))
+        return
+    first, last, (_, inverse) = _snapshot_pose(start)[0], _snapshot_pose(target)[0], _snapshot_pose(result)
+    if inverse is None:
+        return
+    def arc(a, b):
+        p, q = first(a), last(b)
+        dx, dy = q[0] - p[0], q[1] - p[1]
+        return inverse([p[0] + factor.real * dx - factor.imag * dy, p[1] + factor.imag * dx + factor.real * dy])
+    for field in fields:
+        a, b = start.get(field), target.get(field)
+        if a is None or b is None:
+            continue
+        if field == 'curves':
+            if len(a) == len(b) and all(len(x) == len(y) for x, y in zip(a, b)):
+                result[field] = [[arc(p, q) for p, q in zip(x, y)] for x, y in zip(a, b)]
+        elif field == 'vertices':
+            if len(a) == len(b):
+                result[field] = [arc(p, q) for p, q in zip(a, b)]
+        else:
+            result[field] = arc(a, b)
 
 
 def _painted_paths(data, path=(), nested=True):
@@ -7488,25 +7665,11 @@ class FadeOut(FadeIn):
 
 def _arc_factor(alpha, path_arc):
     """Community's path_along_arc as a complex factor on each point's displacement."""
-    if abs(path_arc) < 1e-6:
+    if abs(path_arc) < STRAIGHT_PATH_THRESHOLD:
         return complex(alpha, 0)
     scale = math.sin(alpha * path_arc / 2) / math.sin(path_arc / 2)
     angle = (alpha - 1) * path_arc / 2
     return complex(scale * math.cos(angle), scale * math.sin(angle))
-
-
-def _apply_path_arc(sampled, start, end, alpha, path_arc):
-    # Each drawable member's center follows the arc; shapes keep their morph.
-    if (sampled['type'] in ('vgroup', 'mobject') and len(sampled.get('children', [])) ==
-            len(start.get('children', [])) == len(end.get('children', [])) and sampled['children']):
-        for node, a, b in zip(sampled['children'], start['children'], end['children']):
-            _apply_path_arc(node, a, b, alpha, path_arc)
-        return
-    centers = [Vector(data['position']) + Vector(data.get('geometry_center', ORIGIN)) for data in (start, end)]
-    delta = centers[1] - centers[0]
-    factor = _arc_factor(alpha, path_arc) - alpha
-    offset = (delta[0] * factor.real - delta[1] * factor.imag, delta[0] * factor.imag + delta[1] * factor.real, 0)
-    sampled['position'] = list(Vector(sampled['position']) + offset)
 
 
 class Transform(Animation):
@@ -7525,9 +7688,13 @@ class Transform(Animation):
         self._transform_plan = None
         self._path_target = None
         if self.mobject.__dict__.get('_stretch_baked') or self.target.__dict__.get('_stretch_baked'):
+            def canonical(mobject):
+                # Already-baked families are canonical; re-mapping them is costly.
+                if all(member.__dict__.get('_stretch_baked') for member in mobject.get_family()):
+                    return mobject.to_dict()
+                return mobject.copy().stretch(1,0).to_dict()
             try:
-                start = self.mobject.copy().stretch(1,0).to_dict()
-                target = self.target.copy().stretch(1,0).to_dict()
+                start, target = canonical(self.mobject), canonical(self.target)
             except NotImplementedError:
                 pass  # Unsupported target types keep the existing fade/morph plan.
             else:
@@ -7537,10 +7704,7 @@ class Transform(Animation):
         end = self._path_target or self.target.to_dict()
         if self._transform_plan is None:
             self._transform_plan = _transform_plan(self.start, end)
-        result = _sample_transform(self._transform_plan, alpha)
-        if self.path_arc and len(result) == 1 and 0 < alpha < 1:
-            _apply_path_arc(result[0], self.start, end, alpha, self.path_arc)
-        return result
+        return _sample_transform(self._transform_plan, alpha, self.path_arc)
 
     def finish(self, scene):
         if abs(self.rate_func(1)) < 1e-9 and not self.reverse_rate_function:
@@ -8613,19 +8777,16 @@ class Scene:
         roots = list(dict.fromkeys(mobjects))
         def family(m):
             return [m] + [member for child in m.children for member in family(child)]
-        # Reject unsupported family restructuring before changing the scene.
-        for root in self.mobjects + roots:
+        # A group and one of its own members cannot both move.
+        for root in roots:
             for obj in roots:
-                if obj is not root and (obj in family(root) or root in family(obj)):
-                    raise NotImplementedError('Reorder whole scene groups, not individual group children')
+                if obj is not root and obj in family(root):
+                    raise NotImplementedError('Reorder a group or its members, not both')
         return roots
 
     def bring_to_front(self, *mobjects):
-        roots = self._ordered_roots(mobjects)
-        # Moving a root forward preserves its foreground membership.
-        self.mobjects = [m for m in self.mobjects if m not in roots]
-        self.add(*roots)
-        return self
+        # Community re-adds them: group members split out of their scene group.
+        return self.add(*self._ordered_roots(mobjects))
 
     def bring_to_back(self, *mobjects):
         roots = self._ordered_roots(mobjects)
@@ -8643,9 +8804,8 @@ class Scene:
         roots = list(self.mobjects)
         if isinstance(self.camera, MovingCamera) and self.camera.frame not in roots:
             roots.append(self.camera.frame)
-        for func in list(getattr(self, 'updaters', [])):
-            func(dt)  # Community's update_self runs scene-level updaters each frame.
-        if not any(m.get_family_updaters() for m in roots):
+        scene_updaters = list(getattr(self, 'updaters', []))
+        if not scene_updaters and not any(m.get_family_updaters() for m in roots):
             return
         saved, blocked = {}, set()
         def expose(mobject, snapshot):
@@ -8682,6 +8842,10 @@ class Scene:
                     visit(child)
             for root in roots:
                 visit(root)
+            # Community's update_self: scene-level updaters run last and see
+            # the interpolated mobjects.
+            for func in scene_updaters:
+                func(dt)
         finally:
             for mobject, state in saved.items():
                 mobject.__dict__ = state
@@ -8703,7 +8867,8 @@ class Scene:
         if self._camera_views:
             overrides = dict(overrides or {})
             camera['views'] = self._camera_view_data(overrides, camera)
-        objects = []
+        # VectorScene.lock_in_faded_grid bakes a background into later frames.
+        objects = list(getattr(self, '_background_snapshots', ()))
         def states(mobject):
             if overrides and mobject in overrides:
                 return [_refresh_tip_shafts(state) for state in overrides[mobject]]
@@ -8721,11 +8886,23 @@ class Scene:
         if advance_time:
             self._elapsed_frames += 1
 
+    _PLAY_OPTIONS = ('path_arc', 'lag_ratio', 'remover', 'introducer', 'name',
+                     'suspend_mobject_updating', 'reverse_rate_function')
+
     def play(self, *animations, run_time=None, rate_func=None, **kwargs):
-        if kwargs:
-            raise NotImplementedError('Unsupported play options: ' + ', '.join(kwargs))
+        unsupported = [key for key in kwargs if key not in self._PLAY_OPTIONS]
+        if unsupported:
+            raise NotImplementedError('Unsupported play options: ' + ', '.join(unsupported))
         if not animations or any(not isinstance(a, (Animation, AnimationGroup)) for a in animations):
             raise TypeError('play() expects supported animations such as Create or Transform')
+        if 'path_arc' in kwargs:
+            NumberLine._real(kwargs['path_arc'], 'path_arc')
+        if 'lag_ratio' in kwargs:
+            NumberLine._real(kwargs['lag_ratio'], 'lag_ratio', nonnegative=True)
+        # Community's compile_animations sets play() options on every animation.
+        for animation in animations:
+            for key, value in kwargs.items():
+                setattr(animation, key, value)
         self.validate(*animations)
         durations = [a.run_time if run_time is None else run_time for a in animations]
         if any(not math.isfinite(d) or d < 0 or (d == 0 and not a._instant) for d, a in zip(durations, animations)):
@@ -9041,6 +9218,426 @@ class ZoomedScene(MovingCameraScene):
 
     def get_zoom_factor(self):
         return self.zoomed_camera.frame.get_height() / self.zoomed_display.get_height()
+
+
+def angle_of_vector(vector):
+    """The XY angle of a vector, as Community's np.angle(complex(x, y))."""
+    vector = list(vector)
+    return math.atan2(vector[1], vector[0])
+
+
+def _matrix_rows(matrix, name='Matrix'):
+    rows = [list(row.tolist() if hasattr(row, 'tolist') else row) for row in
+            (matrix.tolist() if hasattr(matrix, 'tolist') else matrix)]
+    if len(rows) not in (2, 3) or any(len(row) != len(rows) for row in rows):
+        raise ValueError(name + ' has bad dimensions')
+    for row in rows:
+        for value in row:
+            NumberLine._real(value, name + ' entry')
+    return [[float(v) for v in row] for row in rows]
+
+
+def _matrix_inverse(matrix):
+    rows = _matrix_rows(matrix)
+    n = len(rows)
+    work = [row + [float(i == j) for j in range(n)] for i, row in enumerate(rows)]
+    for column in range(n):
+        pivot = max(range(column, n), key=lambda r: abs(work[r][column]))
+        if abs(work[pivot][column]) < 1e-12:
+            raise ValueError('Singular matrix')
+        work[column], work[pivot] = work[pivot], work[column]
+        scale = work[column][column]
+        work[column] = [v / scale for v in work[column]]
+        for r in range(n):
+            if r != column and work[r][column]:
+                factor = work[r][column]
+                work[r] = [a - factor * b for a, b in zip(work[r], work[column])]
+    return [row[n:] for row in work]
+
+
+def _transpose(rows):
+    return [list(column) for column in zip(*rows)]
+
+
+def _update_dict_recursively(current, *others):
+    for other in others:
+        for key, value in other.items():
+            if isinstance(value, dict) and isinstance(current.get(key), dict):
+                _update_dict_recursively(current[key], value)
+            else:
+                current[key] = value
+
+
+X_COLOR, Y_COLOR, Z_COLOR = GREEN_C, RED_C, BLUE_D
+
+
+class VectorScene(Scene):
+    """Community's VectorScene helpers for planes, vectors, labels and coordinates."""
+    def __init__(self, basis_vector_stroke_width=6.0, **kwargs):
+        super().__init__(**kwargs)
+        self.basis_vector_stroke_width = basis_vector_stroke_width
+
+    def add_plane(self, animate=False, **kwargs):
+        plane = NumberPlane(**kwargs)
+        if animate:
+            self.play(Create(plane, lag_ratio=0.5))
+        self.add(plane)
+        return plane
+
+    def add_axes(self, animate=False, color=WHITE):
+        axes = Axes(color=color, axis_config={'unit_size': 1})
+        if animate:
+            self.play(Create(axes))
+        self.add(axes)
+        return axes
+
+    def lock_in_faded_grid(self, dimness=0.7, axes_dimness=0.5):
+        """Bake a faded plane into the background of every later frame, then clear."""
+        plane = self.add_plane()
+        axes = plane.get_axes()
+        plane.fade(dimness)
+        axes.set_color(WHITE)
+        axes.fade(axes_dimness)
+        self.add(axes)
+        self._background_snapshots = [node for mobject in self.mobjects
+                                      if not isinstance(mobject, (CameraFrame, ValueTracker))
+                                      for node in [mobject.to_dict()]]
+        self.clear()
+
+    def get_vector(self, numerical_vector, **kwargs):
+        numerical_vector = list(numerical_vector)
+        return Arrow(self.plane.coords_to_point(0, 0), self.plane.coords_to_point(*numerical_vector[:2]),
+                     buff=0, **kwargs)
+
+    def add_vector(self, vector, color=PURE_YELLOW, animate=True, **kwargs):
+        if not isinstance(vector, Arrow):
+            vector = VectorArrow(vector, color=color, **kwargs)
+        if animate:
+            self.play(GrowArrow(vector))
+        self.add(vector)
+        return vector
+
+    def write_vector_coordinates(self, vector, **kwargs):
+        coords = vector.coordinate_label(**kwargs)
+        self.play(Write(coords))
+        return coords
+
+    def get_basis_vectors(self, i_hat_color=X_COLOR, j_hat_color=Y_COLOR):
+        return VGroup(*(VectorArrow(vect, color=color, stroke_width=self.basis_vector_stroke_width)
+                        for vect, color in (([1, 0], i_hat_color), ([0, 1], j_hat_color))))
+
+    def get_basis_vector_labels(self, **kwargs):
+        i_hat, j_hat = self.get_basis_vectors()
+        return VGroup(*(self.get_vector_label(vect, label, color=color, label_scale_factor=1, **kwargs)
+                        for vect, label, color in ((i_hat, '\\hat{\\imath}', X_COLOR),
+                                                   (j_hat, '\\hat{\\jmath}', Y_COLOR))))
+
+    def get_vector_label(self, vector, label, at_tip=False, direction='left', rotate=False, color=None,
+                         label_scale_factor=LARGE_BUFF - 0.2):
+        if isinstance(label, str):
+            if len(label) == 1:
+                label = '\\vec{\\textbf{' + label + '}}'
+            label = MathTex(label)
+            label.set_color(vector.get_color() if color is None else color)
+        label.scale(label_scale_factor)
+        label.add_background_rectangle()
+        if at_tip:
+            vect = Vector(vector.get_vector())
+            length = math.hypot(*vect)
+            label.next_to(vector.get_end(), vect / length if length else RIGHT, buff=SMALL_BUFF)
+        else:
+            angle = vector.get_angle()
+            if not rotate:
+                label.rotate(-angle, about_point=ORIGIN)
+            if direction == 'left':
+                label.shift(-Vector(label.get_bottom()) + 0.1 * UP)
+            else:
+                label.shift(-Vector(label.get_top()) + 0.1 * DOWN)
+            label.rotate(angle, about_point=ORIGIN)
+            label.shift((Vector(vector.get_end()) - Vector(vector.get_start())) / 2)
+        return label
+
+    def label_vector(self, vector, label, animate=True, **kwargs):
+        label = self.get_vector_label(vector, label, **kwargs)
+        if animate:
+            self.play(Write(label, run_time=1))
+        self.add(label)
+        return label
+
+    def position_x_coordinate(self, x_coord, x_line, vector):
+        x_coord.next_to(x_line, -_sign(list(vector)[1]) * UP)
+        x_coord.set_color(X_COLOR)
+        return x_coord
+
+    def position_y_coordinate(self, y_coord, y_line, vector):
+        y_coord.next_to(y_line, _sign(list(vector)[0]) * RIGHT)
+        y_coord.set_color(Y_COLOR)
+        return y_coord
+
+    def coords_to_vector(self, vector, coords_start=2 * RIGHT + 2 * UP, clean_up=True):
+        starting_mobjects = list(self.mobjects)
+        vector = list(vector)
+        array = Matrix([[value] for value in vector])
+        array.shift(coords_start)
+        arrow = VectorArrow(vector)
+        x_line = Line(ORIGIN, vector[0] * RIGHT)
+        y_line = Line(x_line.get_end(), arrow.get_end())
+        x_line.set_color(X_COLOR)
+        y_line.set_color(Y_COLOR)
+        mob_matrix = array.get_mob_matrix()
+        x_coord, y_coord = mob_matrix[0][0], mob_matrix[1][0]
+        self.play(Write(array, run_time=1))
+        self.wait()
+        self.play(ApplyFunction(lambda x: self.position_x_coordinate(x, x_line, vector), x_coord))
+        self.play(Create(x_line))
+        self.play(ApplyFunction(lambda y: self.position_y_coordinate(y, y_line, vector), y_coord),
+                  FadeOut(array.get_brackets()))
+        self.play(Create(y_line))
+        self.play(Create(arrow))
+        self.wait()
+        if clean_up:
+            self.clear()
+            self.add(*starting_mobjects)
+
+    def vector_to_coords(self, vector, integer_labels=True, clean_up=True):
+        starting_mobjects = list(self.mobjects)
+        show_creation = False
+        if isinstance(vector, Arrow):
+            arrow = vector
+            vector = list(arrow.get_end())[:2]
+        else:
+            vector = list(vector)
+            arrow = VectorArrow(vector)
+            show_creation = True
+        array = arrow.coordinate_label(integer_labels=integer_labels)
+        x_line = Line(ORIGIN, vector[0] * RIGHT)
+        y_line = Line(x_line.get_end(), arrow.get_end())
+        x_line.set_color(X_COLOR)
+        y_line.set_color(Y_COLOR)
+        x_coord, y_coord = array.get_entries()[0], array.get_entries()[1]
+        x_coord_start = self.position_x_coordinate(x_coord.copy(), x_line, vector)
+        y_coord_start = self.position_y_coordinate(y_coord.copy(), y_line, vector)
+        brackets = array.get_brackets()
+        if show_creation:
+            self.play(Create(arrow))
+        self.play(Create(x_line), Write(x_coord_start), run_time=1)
+        self.play(Create(y_line), Write(y_coord_start), run_time=1)
+        self.wait()
+        self.play(Transform(x_coord_start, x_coord, lag_ratio=0), Transform(y_coord_start, y_coord, lag_ratio=0),
+                  Write(brackets, run_time=1))
+        self.wait()
+        self.remove(x_coord_start, y_coord_start, brackets)
+        self.add(array)
+        if clean_up:
+            self.clear()
+            self.add(*starting_mobjects)
+        return array, x_line, y_line
+
+    def show_ghost_movement(self, vector):
+        if isinstance(vector, Arrow):
+            vector = Vector(vector.get_end()) - Vector(vector.get_start())
+        else:
+            vector = Vector((list(vector) + [0])[:3])
+        x_max = int(config.frame_x_radius + abs(vector[0]))
+        y_max = int(config.frame_y_radius + abs(vector[1]))
+        dots = VGroup(*(Dot(x * RIGHT + y * UP) for x in range(-x_max, x_max) for y in range(-y_max, y_max)))
+        dots.set_fill(BLACK, opacity=0)
+        dots_halfway = dots.copy().shift(vector / 2).set_fill(WHITE, 1)
+        dots_end = dots.copy().shift(vector)
+        self.play(Transform(dots, dots_halfway, rate_func=rush_into))
+        self.play(Transform(dots, dots_end, rate_func=rush_from))
+        self.remove(dots)
+
+
+def _sign(value):
+    return (value > 0) - (value < 0)
+
+
+class LinearTransformationScene(VectorScene):
+    """Community's LinearTransformationScene: planes, basis vectors and matrix animations."""
+    def __init__(self, include_background_plane=True, include_foreground_plane=True,
+                 background_plane_kwargs=None, foreground_plane_kwargs=None, show_coordinates=False,
+                 show_basis_vectors=True, basis_vector_stroke_width=6, i_hat_color=X_COLOR,
+                 j_hat_color=Y_COLOR, leave_ghost_vectors=False, **kwargs):
+        super().__init__(**kwargs)
+        self.include_background_plane = include_background_plane
+        self.include_foreground_plane = include_foreground_plane
+        self.show_coordinates = show_coordinates
+        self.show_basis_vectors = show_basis_vectors
+        self.basis_vector_stroke_width = basis_vector_stroke_width
+        self.i_hat_color, self.j_hat_color = ManimColor(i_hat_color), ManimColor(j_hat_color)
+        self.leave_ghost_vectors = leave_ghost_vectors
+        self.background_plane_kwargs = {'color': GREY, 'axis_config': {'color': GREY},
+                                        'background_line_style': {'stroke_color': GREY, 'stroke_width': 1}}
+        self.ghost_vectors = VGroup()
+        self.foreground_plane_kwargs = {'x_range': [-config.frame_width, config.frame_width, 1.0],
+                                        'y_range': [-config.frame_width, config.frame_width, 1.0],
+                                        'faded_line_ratio': 1}
+        self.update_default_configs((self.foreground_plane_kwargs, self.background_plane_kwargs),
+                                    (foreground_plane_kwargs, background_plane_kwargs))
+
+    @staticmethod
+    def update_default_configs(default_configs, passed_configs):
+        for default_config, passed_config in zip(default_configs, passed_configs):
+            if passed_config is not None:
+                _update_dict_recursively(default_config, passed_config)
+
+    def setup(self):
+        if hasattr(self, 'has_already_setup'):
+            return
+        self.has_already_setup = True
+        self.background_mobjects, self.foreground_mobjects = [], []
+        self.transformable_mobjects, self.moving_vectors = [], []
+        self.transformable_labels, self.moving_mobjects = [], []
+        self.background_plane = NumberPlane(**self.background_plane_kwargs)
+        if self.show_coordinates:
+            self.background_plane.add_coordinates()
+        if self.include_background_plane:
+            self.add_background_mobject(self.background_plane)
+        if self.include_foreground_plane:
+            self.plane = NumberPlane(**self.foreground_plane_kwargs)
+            self.add_transformable_mobject(self.plane)
+        if self.show_basis_vectors:
+            self.basis_vectors = self.get_basis_vectors(i_hat_color=self.i_hat_color, j_hat_color=self.j_hat_color)
+            self.moving_vectors += list(self.basis_vectors)
+            self.i_hat, self.j_hat = self.basis_vectors
+            self.add(self.basis_vectors)
+
+    def add_special_mobjects(self, mob_list, *mobs_to_add):
+        for mobject in mobs_to_add:
+            if mobject not in mob_list:
+                mob_list.append(mobject)
+                self.add(mobject)
+
+    def add_background_mobject(self, *mobjects):
+        self.add_special_mobjects(self.background_mobjects, *mobjects)
+
+    def add_foreground_mobject(self, *mobjects):
+        self.add_special_mobjects(self.foreground_mobjects, *mobjects)
+
+    def add_transformable_mobject(self, *mobjects):
+        self.add_special_mobjects(self.transformable_mobjects, *mobjects)
+
+    def add_moving_mobject(self, mobject, target_mobject=None):
+        mobject.target = target_mobject
+        self.add_special_mobjects(self.moving_mobjects, mobject)
+
+    def get_ghost_vectors(self):
+        return self.ghost_vectors
+
+    def get_unit_square(self, color=PURE_YELLOW, opacity=0.3, stroke_width=3):
+        square = self.square = Rectangle(color=color, width=self.plane.get_x_unit_size(),
+                                         height=self.plane.get_y_unit_size(), stroke_color=color,
+                                         stroke_width=stroke_width, fill_color=color, fill_opacity=opacity)
+        square.move_to(self.plane.coords_to_point(0, 0), DL)
+        return square
+
+    def add_unit_square(self, animate=False, **kwargs):
+        square = self.get_unit_square(**kwargs)
+        if animate:
+            self.play(DrawBorderThenFill(square), Animation(Group(*self.moving_vectors)))
+        self.add_transformable_mobject(square)
+        self.bring_to_front(*self.moving_vectors)
+        self.square = square
+        return self
+
+    def add_vector(self, vector, color=PURE_YELLOW, animate=False, **kwargs):
+        vector = super().add_vector(vector, color=color, animate=animate, **kwargs)
+        self.moving_vectors.append(vector)
+        return vector
+
+    def write_vector_coordinates(self, vector, **kwargs):
+        coords = super().write_vector_coordinates(vector, **kwargs)
+        self.add_foreground_mobject(coords)
+        return coords
+
+    def add_transformable_label(self, vector, label, transformation_name='L', new_label=None, **kwargs):
+        label_mob = self.label_vector(vector, label, **kwargs)
+        label_mob.target_text = new_label if new_label else f'{transformation_name}({label_mob.get_tex_string()})'
+        label_mob.vector = vector
+        label_mob.kwargs = {key: value for key, value in kwargs.items() if key != 'animate'}
+        self.transformable_labels.append(label_mob)
+        return label_mob
+
+    def add_title(self, title, scale_factor=1.5, animate=False):
+        if not isinstance(title, Mobject):
+            title = Tex(title).scale(scale_factor)
+        title.to_edge(UP)
+        title.add_background_rectangle()
+        if animate:
+            self.play(Write(title))
+        self.add_foreground_mobject(title)
+        self.title = title
+        return self
+
+    def get_matrix_transformation(self, matrix):
+        return self.get_transposed_matrix_transformation(_transpose(_matrix_rows(matrix)))
+
+    def get_transposed_matrix_transformation(self, transposed_matrix):
+        rows = _matrix_rows(transposed_matrix)
+        if len(rows) == 2:
+            rows = [rows[0] + [0.0], rows[1] + [0.0], [0.0, 0.0, 1.0]]
+        def transform(point):
+            point = (list(point) + [0, 0, 0])[:3]
+            return Vector([sum(point[i] * rows[i][j] for i in range(3)) for j in range(3)])
+        return transform
+
+    def get_piece_movement(self, pieces):
+        v_pieces = [piece for piece in pieces if isinstance(piece, VMobject)]
+        start = VGroup(*v_pieces)
+        target = VGroup(*(mob.target for mob in v_pieces))
+        if self.leave_ghost_vectors and start.children:
+            self.ghost_vectors.add(start.copy().fade(0.7))
+            self.add(self.ghost_vectors[-1])
+        return Transform(start, target, lag_ratio=0)
+
+    def get_moving_mobject_movement(self, func):
+        for m in self.moving_mobjects:
+            if m.target is None:
+                m.target = m.copy()
+            m.target.move_to(func(m.get_center()))
+        return self.get_piece_movement(self.moving_mobjects)
+
+    def get_vector_movement(self, func):
+        for v in self.moving_vectors:
+            v.target = VectorArrow(func(v.get_end()), color=v.get_color())
+            norm = math.hypot(*list(v.target.get_end())[:2])
+            if norm < 0.1:
+                v.target.get_tip().scale(norm)
+        return self.get_piece_movement(self.moving_vectors)
+
+    def get_transformable_label_movement(self):
+        for label in self.transformable_labels:
+            label.target = self.get_vector_label(label.vector.target, label.target_text, **label.kwargs)
+        return self.get_piece_movement(self.transformable_labels)
+
+    def apply_matrix(self, matrix, **kwargs):
+        self.apply_transposed_matrix(_transpose(_matrix_rows(matrix)), **kwargs)
+
+    def apply_inverse(self, matrix, **kwargs):
+        self.apply_matrix(_matrix_inverse(matrix), **kwargs)
+
+    def apply_transposed_matrix(self, transposed_matrix, **kwargs):
+        func = self.get_transposed_matrix_transformation(transposed_matrix)
+        if 'path_arc' not in kwargs:
+            kwargs['path_arc'] = (angle_of_vector(func(RIGHT)) + angle_of_vector(func(UP)) - PI / 2) / 2
+        self.apply_function(func, **kwargs)
+
+    def apply_inverse_transpose(self, t_matrix, **kwargs):
+        t_inv = _transpose(_matrix_inverse(_transpose(_matrix_rows(t_matrix))))
+        self.apply_transposed_matrix(t_inv, **kwargs)
+
+    def apply_nonlinear_transformation(self, function, **kwargs):
+        self.plane.prepare_for_nonlinear_transform()
+        self.apply_function(function, **kwargs)
+
+    def apply_function(self, function, added_anims=(), **kwargs):
+        kwargs.setdefault('run_time', 3)
+        anims = ([ApplyPointwiseFunction(function, t_mob) for t_mob in self.transformable_mobjects] +
+                 [self.get_vector_movement(function), self.get_transformable_label_movement(),
+                  self.get_moving_mobject_movement(function)] +
+                 [Animation(f_mob) for f_mob in self.foreground_mobjects] + list(added_anims))
+        self.play(*anims, **kwargs)
 
 
 DEFAULT_LAGGED_START_LAG_RATIO = 0.05
@@ -12100,7 +12697,7 @@ class _StreamLinesEnd(Animation):
             line.time = 0
 
 
-EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'ZoomedScene', 'ImageMobjectFromCamera', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
+EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'ZoomedScene', 'VectorScene', 'LinearTransformationScene', 'angle_of_vector', 'ImageMobjectFromCamera', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
            'Triangle', 'Polygon', 'Polygram', 'RegularPolygram', 'RegularPolygon', 'Star', 'Brace', 'BraceBetweenPoints', 'BraceLabel', 'BraceText',
            'Title', 'BulletedList', 'Tex', 'SingleStringMathTex', 'MarkupText', 'LabeledDot', 'Variable', 'always', 'f_always', 'always_shift', 'always_rotate',
            'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'BarChart', 'PolarPlane', 'NumberPlane', 'ComplexPlane', 'VectorField', 'ArrowVectorField', 'StreamLines', 'sigmoid', 'ScreenRectangle', 'FullScreenRectangle', 'VectorizedPoint', 'ComplexValueTracker', 'UnitInterval', 'TangentialArc', 'CurvesAsSubmobjects', 'VDict', 'Cutout', 'ConvexHull', 'ArcBrace', 'LaggedStartMap', 'MaintainPositionRelativeTo', 'Blink', 'Broadcast', 'SpiralIn', 'AddTextWordByWord', 'Animation', 'line_intersection', 'angle_between_vectors', 'DEFAULT_LAGGED_START_LAG_RATIO', 'Graph', 'DiGraph', 'Union', 'Intersection', 'Difference', 'Exclusion', 'Code', 'SVGMobject', 'VMobjectFromSVGPath', 'ImageMobject', 'RESAMPLING_ALGORITHMS', 'ManimColor', 'HSV', 'RGBA', 'LinearBase', 'LogBase', 'DefaultSectionType', 'Add', 'ShowPartial', 'TexTemplate', 'TexTemplateLibrary', 'TexFontTemplates', 'CoordinateSystem', 'PMobject', 'Mobject1D', 'Mobject2D', 'PGroup', 'PointCloudDot', 'Point', 'DEFAULT_POINT_DENSITY_1D', 'DEFAULT_POINT_DENSITY_2D', 'RandomColorGenerator', 'random_color', 'random_bright_color', 'TypeWithCursor', 'UntypeWithCursor', 'AnimatedBoundary', 'ShowPassingFlashWithThinningStrokeWidth', 'FadeTransformPieces', 'ImplicitFunction', 'LabeledPolygram', 'ChangeSpeed', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
@@ -12132,13 +12729,49 @@ EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'ZoomedScene', 'ImageMobjectF
 EXPORTS += [name for name in _PALETTE if name not in EXPORTS]
 
 
+def _rounded_array(value):
+    if type(value) is float:
+        return round(value, 5) if math.isfinite(value) else value
+    if type(value) is list:
+        return [_rounded_array(item) for item in value]
+    return value
+
+
+def _flat_xy(value):
+    """{'$xy': [x0, y0, ...], 'k': k} for planar points, or k-point groups of them."""
+    first = value[0]
+    if type(first) is not list or not first:
+        return None
+    if type(first[0]) is list:
+        k = len(first)
+        if not 1 <= k <= 64 or any(type(item) is not list or len(item) != k for item in value):
+            return None
+        points = [p for item in value for p in item]
+    else:
+        points, k = value, 0
+    flat = []
+    append = flat.append
+    for p in points:
+        if type(p) is not list or len(p) != 3 or p[2] != 0:
+            return None
+        for v in (p[0], p[1]):
+            kind = type(v)
+            if kind is float:
+                append(round(v, 5))
+            elif kind is int:
+                append(v)
+            else:
+                return None
+    return {'$xy': flat, 'k': k} if k else {'$xy': flat}
+
+
 def _pooled_json(result, default):
     """Encode frames with each distinct mobject snapshot stored once in a shared pool.
 
     Nodes are pooled bottom-up: a pooled node's children are pool indices, and large
     arrays become {"$pool": index} references, always lower than the node's own index. Static objects and unchanged group members repeat across frames; the
     worker swaps indices for shared objects, so the page sees the ordinary frame format."""
-    dumps = json.JSONEncoder(allow_nan=False, default=default).encode
+    dumps = json.JSONEncoder(allow_nan=False, default=default, separators=(',', ':')).encode
     pool, index = [], {}
     def store(text):
         key = index.get(text)
@@ -12152,7 +12785,9 @@ def _pooled_json(result, default):
             # Large arrays (curves, vertices) often outlive style-only changes such as
             # draw_progress or opacity, so they are pooled as {"$pool": index} too.
             if name != 'children' and type(value) is list and len(value) >= 8:
-                text = dumps(value)
+                # Geometry arrays travel at 1e-5 scene units (far below a pixel); planar
+                # point lists as flat XY pairs, grouped k per item (curves), if possible.
+                text = dumps(_flat_xy(value) or _rounded_array(value))
                 if len(text) > 400:
                     node[name] = {'$pool': store(text)}
         children = node.get('children')

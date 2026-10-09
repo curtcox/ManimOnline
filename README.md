@@ -1537,3 +1537,12 @@ vector content (the scene seen through the frame, stretched to the display over 
 camera background), not pixels; as in Community, each frame gives the zoomed frame
 the display's whole-pixel aspect ratio. Also new: per-axis `scale([sx, sy, 0])`, and
 assigning `mob.width`/`mob.height` rescales uniformly like Community.
+
+The **Linear transformations of the plane** example covers `LinearTransformationScene`
+(`apply_matrix`, `apply_inverse`, `apply_transposed_matrix`, `apply_nonlinear_transformation`,
+ghost vectors, unit square, transformable labels, titles, coordinates) and the
+`VectorScene` helpers (`add_plane`, `add_vector`, `get_vector_label`, `label_vector`,
+`coords_to_vector`, `vector_to_coords`, `lock_in_faded_grid`, `show_ghost_movement`).
+Vectors and grid points now follow Community's per-point `path_arc` arcs, and
+`play(..., path_arc=..., lag_ratio=...)` sets those options on every animation.
+
