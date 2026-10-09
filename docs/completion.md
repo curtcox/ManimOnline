@@ -317,3 +317,13 @@ subcaptions are recorded only.
   is not modelled. Polyhedra, 3D text planes and OpenGL-only surfaces remain open.
 - Polyhedron, Tetrahedron, Octahedron, Icosahedron, Dodecahedron and ConvexHull3D match
   Manim 0.22 geometry (vertex dots, face counts, bounds, vertex-driven face updates).
+
+Community docstring corpus (2026-10-09): of Manim 0.22's 395 `.. manim::` docstring
+examples, Community renders 372 here (with TinyTeX) and manim-lite renders 376; only the
+planar graph layout (2 examples) fails in lite where Community succeeds. Matched behavior
+includes play/wait frame timing, static waits, pointwise rotation interpolation, live
+Succession, custom Animation subclasses, glyph-level MathTex, text/formula point maps,
+networkx-exact spectral and Kamada-Kawai layouts. Remaining diffs are platform font
+metrics, MathTex sizes before browser measurement, unseeded random layouts and
+Community's AnimationGroup scene-group quirk. Still open: planar layout, Typst/MathTypst,
+Succession with lag_ratio != 1, GrowFromEdge default edge, MultiCamera.
