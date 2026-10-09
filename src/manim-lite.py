@@ -3197,7 +3197,7 @@ class ParametricFunction(VMobject):
             raise ValueError('Plotting flags must be booleans')
         values = self._range(t_range,.01)
         NumberLine._real(dt,'discontinuity buffer',nonnegative=True)
-        discontinuities = sorted(set(NumberLine._numbers(discontinuities or [])))
+        discontinuities = sorted(set(NumberLine._numbers([] if discontinuities is None else discontinuities)))
         super().__init__(**kwargs)
         self._parametric_function = function
         self.t_min,self.t_max,self.t_step = values
@@ -5142,6 +5142,24 @@ class _MathTexGlyph(Text):
         pass
 
 
+def _glyph_family(mobject):
+    """Give text and formula leaves their glyph submobjects, as Community's families have:
+    creation animations count and lag over glyphs."""
+    if not isinstance(mobject, Mobject):
+        return
+    for member in list(mobject.get_family()):
+        if (member._type == 'text' and isinstance(member, Text) and not isinstance(member, MathTex)
+                and '_char_index' not in member.__dict__):
+            member._explode()  # Glyphs themselves (with _char_index) stay leaves.
+        elif member._type == 'mathtex' and 'glyph' not in member.__dict__:
+            if isinstance(member, MathTex) and not isinstance(member, SingleStringMathTex):
+                member._split_single()
+                for part in member.children:
+                    _explode_math(part)
+            else:
+                _explode_math(member)
+
+
 def _explode_math(leaf):
     """Split a formula leaf (a whole single-string formula or one part) into glyph leaves
     placed by the browser-measured (or, before measurement, estimated) glyph boxes."""
@@ -5248,7 +5266,7 @@ class MathTex(Text):
         if tex_environment not in ('align*', None):
             raise NotImplementedError('MathTex environments other than align* are not supported')
         color_map = dict(tex_to_color_map or {})
-        isolate = [s for s in list(substrings_to_isolate or []) + list(color_map) if s]
+        isolate = [s for s in list([] if substrings_to_isolate is None else substrings_to_isolate) + list(color_map) if s]
         parts = self._break_up(tex_strings, isolate)
         text = arg_separator.join(parts)
         if len(text) > 4096:
@@ -5431,6 +5449,10 @@ def _tex_text_to_math(text):
                     continue
                 if name in _TEX_TEXT_SYMBOLS and name not in ('LaTeX', 'TeX'):
                     add_text(font, _TEX_TEXT_SYMBOLS[name])
+                    continue
+                if name.isalpha() and not (i < n and text[i] == '{'):
+                    # Argument-free commands (\LaTeX, \TeX, symbols) are typeset by MathJax.
+                    segments.append(('math', None, '\\' + name + ' '))
                     continue
                 raise NotImplementedError('Tex supports text, $math$ and basic font commands in this preview')
             if char == '~':
@@ -6714,8 +6736,10 @@ class NumberLine(VGroup):
         self.font_size,self.label_direction = font_size,list(label_direction)
         self.line_to_number_buff = line_to_number_buff
         self.label_constructor = MathTex if label_constructor is None else label_constructor
-        self.numbers_with_elongated_ticks = self._numbers(numbers_with_elongated_ticks or [])
-        self.numbers_to_exclude = self._numbers(numbers_to_exclude or [])
+        # NumPy arrays (np.arange) are common here, so test for None, not truthiness.
+        self.numbers_with_elongated_ticks = self._numbers([] if numbers_with_elongated_ticks is None
+                                                          else numbers_with_elongated_ticks)
+        self.numbers_to_exclude = self._numbers([] if numbers_to_exclude is None else numbers_to_exclude)
         self.numbers_to_include = None if numbers_to_include is None else self._numbers(numbers_to_include)
         # Community counts the digits after the step's printed decimal point (1.0 -> one place);
         # exponent notation keeps the significant fixed-point digits instead of collapsing to zero.
@@ -6771,7 +6795,7 @@ class NumberLine(VGroup):
 
     @classmethod
     def _numbers(cls, values):
-        result = list(values)
+        result = values.tolist() if hasattr(values, 'tolist') else list(values)
         if len(result) > 1000:
             raise ValueError('NumberLine supports at most 1000 ticks or labels per addition')
         for value in result:
@@ -6927,8 +6951,13 @@ class NumberLine(VGroup):
         self._real(buff,'label buffer',nonnegative=True)
         options = dict(self.decimal_number_config,**number_config)
         options.setdefault('color',self.color)
-        return DecimalNumber(x,font_size=self.font_size if font_size is None else font_size,
-                             **options).next_to(self.n2p(x),direction=direction,buff=buff)
+        size = self.font_size if font_size is None else font_size
+        number = DecimalNumber(x,font_size=size,**options).next_to(self.n2p(x),direction=direction,buff=buff)
+        if x < 0 and self.label_direction[0] == 0 and number.text.startswith('-'):
+            # Community aligns negative labels without their minus sign.
+            _, x0, x1, _, _ = _CM_GLYPHS['-']
+            number.shift(LEFT*((x1-x0)/1000*size*TEX_EM_PER_POINT/2))
+        return number
 
     def add_labels(self, dict_values, direction=None, buff=None, font_size=None, label_constructor=None):
         """Place given labels (strings or mobjects) at numbers, as Community's add_labels."""
@@ -8930,6 +8959,7 @@ class Create(Animation):
     _lagged = True
 
     def __init__(self, mobject, lag_ratio=1.0, introducer=True, **kwargs):
+        _glyph_family(mobject)
         super().__init__(mobject, lag_ratio=lag_ratio, introducer=introducer, **kwargs)
 
     @staticmethod
@@ -9040,6 +9070,7 @@ class Write(DrawBorderThenFill):
     Text and formulas have no glyph outlines in this preview; they show a stroked
     outline fading in, then their fill."""
     def __init__(self, vmobject, rate_func=linear, reverse=False, **kwargs):
+        _glyph_family(vmobject)
         length = len(vmobject._painted_members()) if isinstance(vmobject, Mobject) else 0
         kwargs.setdefault('run_time', 1 if length < 15 else 2)
         kwargs.setdefault('lag_ratio', min(4.0 / max(1.0, length), 0.2))
@@ -10142,6 +10173,12 @@ class Scene:
         self._camera_views = []
         # id(root) -> frame data, reused for unchanged roots inside one play/wait loop.
         self._static_frames = None
+
+    @property
+    def renderer(self):
+        """Community's CairoRenderer view: its camera, scene time and frame count."""
+        return types.SimpleNamespace(camera=self.camera, time=self.time, num_plays=len(self.sections),
+                                     skip_animations=self._skipping)
 
     def _add_camera_view(self, display):
         """Community's MultiCamera.add_image_mobject_from_camera."""

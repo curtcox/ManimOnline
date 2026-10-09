@@ -867,11 +867,11 @@ self.play(UntypeWithCursor(text, cursor))""")['frames']
         self.assertEqual(lite.DecimalNumber(1.5)._type,'text')
         written=render('t = Text("Hello")\nself.play(Write(t), run_time=1)')
         frame=written['frames'][6]['mobjects'][0]
-        self.assertEqual(frame['type'],'text')
+        self.assertEqual((frame['type'],len(frame['children'])),('vgroup',5))
         exploded=render('t = Text("Hello")\nt[0].set_color(RED)\nself.play(Write(t), run_time=1)')
         glyphs=exploded['frames'][6]['mobjects'][0]['children']
         self.assertEqual(glyphs[0]['color'],lite.RED)
-        self.assertGreater(glyphs[0]['opacity'],glyphs[-1]['opacity'])
+        self.assertGreater(glyphs[0]['fill_opacity'],glyphs[-1]['fill_opacity'])
         letters=render('t = Text("abc")\nt[1]\nself.play(AddTextLetterByLetter(t))')
         self.assertEqual(len(letters['frames'][2]['mobjects'][0]['children']),2)
         self.assertEqual(letters['frames'][-1]['mobjects'][0]['children'][2]['text'],'c')
@@ -1029,7 +1029,8 @@ self.play(UntypeWithCursor(text, cursor))""")['frames']
 
     def test_annotation_gallery_and_animate_accepts_any_method(self):
         result=json.loads(lite.render_scene((ROOT/'examples/annotation_scene.py').read_text()))
-        self.assertEqual(result['duration'],9)
+        # Manim 0.22: 10 s, since Write(title) counts its 21 glyphs (2 s).
+        self.assertEqual(result['duration'],10)
         self.assertIn(r'\text{Annotating a rectangle}',result['math_estimated'])
         frame=result['frames'][95]['mobjects']
         title=frame[0]
@@ -1075,7 +1076,7 @@ self.play(UntypeWithCursor(text, cursor))""")['frames']
         self.assertLess(tex.get_top()[1],brace.get_tip()[1])
         self.assertEqual(lite._tex_text_to_math(r'Area $x^2$ and \textbf{bold}'),r'\text{Area }x^2\text{ and }\textbf{bold}')
         with self.assertRaises(ValueError): lite.Tex('one $x')
-        with self.assertRaises(NotImplementedError): lite.Tex(r'\LaTeX')
+        with self.assertRaises(NotImplementedError): lite.Tex(r'\textcolor{red}{x}')
         title=lite.Title('Hello World')
         self.assertAlmostEqual(title.text.get_top()[1],3.5)
         self.assertAlmostEqual(title.underline.get_width(),lite.config.frame_width-2)
@@ -1176,7 +1177,7 @@ assert isinstance(t.get_value(), (int, float))""")
         write=lite.Write(lite.VGroup(*[lite.Square() for _ in range(20)]))
         self.assertEqual((write.run_time,write.lag_ratio,write.rate_func),(2,.2,lite.linear))
         self.assertEqual(lite.Write(lite.Text('Hi')).lag_ratio,.2)
-        text=render('t = Text("Hello")\nself.play(Write(t))')['frames'][3]['mobjects'][0]
+        text=render('t = Text("Hello")\nself.play(Write(t))')['frames'][3]['mobjects'][0]['children'][0]
         self.assertEqual(text['fill_opacity'],0)
         self.assertGreater(text['stroke_width'],0)
         gone=render('t = Text("Bye")\nself.add(t)\nself.play(Unwrite(t))')
@@ -1251,11 +1252,14 @@ assert isinstance(t.get_value(), (int, float))""")
 
     def test_text_layout_gallery_places_text_numbers_and_measured_formula(self):
         source=(ROOT/'examples/text_layout_scene.py').read_text()
-        result=json.loads(lite.render_scene(source,math_metrics={r'e^{i\pi} + 1 = 0':[4.2,1.05]}))
+        glyphs=[[-1.8+.6*i,0,.5,.5,-1] for i in range(7)]
+        result=json.loads(lite.render_scene(source,math_metrics={r'e^{i\pi} + 1 = 0':[4.2,1.05,None,glyphs]}))
         self.assertEqual(result['math_estimated'],[])
         frame=result['frames'][75]['mobjects']
         title,line,items,formula,box,number=frame[0],frame[1],frame[2:5],frame[5],frame[6],frame[7]
-        self.assertAlmostEqual(lite.Text('Measured text layout',font_size=40).to_edge(lite.UP).get_center()[1],title['position'][1])
+        # Write gave the title its glyph submobjects; they stay on the title's line.
+        expected=lite.Text('Measured text layout',font_size=40).to_edge(lite.UP).get_center()[1]
+        self.assertTrue(all(abs(glyph['position'][1]-expected)<.2 for glyph in title['children']))
         self.assertAlmostEqual(box['width'],4.2*60/96+.2)
         self.assertAlmostEqual(box['height'],1.05*60/96+.2)
         lefts=[item['position'][0]-item['layout']['width']/2 for item in items]
@@ -6148,11 +6152,16 @@ self.wait(1)""")
     def test_mathtex_creation_fades_and_changed_formula_crossfades(self):
         result = render("a = MathTex(r'\\frac{a}{b}')\nself.play(Create(a), run_time=2)\nself.play(Transform(a, MathTex('x^2', color=RED)), run_time=2)\nself.wait(1)")
         first = result['frames'][15]['mobjects'][0]
-        self.assertEqual(first['opacity'], 0.5)
-        self.assertNotIn('draw_progress', first)
-        middle = result['frames'][45]['mobjects']
-        self.assertEqual([m['text'] for m in middle], [r'\frac{a}{b}', 'x^2'])
-        self.assertEqual([m['opacity'] for m in middle], [0.5, 0.5])
+        # Glyphs a, rule, b appear in turn (Create's lag_ratio=1 over glyph submobjects).
+        glyphs = first['children'][0]['children']
+        self.assertEqual([g['opacity'] for g in glyphs], [1, 0.5, 0])
+        self.assertTrue(all('draw_progress' not in g for g in glyphs))
+        def leaves(node):
+            return [node] if not node.get('children') else [l for c in node['children'] for l in leaves(c)]
+        middle = [leaf for m in result['frames'][45]['mobjects'] for leaf in leaves(m)]
+        # The glyphs cross-fade into the new formula.
+        self.assertEqual({m['text'] for m in middle}, {r'\frac{a}{b}', 'x^2'})
+        self.assertEqual({m['opacity'] for m in middle} - {0}, {0.5})
         self.assertEqual(result['frames'][-1]['mobjects'][0]['text'], 'x^2')
 
     def test_math_example_renders_all_formula_frames(self):
@@ -7295,13 +7304,15 @@ self.wait(1)""")
         group = result['frames'][15]['mobjects'][0]
         self.assertEqual(group['children'][0]['draw_progress'], 0.5)
         nested = group['children'][1]['children']
-        self.assertEqual(nested[0]['opacity'], 0.5)
+        # Text is created glyph by glyph (Community's family members with points).
+        self.assertEqual({glyph['opacity'] for glyph in nested[0]['children']}, {0.5})
         self.assertEqual(nested[1]['draw_progress'], 0.5)
         # Community's default lag_ratio=1 draws the three members in turn.
         group = render(source.format(''))['frames'][15]['mobjects'][0]
         nested = group['children'][1]['children']
-        self.assertEqual((group['children'][0]['draw_progress'], nested[0]['opacity'], nested[1]['draw_progress']),
-                         (1, 0.5, 0))
+        # Seven members (circle, five glyphs, square): halfway, the third glyph is half shown.
+        self.assertEqual((group['children'][0]['draw_progress'], [g['opacity'] for g in nested[0]['children']],
+                          nested[1]['draw_progress']), (1, [1, 1, 0.5, 0, 0], 0))
 
     def test_uncreate_reverses_drawing_and_removes_the_object(self):
         result = render('c = Circle()\nself.add(c)\nself.play(Uncreate(c), run_time=2, rate_func=linear)')
@@ -8121,8 +8132,9 @@ class Demo(Scene):
         self.assertEqual(convert(r'\texttt{time\_width={{0.2}}}'), r'\texttt{time_width=0.2}')
         self.assertEqual(convert(r'50\% of \textbf{a \textit{b}}'), r'\text{50}\%\text{ of }\textbf{a }\textit{b}')
         self.assertEqual(convert(r'cost $x^2$ \& more'), r'\text{cost }x^2\text{ }\&\text{ more}')
+        self.assertEqual(convert(r'This is some \LaTeX'), r'\text{This is some }\LaTeX ')
         with self.assertRaises(NotImplementedError):
-            convert(r'\LaTeX')
+            convert(r'\textcolor{red}{x}')
 
     def test_mathtex_glyph_submobjects_follow_measured_boxes_and_tex_order(self):
         # Community: MathTex -> parts -> glyphs; 13 glyphs here, the fraction rule second.
