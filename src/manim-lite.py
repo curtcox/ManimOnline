@@ -115,6 +115,12 @@ class Vector(tuple):
     def __neg__(self):
         return Vector(-x for x in self)
 
+    def __radd__(self, other):
+        return Vector(a + b for a, b in zip(Vector(other), self))
+
+    def __rsub__(self, other):
+        return Vector(a - b for a, b in zip(Vector(other), self))
+
 
 UP, DOWN = Vector((0, 1, 0)), Vector((0, -1, 0))
 LEFT, RIGHT = Vector((-1, 0, 0)), Vector((1, 0, 0))
@@ -556,17 +562,48 @@ class Mobject:
     def submobjects(self, mobjects):
         mobjects = list(mobjects)
         self._validate_children(mobjects)
-        self._replace_children(list(dict.fromkeys(mobjects)))
+        unique = list(dict.fromkeys(mobjects))
+        self._release([m for m in self.children if m not in unique])
+        self._adopt(unique)
+        self._replace_children(unique)
+
+    def _release(self, mobjects):
+        # A member leaving a posed parent keeps its world placement, as in Community.
+        if self.angle == 0 and self.geometry_scale == 1 and not any(self.position):
+            return
+        for mobject in mobjects:
+            if mobject in self.children:
+                self._place_in_world(mobject)
+
+    def _place_in_world(self, mobject):
+        world = self._point_to_world(Vector(mobject._pivot_point()))
+        mobject.scale(self.geometry_scale).rotate(self.angle)
+        return mobject.shift(world - Vector(mobject._pivot_point()))
+
+    def _world_member(self, child):
+        """A world-placed copy of a direct child (child queries are parent-local)."""
+        return self._place_in_world(child.copy())
+
+    def _adopt(self, mobjects):
+        # Community children live in world coordinates; a posed parent stores them
+        # locally, so newly added world-placed members are re-posed to stay in place.
+        if not self.geometry_scale:
+            return  # A collapsed parent has no inverse; members keep their own pose.
+        for mobject in mobjects:
+            if mobject not in self.children:
+                self._to_local_pose(mobject)
 
     def add(self, *mobjects):
         self._validate_children(mobjects)
         unique = list(dict.fromkeys(mobjects))
+        self._adopt(unique)
         self._replace_children([m for m in self.children if m not in unique] + unique)
         return self
 
     def add_to_back(self, *mobjects):
         self._validate_children(mobjects)
         unique = list(dict.fromkeys(mobjects))
+        self._adopt(unique)
         self._replace_children(unique + [m for m in self.children if m not in unique])
         if self._type in ('text', 'mathtex'):
             # Community glyphs are submobjects, so these paint behind the text.
@@ -577,6 +614,7 @@ class Mobject:
     def remove(self, *mobjects):
         if any(not isinstance(m, Mobject) for m in mobjects):
             raise TypeError('Mobject removal expects Mobjects')
+        self._release([m for m in self.children if m in mobjects])
         self._replace_children([m for m in self.children if m not in mobjects])
         return self
 
@@ -1977,7 +2015,7 @@ class Mobject:
 
     def add_background_rectangle(self, color=None, opacity=0.75, **kwargs):
         rectangle = BackgroundRectangle(self, color=color, fill_opacity=opacity, **kwargs)
-        self.background_rectangle = self._to_local_pose(rectangle)
+        self.background_rectangle = rectangle
         return self.add_to_back(rectangle)
 
     def copy(self):
@@ -2030,14 +2068,24 @@ class Mobject:
                                           if key != '_saved_state'})
         return self
 
+    @property
+    def saved_state(self):
+        """Community's saved_state: a copy of the checkpoint (None before save_state)."""
+        if '_saved_state' not in self.__dict__:
+            return None
+        state = object.__new__(type(self))
+        state.__dict__ = copy.deepcopy(self._saved_state)
+        return state
+
     def restore(self):
         if '_saved_state' not in self.__dict__:
             raise ValueError('Call save_state() before restoring an object')
-        saved = self._saved_state
-        updaters, suspended = self.updaters, self.updating_suspended
-        self.__dict__ = copy.deepcopy(saved)
-        self.updaters, self.updating_suspended = updaters, suspended
-        self._saved_state = saved
+        # Community's become(saved_state): members keep their identities. Unlike
+        # become, a checkpoint also restores a traced path's clock.
+        self.become(self.saved_state)
+        for key in ('dissipating_time', 'time'):
+            if key in self._saved_state and 'traced_point_func' in self.__dict__:
+                self.__dict__[key] = copy.deepcopy(self._saved_state[key])
         return self
 
     @property
@@ -5159,7 +5207,7 @@ class LabeledLine(Line):
         self.label = Label(label, label_config, box_config, frame_config)
         start, end = self.get_start_and_end()
         self.label.move_to(start + (end - start) * label_position)
-        self.add(self._to_local_pose(self.label))
+        self.add(self.label)
 
 
 class LabeledArrow(LabeledLine, Arrow):
@@ -7337,8 +7385,19 @@ def _painted_paths(data, path=(), nested=True):
 class Animation:
     _instant = False  # Only Add may have a zero run_time.
 
+    def __new__(cls, *args, use_override=True, **kwargs):
+        mobject = args[0] if args else kwargs.get('mobject')
+        if use_override and isinstance(mobject, Mobject):
+            # Community's @override_animation: a mobject method builds this animation.
+            for klass in type(mobject).__mro__:
+                for value in vars(klass).values():
+                    if getattr(value, '_override_animation', None) is cls:
+                        return value(mobject, *args[1:], **kwargs)
+        return super().__new__(cls)
+
     def __init__(self, mobject, run_time=1, rate_func=smooth, lag_ratio=0, remover=False,
-                 introducer=False, name=None, suspend_mobject_updating=True, reverse_rate_function=False):
+                 introducer=False, name=None, suspend_mobject_updating=True, reverse_rate_function=False,
+                 use_override=True):
         if isinstance(lag_ratio, bool) or not isinstance(lag_ratio, _REAL) or not math.isfinite(lag_ratio) or lag_ratio < 0:
             raise ValueError('lag_ratio must be nonnegative and finite')
         if not callable(rate_func):
@@ -7673,8 +7732,13 @@ def _arc_factor(alpha, path_arc):
 
 
 class Transform(Animation):
-    def __init__(self, mobject, target_mobject, path_arc=0, path_arc_axis=OUT, **kwargs):
+    def __init__(self, mobject, target_mobject, path_arc=0, path_arc_axis=OUT, path_func=None, **kwargs):
         super().__init__(mobject, **kwargs)
+        if path_func is not None:
+            if not isinstance(path_func, _PathFunction):
+                raise NotImplementedError('path_func supports straight_path, path_along_arc, '
+                                          'clockwise_path and counterclockwise_path')
+            path_arc, path_arc_axis = path_func.path_arc, OUT
         if not isinstance(target_mobject, Mobject):
             raise TypeError('Transform expects a target Mobject')
         NumberLine._real(path_arc, 'path_arc')
@@ -8041,6 +8105,11 @@ class Animate(Transform):
     def __getattr__(self, name):
         if name.startswith('_'):
             raise AttributeError(name)
+        method = getattr(type(self.mobject), name, None)
+        if hasattr(method, '_override_animate') and not self.operations:
+            # Community's @override_animate(method) decorator.
+            custom = method._override_animate
+            return lambda *args, **kwargs: custom(self.mobject, *args, anim_args={}, **kwargs)
         override = type(self.mobject).__dict__.get('_animate_overrides', None) or getattr(type(self.mobject), '_animate_overrides', {})
         if name in override and not self.operations:
             # Community's @override_animate: the method builds its own animation.
@@ -8937,9 +9006,14 @@ class Scene:
         objects = [m for a in animations for m in a.objects()]
         def family(mobject):
             return [mobject] + [m for child in mobject.children for m in family(child)]
-        members = [m for obj in objects for m in family(obj)]
-        if len({id(m) for m in members}) != len(members):
-            raise ValueError('Use one animation per object in each play() call')
+        # A member shared inside one family is allowed (Community de-duplicates
+        # families); separately animated objects must not share members.
+        seen = set()
+        for obj in objects:
+            members = {id(m) for m in family(obj)}
+            if members & seen:
+                raise ValueError('Use one animation per object in each play() call')
+            seen |= members
         def ancestors(root, target, path=()):
             if root is target:
                 return path
@@ -12697,6 +12771,865 @@ class _StreamLinesEnd(Animation):
             line.time = 0
 
 
+# Community utility functions (manim.utils.*). Vectors are lite Vectors (tuples with
+# arithmetic) and arrays are lists, which NumPy accepts wherever arrays are expected.
+X_AXIS, Y_AXIS, Z_AXIS = RIGHT, UP, OUT
+DEFAULT_DASH_LENGTH = 0.05
+DEFAULT_POINTWISE_FUNCTION_RUN_TIME = 3.0
+DEFAULT_WAIT_TIME = 1.0
+SCALE_FACTOR_PER_FONT_POINT = 1 / 960
+START_X, START_Y = 30, 20
+
+
+def _point(value, name='Point'):
+    vector = Vector(value.tolist() if hasattr(value, 'tolist') else value)
+    for v in vector:
+        NumberLine._real(v, name + ' coordinate')
+    return vector
+
+
+def _norm(v):
+    return math.sqrt(sum(x * x for x in v))
+
+
+def _cross(a, b):
+    return Vector((a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]))
+
+
+def _user_interpolate(start, end, alpha):
+    """Community's interpolate: (1 - alpha) * start + alpha * end, for numbers or points."""
+    if isinstance(start, _REAL) and isinstance(end, _REAL):
+        return (1 - alpha) * start + alpha * end
+    if hasattr(start, '__array__') or hasattr(end, '__array__'):
+        return (1 - alpha) * start + alpha * end
+    a, b = list(start), list(end)
+    if len(a) == 3 and len(b) == 3:
+        return Vector((1 - alpha) * x + alpha * y for x, y in zip(a, b))
+    return [_user_interpolate(x, y, alpha) for x, y in zip(a, b)]
+
+
+def integer_interpolate(start, end, alpha):
+    if alpha >= 1:
+        return (int(end - 1), 1.0)
+    if alpha <= 0:
+        return (int(start), 0)
+    value = int(_user_interpolate(start, end, alpha))
+    residue = ((end - start) * alpha) % 1
+    return (value, residue)
+
+
+def mid(start, end):
+    return _user_interpolate(start, end, 0.5)
+
+
+def inverse_interpolate(start, end, value):
+    return (value - start) / (end - start)
+
+
+def match_interpolate(new_start, new_end, old_start, old_end, old_value):
+    return _user_interpolate(new_start, new_end, inverse_interpolate(old_start, old_end, old_value))
+
+
+def midpoint(point1, point2):
+    return _user_interpolate(point1, point2, 0.5)
+
+
+def normalize(vect, fall_back=None):
+    vector = _point(vect, 'Vector')
+    norm = _norm(vector)
+    if norm > 0:
+        return vector / norm
+    return fall_back if fall_back is not None else Vector(ORIGIN)
+
+
+def rotation_about_z(angle):
+    c, s = math.cos(angle), math.sin(angle)
+    return [[c, -s, 0], [s, c, 0], [0, 0, 1]]
+
+
+def rotation_matrix(angle, axis, homogeneous=False):
+    """Rodrigues' rotation matrix about an axis (3x3, or 4x4 when homogeneous)."""
+    x, y, z = normalize(axis)
+    c, s, t = math.cos(angle), math.sin(angle), 1 - math.cos(angle)
+    matrix = [[t * x * x + c, t * x * y - s * z, t * x * z + s * y],
+              [t * x * y + s * z, t * y * y + c, t * y * z - s * x],
+              [t * x * z - s * y, t * y * z + s * x, t * z * z + c]]
+    if homogeneous:
+        return [row + [0] for row in matrix] + [[0, 0, 0, 1]]
+    return matrix
+
+
+def _apply_rows(matrix, vector):
+    return Vector(sum(row[i] * vector[i] for i in range(3)) for row in matrix)
+
+
+def rotate_vector(vector, angle, axis=OUT):
+    """Rotate a 2D or 3D vector by angle about axis (Community returns the same length)."""
+    values = list(vector.tolist() if hasattr(vector, 'tolist') else vector)
+    if len(values) == 2:
+        c, s = math.cos(angle), math.sin(angle)
+        return Vector((values[0] * c - values[1] * s, values[0] * s + values[1] * c, 0))
+    if len(values) != 3:
+        raise ValueError('Vector must have the correct dimensions.')
+    return _apply_rows(rotation_matrix(angle, axis), Vector(values))
+
+
+def z_to_vector(vector):
+    axis_z = normalize(vector)
+    axis_y = normalize(_cross(axis_z, RIGHT))
+    axis_x = _cross(axis_y, axis_z)
+    if _norm(axis_y) == 0:
+        axis_x = normalize(_cross(UP, axis_z))
+        axis_y = -_cross(axis_x, axis_z)
+    return [list(row) for row in zip(axis_x, axis_y, axis_z)]
+
+
+def get_unit_normal(v1, v2, tol=1e-6):
+    v1, v2 = _point(v1, 'Vector'), _point(v2, 'Vector')
+    div1, div2 = max(abs(v) for v in v1), max(abs(v) for v in v2)
+    if div1 == 0:
+        if div2 == 0:
+            return DOWN
+        u = v2 / div2
+    elif div2 == 0:
+        u = v1 / div1
+    else:
+        u1, u2 = v1 / div1, v2 / div2
+        cp = _cross(u1, u2)
+        cp_norm = _norm(cp)
+        if cp_norm > tol:
+            return cp / cp_norm
+        u = u1
+    if abs(u[0]) < tol and abs(u[1]) < tol:
+        return DOWN
+    cp = Vector((-u[0] * u[2], -u[1] * u[2], u[0] * u[0] + u[1] * u[1]))
+    return cp / _norm(cp)
+
+
+def compass_directions(n=4, start_vect=RIGHT):
+    return [rotate_vector(_point(start_vect), k * TAU / n) for k in range(n)]
+
+
+def regular_vertices(n, *, radius=1, start_angle=None):
+    if start_angle is None:
+        start_angle = 0 if n % 2 == 0 else TAU / 4
+    return compass_directions(n, rotate_vector(RIGHT * radius, start_angle)), start_angle
+
+
+def complex_to_R3(complex_num):
+    return Vector((complex_num.real, complex_num.imag, 0))
+
+
+def R3_to_complex(point):
+    return complex(*list(point)[:2])
+
+
+def complex_func_to_R3_func(complex_func):
+    return lambda p: complex_to_R3(complex_func(R3_to_complex(p)))
+
+
+def center_of_mass(points):
+    points = [list(p) for p in points]
+    return [sum(values) / len(points) for values in zip(*points)]
+
+
+def cross2d(a, b):
+    a, b = list(a.tolist() if hasattr(a, 'tolist') else a), list(b.tolist() if hasattr(b, 'tolist') else b)
+    if a and isinstance(a[0], (list, tuple)):
+        return [p[0] * q[1] - q[0] * p[1] for p, q in zip(a, b)]
+    return a[0] * b[1] - b[0] * a[1]
+
+
+def shoelace(x_y):
+    points = [list(p) for p in x_y]
+    return sum(points[i - 1][0] * points[i][1] - points[i][0] * points[i - 1][1]
+               for i in range(len(points))) / -2 if points else 0.0
+
+
+def shoelace_direction(x_y):
+    return 'CW' if shoelace(x_y) > 0 else 'CCW'
+
+
+def perpendicular_bisector(line, norm_vector=OUT):
+    p1, p2 = _point(line[0]), _point(line[1])
+    direction = _cross(p1 - p2, _point(norm_vector))
+    middle = midpoint(p1, p2)
+    return [middle + direction, middle - direction]
+
+
+def cartesian_to_spherical(vec):
+    vec = _point(vec)
+    r = _norm(vec)
+    if r == 0:
+        return Vector(ORIGIN)
+    return Vector((r, math.atan2(vec[1], vec[0]), math.acos(vec[2] / r)))
+
+
+def spherical_to_cartesian(spherical):
+    r, theta, phi = list(spherical)
+    return Vector((r * math.cos(theta) * math.sin(phi), r * math.sin(theta) * math.sin(phi), r * math.cos(phi)))
+
+
+def find_intersection(p0s, v0s, p1s, v1s, threshold=1e-5):
+    result = []
+    for p0, v0, p1, v1 in zip(p0s, v0s, p1s, v1s):
+        p0, v0, p1, v1 = (_point(v) for v in (p0, v0, p1, v1))
+        normal = _cross(v1, _cross(v0, v1))
+        denom = max(sum(a * b for a, b in zip(v0, normal)), threshold)
+        result.append(p0 + v0 * (sum(a * b for a, b in zip(p1 - p0, normal)) / denom))
+    return result
+
+
+def get_winding_number(points):
+    total = 0
+    points = [list(p) for p in points]
+    for p1, p2 in adjacent_pairs(points):
+        d_angle = math.atan2(p2[1], p2[0]) - math.atan2(p1[1], p1[0])
+        d_angle = ((d_angle + PI) % TAU) - PI
+        total += d_angle
+    return total / TAU
+
+
+def thick_diagonal(dim, thickness=2):
+    return [[int(abs(i - j) < thickness) for j in range(dim)] for i in range(dim)]
+
+
+def bezier(points):
+    """Community's Bézier evaluator for any number of control points."""
+    points = [_point(p) for p in (points.tolist() if hasattr(points, 'tolist') else points)]
+    n = len(points) - 1
+    def evaluate(t):
+        return Vector(sum(math.comb(n, k) * (1 - t) ** (n - k) * t ** k * p[i] for k, p in enumerate(points))
+                      for i in range(3))
+    return evaluate
+
+
+def _de_casteljau(points, t):
+    points = [_point(p) for p in points]
+    left, right = [points[0]], [points[-1]]
+    while len(points) > 1:
+        points = [a + (b - a) * t for a, b in zip(points, points[1:])]
+        left.append(points[0])
+        right.append(points[-1])
+    return left, right[::-1]
+
+
+def split_bezier(points, t):
+    left, right = _de_casteljau(list(points), t)
+    return left + right
+
+
+def partial_bezier_points(points, a, b):
+    points = list(points)
+    if a == 1:
+        return [_point(points[-1])] * len(points)
+    if b == 0:
+        return [_point(points[0])] * len(points)
+    _, upper = _de_casteljau(points, a)
+    if a == b:
+        return [upper[0]] * len(points)
+    lower, _ = _de_casteljau(upper, (b - a) / (1 - a))
+    return lower
+
+
+def subdivide_bezier(points, n_divisions):
+    points = list(points)
+    if n_divisions == 1:
+        return [_point(p) for p in points]
+    result, remaining = [], points
+    for i in range(n_divisions - 1):
+        left, remaining = _de_casteljau(remaining, 1 / (n_divisions - i))
+        result += left
+    return result + remaining
+
+
+def bezier_remap(bezier_tuples, new_number_of_curves):
+    tuples = [list(t) for t in bezier_tuples]
+    count = len(tuples)
+    splits = [0] * count
+    for index in range(new_number_of_curves):
+        splits[index * count // new_number_of_curves] += 1
+    result = []
+    for curve, parts in zip(tuples, splits):
+        pieces = subdivide_bezier(curve, parts) if parts else []
+        degree = len(curve)
+        result += [pieces[i:i + degree] for i in range(0, len(pieces), degree)]
+    return result
+
+
+def point_lies_on_bezier(point, control_points, round_to=1e-6):
+    return bool(proportions_along_bezier_curve_for_point(point, control_points, round_to))
+
+
+def proportions_along_bezier_curve_for_point(point, control_points, round_to=1e-6):
+    """Parameters where a Bézier curve passes through point (sampled, then refined)."""
+    curve, target = bezier(control_points), _point(point)
+    def distance(t):
+        return _norm(curve(t) - target)
+    found = []
+    samples = 400
+    for i in range(samples + 1):
+        lo, hi = max(0, (i - 1) / samples), min(1, (i + 1) / samples)
+        for _ in range(60):
+            m1, m2 = lo + (hi - lo) / 3, hi - (hi - lo) / 3
+            if distance(m1) < distance(m2):
+                hi = m2
+            else:
+                lo = m1
+        t = (lo + hi) / 2
+        if distance(t) <= max(round_to, 1e-9) * 10 and all(abs(t - u) > 1e-4 for u in found):
+            found.append(t)
+    return sorted(found)
+
+
+def get_smooth_cubic_bezier_handle_points(anchors):
+    """Community's smooth handles: natural splines (open) or periodic (closed) anchors."""
+    anchors = [_point(p) for p in anchors]
+    if len(anchors) < 2:
+        return [], []
+    path = VMobject().set_points_smoothly(anchors)
+    points = path.get_points()
+    return [Vector(points[i + 1]) for i in range(0, len(points), 4)], [Vector(points[i + 2]) for i in range(0, len(points), 4)]
+
+
+def is_closed(points):
+    points = list(points)
+    return bool(points) and all(abs(a - b) < 1e-6 for a, b in zip(_point(points[0]), _point(points[-1])))
+
+
+def straight_path():
+    return _PathFunction(0)
+
+
+def path_along_arc(arc_angle, axis=OUT):
+    axis = _point(axis)
+    if axis[0] or axis[1] or not axis[2]:
+        raise NotImplementedError('Path arcs support only the OUT/IN axes')
+    return _PathFunction(arc_angle if axis[2] > 0 else -arc_angle)
+
+
+def clockwise_path():
+    return _PathFunction(-PI)
+
+
+def counterclockwise_path():
+    return _PathFunction(PI)
+
+
+class _PathFunction:
+    """Community's arc path functions: callable on point lists, and usable as path_func."""
+    def __init__(self, arc):
+        self.path_arc = arc if abs(arc) >= STRAIGHT_PATH_THRESHOLD else 0
+
+    def __call__(self, start_points, end_points, alpha):
+        factor = _arc_factor(alpha, self.path_arc)
+        def move(p, q):
+            p, q = _point(p), _point(q)
+            d = q - p
+            return Vector((p[0] + factor.real * d[0] - factor.imag * d[1],
+                           p[1] + factor.imag * d[0] + factor.real * d[1], p[2] + alpha * d[2]))
+        starts = start_points.tolist() if hasattr(start_points, 'tolist') else start_points
+        ends = end_points.tolist() if hasattr(end_points, 'tolist') else end_points
+        if starts and isinstance(list(starts)[0], _REAL):
+            return move(starts, ends)
+        return [move(p, q) for p, q in zip(starts, ends)]
+
+
+def adjacent_n_tuples(objects, n):
+    objects = list(objects)
+    return list(zip(*[objects[k:] + objects[:k] for k in range(n)]))
+
+
+def adjacent_pairs(objects):
+    return adjacent_n_tuples(objects, 2)
+
+
+def all_elements_are_instances(iterable, Class):
+    return all(isinstance(e, Class) for e in iterable)
+
+
+def concatenate_lists(*list_of_lists):
+    return [item for items in list_of_lists for item in items]
+
+
+def list_update(l1, l2):
+    return [e for e in l1 if e not in l2] + list(l2)
+
+
+def list_difference_update(l1, l2):
+    return [e for e in l1 if e not in l2]
+
+
+def listify(obj):
+    if isinstance(obj, str):
+        return [obj]
+    try:
+        return list(obj)
+    except TypeError:
+        return [obj]
+
+
+def make_even(iterable_1, iterable_2):
+    list_1, list_2 = list(iterable_1), list(iterable_2)
+    length = max(len(list_1), len(list_2))
+    return ([list_1[(n * len(list_1)) // length] for n in range(length)],
+            [list_2[(n * len(list_2)) // length] for n in range(length)])
+
+
+def make_even_by_cycling(iterable_1, iterable_2):
+    list_1, list_2 = list(iterable_1), list(iterable_2)
+    length = max(len(list_1), len(list_2))
+    return [list_1[i % len(list_1)] for i in range(length)], [list_2[i % len(list_2)] for i in range(length)]
+
+
+def remove_list_redundancies(lst):
+    seen, result = set(), []
+    for item in reversed(list(lst)):
+        if item not in seen:
+            result.append(item)
+            seen.add(item)
+    return result[::-1]
+
+
+def remove_nones(sequence):
+    return [x for x in sequence if x]
+
+
+def stretch_array_to_length(nparray, length):
+    items = list(nparray)
+    curr_len = len(items)
+    if curr_len > length:
+        raise Warning('Trying to stretch array to a length shorter than its own')
+    return [items[int(i * curr_len / length)] for i in range(length)]
+
+
+def tuplify(obj):
+    if isinstance(obj, str):
+        return (obj,)
+    try:
+        return tuple(obj)
+    except TypeError:
+        return (obj,)
+
+
+def choose(n, k):
+    return math.comb(n, k)
+
+
+def clip(a, min_a, max_a):
+    return min_a if a < min_a else max_a if a > max_a else a
+
+
+def binary_search(function, target, lower_bound, upper_bound, tolerance=1e-4):
+    lh, rh = lower_bound, upper_bound
+    mh = (lh + rh) / 2
+    while abs(rh - lh) > tolerance:
+        mh = (lh + rh) / 2
+        lx, mx, rx = (function(h) for h in (lh, mh, rh))
+        if lx == target:
+            return lh
+        if rx == target:
+            return rh
+        if lx <= target <= rx:
+            if mx > target:
+                rh = mh
+            else:
+                lh = mh
+        elif lx > target > rx:
+            lh, rh = rh, lh
+        else:
+            return None
+    return mh
+
+
+def color_to_rgba(color, alpha=1):
+    return list(ManimColor(color, alpha)._rgba[:3]) + [alpha]
+
+
+def rgba_to_color(rgba):
+    rgba = list(rgba)
+    return ManimColor(rgba[:3], rgba[3] if len(rgba) > 3 else 1.0)
+
+
+def color_to_int_rgb(color):
+    return [int(v * 255) for v in ManimColor(color)._rgba[:3]]
+
+
+def color_to_int_rgba(color, opacity=1.0):
+    return color_to_int_rgb(color) + [int(opacity * 255)]
+
+
+def merge_dicts_recursively(*dicts):
+    result = {}
+    _update_dict_recursively(result, *[copy.deepcopy(d) for d in dicts])
+    return result
+
+
+def update_dict_recursively(current_dict, *others):
+    _update_dict_recursively(current_dict, *others)
+
+
+class tempconfig:
+    """Community's tempconfig: temporarily override preview configuration values."""
+    def __init__(self, temp_config):
+        self.changes = dict(temp_config.items() if hasattr(temp_config, 'items') else temp_config)
+
+    def __enter__(self):
+        self.saved = {name: getattr(config, name) for name in self.changes}
+        for name, value in self.changes.items():
+            setattr(config, name, value)
+        return config
+
+    def __exit__(self, *exc):
+        for name, value in self.saved.items():
+            setattr(config, name, value)
+        return False
+
+
+def override_animate(method):
+    """Decorator: make mobject.animate.method(...) build this custom animation."""
+    def decorator(animation_method):
+        method._override_animate = animation_method
+        return animation_method
+    return decorator
+
+
+def override_animation(animation_class):
+    """Decorator: make animation_class(mobject, ...) build this method's animation."""
+    def decorator(func):
+        func._override_animation = animation_class
+        return func
+    return decorator
+
+
+def index_labels(mobject, label_height=0.15, background_stroke_width=5, **kwargs):
+    """Integer labels at each submobject center (Community's debugging helper)."""
+    labels = VGroup()
+    for n, submob in enumerate(mobject):
+        label = Integer(n, **kwargs)
+        label.set_stroke(BLACK, width=background_stroke_width)
+        label.scale_to_fit_height(label_height)
+        label.move_to(submob)
+        labels.add(label)
+    return labels
+
+
+def print_family(mobject, n_tabs=0):
+    print('\t' * n_tabs, mobject, id(mobject))
+    for submob in mobject.children:
+        print_family(submob, n_tabs + 1)
+
+
+def assert_is_mobject_method(method):
+    if not inspect.ismethod(method) or not isinstance(method.__self__, Mobject):
+        raise AssertionError('Expected a Mobject method')
+
+
+def turn_animation_into_updater(animation, cycle=False, delay=0, **kwargs):
+    """Drive an animation from an updater instead of Scene.play (Community)."""
+    mobject = animation.mobject
+    animation.suspend_mobject_updating = False
+    elapsed = [-delay]
+    starting = mobject.copy()
+    animation_copy = [None]
+    def update(m, dt):
+        if elapsed[0] < 0:
+            elapsed[0] += dt
+            return
+        if animation_copy[0] is None:
+            m.become(starting)
+            animation_copy[0] = True
+        run_time = animation.run_time
+        time_ratio = elapsed[0] / run_time if run_time else 1
+        if cycle:
+            alpha = time_ratio % 1
+        else:
+            alpha = min(1, max(0, time_ratio))
+            if alpha >= 1:
+                m.become(_animation_end_state(animation, starting))
+                m.remove_updater(update)
+                return
+        m.become(_animation_state(animation, starting, alpha))
+        elapsed[0] += dt
+    mobject.add_updater(update)
+    return mobject
+
+
+def cycle_animation(animation, **kwargs):
+    return turn_animation_into_updater(animation, cycle=True, **kwargs)
+
+
+def _animation_state(animation, starting, alpha):
+    """A live Mobject showing an animation at alpha (for animation-driven updaters)."""
+    if not getattr(animation, '_updater_ready', False):
+        animation.mobject.become(starting)
+        animation.prepare(Scene())
+        animation._updater_ready = True
+    states = animation.states(alpha)[animation.mobject]
+    snapshot = max(states, key=lambda state: state['opacity'])
+    result = starting.copy()
+    def apply(target, node):
+        for child, state in zip(target.children, node.get('children', [])):
+            apply(child, state)
+        for key, value in node.items():
+            if key not in ('type', 'children', 'geometry_center'):
+                target.__dict__[key] = _snapshot_copy(value)
+        target._type = node['type']
+        target.__dict__.pop('_family_pivot_cache', None)
+        # Keep the sampled pose exactly although the pivot is recomputed:
+        # P' = P + (I - sR)(G - G').
+        sampled, current = Vector(node['geometry_center']), target._geometry_center()
+        delta = sampled - current
+        c, s = target.geometry_scale * math.cos(target.angle), target.geometry_scale * math.sin(target.angle)
+        target.position = list(Vector(target.position) + Vector((delta[0] - (c * delta[0] - s * delta[1]),
+                                                                 delta[1] - (s * delta[0] + c * delta[1]), 0)))
+    apply(result, snapshot)
+    return result
+
+
+def _animation_end_state(animation, starting):
+    return _animation_state(animation, starting, 1)
+
+
+class SampleSpace(Rectangle):
+    """Community's probability sample space: a rectangle divided by probabilities."""
+    def __init__(self, height=3, width=3, fill_color=DARK_GREY, fill_opacity=1, stroke_width=0.5,
+                 stroke_color=LIGHT_GREY, default_label_scale_val=1):
+        super().__init__(height=height, width=width, fill_color=fill_color, fill_opacity=fill_opacity,
+                         stroke_width=stroke_width, stroke_color=stroke_color)
+        self.default_label_scale_val = default_label_scale_val
+
+    def add_title(self, title='Sample space', buff=MED_SMALL_BUFF):
+        title_mob = Tex(title)
+        if title_mob.get_width() > self.get_width():
+            title_mob.width = self.get_width()
+        title_mob.next_to(self, UP, buff=buff)
+        self.title = title_mob
+        self.add(title_mob)
+        return self
+
+    def add_label(self, label):
+        self.label = label
+        return self
+
+    def complete_p_list(self, p_list):
+        new_p_list = list(tuplify(p_list))
+        remainder = 1.0 - sum(new_p_list)
+        if abs(remainder) > 1e-8:
+            new_p_list.append(remainder)
+        return new_p_list
+
+    def get_division_along_dimension(self, p_list, dim, colors, vect):
+        p_list = self.complete_p_list(p_list)
+        colors = color_gradient(colors, len(p_list))
+        last_point = self.get_edge_center(-Vector(vect))
+        parts = VGroup()
+        for factor, color in zip(p_list, colors):
+            part = SampleSpace()
+            part.set_fill(color, 1)
+            part.replace(self, stretch=True)
+            part.stretch(factor, dim)
+            part.move_to(last_point, -Vector(vect))
+            last_point = part.get_edge_center(vect)
+            parts.add(part)
+        return parts
+
+    def get_horizontal_division(self, p_list, colors=(GREEN_E, BLUE_E), vect=DOWN):
+        return self.get_division_along_dimension(p_list, 1, colors, vect)
+
+    def get_vertical_division(self, p_list, colors=(MAROON_B, YELLOW), vect=RIGHT):
+        return self.get_division_along_dimension(p_list, 0, colors, vect)
+
+    def divide_horizontally(self, *args, **kwargs):
+        self.horizontal_parts = self.get_horizontal_division(*args, **kwargs)
+        self.add(self.horizontal_parts)
+        return self
+
+    def divide_vertically(self, *args, **kwargs):
+        self.vertical_parts = self.get_vertical_division(*args, **kwargs)
+        self.add(self.vertical_parts)
+        return self
+
+    def get_subdivision_braces_and_labels(self, parts, labels, direction, buff=SMALL_BUFF, min_num_quads=1):
+        # min_num_quads is accepted for compatibility; Community's Brace rejects it.
+        label_mobs, braces = VGroup(), VGroup()
+        # Parts are children of this shape; measure them where they appear.
+        owner = self._world_member(parts) if parts in self.children else parts
+        for label, part in zip(labels, owner):
+            brace = Brace(part, direction, buff=buff)
+            if isinstance(label, VMobject):
+                label_mob = label
+            else:
+                label_mob = MathTex(label)
+                label_mob.scale(self.default_label_scale_val)
+            label_mob.next_to(brace, direction, buff)
+            braces.add(brace)
+            label_mobs.add(label_mob)
+        parts.braces, parts.labels = braces, label_mobs
+        parts.label_kwargs = {'labels': label_mobs.copy(), 'direction': direction, 'buff': buff}
+        return VGroup(parts.braces, parts.labels)
+
+    def get_side_braces_and_labels(self, labels, direction=LEFT, **kwargs):
+        return self.get_subdivision_braces_and_labels(self.horizontal_parts, labels, direction, **kwargs)
+
+    def get_top_braces_and_labels(self, labels, **kwargs):
+        return self.get_subdivision_braces_and_labels(self.vertical_parts, labels, UP, **kwargs)
+
+    def get_bottom_braces_and_labels(self, labels, **kwargs):
+        return self.get_subdivision_braces_and_labels(self.vertical_parts, labels, DOWN, **kwargs)
+
+    def add_braces_and_labels(self):
+        for attr in ('horizontal_parts', 'vertical_parts'):
+            parts = self.__dict__.get(attr)
+            if parts is None:
+                continue
+            for subattr in ('braces', 'labels'):
+                if subattr in parts.__dict__:
+                    self.add(parts.__dict__[subattr])
+        return self
+
+    def __getitem__(self, index):
+        if 'horizontal_parts' in self.__dict__:
+            return self.horizontal_parts[index]
+        if 'vertical_parts' in self.__dict__:
+            return self.vertical_parts[index]
+        return super().__getitem__(index)
+
+
+class TransformAnimations(Animation):
+    """Morph between what two animations show, frame by frame (Community)."""
+    def __init__(self, start_anim, end_anim, rate_func=squish_rate_func(smooth), **kwargs):
+        if not isinstance(start_anim, Animation) or not isinstance(end_anim, Animation):
+            raise TypeError('TransformAnimations expects two animations')
+        run_time = kwargs.pop('run_time', max(start_anim.run_time, end_anim.run_time))
+        super().__init__(start_anim.mobject, rate_func=rate_func, run_time=run_time, **kwargs)
+        self.start_anim, self.end_anim = start_anim, end_anim
+        for anim in (start_anim, end_anim):
+            anim.run_time = run_time
+
+    def prepare(self, scene):
+        for anim in (self.start_anim, self.end_anim):
+            anim.prepare(Scene())
+        super().prepare(scene)
+
+    @staticmethod
+    def _shown(anim, alpha):
+        states = anim.states(alpha)[anim.mobject]
+        return max(states, key=lambda state: state['opacity'])
+
+    def states(self, alpha, rate_func=None):
+        alpha = max(0, min(1, alpha))
+        start, end = self._shown(self.start_anim, alpha), self._shown(self.end_anim, alpha)
+        rate = rate_func or self.rate_func
+        return {self.mobject: _sample_transform(_transform_plan(start, end), rate(alpha))}
+
+    def finish(self, scene):
+        terminal = copy.deepcopy(self.end_anim)
+        staging = Scene().add(terminal.mobject)
+        terminal._complete(staging)
+        self.mobject.become(terminal.mobject)
+
+
+# Community's logo glyph outlines (manim/mobject/logo.py): the double-struck M, then "anim".
+MANIM_SVG_PATHS = [
+    'M 4.64259,-2.092154 L 2.739726,-6.625156 C 2.660025,-6.824408 2.650062,-6.824408 2.381071,-6.824408 L 0.52802,-6.824408 C 0.348692,-6.824408 0.199253,-6.824408 0.199253,-6.645081 C 0.199253,-6.475716 0.37858,-6.475716 0.428394,-6.475716 C 0.547945,-6.475716 0.816936,-6.455791 1.036115,-6.37609 L 1.036115,-1.05604 C 1.036115,-0.846824 1.036115,-0.408468 0.358655,-0.348692 C 0.169365,-0.328767 0.169365,-0.18929 0.169365,-0.179328 C 0.169365,0 0.328767,0 0.508095,0 L 2.052304,0 C 2.231631,0 2.381071,0 2.381071,-0.179328 C 2.381071,-0.268991 2.30137,-0.33873 2.221669,-0.348692 C 1.454545,-0.408468 1.454545,-0.826899 1.454545,-1.05604 L 1.454545,-6.017435 L 1.464508,-6.027397 L 3.895392,-0.209215 C 3.975093,-0.029888 4.044832,0 4.104608,0 C 4.224159,0 4.254047,-0.079701 4.303861,-0.199253 L 6.744707,-6.027397 L 6.75467,-6.017435 L 6.75467,-1.05604 C 6.75467,-0.846824 6.75467,-0.408468 6.07721,-0.348692 C 5.88792,-0.328767 5.88792,-0.18929 5.88792,-0.179328 C 5.88792,0 6.047323,0 6.22665,0 L 8.886675,0 C 9.066002,0 9.215442,0 9.215442,-0.179328 C 9.215442,-0.268991 9.135741,-0.33873 9.05604,-0.348692 C 8.288917,-0.408468 8.288917,-0.826899 8.288917,-1.05604 L 8.288917,-5.768369 C 8.288917,-5.977584 8.288917,-6.41594 8.966376,-6.475716 C 9.066002,-6.485679 9.155666,-6.535492 9.155666,-6.645081 C 9.155666,-6.824408 9.006227,-6.824408 8.826899,-6.824408 L 6.90411,-6.824408 C 6.645081,-6.824408 6.625156,-6.824408 6.535492,-6.615193 L 4.64259,-2.092154 Z M 4.343711,-1.912827 C 4.423412,-1.743462 4.433375,-1.733499 4.552927,-1.693649 L 4.11457,-0.637609 L 4.094645,-0.637609 L 1.823163,-6.057285 C 1.77335,-6.1868 1.693649,-6.356164 1.554172,-6.475716 L 2.420922,-6.475716 L 4.343711,-1.912827 Z M 1.334994,-0.348692 L 1.165629,-0.348692 C 1.185554,-0.37858 1.205479,-0.408468 1.225405,-0.428394 C 1.235367,-0.438356 1.235367,-0.448319 1.24533,-0.458281 L 1.334994,-0.348692 Z M 7.103362,-6.475716 L 8.159402,-6.475716 C 7.940224,-6.22665 7.940224,-5.967621 7.940224,-5.788294 L 7.940224,-1.036115 C 7.940224,-0.856787 7.940224,-0.597758 8.169365,-0.348692 L 6.884184,-0.348692 C 7.103362,-0.597758 7.103362,-0.856787 7.103362,-1.036115 L 7.103362,-6.475716 Z',
+    'M 1.464508,-4.024907 C 1.464508,-4.234122 1.743462,-4.393524 2.092154,-4.393524 C 2.669988,-4.393524 2.929016,-4.124533 2.929016,-3.516812 L 2.929016,-2.789539 C 1.77335,-2.440847 0.249066,-2.042341 0.249066,-0.916563 C 0.249066,-0.308842 0.71731,0.139477 1.354919,0.139477 C 1.92279,0.139477 2.381071,-0.059776 2.929016,-0.557908 C 3.038605,-0.049813 3.257783,0.139477 3.745953,0.139477 C 4.174346,0.139477 4.483188,-0.019925 4.861768,-0.428394 L 4.712329,-0.637609 L 4.612702,-0.537983 C 4.582814,-0.508095 4.552927,-0.498132 4.503113,-0.498132 C 4.363636,-0.498132 4.293898,-0.587796 4.293898,-0.747198 L 4.293898,-3.347447 C 4.293898,-4.184309 3.536737,-4.712329 2.321295,-4.712329 C 1.195517,-4.712329 0.438356,-4.204234 0.438356,-3.457036 C 0.438356,-3.048568 0.67746,-2.799502 1.085928,-2.799502 C 1.484433,-2.799502 1.763387,-3.038605 1.763387,-3.377335 C 1.763387,-3.676214 1.464508,-3.88543 1.464508,-4.024907 Z M 2.919054,-0.996264 C 2.650062,-0.687422 2.450809,-0.56787 2.211706,-0.56787 C 1.912827,-0.56787 1.703611,-0.836862 1.703611,-1.235367 C 1.703611,-1.8132 2.122042,-2.231631 2.919054,-2.440847 L 2.919054,-0.996264 Z',
+    'M 2.948941,-4.044832 C 3.297634,-4.044832 3.466999,-3.775841 3.466999,-3.217933 L 3.466999,-0.806974 C 3.466999,-0.438356 3.337484,-0.278954 2.998755,-0.239103 L 2.998755,0 L 5.339975,0 L 5.339975,-0.239103 C 4.951432,-0.268991 4.851806,-0.388543 4.851806,-0.806974 L 4.851806,-3.307597 C 4.851806,-4.164384 4.323786,-4.712329 3.506849,-4.712329 C 2.909091,-4.712329 2.450809,-4.433375 2.082192,-3.845579 L 2.082192,-4.592777 L 0.179328,-4.592777 L 0.179328,-4.353674 C 0.617684,-4.283935 0.707347,-4.184309 0.707347,-3.765878 L 0.707347,-0.836862 C 0.707347,-0.418431 0.627646,-0.328767 0.179328,-0.239103 L 0.179328,0 L 2.580324,0 L 2.580324,-0.239103 C 2.211706,-0.288917 2.092154,-0.438356 2.092154,-0.806974 L 2.092154,-3.466999 C 2.092154,-3.576588 2.530511,-4.044832 2.948941,-4.044832 Z',
+    'M 2.15193,-4.592777 L 0.239103,-4.592777 L 0.239103,-4.353674 C 0.67746,-4.26401 0.767123,-4.174346 0.767123,-3.765878 L 0.767123,-0.836862 C 0.767123,-0.428394 0.697385,-0.348692 0.239103,-0.239103 L 0.239103,0 L 2.6401,0 L 2.6401,-0.239103 C 2.291407,-0.288917 2.15193,-0.428394 2.15193,-0.806974 L 2.15193,-4.592777 Z M 1.454545,-6.884184 C 1.026152,-6.884184 0.67746,-6.535492 0.67746,-6.117061 C 0.67746,-5.668742 1.006227,-5.339975 1.444583,-5.339975 S 2.221669,-5.668742 2.221669,-6.107098 C 2.221669,-6.535492 1.882939,-6.884184 1.454545,-6.884184 Z',
+    'M 2.929016,-4.044832 C 3.317559,-4.044832 3.466999,-3.815691 3.466999,-3.217933 L 3.466999,-0.806974 C 3.466999,-0.398506 3.35741,-0.268991 2.988792,-0.239103 L 2.988792,0 L 5.32005,0 L 5.32005,-0.239103 C 4.971357,-0.278954 4.851806,-0.428394 4.851806,-0.806974 L 4.851806,-3.466999 C 4.851806,-3.576588 5.310087,-4.044832 5.69863,-4.044832 C 6.07721,-4.044832 6.22665,-3.805729 6.22665,-3.217933 L 6.22665,-0.806974 C 6.22665,-0.388543 6.117061,-0.268991 5.738481,-0.239103 L 5.738481,0 L 8.109589,0 L 8.109589,-0.239103 C 7.721046,-0.259029 7.611457,-0.37858 7.611457,-0.806974 L 7.611457,-3.307597 C 7.611457,-4.164384 7.083437,-4.712329 6.266501,-4.712329 C 5.69863,-4.712329 5.32005,-4.483188 4.801993,-3.845579 C 4.503113,-4.473225 4.154421,-4.712329 3.526775,-4.712329 S 2.440847,-4.443337 2.062267,-3.845579 L 2.062267,-4.592777 L 0.179328,-4.592777 L 0.179328,-4.353674 C 0.617684,-4.293898 0.707347,-4.174346 0.707347,-3.765878 L 0.707347,-0.836862 C 0.707347,-0.428394 0.617684,-0.318804 0.179328,-0.239103 L 0.179328,0 L 2.550436,0 L 2.550436,-0.239103 C 2.201743,-0.288917 2.092154,-0.428394 2.092154,-0.806974 L 2.092154,-3.466999 C 2.092154,-3.58655 2.530511,-4.044832 2.929016,-4.044832 Z'
+]
+
+
+class ManimBanner(VGroup):
+    """Community's Manim logo banner: Create draws it, expand() slides out "anim"."""
+    def __init__(self, dark_theme=True):
+        super().__init__()
+        logo_green, logo_blue, logo_red = '#81b29a', '#454866', '#e07a5f'
+        m_height_over_anim_height = 0.75748
+        self.font_color = '#ece6e2' if dark_theme else '#343434'
+        self.scale_factor = 1.0
+        self.M = VMobjectFromSVGPath(MANIM_SVG_PATHS[0]).flip(RIGHT).center()
+        self.M.set(stroke_width=0).scale(7 * DEFAULT_FONT_SIZE * SCALE_FACTOR_PER_FONT_POINT)
+        self.M.set_fill(color=self.font_color, opacity=1).shift(2.25 * LEFT + 1.5 * UP)
+        self.circle = Circle(color=logo_green, fill_opacity=1).shift(LEFT)
+        self.square = Square(color=logo_blue, fill_opacity=1).shift(UP)
+        self.triangle = Triangle(color=logo_red, fill_opacity=1).shift(RIGHT)
+        self.shapes = VGroup(self.triangle, self.square, self.circle)
+        self.add(self.shapes, self.M)
+        self.move_to(ORIGIN)
+        anim = VGroup()
+        for index, path in enumerate(MANIM_SVG_PATHS[1:]):
+            tex = VMobjectFromSVGPath(path).flip(RIGHT).center()
+            tex.set(stroke_width=0).scale(DEFAULT_FONT_SIZE * SCALE_FACTOR_PER_FONT_POINT)
+            if index > 0:
+                tex.next_to(anim, buff=0.01)
+            tex.align_to(self.M, DOWN)
+            anim.add(tex)
+        anim.set_fill(color=self.font_color, opacity=1)
+        anim.height = m_height_over_anim_height * self.M.get_height()
+        # "anim" joins the banner only when it expands.
+        self.anim = anim
+
+    def scale(self, scale_factor, **kwargs):
+        self.scale_factor *= scale_factor
+        if self.anim not in self.children:
+            self.anim.scale(scale_factor, **kwargs)
+        return super().scale(scale_factor, **kwargs)
+
+    @override_animation(Create)
+    def create(self, run_time=2):
+        return AnimationGroup(SpiralIn(self.shapes, run_time=run_time), FadeIn(self.M, run_time=run_time / 2),
+                              lag_ratio=0.1)
+
+    def expand(self, run_time=1.5, direction='center'):
+        if direction not in ('left', 'right', 'center'):
+            raise ValueError("direction must be 'left', 'right' or 'center'.")
+        m_shape_offset = 6.25 * self.scale_factor
+        shape_sliding_overshoot = self.scale_factor * 0.8
+        self.anim.next_to(self.M, buff=0.06).align_to(self.M, DOWN)
+        self.anim.set_opacity(0)
+        self.shapes.save_state()
+        m_clone = self.anim[-1].copy()
+        self.add(m_clone)
+        m_clone.move_to(self.shapes)
+        self.M.save_state()
+        left_group = VGroup(self.M, self.anim, m_clone)
+        def shift(vector):
+            self.shapes.restore()
+            left_group.align_to(self.M.saved_state, LEFT)
+            if direction == 'right':
+                self.shapes.shift(vector)
+            elif direction == 'center':
+                self.shapes.shift(vector / 2)
+                left_group.shift(-vector / 2)
+            elif direction == 'left':
+                left_group.shift(-vector)
+        def slide_and_uncover(mob, alpha):
+            shift(alpha * (m_shape_offset + shape_sliding_overshoot) * RIGHT)
+            for letter in mob.anim:
+                if mob.square.get_center()[0] > letter.get_center()[0]:
+                    letter.set_opacity(1)
+                    self.add_to_back(letter)
+            if alpha == 1:
+                self.remove(*[self.anim])
+                self.add_to_back(self.anim)
+                mob.shapes.set_z_index(0)
+                mob.shapes.save_state()
+                mob.M.save_state()
+        def slide_back(mob, alpha):
+            if alpha == 0:
+                m_clone.set_opacity(1)
+                m_clone.move_to(mob.anim[-1])
+                mob.anim.set_opacity(1)
+            shift(alpha * shape_sliding_overshoot * LEFT)
+            if alpha == 1:
+                mob.remove(m_clone)
+                mob.add_to_back(mob.shapes)
+        return Succession(UpdateFromAlphaFunc(self, slide_and_uncover, run_time=run_time * 2 / 3,
+                                              rate_func=ease_in_out_cubic),
+                          UpdateFromAlphaFunc(self, slide_back, run_time=run_time / 3, rate_func=smooth))
+
+
 EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'ZoomedScene', 'VectorScene', 'LinearTransformationScene', 'angle_of_vector', 'ImageMobjectFromCamera', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
            'Triangle', 'Polygon', 'Polygram', 'RegularPolygram', 'RegularPolygon', 'Star', 'Brace', 'BraceBetweenPoints', 'BraceLabel', 'BraceText',
            'Title', 'BulletedList', 'Tex', 'SingleStringMathTex', 'MarkupText', 'LabeledDot', 'Variable', 'always', 'f_always', 'always_shift', 'always_rotate',
@@ -12727,6 +13660,8 @@ EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'ZoomedScene', 'VectorScene',
            'not_quite_there', 'wiggle', 'squish_rate_func', 'lingering', 'exponential_decay', 'NORMAL', 'ITALIC', 'OBLIQUE', 'BOLD', 'THIN', 'ULTRALIGHT', 'LIGHT',
            'SEMILIGHT', 'BOOK', 'MEDIUM', 'SEMIBOLD', 'ULTRABOLD', 'HEAVY', 'ULTRAHEAVY']
 EXPORTS += [name for name in _PALETTE if name not in EXPORTS]
+# Community utilities (manim.utils.*).
+EXPORTS += ['ManimBanner', 'MANIM_SVG_PATHS', 'SampleSpace', 'TransformAnimations', 'X_AXIS', 'Y_AXIS', 'Z_AXIS', 'DEFAULT_DASH_LENGTH', 'DEFAULT_POINTWISE_FUNCTION_RUN_TIME', 'DEFAULT_WAIT_TIME', 'SCALE_FACTOR_PER_FONT_POINT', 'START_X', 'START_Y', 'integer_interpolate', 'mid', 'inverse_interpolate', 'match_interpolate', 'midpoint', 'normalize', 'rotation_about_z', 'rotation_matrix', 'rotate_vector', 'z_to_vector', 'get_unit_normal', 'compass_directions', 'regular_vertices', 'complex_to_R3', 'R3_to_complex', 'complex_func_to_R3_func', 'center_of_mass', 'cross2d', 'shoelace', 'shoelace_direction', 'perpendicular_bisector', 'cartesian_to_spherical', 'spherical_to_cartesian', 'find_intersection', 'get_winding_number', 'thick_diagonal', 'bezier', 'split_bezier', 'partial_bezier_points', 'subdivide_bezier', 'bezier_remap', 'point_lies_on_bezier', 'proportions_along_bezier_curve_for_point', 'get_smooth_cubic_bezier_handle_points', 'is_closed', 'straight_path', 'path_along_arc', 'clockwise_path', 'counterclockwise_path', 'adjacent_n_tuples', 'adjacent_pairs', 'all_elements_are_instances', 'concatenate_lists', 'list_update', 'list_difference_update', 'listify', 'make_even', 'make_even_by_cycling', 'remove_list_redundancies', 'remove_nones', 'stretch_array_to_length', 'tuplify', 'choose', 'clip', 'binary_search', 'color_to_rgba', 'rgba_to_color', 'color_to_int_rgb', 'color_to_int_rgba', 'merge_dicts_recursively', 'update_dict_recursively', 'tempconfig', 'override_animate', 'override_animation', 'index_labels', 'print_family', 'assert_is_mobject_method', 'turn_animation_into_updater', 'cycle_animation']
 
 
 def _rounded_array(value):
@@ -12807,6 +13742,9 @@ def _render_scene(source, scene_name=None, compact=False):
     # Internally Vector is the coordinate tuple; scenes get Community's arrow.
     module.Vector = VectorArrow
     module.__all__.append('Vector')
+    # Community's interpolate works on numbers and points; frames use their own.
+    module.interpolate = _user_interpolate
+    module.__all__.append('interpolate')
     try:
         import numpy  # Loaded by the worker only when the source mentions it.
     except ImportError:

@@ -607,3 +607,8 @@ is per point in `_arc_geometry` (parent frame, then inverse sampled pose). Scene
 updaters run after mobject updaters inside the exposed sample pass. Keep transport
 encodings (`$pool`, `$xy`) confined to `_pooled_json`/`expandPooledScene`.
 
+Read `examples/banner_scene.py` for ManimBanner, SampleSpace and utilities. Mobject.add
+adopts world-placed members into posed parents and remove releases them (see `_adopt`,
+`_release`); internal code that builds parent-local children must not call add on an
+already-posed parent with local coordinates. restore() is become(saved_state).
+

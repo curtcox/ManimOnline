@@ -2364,3 +2364,17 @@ scene groups). `add_to_back` on text/formula leaves marks children `behind_paren
 which the renderer paints before the glyphs (Community glyphs are submobjects).
 Serialization memoizes local bounds per `to_dict` call (`_BOUNDS_MEMO`).
 
+Children of posed parents: `Mobject.add`/`add_to_back`/`submobjects=` call `_adopt`, which
+re-poses newly added world-placed members into the parent's local frame (`_to_local_pose`),
+and `remove`/`submobjects=` call `_release`, which places departing members back in world
+space (`_place_in_world`). Collapsed parents skip adoption (no inverse) but still release.
+Queries on a child of a posed geometry-bearing parent remain parent-local;
+`_world_member(child)` returns a world-placed copy for measurements (SampleSpace braces use
+it). `restore()` is `become(saved_state)` (member identities kept; traced-path clocks are
+restored). `saved_state` returns a copy of the checkpoint. Validation allows a member shared
+inside one family (Community de-duplicates families) but not across animated objects.
+Utilities live in a block before EXPORTS; `interpolate` is exported as `_user_interpolate`
+(frames keep the internal snapshot interpolate). `_PathFunction` objects carry `path_arc`
+for `Transform(path_func=...)`; custom path callables are rejected. `@override_animation`
+is resolved in `Animation.__new__`; `@override_animate` in `Animate.__getattr__`.
+

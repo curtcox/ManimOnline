@@ -1546,3 +1546,16 @@ ghost vectors, unit square, transformable labels, titles, coordinates) and the
 Vectors and grid points now follow Community's per-point `path_arc` arcs, and
 `play(..., path_arc=..., lag_ratio=...)` sets those options on every animation.
 
+The **Logo banner, sample spaces and utilities** example covers `ManimBanner` (Community's
+logo outlines, `create()` and `expand()`), `SampleSpace` divisions with braces and labels,
+`TransformAnimations`, and Community's utility functions: space operations (`rotate_vector`,
+`normalize`, `rotation_matrix`, `regular_vertices`, `get_unit_normal`, spherical
+coordinates, ...), Bézier helpers (`bezier`, `partial_bezier_points`, `split_bezier`,
+`bezier_remap`, ...), path functions (`straight_path`, `path_along_arc`,
+`clockwise_path`, `counterclockwise_path`, usable as `Transform(path_func=...)`),
+iterable/math helpers, color conversions, `tempconfig`, `override_animate`,
+`override_animation`, `turn_animation_into_updater` and `cycle_animation`. Utilities return
+lite vectors (tuples with arithmetic) and lists rather than NumPy arrays. Members added to a
+moved, rotated or scaled shape now keep their world placement (Community semantics), and
+`restore()` keeps member identities like Community's `become(saved_state)`.
+

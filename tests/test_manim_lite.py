@@ -150,6 +150,103 @@ class Demo(VectorScene):
         self.assertEqual([node['type'] for node in frames[-1]['mobjects']][-1], 'circle')
         self.assertGreater(len(frames[-1]['mobjects']), 2)
 
+    def test_utilities_match_community(self):
+        def close(actual, expected):
+            actual, expected = list(actual), list(expected)
+            self.assertEqual(len(actual), len(expected))
+            for a, b in zip(actual, expected):
+                if isinstance(b, (list, tuple)):
+                    close(a, b)
+                else:
+                    self.assertAlmostEqual(a, b, places=5)
+        # Values from Manim 0.22.
+        close(lite.rotate_vector([1, 2, 3], 0.7, [1, 1, 0]), [2.48417, 0.51583, 2.75006])
+        close(lite.rotate_vector([1, 0], 1.0), [0.5403, 0.84147, 0])
+        close(lite.regular_vertices(5)[0][1], [-0.95106, 0.30902, 0])
+        close(lite.bezier([[0, 0, 0], [1, 1, 0], [2, 0, 0], [3, 3, 0]])(0.3), [0.9, 0.522, 0])
+        close(lite.partial_bezier_points([[0, 0, 0], [1, 1, 0], [2, 1, 0], [3, 0, 0]], 0.25, 0.75),
+              [[0.75, 0.5625, 0], [1.25, 0.8125, 0], [1.75, 0.8125, 0], [2.25, 0.5625, 0]])
+        self.assertEqual(lite.integer_interpolate(0, 10, 0.37)[0], 3)
+        self.assertEqual(lite.shoelace_direction([[0, 0], [1, 0], [1, 1]]), 'CCW')
+        close(lite.get_unit_normal([1, 1, 0], [2, 2, 0]), [0, 0, 1])
+        close(lite.cartesian_to_spherical([0, 1, 1]), [1.41421, 1.5708, 0.7854])
+        close(lite.path_along_arc(lite.PI / 2)([[1, 0, 0]], [[0, 1, 0]], 0.5)[0], [0.70711, 0.70711, 0])
+        close(lite.clockwise_path()([[1, 0, 0]], [[-1, 0, 0]], 0.5)[0], [0, -1, 0])
+        self.assertEqual(lite.make_even([1, 2], [1, 2, 3, 4, 5]), ([1, 1, 1, 2, 2], [1, 2, 3, 4, 5]))
+        self.assertEqual(lite.remove_list_redundancies([1, 2, 1, 3, 2]), [1, 3, 2])
+        self.assertEqual(lite.color_to_int_rgb(lite.BLUE), [88, 196, 221])
+        with lite.tempconfig({'background_color': lite.WHITE}):
+            self.assertEqual(lite.config.background_color, lite.WHITE)
+        self.assertEqual(lite.config.background_color, lite.BLACK)
+
+    def test_banner_sample_space_and_animation_helpers(self):
+        banner = lite.ManimBanner()
+        for actual, expected in zip((banner.get_width(), banner.get_height(), banner.M.get_width(),
+                                     banner.anim.get_width()), (5.6991, 3.6943, 3.1661, 5.4415)):
+            self.assertAlmostEqual(actual, expected, places=4)
+        space = lite.SampleSpace()
+        space.divide_horizontally([0.3])
+        space.divide_vertically([0.4, 0.2])
+        self.assertEqual([[round(v, 4) + 0 for v in (*p.get_center()[:2], p.get_width(), p.get_height())]
+                          for p in space.horizontal_parts], [[0, 1.05, 3, 0.9], [0, -0.45, 3, 2.1]])
+        self.assertEqual([p.get_fill_color() for p in space.vertical_parts], ['#EC92AB', '#F1B58D', '#F7D96F'])
+        namespace = dict(vars(lite), Vector=lite.VectorArrow)
+        exec(compile("""
+class Sq(Square):
+    def grow(self, factor):
+        return self.scale(factor)
+    @override_animate(grow)
+    def _grow(self, factor, anim_args=None):
+        return Create(self)
+    @override_animation(FadeIn)
+    def _fade(self, **kwargs):
+        return GrowFromCenter(self, **kwargs)
+class Demo(Scene):
+    def construct(self):
+        banner = ManimBanner()
+        self.play(banner.create())
+        self.play(banner.expand())
+        self.result = [banner.get_width(), type(Sq().animate.grow(2)).__name__,
+                       type(FadeIn(Sq())).__name__, type(FadeIn(Sq(), use_override=False)).__name__]
+        self.play(Unwrite(banner))
+        square = Square()
+        turn_animation_into_updater(Rotate(square, PI, run_time=0.4))
+        self.add(square)
+        self.wait(1)
+        self.result += [square.angle, square.updaters]
+        dot = Dot(LEFT)
+        self.play(Transform(dot, Dot(RIGHT), path_func=clockwise_path()), run_time=0.2)
+        self.play(TransformAnimations(Rotate(Square(), PI), FadeIn(Circle(), shift=UP)))
+""", '<test>', 'exec'), namespace)
+        scene = namespace['Demo']()
+        scene.render()
+        width, animate, fade, plain, angle, updaters = scene.result
+        self.assertAlmostEqual(width, 11.9491, places=4)  # Manim 0.22 after expand()
+        self.assertEqual((animate, fade, plain), ('Create', 'GrowFromCenter', 'FadeIn'))
+        self.assertAlmostEqual(angle, lite.PI)
+        self.assertEqual(updaters, [])
+        arc_frame = scene.frames[-17]['mobjects']
+        self.assertTrue(any(node['type'] == 'circle' and node['position'][1] + node['geometry_center'][1] > 0.3
+                            for node in arc_frame))
+
+    def test_children_added_to_posed_shapes_keep_world_placement(self):
+        rectangle = lite.Rectangle().shift(lite.RIGHT * 2)
+        dot = lite.Dot(lite.RIGHT * 2)
+        rectangle.add(dot)
+        # Manim 0.22: the dot stays at (2, 0), so the family spans x in [0, 4].
+        self.assertAlmostEqual(rectangle.get_right()[0], 4)
+        self.assertAlmostEqual(rectangle._point_to_world(lite.Vector(dot.get_center()))[0], 2)
+        turned = lite.Rectangle().shift(lite.RIGHT * 2).rotate(0.5).scale(1.5)
+        marker = lite.Dot((1, 1, 0))
+        turned.add(marker)
+        center = turned._point_to_world(lite.Vector(marker.get_center()))
+        self.assertAlmostEqual(center[0], 1)
+        self.assertAlmostEqual(center[1], 1)
+        turned.remove(marker)
+        self.assertAlmostEqual(marker.get_center()[0], 1)
+        self.assertAlmostEqual(marker.get_center()[1], 1)
+        self.assertAlmostEqual(marker.get_width(), 0.16)
+
     def test_width_and_height_assignment_rescales_uniformly_like_community(self):
         circle = lite.Circle()
         circle.width = 4
@@ -2307,7 +2404,9 @@ assert isinstance(t.get_value(), (int, float))""")
                 fixed = lite.Square().shift(lite.RIGHT*3)
                 host = group_class(inner,fixed).rotate(-.3).scale(scale).shift(lite.UP)
                 def points(child):
-                    return [host._point_to_world(lite.Vector(point)) for point in child.get_points()]
+                    # Members removed from the host keep their world placement.
+                    world = host._point_to_world if child in host.children else (lambda point: point)
+                    return [world(lite.Vector(point)) for point in child.get_points()]
                 fixed_points = points(fixed)
                 sibling_world = host._point_to_world(inner._point_to_world(sibling.get_center()))
                 for x in (-5,0,6):
