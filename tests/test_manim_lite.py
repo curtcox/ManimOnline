@@ -16,6 +16,147 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_polygram_gallery_matchers_follow_moved_group_children(self):
+        result=json.loads(lite.render_scene((ROOT/'examples/polygram_scene.py').read_text()))
+        self.assertEqual(result['duration'],10)
+        frame=result['frames'][60]['mobjects']
+        shapes,box,cross=frame[:4],frame[4],frame[6]
+        self.assertEqual([m['type'] for m in shapes],['polygon','polygon','bezierpath','bezierpath'])
+        self.assertEqual(shapes[2]['subpath_lengths'],[3,3])
+        self.assertPointAlmostEqual(box['position'],shapes[2]['position'])
+        self.assertEqual((cross['type'],len(cross['children'])),('vgroup',2))
+        self.assertEqual(result['frames'][90]['mobjects'][0]['type'],'rectangle')
+        self.assertEqual(result['frames'][130]['mobjects'][2]['type'],'polygon')
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+
+    def test_polygram_family_vertices_groups_and_native_defaults(self):
+        hexagram=lite.Polygram([[0,2,0],[-3**.5,-1,0],[3**.5,-1,0]],[[-3**.5,1,0],[0,-2,0],[3**.5,1,0]])
+        self.assertEqual((hexagram._type,hexagram.color,hexagram.stroke_width,hexagram.subpath_lengths),
+                         ('bezierpath',lite.BLUE,4,[3,3]))
+        self.assertEqual(len(hexagram.get_vertex_groups()),2)
+        self.assertPointAlmostEqual(hexagram.get_vertex_groups()[1][1],(0,-2,0))
+        self.assertEqual(len(hexagram.get_subpaths()),2)
+        self.assertPointAlmostEqual(hexagram.point_from_proportion(1),(-3**.5,1,0))
+        polygon=lite.Polygon((0,0,0),(2,0,0),(0,1,0)).shift(lite.UP)
+        self.assertIsInstance(polygon,lite.Polygram)
+        self.assertIsInstance(polygon,lite.VMobject)
+        self.assertEqual(polygon._type,'polygon')
+        self.assertPointAlmostEqual(polygon.get_vertices()[1],(2,1,0))
+        self.assertPointAlmostEqual(polygon.get_end(),(0,1,0))
+        self.assertFalse(polygon.has_new_path_started())
+        polygon.add_line_to((5,5,0))
+        self.assertEqual(polygon._type,'bezierpath')
+        self.assertPointAlmostEqual(polygon.get_end(),(5,5,0))
+        hexagon=lite.RegularPolygon()
+        self.assertEqual(len(hexagon.get_vertices()),6)
+        self.assertPointAlmostEqual(hexagon.get_vertices()[0],(1,0,0))
+        self.assertEqual(hexagon.start_angle,0)
+        pentagon=lite.RegularPolygon(5,radius=2)
+        self.assertPointAlmostEqual(pentagon.get_vertices()[0],(0,2,0))
+        triangle=lite.Triangle()
+        self.assertPointAlmostEqual(triangle.get_vertices()[1],(-3**.5/2,-.5,0))
+        self.assertEqual(triangle.color,lite.BLUE)
+        pentagram=lite.RegularPolygram(5,radius=2)
+        vertices=pentagram.get_vertices()
+        self.assertPointAlmostEqual(vertices[1],(2*lite.math.cos(lite.PI/2+2*lite.TAU/5),2*lite.math.sin(lite.PI/2+2*lite.TAU/5),0))
+        six=lite.RegularPolygram(6,density=2)
+        self.assertEqual([len(g) for g in six.get_vertex_groups()],[3,3])
+        # Each triangle is odd, so it starts at 90 degrees; the second is offset by 60.
+        self.assertPointAlmostEqual(six.get_vertex_groups()[1][0],(lite.math.cos(5*lite.PI/6),lite.math.sin(5*lite.PI/6),0))
+        star=lite.Star(outer_radius=2)
+        self.assertEqual(len(star.get_vertices()),10)
+        self.assertPointAlmostEqual(star.get_vertices()[0],(0,2,0))
+        # Default inner vertices lie on the matching pentagram's edges.
+        a,b=lite.Vector(vertices[0]),lite.Vector(vertices[1])
+        inner=lite.Vector(star.get_vertices()[1])
+        self.assertAlmostEqual((b-a)[0]*(inner-a)[1]-(b-a)[1]*(inner-a)[0],0)
+        self.assertAlmostEqual(lite.Star(7,outer_radius=1,inner_radius=.3).inner_radius,.3)
+        for bad in (lambda:lite.Star(5,density=3),lambda:lite.RegularPolygon(0),lambda:lite.RegularPolygram(5,density=0),
+                    lambda:lite.Polygram([(0,0)],[]),lambda:lite.Polygon((0,float('nan')))):
+            with self.assertRaises(ValueError): bad()
+        result=render('s = Star(color=GOLD, fill_opacity=.5)\nself.play(Create(s))\nself.play(Transform(s,RegularPolygram(6,radius=1.5)))')
+        final=result['frames'][-1]['mobjects'][0]
+        self.assertEqual((final['type'],final['subpath_lengths']),('bezierpath',[3,3]))
+
+    def test_round_corners_follow_community_corner_order_and_counts(self):
+        square=lite.Polygon((1,1,0),(-1,1,0),(-1,-1,0),(1,-1,0)).round_corners(.5)
+        curves=square.curves
+        self.assertEqual(len(curves),8)
+        self.assertPointAlmostEqual(curves[0][0],(1,.5,0))
+        self.assertPointAlmostEqual(curves[0][-1],(.5,1,0))
+        self.assertPointAlmostEqual(curves[1][-1],(-.5,1,0))
+        self.assertPointAlmostEqual(curves[-1][-1],curves[0][0])
+        midpoint=lite.VMobject._bezier_point(curves[0],.5)
+        self.assertAlmostEqual(lite.math.dist(midpoint[:2],(.5,.5)),.5,places=3)
+        # A list applies its first radius to the second vertex.
+        mixed=lite.Polygon((1,1,0),(-1,1,0),(-1,-1,0),(1,-1,0)).round_corners([0,.5])
+        self.assertPointAlmostEqual(mixed.curves[0][0],(1,.5,0))
+        self.assertPointAlmostEqual(mixed.curves[1][0],(.5,1,0))
+        self.assertPointAlmostEqual(mixed.curves[1][-1],(-1,1,0))
+        concave=lite.Polygon((1,1,0),(-1,1,0),(-1,-1,0),(1,-1,0)).round_corners(-.5)
+        inside=lite.VMobject._bezier_point(concave.curves[0],.5)
+        self.assertLess(lite.math.dist(inside[:2],(0,0)),lite.math.dist(lite.VMobject._bezier_point(curves[0],.5)[:2],(0,0)))
+        fine=lite.Triangle().round_corners(.2,components_per_rounded_corner=4)
+        self.assertEqual(len(fine.curves),3*3+3)
+        even=lite.Polygon((0,0,0),(4,0,0),(4,1,0),(0,1,0)).round_corners(.2,True,3)
+        self.assertGreater(len(even.curves),4*2+4)
+        hexagram=lite.RegularPolygram(6).round_corners(.1)
+        self.assertEqual(hexagram.subpath_lengths,[6,6])
+        self.assertIs(lite.Square().round_corners(0).__class__,lite.Square)
+        for bad in ({'radius':float('nan')},{'components_per_rounded_corner':1},{'evenly_distribute_anchors':1}):
+            with self.assertRaises(ValueError): lite.Triangle().round_corners(**bad)
+
+    def test_group_translation_and_scale_keep_children_in_world_space(self):
+        group=lite.VGroup(lite.Square(),lite.Circle(),lite.VGroup(lite.Dot())).arrange(buff=1)
+        group.shift(lite.UP*2).scale(.5).to_edge(lite.LEFT)
+        self.assertEqual((group.position,group.geometry_scale),([0,0,0],1))
+        self.assertPointAlmostEqual(group[0].get_left(),(-lite.config.frame_width/2+.5,2,0))
+        self.assertAlmostEqual(group[1].get_width(),1)
+        self.assertAlmostEqual(group[1].get_center()[1],2)
+        self.assertAlmostEqual(group[2][0].get_center()[1],2)
+        arrow=lite.Arrow(group[0].get_bottom(),group[1].get_bottom())
+        self.assertAlmostEqual(arrow.get_start()[1],arrow.get_end()[1])
+        frame=render('g = VGroup(Square(), Circle()).arrange().shift(UP)\nb = SurroundingRectangle(g[1])\nself.add(g, b)')['frames'][-1]['mobjects']
+        self.assertPointAlmostEqual(frame[1]['position'],frame[0]['children'][1]['position'])
+        # Rotated groups still store their pose; their children remain parent-local.
+        rotated=lite.VGroup(lite.Square().shift(lite.RIGHT)).rotate(lite.PI/2).shift(lite.UP)
+        self.assertEqual(rotated.angle,lite.PI/2)
+        self.assertPointAlmostEqual(rotated.get_center(),(1,1,0))
+
+    def test_shape_matchers_surround_background_cross_and_underline(self):
+        group=lite.VGroup(lite.Square(),lite.Circle()).arrange().shift(lite.UP*2).scale(.5)
+        box=lite.SurroundingRectangle(group[1])
+        self.assertEqual((box._type,box.color,box.stroke_width),('rectangle',lite.PURE_YELLOW,4))
+        self.assertPointAlmostEqual(box.get_center(),group[1].get_center())
+        self.assertAlmostEqual(box.get_width(),1.2)
+        both=lite.SurroundingRectangle(*group,buff=(.3,0),corner_radius=.1)
+        self.assertEqual(both._type,'bezierpath')
+        self.assertPointAlmostEqual((both.get_width(),both.get_height()),(group.get_width()+.6,group.get_height()))
+        self.assertPointAlmostEqual(both.get_center(),group.get_center())
+        background=lite.BackgroundRectangle(group,fill_opacity=.4)
+        self.assertEqual((background.color,background.stroke_width,background.fill_opacity),(lite.BLACK,0,.4))
+        self.assertAlmostEqual(background.get_width(),group.get_width())
+        cross=lite.Cross(group[0],stroke_color=lite.GREEN)
+        self.assertPointAlmostEqual(cross[0].get_start(),group[0].get_corner(lite.UL))
+        self.assertPointAlmostEqual(cross[1].get_end(),group[0].get_corner(lite.DL))
+        self.assertEqual((cross[0].stroke_color,cross[1].stroke_width),(lite.GREEN,6.0))
+        self.assertAlmostEqual(lite.Cross(scale_factor=.5)[0].get_length(),2**.5)
+        line=lite.Underline(group[0])
+        self.assertPointAlmostEqual(line.get_start(),group[0].get_corner(lite.DL)+lite.DOWN*.1)
+        self.assertPointAlmostEqual(line.get_end(),group[0].get_corner(lite.DR)+lite.DOWN*.1)
+        square=lite.Square().shift(lite.RIGHT*3).rotate(.3).scale(.5)
+        width=square.get_width()
+        square.add_background_rectangle(opacity=.5)
+        rect=square.background_rectangle
+        self.assertIs(square.children[0],rect)
+        corners=[square._point_to_world(rect._point_to_world(lite.Vector(c[0]))) for c in lite._path_curves(rect.to_dict())]
+        self.assertPointAlmostEqual(corners[0],(3+width/2,width/2,0))
+        self.assertPointAlmostEqual(corners[2],(3-width/2,-width/2,0))
+        self.assertEqual(rect.fill_opacity,.5)
+        for bad in (lambda:lite.SurroundingRectangle(lite.Dot(),buff=(1,2,3)),lambda:lite.SurroundingRectangle((0,0,0)),
+                    lambda:lite.Underline((0,0,0))):
+            with self.assertRaises((ValueError,TypeError)): bad()
+
     def test_positioning_gallery_edges_flip_gradient_and_cleanup(self):
         result=json.loads(lite.render_scene((ROOT/'examples/positioning_scene.py').read_text()))
         self.assertEqual(result['duration'],11)
@@ -3190,7 +3331,7 @@ class SceneTests(unittest.TestCase):
         result = render('box = RoundedRectangle()\nself.add(box)\nself.play(Transform(box, Triangle()), run_time=2)')
         self.assertEqual(result['frames'][15]['mobjects'][0]['type'], 'bezierpath')
         self.assertEqual(len(result['frames'][15]['mobjects'][0]['curves']), 12)
-        self.assertEqual(result['frames'][-1]['mobjects'][0]['type'], 'triangle')
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['type'], 'polygon')
 
     def test_annulus_bounds_contour_order_and_validation(self):
         ring = lite.Annulus(inner_radius=1, outer_radius=2, arc_center=lite.UP)
@@ -3503,7 +3644,7 @@ self.wait(1)""")
         group.become(lite.Group(lite.Group(lite.Square()),lite.Group(lite.Triangle())))
         self.assertIsNot(group[0].children[0],group[1].children[0])
         self.assertEqual(group[0].children[0].to_dict()['type'],'square')
-        self.assertEqual(group[1].children[0].to_dict()['type'],'triangle')
+        self.assertEqual(group[1].children[0].to_dict()['type'],'polygon')
         group.become(lite.Group())
         self.assertEqual(len(group),0)
 
@@ -4024,7 +4165,7 @@ self.wait(1)""")
         cases = ((lite.Line((1,2),(4,5)), 1, (1,2,0), (4,5,0)),
                  (lite.Square(side_length=4), 4, (2,2,0), (2,2,0)),
                  (lite.Rectangle(width=6,height=2), 4, (3,1,0), (3,1,0)),
-                 (lite.Triangle(), 3, (0,3**0.5/3,0), (0,3**0.5/3,0)))
+                 (lite.Triangle(), 3, (0,1,0), (0,1,0)))
         for shape, count, start, end in cases:
             with self.subTest(shape=shape._type):
                 curves = lite._path_curves(shape.to_dict())
@@ -4498,8 +4639,11 @@ self.wait(1)""")
         for index, depths in ((0, [-2, 2]), (45, [-3, -3]), (105, [-2, 2])):
             group = result['frames'][index]['mobjects'][0]
             self.assertEqual([c['z_index'] for c in group['children']], depths)
-            self.assertEqual(group['geometry_scale'], 1.2)
-            self.assertEqual(group['position'], [0, 0.2, 0])
+            # Group scaling and translation now reach the children in world space.
+            self.assertEqual(group['geometry_scale'], 1)
+            self.assertEqual([c['geometry_scale'] for c in group['children']], [1.2, 1.2])
+            for child, x in zip(group['children'], (-.78, .78)):
+                self.assertPointAlmostEqual(child['position'], (x, .2, 0))
 
     def test_z_index_constructor_family_and_validation(self):
         child = lite.Circle(z_index=-2)
@@ -5039,7 +5183,8 @@ self.wait(1)""")
         scene = lite.Scene()
         scene.play(lite.GrowFromCenter(group), run_time=2, rate_func=lite.linear)
         middle = scene.frames[15]['mobjects'][0]
-        self.assertEqual(middle['geometry_scale'], 0.4)
+        # The 0.8 scale lives on the children; growth scales the rotated group.
+        self.assertEqual(middle['geometry_scale'], 0.5)
         self.assertEqual(middle['children'], original['children'])
         self.assertEqual(group.to_dict(), original)
         other = lite.Dot()
@@ -5161,7 +5306,8 @@ self.wait(1)""")
         self.assertPointAlmostEqual(lite.Square().point_from_proportion(0.25), (-1, 1, 0))
         self.assertPointAlmostEqual(lite.Rectangle(width=4, height=2).point_from_proportion(0.5), (-2, -1, 0))
         triangle = lite.Triangle()
-        self.assertPointAlmostEqual(triangle.point_from_proportion(1 / 3), (-0.5, -3**0.5 / 6, 0))
+        # Community's Triangle is a unit-radius RegularPolygon.
+        self.assertPointAlmostEqual(triangle.point_from_proportion(1 / 3), (-3**0.5 / 2, -0.5, 0))
 
     def test_zero_length_and_duplicate_path_vertices_are_stable(self):
         for path in (lite.Line((2, 1), (2, 1)), lite.Polygon((2, 1), (2, 1), (2, 1))):
@@ -5617,7 +5763,7 @@ self.wait(1)""")
             group.arrange_in_grid(cell_alignment=lite.OUT)
         self.assertEqual(group.to_dict(),saved)
         with self.assertRaisesRegex(NotImplementedError,'collapsed'):
-            lite.Group(lite.Dot()).scale(0).arrange_in_grid()
+            lite.Group(lite.Dot()).rotate(1).scale(0).arrange_in_grid()
 
     def test_transformed_layout_gallery_restores_orientation_and_cleans_up(self):
         result = json.loads(lite.render_scene((ROOT/'examples/transformed_layout_scene.py').read_text()))
@@ -5678,11 +5824,14 @@ self.wait(1)""")
         with self.assertRaises(NotImplementedError):
             group.arrange(lite.OUT)
         self.assertEqual(group.to_dict(),saved)
-        tiny = lite.VGroup(lite.Square(),lite.Circle()).scale(1e-320)
+        tiny = lite.VGroup(lite.Square(),lite.Circle()).rotate(.2).scale(1e-320)
         saved = tiny.to_dict()
         with self.assertRaisesRegex(ValueError,'translations'):
             tiny.arrange(buff=1)
         self.assertEqual(tiny.to_dict(),saved)
+        # Unrotated groups scale their children, so collapsed members arrange natively.
+        collapsed = lite.VGroup(lite.Square(),lite.Circle()).scale(0).arrange(buff=1)
+        self.assertAlmostEqual(collapsed[1].get_center()[0]-collapsed[0].get_center()[0],1)
 
     def test_animated_transformed_layout_preserves_pose_and_interpolates_positions(self):
         result = render('g = VGroup(Rectangle(width=2,height=1),Circle(radius=.4),Square(side_length=.6)).arrange(RIGHT,buff=.4).rotate(.6).scale(.8)\nself.add(g)\nself.play(g.animate.arrange(DOWN,buff=.5),run_time=2,rate_func=linear)')
@@ -5732,7 +5881,7 @@ self.wait(1)""")
         with self.assertRaises(TypeError):
             lite.Dot().next_to(lite.ORIGIN, coor_mask=(1, 0, 0))
         with self.assertRaisesRegex(NotImplementedError, 'collapsed'):
-            lite.VGroup(lite.Dot()).scale(0).arrange()
+            lite.VGroup(lite.Dot()).rotate(1).scale(0).arrange()
 
     def test_baseline_animation(self):
         result = json.loads(lite.render_scene((ROOT / 'examples/minimal_scene.py').read_text()))

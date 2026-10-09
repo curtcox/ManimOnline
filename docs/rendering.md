@@ -2022,3 +2022,39 @@ Chromium showed the gradient row against the top edge, the arrow width-matched t
 the row, placed beside the triangle and flipped, the row faded into the lower
 corner, the triangle rotated about its lower-right edge and recentered, and an
 empty final frame. A DOT graph rendered Editor → Render → Preview.
+
+
+Try **Polygrams, stars and shape matchers** (`examples/polygram_scene.py`).
+A single vertex group is stored as the existing closed `polygon` type; several
+groups use a cubic `bezierpath` with `subpath_lengths`, one closed contour per
+group, so SVG painting, Create, morphing and point queries reuse existing paths.
+`RegularPolygram` divides by gcd(vertices, density) into equal polygons offset by
+TAU/(n·count), with Community's default start angle (0 for even, 90° for odd).
+`Star` computes the default inner radius from the matching polygram edge.
+`round_corners` matches Community's corner/radius ordering (the first radius
+applies to the second vertex), its `num_components - 1` cubic pieces per corner
+and its even-distribution count; sharp or zero-radius corners emit no degenerate
+curve. Rounding materializes a world-space cubic path.
+
+`Rectangle`/`Square` remain analytical `rectangle`/`square` types but inherit
+Polygram/VMobject APIs; adding corners, cubic curves or reversing an analytical
+outline (including circles) first materializes its current points.
+
+Container motion: `shift`, `scale` and every helper built on them pass through a
+pure `Group`/`VGroup` whose own pose is the identity, and update the children.
+This keeps children in Community's world coordinates and interpolates linearly
+under Transform. Rotation remains a group-level pose because per-child linear
+interpolation of a rotation would move children along chords while their own
+outlines rotate rigidly (ticks would leave their axis during `.animate.rotate`).
+Once a group has a non-identity pose, later motions are stored on the group as
+before. `add_background_rectangle` converts the world rectangle into its parent's
+local pose; general world-space attachment to transformed parents remains open.
+
+Reference: [Manim polygram module](https://docs.manim.community/en/stable/reference/manim.mobject.geometry.polygram.html),
+[shape matchers](https://docs.manim.community/en/stable/reference/manim.mobject.geometry.shape_matchers.html).
+
+Verification: all 372 Python and 78 Node tests passed. Local Pyodide playback in
+Chromium showed the pentagon, star, hexagram and rounded triangle, the rounded
+surrounding box moving from the star to the hexagram, the underline, cross and
+background rectangle, the star transforming into a pentagram, and an empty final
+frame.

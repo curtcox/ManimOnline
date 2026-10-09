@@ -461,7 +461,20 @@ class Mobject:
             mobject.updating_suspended = False
         return self.update(0, recursive=recursive)
 
+    def _world_container(self):
+        # Pure containers pass rigid motions to their children, so children keep
+        # Community's world-space coordinates instead of parent-local ones.
+        return (self._type in ('vgroup', 'mobject') and self.children and self.angle == 0 and
+                self.geometry_scale == 1 and not any(self.position) and
+                '_sampled_geometry_center' not in self.__dict__)
+
     def shift(self, direction):
+        if self._world_container():
+            direction = Vector(direction)
+            for child in self.children:
+                child.shift(direction)
+            self.__dict__.pop('_family_pivot_cache', None)
+            return self
         self.position = list(Vector(self.position) + direction)
         return self
 
@@ -1120,6 +1133,12 @@ class Mobject:
         if not math.isfinite(scale_factor):
             raise ValueError('Scale factor must be finite')
         about_point = self._pivot(about_point, about_edge)
+        if self._world_container():
+            pivot = self.get_center() if about_point is None else Vector(about_point)
+            for child in self.children:
+                Mobject.scale(child, scale_factor, about_point=pivot)
+            self.__dict__.pop('_family_pivot_cache', None)
+            return self
         self._geometry_center()
         if about_point is not None:
             pivot = Vector(about_point)
@@ -1310,6 +1329,24 @@ class Mobject:
                 child.invert(True)
         self.children = self.children[::-1]
         return self
+
+    def _to_local_pose(self, mobject):
+        """Re-pose a world-placed mobject so that, as a child, it keeps its world geometry."""
+        if self.angle == 0 and self.geometry_scale == 1 and not any(self.position):
+            return mobject
+        if not self.geometry_scale:
+            raise NotImplementedError('Cannot attach world geometry to a collapsed parent')
+        center = self._geometry_center()
+        offset = mobject.get_center() - Vector(self.position) - center
+        c, s = math.cos(-self.angle), math.sin(-self.angle)
+        local = center + Vector((offset[0]*c - offset[1]*s, offset[0]*s + offset[1]*c, 0)) * (1 / self.geometry_scale)
+        mobject.rotate(-self.angle).scale(1 / self.geometry_scale)
+        return mobject.move_to(local)
+
+    def add_background_rectangle(self, color=None, opacity=0.75, **kwargs):
+        rectangle = BackgroundRectangle(self, color=color, fill_opacity=opacity, **kwargs)
+        self.background_rectangle = self._to_local_pose(rectangle)
+        return self.add_to_back(rectangle)
 
     def copy(self):
         return copy.deepcopy(self)
@@ -1545,7 +1582,8 @@ class VMobject(Mobject):
         return self.set_points(existing + [point])
 
     def has_new_path_started(self):
-        return bool(self.vertices) if self._type == 'bezierpath' else len(self.vertices) == 1
+        return (bool(self.vertices) if self._type == 'bezierpath' else
+                self._type == 'polyline' and len(self.vertices) == 1)
 
     def get_subpaths(self):
         return [[self._point_to_world(Vector(point)) for curve in path for point in curve]
@@ -1557,8 +1595,16 @@ class VMobject(Mobject):
             self.add_line_to(paths[-1][0][0])
         return self
 
+    def _materialize_path(self):
+        # Analytical/closed outlines continue from Community's stored points.
+        if self._type not in ('polyline', 'bezierpath'):
+            VMobject.set_points(self, self.get_points())
+        return self
+
     def add_points_as_corners(self, points):
         vertices = self._corners(points)
+        if vertices:
+            self._materialize_path()
         if self._type == 'bezierpath':
             if not vertices:
                 return self
@@ -1578,6 +1624,7 @@ class VMobject(Mobject):
         return self.add_points_as_corners([point])
 
     def reverse_direction(self):
+        self._materialize_path()
         if self._type == 'bezierpath':
             if self.vertices:
                 self.curves.append([self.vertices[0][:] for _ in range(4)])
@@ -1599,6 +1646,7 @@ class VMobject(Mobject):
 
     def add_cubic_bezier_curve_to(self, handle1, handle2, anchor):
         points = self._corners([handle1, handle2, anchor])
+        self._materialize_path()
         if self._type != 'bezierpath':
             if not self.vertices:
                 raise ValueError('Start the path with a corner before adding a cubic curve')
@@ -1617,6 +1665,8 @@ class VMobject(Mobject):
         return self
 
     def get_start(self):
+        if self._type not in ('bezierpath', 'polyline'):
+            return Mobject.get_start(self)
         if self._type == 'bezierpath':
             if not self.curves and not self.vertices:
                 raise ValueError('The path has no points')
@@ -1626,6 +1676,8 @@ class VMobject(Mobject):
         return self._point_to_world(Vector(self.vertices[0]))
 
     def get_end(self):
+        if self._type not in ('bezierpath', 'polyline'):
+            return Mobject.get_end(self)
         if self._type == 'bezierpath':
             if not self.curves and not self.vertices:
                 raise ValueError('The path has no points')
@@ -2255,19 +2307,138 @@ class Dot(Circle):
         self.move_to(point)
 
 
-class Square(Mobject):
-    def __init__(self, side_length=2, **kwargs):
-        super().__init__(**kwargs)
-        self._type, self.side_length = 'square', side_length
+def _regular_vertices(n, radius=1, start_angle=None):
+    if start_angle is None:
+        start_angle = 0 if n % 2 == 0 else TAU / 4
+    return [[radius * math.cos(start_angle + TAU * k / n),
+             radius * math.sin(start_angle + TAU * k / n), 0] for k in range(n)], start_angle
 
 
-class Rectangle(Mobject):
-    def __init__(self, width=4, height=2, **kwargs):
-        super().__init__(**kwargs)
+class Polygram(VMobject):
+    """Closed straight-edged contours, one per vertex group."""
+    def __init__(self, *vertex_groups, color=BLUE, **kwargs):
+        groups = [VMobject._corners(group) for group in vertex_groups]
+        if sum(len(group) for group in groups) > 100000:
+            raise ValueError('Polygrams support at most 100000 vertices')
+        if len(groups) > 1 and not all(groups):
+            raise ValueError('Each polygram vertex group needs at least one vertex')
+        super().__init__(color=color, **kwargs)
+        if len(groups) <= 1:
+            self._type, self.vertices = 'polygon', groups[0] if groups else []
+            return
+        self.curves, self.subpath_lengths = [], []
+        for group in groups:
+            curves = _path_curves({'type': 'polygon', 'vertices': group})
+            self.curves.extend(curves)
+            self.subpath_lengths.append(len(curves))
+        self._type, self.vertices = 'bezierpath', []
+
+    def get_vertices(self):
+        return [list(self._point_to_world(Vector(curve[0])))
+                for path in _path_subpaths(self.to_dict(), include_pending=False) for curve in path]
+
+    def get_vertex_groups(self):
+        return [[list(self._point_to_world(Vector(curve[0]))) for curve in path]
+                for path in _path_subpaths(self.to_dict(), include_pending=False)]
+
+    def round_corners(self, radius=0.5, evenly_distribute_anchors=False, components_per_rounded_corner=2):
+        radii = list(radius) if isinstance(radius, (list, tuple)) else [radius]
+        if not radii or any(isinstance(r, bool) or not isinstance(r, (int, float)) or
+                            not math.isfinite(r) for r in radii):
+            raise ValueError('Corner radii must be finite real values in a nonempty sequence')
+        if not isinstance(evenly_distribute_anchors, bool):
+            raise ValueError('evenly_distribute_anchors must be a boolean')
+        if (isinstance(components_per_rounded_corner, bool) or not isinstance(components_per_rounded_corner, int)
+                or not 2 <= components_per_rounded_corner <= 64):
+            raise ValueError('components_per_rounded_corner must be an integer from 2 to 64')
+        if radii == [0]:
+            return self
+        paths, lengths = [], []
+        for group in self.get_vertex_groups():
+            vertices = [Vector(v) for v in group]
+            arcs = []
+            for i, v2 in enumerate(vertices):
+                v1, v3 = vertices[i-1], vertices[(i+1) % len(vertices)]
+                # Community zips radii with corners starting at the second vertex.
+                r = radii[(i-1) % len(vertices) % len(radii)]
+                a, b = v2 - v1, v3 - v2
+                la, lb = math.hypot(a[0], a[1]), math.hypot(b[0], b[1])
+                if not la or not lb:
+                    arcs.append((v2, v2, []))
+                    continue
+                ua, ub = a * (1/la), b * (1/lb)
+                angle = math.acos(max(-1, min(1, ua[0]*ub[0] + ua[1]*ub[1])))
+                cut = min(abs(r) * math.tan(angle / 2), min(la, lb) / 2)
+                cross = a[0]*b[1] - a[1]*b[0]
+                sweep = ((cross > 0) - (cross < 0)) * ((r > 0) - (r < 0)) * angle
+                start, end = v2 - ua * cut, v2 + ub * cut
+                if not cut or not sweep:
+                    arcs.append((v2, v2, []))
+                    continue
+                pieces = components_per_rounded_corner - 1
+                chord = end - start
+                half = math.hypot(chord[0], chord[1]) / 2
+                radius_ = half / math.sin(abs(sweep) / 2)
+                normal = Vector((-chord[1], chord[0], 0)) * (1 / (2 * half))
+                center = start + chord * .5 + normal * (radius_ * math.cos(sweep / 2) * (1 if sweep > 0 else -1))
+                begin = math.atan2(start[1] - center[1], start[0] - center[0])
+                step, factor = sweep / pieces, 4 / 3 * math.tan(sweep / pieces / 4)
+                curves = []
+                for k in range(pieces):
+                    p0, p1 = [Vector((center[0] + radius_ * math.cos(begin + step * j),
+                                      center[1] + radius_ * math.sin(begin + step * j), 0)) for j in (k, k + 1)]
+                    t0, t1 = [Vector((center[1] - q[1], q[0] - center[0], 0)) for q in (p0, p1)]
+                    curves.append([list(p0), list(p0 + t0 * factor), list(p1 - t1 * factor), list(p1)])
+                curves[0][0], curves[-1][-1] = list(start), list(end)
+                arcs.append((start, end, curves))
+            average = 1.0
+            if evenly_distribute_anchors:
+                # Community averages only arcs with more than one cubic piece.
+                long_arcs = [curves for _, _, curves in arcs if len(curves) > 1]
+                if long_arcs:
+                    total = sum(_curve_length_data(VMobject().set_points(
+                        [p for curve in curves for p in curve]), 10)[0][-1] for curves in long_arcs)
+                    average = total / sum(len(curves) for curves in long_arcs)
+            # arcs is already ordered from the first vertex, as after Community's rotation.
+            curves = []
+            for i, (_, a, arc) in enumerate(arcs):
+                curves.extend(arc)
+                b = arcs[(i + 1) % len(arcs)][0]
+                segments = 1 + (math.ceil(math.hypot(b[0]-a[0], b[1]-a[1]) / average)
+                                if evenly_distribute_anchors else 0)
+                for k in range(segments):
+                    p, q = a + (b - a) * (k / segments), a + (b - a) * ((k + 1) / segments)
+                    curves.append([list(p), list(p + (q - p) * (1/3)), list(p + (q - p) * (2/3)), list(q)])
+            paths.extend(curves)
+            lengths.append(len(curves))
+        if not paths:
+            return self
+        self.set_points([point for curve in paths for point in curve])
+        if len(lengths) > 1:
+            self.subpath_lengths = lengths
+        return self
+
+
+class Polygon(Polygram):
+    def __init__(self, *vertices, **kwargs):
+        super().__init__(vertices, **kwargs)
+
+
+class Rectangle(Polygon):
+    """Community Rectangle (a Polygon); keeps analytical width/height geometry."""
+    def __init__(self, width=4, height=2, color=WHITE, **kwargs):
+        super().__init__(color=color, **kwargs)
         self._type, self.width, self.height = 'rectangle', width, height
 
 
-class RoundedRectangle(Rectangle, VMobject):
+class Square(Rectangle):
+    def __init__(self, side_length=2, **kwargs):
+        super().__init__(**kwargs)
+        del self.width, self.height
+        self._type, self.side_length = 'square', side_length
+
+
+class RoundedRectangle(Rectangle):
     """A closed rectangle with circular, optionally concave corner cuts."""
     def __init__(self, corner_radius=0.5, width=4, height=2, **kwargs):
         if any(isinstance(v, bool) or not isinstance(v, (int, float)) or
@@ -2767,17 +2938,61 @@ class CurvedDoubleArrow(CurvedArrow):
         self.add_tip(at_start=True,tip_shape=tip_shape_start)
 
 
-class Triangle(Mobject):
+class RegularPolygram(Polygram):
+    def __init__(self, num_vertices, *, density=2, radius=1, start_angle=None, **kwargs):
+        if isinstance(num_vertices, bool) or not isinstance(num_vertices, int) or not 1 <= num_vertices <= 10000:
+            raise ValueError('num_vertices must be an integer from 1 to 10000')
+        if isinstance(density, bool) or not isinstance(density, int) or density < 1:
+            raise ValueError('density must be a positive integer')
+        NumberLine._real(radius, 'Polygram radius')
+        if start_angle is not None:
+            NumberLine._real(start_angle, 'Polygram start angle')
+        num_gons = math.gcd(num_vertices, density)
+        num_vertices, density = num_vertices // num_gons, density // num_gons
+
+        def group(angle):
+            vertices, angle = _regular_vertices(num_vertices, radius, angle)
+            order, i = [], 0
+            while True:
+                order.append(vertices[i])
+                i = (i + density) % num_vertices
+                if i == 0:
+                    return order, angle
+        first, self_start = group(start_angle)
+        groups = [first] + [group(self_start + i / num_gons * TAU / num_vertices)[0] for i in range(1, num_gons)]
+        super().__init__(*groups, **kwargs)
+        self.start_angle = self_start
+
+
+class RegularPolygon(RegularPolygram):
+    def __init__(self, n=6, **kwargs):
+        super().__init__(n, density=1, **kwargs)
+
+
+class Star(Polygon):
+    def __init__(self, n=5, *, outer_radius=1, inner_radius=None, density=2, start_angle=TAU / 4, **kwargs):
+        if isinstance(n, bool) or not isinstance(n, int) or not 2 <= n <= 10000:
+            raise ValueError('Star points must be an integer from 2 to 10000')
+        NumberLine._real(outer_radius, 'Star outer radius')
+        inner_angle = TAU / (2 * n)
+        if inner_radius is None:
+            if isinstance(density, bool) or not isinstance(density, (int, float)) or density <= 0 or density >= n / 2:
+                raise ValueError(f'Incompatible density {density} for number of points {n}')
+            outer_angle = TAU * density / n
+            inverse_x = 1 - math.tan(inner_angle) * ((math.cos(outer_angle) - 1) / math.sin(outer_angle))
+            inner_radius = outer_radius / (math.cos(inner_angle) * inverse_x)
+        NumberLine._real(inner_radius, 'Star inner radius')
+        if start_angle is not None:
+            NumberLine._real(start_angle, 'Star start angle')
+        outer, angle = _regular_vertices(n, outer_radius, start_angle)
+        inner, _ = _regular_vertices(n, inner_radius, angle + inner_angle)
+        super().__init__(*[v for pair in zip(outer, inner) for v in pair], **kwargs)
+        self.start_angle, self.inner_radius, self.outer_radius = angle, inner_radius, outer_radius
+
+
+class Triangle(RegularPolygon):
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self._type = 'triangle'
-
-
-class Polygon(Mobject):
-    def __init__(self, *vertices, **kwargs):
-        super().__init__(**kwargs)
-        self._type = 'polygon'
-        self.vertices = [list(Vector(v)) for v in vertices]
+        super().__init__(n=3, **kwargs)
 
 
 class Text(Mobject):
@@ -2888,6 +3103,68 @@ class Group(Mobject):
 class VGroup(Group):
     """Container for the supported vector/text geometry in this runtime."""
     pass
+
+
+def _union_bounds(mobjects):
+    if not all(isinstance(m, Mobject) for m in mobjects):
+        raise TypeError('Expected all inputs for parameter mobjects to be Mobjects')
+    if not mobjects:
+        return 0, 0, 0, 0
+    corners = [(m.get_critical_point(DL), m.get_critical_point(UR)) for m in mobjects]
+    return (min(a[0] for a, _ in corners), min(a[1] for a, _ in corners),
+            max(b[0] for _, b in corners), max(b[1] for _, b in corners))
+
+
+class SurroundingRectangle(RoundedRectangle):
+    """An axis-aligned rectangle around the current bounds of one or more mobjects."""
+    def __init__(self, *mobjects, color=PURE_YELLOW, buff=SMALL_BUFF, corner_radius=0.0, **kwargs):
+        left, bottom, right, top = _union_bounds(mobjects)
+        buffs = tuple(buff) if isinstance(buff, (tuple, list)) else (buff, buff)
+        if len(buffs) != 2:
+            raise ValueError('buff must be a number or an (x, y) pair')
+        for value in buffs:
+            NumberLine._real(value, 'Surrounding buffer')
+        width, height = right - left + 2 * buffs[0], top - bottom + 2 * buffs[1]
+        radii = corner_radius if isinstance(corner_radius, (list, tuple)) else [corner_radius]
+        if all(not isinstance(r, bool) and isinstance(r, (int, float)) and r == 0 for r in radii):
+            if any(not math.isfinite(v) or v < 0 for v in (width, height)):
+                raise ValueError('Surrounding dimensions must be nonnegative and finite')
+            Rectangle.__init__(self, width=width, height=height, color=color, **kwargs)
+            self.corner_radius = copy.deepcopy(corner_radius)
+        else:
+            super().__init__(corner_radius=corner_radius, width=width, height=height, color=color, **kwargs)
+        self.buff = copy.deepcopy(buff)
+        self.move_to(((left + right) / 2, (bottom + top) / 2, 0))
+
+
+class BackgroundRectangle(SurroundingRectangle):
+    """A filled, stroke-free SurroundingRectangle in the background color."""
+    def __init__(self, *mobjects, color=None, stroke_width=0, stroke_opacity=0, fill_opacity=0.75,
+                 buff=0, **kwargs):
+        super().__init__(*mobjects, color=config.background_color if color is None else color,
+                         stroke_width=stroke_width, stroke_opacity=stroke_opacity,
+                         fill_opacity=fill_opacity, buff=buff, **kwargs)
+        self.original_fill_opacity = self.fill_opacity
+
+
+class Cross(VGroup):
+    """Two crossing lines, optionally stretched over a mobject's bounds."""
+    def __init__(self, mobject=None, stroke_color=RED, stroke_width=6.0, scale_factor=1.0, **kwargs):
+        super().__init__(Line(UP + LEFT, DOWN + RIGHT), Line(UP + RIGHT, DOWN + LEFT), **kwargs)
+        if mobject is not None:
+            self.replace(mobject, stretch=True)
+        self.scale(scale_factor)
+        self.set_stroke(color=stroke_color, width=stroke_width)
+
+
+class Underline(Line):
+    """A line matched to a mobject's width and placed below it."""
+    def __init__(self, mobject, buff=SMALL_BUFF, **kwargs):
+        if not isinstance(mobject, Mobject):
+            raise TypeError('Underline expects a Mobject')
+        super().__init__(LEFT, RIGHT, buff=buff, **kwargs)
+        self.match_width(mobject)
+        self.next_to(mobject, DOWN, buff=self.buff)
 
 
 class ArcPolygonFromArcs(VMobject):
@@ -5117,7 +5394,7 @@ class MovingCameraScene(Scene):
 
 
 EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
-           'Triangle', 'Polygon', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'NumberPlane', 'ComplexPlane', 'Create', 'Write', 'FadeIn',
+           'Triangle', 'Polygon', 'Polygram', 'RegularPolygram', 'RegularPolygon', 'Star', 'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'NumberPlane', 'ComplexPlane', 'Create', 'Write', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform', 'UP', 'DOWN', 'LEFT',

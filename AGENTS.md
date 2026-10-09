@@ -472,3 +472,14 @@ rotate(angle, axis): OUT/IN only, except a half turn about an in-plane axis, whi
 delegates to apply_matrix as a reflection. Palette values come from Community's
 manim_colors; colors are plain hex strings, not ManimColor. Gradient helpers treat
 Text/MathTex leaves as painted members even though they have no path points.
+
+
+Read `examples/polygram_scene.py` for polygrams, stars, round_corners and shape
+matchers. One vertex group stays type `polygon`; several use bezierpath with
+subpath_lengths. Rectangle/Square subclass Polygon but keep analytical types;
+VMobject._materialize_path converts analytical outlines before raw path edits.
+Mobject._world_container: identity-pose Group/VGroup/Mobject containers pass
+shift and scale to children (world coordinates). Do not propagate rotation there
+without solving rigid Transform interpolation; rotated groups keep local children.
+Mobject._to_local_pose converts world-placed matchers before attaching to a
+transformed parent.

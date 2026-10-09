@@ -216,3 +216,11 @@ Common positioning (frame edges/corners, alignment, coordinate setters/matching,
 edge pivots, flips) and Community's color palette/utilities, gradients, fading and
 style matching now have Python tests and a gallery scene. ManimColor objects,
 named-color parsing, 3D axes/coordinates and text glyph flipping remain open.
+
+
+Polygram/RegularPolygram/RegularPolygon/Star/round_corners and the shape matchers
+(SurroundingRectangle, BackgroundRectangle, Cross, Underline) now have Python
+tests and browser playback. Polygon/Triangle/Rectangle/Square use Community
+classes and defaults. Group translation and scaling now keep children in world
+space; rotated-group children, Cutout/ConvexHull/boolean operations and
+Rectangle grid lines remain open.

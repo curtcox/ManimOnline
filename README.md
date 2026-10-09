@@ -1320,3 +1320,21 @@ objects and named-color strings are not implemented. Mobjects gain style getters
 `set_colors_by_radial_gradient`, `fade`, `fade_to`, `sort` and `invert`; these
 work in `.animate` chains. Z coordinates other than zero, general 3D rotation axes
 and text flipping (glyph mapping) remain unsupported and fail explicitly.
+
+
+Try **Polygrams, stars and shape matchers** (`examples/polygram_scene.py`).
+`Polygram`, `RegularPolygram`, `RegularPolygon`, `Star` and `round_corners` follow
+Community's vertex order, start angles, density handling and default inner star
+radius. `Polygon`, `Triangle`, `Rectangle` and `Square` are now `Polygram`
+subclasses with Community defaults: polygons are BLUE, rectangles WHITE, vector
+strokes 4 wide, and `Triangle` is a unit-radius `RegularPolygon` (larger than the
+previous preview triangle). `get_vertices`/`get_vertex_groups` return world points.
+
+`SurroundingRectangle` (PURE_YELLOW, `buff` number or x/y pair, optional
+`corner_radius`), `BackgroundRectangle`, `Cross`, `Underline` and
+`add_background_rectangle` are available. Shifting and scaling a `Group`/`VGroup`
+now moves its children in world space, as in Manim, so `group[0].get_center()`,
+matchers and arrows between members of a moved group land where expected.
+Rotation is still stored on the group: children of rotated groups keep
+parent-local coordinates. Text has no measured bounds yet, so matchers around text
+are not sized to the glyphs.
