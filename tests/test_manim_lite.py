@@ -7821,6 +7821,51 @@ class ThreeDPrimitiveTests(unittest.TestCase):
         self.assertAlmostEqual(far.shift_onto_screen().get_right()[0], lite.config.frame_width / 2 - 0.5)
         self.assertEqual(len(lite.Line(lite.LEFT, lite.RIGHT).get_pieces(4)), 4)
 
+    def test_polyhedra_match_community(self):
+        # Manim 0.22 measurements for edge_length=2 (rounded to 1e-4).
+        tetra = lite.Tetrahedron(edge_length=2)
+        self.assertEqual((len(tetra.faces), len(tetra.family_members_with_points())), (4, 268))
+        self.assertAlmostEqual(tetra.get_width(), 1.5742, 4)
+        self.assertAlmostEqual(tetra.get_depth(), 1.5742, 4)
+        self.assertPointAlmostEqual(tetra.graph[3].get_center(), (-0.7071, -0.7071, 0.7071), 4)
+        for cls, faces in ((lite.Octahedron, 8), (lite.Icosahedron, 20), (lite.Dodecahedron, 12)):
+            solid = cls(edge_length=2)
+            self.assertEqual(len(solid.faces), faces)
+            self.assertPointAlmostEqual(solid.get_center(), (0, 0, 0), 9)
+        dodeca = lite.Dodecahedron(edge_length=2)
+        self.assertEqual(len(dodeca.faces[0].get_vertices()), 5)
+        # Moving a vertex dot rebuilds the attached faces on the next update.
+        moved = lite.Tetrahedron()
+        moved.graph[0].move_to([1, 1, 1])
+        moved.update(0)
+        self.assertIn([1, 1, 1], [[round(v, 6) for v in p] for p in moved.faces[0].get_vertices()])
+        with self.assertRaises(ValueError):
+            lite.Polyhedron([[0, 0, 0], [1, 0, 0], [0, 1, 0]], [[0, 1, 5]])
+
+    def test_convex_hull_3d(self):
+        points = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 1], [0.2, 0.2, 0.2], [1, 1, 0]]
+        hull = lite.ConvexHull3D(*points)
+        # Manim 0.22 (QuickHull): 6 hull vertices and 8 triangles; the interior point is dropped.
+        self.assertEqual((len(hull.graph.vertices), len(hull.faces)), (6, 8))
+        self.assertPointAlmostEqual(hull.get_center(), (0.5, 0.5, 0.5), 4)
+        # Every face is outward: all points lie on or behind each face plane.
+        for face in hull.faces:
+            a, b, c = (lite.Vector(p) for p in face.get_vertices())
+            normal = lite.get_unit_normal(b - a, c - a)
+            self.assertTrue(all(sum(n * (q - p) for n, q, p in zip(normal, point, a)) <= 1e-9
+                                for point in points))
+        with self.assertRaises(ValueError):
+            lite.ConvexHull3D([0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0])
+
+    def test_geometry_queries_share_bounds_within_one_call(self):
+        dot = lite.Dot3D()
+        lite._BOUNDS_MEMO = None
+        before = dot.get_center()
+        dot.shift(lite.RIGHT)
+        # Each outermost query starts a fresh memo, so later edits are seen.
+        self.assertPointAlmostEqual(dot.get_center(), lite.Vector(before) + lite.RIGHT, 9)
+        self.assertIsNone(lite._BOUNDS_MEMO)
+
     def test_sphere_frame_render(self):
         result = render_3d("""self.set_camera_orientation(phi=75 * DEGREES, theta=-30 * DEGREES)
 self.add(Sphere(resolution=(8, 8)))

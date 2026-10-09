@@ -315,3 +315,5 @@ subcaptions are recorded only.
   checks. 3D frames are projected, shaded and depth-sorted by the renderer from world-space
   leaves, so camera moves reuse pooled geometry; text in 3D is an upright billboard and sheen
   is not modelled. Polyhedra, 3D text planes and OpenGL-only surfaces remain open.
+- Polyhedron, Tetrahedron, Octahedron, Icosahedron, Dodecahedron and ConvexHull3D match
+  Manim 0.22 geometry (vertex dots, face counts, bounds, vertex-driven face updates).

@@ -42,3 +42,17 @@ class SolidsScene(ThreeDScene):
         self.play(Rotate(cube, PI / 2, axis=UP), Rotate(torus, PI / 2, axis=RIGHT), run_time=2)
         self.move_camera(theta=40 * DEGREES, run_time=2)
         self.wait()
+
+
+class PolyhedraScene(ThreeDScene):
+    def construct(self):
+        self.set_camera_orientation(phi=70 * DEGREES, theta=-60 * DEGREES)
+        tetra = Tetrahedron(edge_length=2.2).shift(LEFT * 2)
+        hull = ConvexHull3D(*[[math.cos(a), math.sin(a), (-1) ** k * 0.6]
+                              for k, a in enumerate([i * TAU / 7 for i in range(7)])],
+                            faces_config={"fill_color": TEAL, "fill_opacity": 0.7}).shift(RIGHT * 2)
+        self.play(Create(tetra), Create(hull))
+        # Moving a vertex dot drags its faces along (Polyhedron's face updater).
+        self.play(tetra.graph[0].animate.shift(OUT + RIGHT * 0.5))
+        self.play(Rotate(hull, PI / 2, axis=RIGHT))
+        self.wait(0.5)

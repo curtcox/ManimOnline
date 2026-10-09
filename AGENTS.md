@@ -622,3 +622,8 @@ projection tests; regenerate it with its generator when the frame format changes
 Scene play/wait reuse unchanged roots' frame data (`_static_frames`) only when no user
 updaters, scene updaters or UpdateFromFunc animations could edit them; built-in camera
 updaters carry `_camera_updater`. 2D Axes ignore a z coordinate, like Community.
+Polyhedra keep Community's Graph of Dot3D vertices and a face-rebuilding updater
+(`match_points` is family-wise). ConvexHull3D uses a deterministic incremental hull
+of outward triangles. get_center/get_critical_point/_z_extent/_handle_bounds share
+one bounds memo per outermost query (`_bounds_query`); never mutate geometry inside them.
+

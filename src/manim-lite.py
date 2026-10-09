@@ -39,6 +39,25 @@ _BOUNDS_WITH_HANDLES = False  # Set only while measuring width/height.
 
 
 _BOUNDS_MEMO = None  # Per-serialization cache of local bounds (see Mobject.to_dict).
+
+
+def _bounds_query(method):
+    """Cache bounds for the outermost geometry query, as serialization does.
+
+    Nothing moves while a query runs (pivot compensation only shifts a posed
+    parent's own position before its parent-frame bounds are first computed),
+    so repeated child-bound evaluations inside one query are shared."""
+    def query(self, *args, **kwargs):
+        global _BOUNDS_MEMO
+        if _BOUNDS_MEMO is not None:
+            return method(self, *args, **kwargs)
+        _BOUNDS_MEMO = {}
+        try:
+            return method(self, *args, **kwargs)
+        finally:
+            _BOUNDS_MEMO = None
+    query.__name__, query.__doc__ = method.__name__, method.__doc__
+    return query
 # Attributes that only ever hold coordinates: serialization skips the mobject scan.
 _POINT_KEYS = frozenset(('curves', 'vertices', 'position', 'start', 'end', 'shaft_start',
                          'shaft_end', 'shaft_curves', 'cloud'))
@@ -906,7 +925,15 @@ class Mobject:
             raise ValueError('Position must be finite')
         return self.shift(Vector(a * m for a, m in zip(target - current, mask)))
 
+    @_bounds_query
     def _z_extent(self):
+        memo = _BOUNDS_MEMO
+        key = ('z', id(self))
+        if key not in memo:
+            memo[key] = self._compute_z_extent()
+        return memo[key]
+
+    def _compute_z_extent(self):
         """(min, max) of this mobject's z coordinates in its parent frame.
 
         Own geometry contributes the pose-mapped z of its bound points (the
@@ -937,6 +964,7 @@ class Mobject:
                        top if y > 0 else bottom if y < 0 else (bottom + top) / 2,
                        high if z > 0 else low if z < 0 else (low + high) / 2))
 
+    @_bounds_query
     def get_critical_point(self, direction):
         direction = Vector(direction)
         if not all(math.isfinite(value) for value in direction):
@@ -970,6 +998,7 @@ class Mobject:
         low, high = self._z_extent()
         return high - low
 
+    @_bounds_query
     def _handle_bounds(self):
         # Community measures width/height over all points (handles included),
         # while centers and edges use anchors only.
@@ -1589,6 +1618,7 @@ class Mobject:
         """World position of the internal transform pivot (local bounds center)."""
         return Vector(self.position) + self._geometry_center()
 
+    @_bounds_query
     def get_center(self):
         # Community's center is the bounds center; it differs from the pivot only
         # for rotated point-based outlines, whose bounds use rotated points.
@@ -1763,6 +1793,15 @@ class Mobject:
         else:
             result.pointwise_become_partial(self,a,b)
         return result
+
+    def match_points(self, mobject, copy_submobjects=True):
+        """Community's match_points: each family member takes its partner's points."""
+        if not isinstance(mobject, Mobject):
+            raise TypeError('match_points expects a Mobject')
+        for member, source in zip(self.get_family(), mobject.get_family()):
+            if isinstance(member, VMobject) and source._type in _PATH_TYPES:
+                VMobject.set_points(member, source.get_points())
+        return self
 
     def get_pieces(self, n_pieces):
         """Community's get_pieces: n equal-parameter partial copies, no children."""
@@ -11033,6 +11072,180 @@ class Torus(Surface):
         return [scale * math.cos(u), scale * math.sin(u), -self.r * math.sin(v)]
 
 
+class Polyhedron(VGroup):
+    """Community's Polyhedron: shaded polygon faces plus a Graph of Dot3D vertices.
+
+    An updater rebuilds the faces from the current vertex centers, so moving a
+    vertex (``polyhedron.graph[i]``) deforms the attached faces."""
+    _frame_excluded = ('faces_config', 'graph_config', 'vertex_coords', 'vertex_indices',
+                       'layout', 'faces_list', 'face_coords', 'edges')
+
+    def __init__(self, vertex_coords, faces_list, faces_config=None, graph_config=None):
+        super().__init__()
+        coords = [list(_point(point, 'Polyhedron vertex')) for point in vertex_coords]
+        if len(coords) > 1000:
+            raise ValueError('Polyhedra are limited to 1000 vertices')
+        faces = [list(face) for face in faces_list]
+        for face in faces:
+            if len(face) < 3 or any(isinstance(i, bool) or not isinstance(i, numbers.Integral)
+                                    or not 0 <= i < len(coords) for i in face):
+                raise ValueError('Polyhedron faces need three or more valid vertex indices')
+        self.faces_config = dict({'fill_opacity': 0.5, 'shade_in_3d': True}, **(faces_config or {}))
+        self.graph_config = dict({'vertex_type': Dot3D, 'edge_config': {'stroke_opacity': 0}},
+                                 **(graph_config or {}))
+        self.vertex_coords = coords
+        self.vertex_indices = list(range(len(coords)))
+        self.layout = dict(enumerate(coords))
+        self.faces_list = faces
+        self.face_coords = [[self.layout[j] for j in face] for face in faces]
+        self.edges = self.get_edges(faces)
+        self.faces = self.create_faces(self.face_coords)
+        self.graph = Graph(self.vertex_indices, self.edges, layout=self.layout, **self.graph_config)
+        self.add(self.faces, self.graph)
+        self.add_updater(self.update_faces)
+
+    def get_edges(self, faces_list):
+        edges = []
+        for face in faces_list:
+            edges += zip(face, face[1:] + face[:1])
+        return edges
+
+    def create_faces(self, face_coords):
+        return VGroup(*(Polygon(*face, **self.faces_config) for face in face_coords))
+
+    def update_faces(self, m):
+        self.faces.match_points(self.create_faces(self.extract_face_coords()))
+        return self
+
+    def extract_face_coords(self):
+        layout = dict(enumerate(list(self.graph[v].get_center()) for v in self.graph.vertices))
+        return [[layout[j] for j in face] for face in self.faces_list]
+
+
+class Tetrahedron(Polyhedron):
+    def __init__(self, edge_length=1, **kwargs):
+        NumberLine._real(edge_length, 'Edge length', positive=True)
+        unit = edge_length * math.sqrt(2) / 4
+        super().__init__(vertex_coords=[[unit, unit, unit], [unit, -unit, -unit],
+                                        [-unit, unit, -unit], [-unit, -unit, unit]],
+                         faces_list=[[0, 1, 2], [3, 0, 2], [0, 1, 3], [3, 1, 2]], **kwargs)
+
+
+class Octahedron(Polyhedron):
+    def __init__(self, edge_length=1, **kwargs):
+        NumberLine._real(edge_length, 'Edge length', positive=True)
+        unit = edge_length * math.sqrt(2) / 2
+        super().__init__(vertex_coords=[[unit, 0, 0], [-unit, 0, 0], [0, unit, 0],
+                                        [0, -unit, 0], [0, 0, unit], [0, 0, -unit]],
+                         faces_list=[[2, 4, 1], [0, 4, 2], [4, 3, 0], [1, 3, 4],
+                                     [3, 5, 0], [1, 5, 3], [2, 5, 1], [0, 5, 2]], **kwargs)
+
+
+class Icosahedron(Polyhedron):
+    def __init__(self, edge_length=1, **kwargs):
+        NumberLine._real(edge_length, 'Edge length', positive=True)
+        a, b = edge_length * (1 + math.sqrt(5)) / 4, edge_length / 2
+        super().__init__(
+            vertex_coords=[[0, b, a], [0, -b, a], [0, b, -a], [0, -b, -a], [b, a, 0], [b, -a, 0],
+                           [-b, a, 0], [-b, -a, 0], [a, 0, b], [a, 0, -b], [-a, 0, b], [-a, 0, -b]],
+            faces_list=[[1, 8, 0], [1, 5, 7], [8, 5, 1], [7, 3, 5], [5, 9, 3], [8, 9, 5],
+                        [3, 2, 9], [9, 4, 2], [8, 4, 9], [0, 4, 8], [6, 4, 0], [6, 2, 4],
+                        [11, 2, 6], [3, 11, 2], [0, 6, 10], [10, 1, 0], [10, 7, 1],
+                        [11, 7, 3], [10, 11, 7], [10, 11, 6]], **kwargs)
+
+
+class Dodecahedron(Polyhedron):
+    def __init__(self, edge_length=1, **kwargs):
+        NumberLine._real(edge_length, 'Edge length', positive=True)
+        a = edge_length * (1 + math.sqrt(5)) / 4
+        b = edge_length * (3 + math.sqrt(5)) / 4
+        c = edge_length / 2
+        super().__init__(
+            vertex_coords=[[a, a, a], [a, a, -a], [a, -a, a], [a, -a, -a], [-a, a, a], [-a, a, -a],
+                           [-a, -a, a], [-a, -a, -a], [0, c, b], [0, c, -b], [0, -c, -b], [0, -c, b],
+                           [c, b, 0], [-c, b, 0], [c, -b, 0], [-c, -b, 0], [b, 0, c], [-b, 0, c],
+                           [b, 0, -c], [-b, 0, -c]],
+            faces_list=[[18, 16, 0, 12, 1], [3, 18, 16, 2, 14], [3, 10, 9, 1, 18],
+                        [1, 9, 5, 13, 12], [0, 8, 4, 13, 12], [2, 16, 0, 8, 11],
+                        [4, 17, 6, 11, 8], [17, 19, 5, 13, 4], [19, 7, 15, 6, 17],
+                        [6, 15, 14, 2, 11], [19, 5, 9, 10, 7], [7, 10, 3, 14, 15]], **kwargs)
+
+
+def _convex_hull_3d(points, tolerance):
+    """Outward triangles of the 3D convex hull (incremental; deterministic order)."""
+    def sub(a, b):
+        return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+    def cross(a, b):
+        return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+    def dot(a, b):
+        return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+    count = len(points)
+    if count < 4:
+        raise ValueError('ConvexHull3D needs at least four points')
+    # Initial tetrahedron: two far points, the farthest from their line, then the plane.
+    i0 = 0
+    i1 = max(range(count), key=lambda i: dot(sub(points[i], points[i0]), sub(points[i], points[i0])))
+    line = sub(points[i1], points[i0])
+    i2 = max(range(count), key=lambda i: dot(cross(line, sub(points[i], points[i0])),
+                                            cross(line, sub(points[i], points[i0]))))
+    normal = cross(line, sub(points[i2], points[i0]))
+    i3 = max(range(count), key=lambda i: abs(dot(normal, sub(points[i], points[i0]))))
+    scale = max(1.0, max(abs(v) for p in points for v in p))
+    if (dot(line, line) <= (tolerance * scale) ** 2 or dot(normal, normal) <= (tolerance * scale) ** 4
+            or abs(dot(normal, sub(points[i3], points[i0]))) <= tolerance * scale * math.sqrt(dot(normal, normal))):
+        raise ValueError('ConvexHull3D points must not be coplanar')
+    interior = [sum(points[i][k] for i in (i0, i1, i2, i3)) / 4 for k in range(3)]
+
+    def oriented(a, b, c):
+        n = cross(sub(points[b], points[a]), sub(points[c], points[a]))
+        return (a, b, c) if dot(n, sub(points[a], interior)) > 0 else (a, c, b)
+
+    def plane(face):
+        a, b, c = face
+        n = cross(sub(points[b], points[a]), sub(points[c], points[a]))
+        length = math.sqrt(dot(n, n))
+        return n, length
+
+    faces = [oriented(*f) for f in ((i0, i1, i2), (i0, i1, i3), (i0, i2, i3), (i1, i2, i3))]
+    used = {i0, i1, i2, i3}
+    for index in range(count):
+        if index in used:
+            continue
+        p = points[index]
+        visible = []
+        for face in faces:
+            n, length = plane(face)
+            if length and dot(n, sub(p, points[face[0]])) > tolerance * length * scale:
+                visible.append(face)
+        if not visible:
+            continue
+        edges = {}
+        for a, b, c in visible:
+            for edge in ((a, b), (b, c), (c, a)):
+                edges[edge] = True
+        horizon = [edge for edge in edges if (edge[1], edge[0]) not in edges]
+        hidden = set(visible)
+        faces = [face for face in faces if face not in hidden] + [(a, b, index) for a, b in horizon]
+        used.add(index)
+    return faces
+
+
+class ConvexHull3D(Polyhedron):
+    """The convex hull of 3D points as a Polyhedron of triangular faces."""
+    def __init__(self, *points, tolerance=1e-5, **kwargs):
+        NumberLine._real(tolerance, 'Hull tolerance', nonnegative=True)
+        coords = [list(_point(point, 'Hull point')) for point in points]
+        if len(coords) > 1000:
+            raise ValueError('ConvexHull3D is limited to 1000 points')
+        faces = _convex_hull_3d(coords, tolerance)
+        order = {}
+        for face in faces:
+            for index in face:
+                order.setdefault(index, len(order))
+        super().__init__(vertex_coords=[coords[i] for i in order],
+                         faces_list=[[order[i] for i in face] for face in faces], **kwargs)
+
+
 class ThreeDAxes(Axes):
     """Community's ThreeDAxes: Axes plus a z NumberLine rotated out of the plane.
 
@@ -14992,7 +15205,7 @@ class ManimBanner(VGroup):
                           UpdateFromAlphaFunc(self, slide_back, run_time=run_time / 3, rate_func=smooth))
 
 
-EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'ZoomedScene', 'VectorScene', 'LinearTransformationScene', 'ThreeDCamera', 'ThreeDScene', 'ThreeDVMobject', 'Surface', 'Sphere', 'Dot3D', 'Cube', 'Prism', 'Cone', 'Cylinder', 'Line3D', 'Arrow3D', 'Torus', 'ThreeDAxes', 'angle_of_vector', 'ImageMobjectFromCamera', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
+EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'ZoomedScene', 'VectorScene', 'LinearTransformationScene', 'ThreeDCamera', 'ThreeDScene', 'ThreeDVMobject', 'Surface', 'Sphere', 'Dot3D', 'Cube', 'Prism', 'Cone', 'Cylinder', 'Line3D', 'Arrow3D', 'Torus', 'ThreeDAxes', 'Polyhedron', 'Tetrahedron', 'Octahedron', 'Icosahedron', 'Dodecahedron', 'ConvexHull3D', 'angle_of_vector', 'ImageMobjectFromCamera', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
            'Triangle', 'Polygon', 'Polygram', 'RegularPolygram', 'RegularPolygon', 'Star', 'Brace', 'BraceBetweenPoints', 'BraceLabel', 'BraceText',
            'Title', 'BulletedList', 'Tex', 'SingleStringMathTex', 'MarkupText', 'LabeledDot', 'Variable', 'always', 'f_always', 'always_shift', 'always_rotate',
            'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'BarChart', 'PolarPlane', 'NumberPlane', 'ComplexPlane', 'VectorField', 'ArrowVectorField', 'StreamLines', 'sigmoid', 'ScreenRectangle', 'FullScreenRectangle', 'VectorizedPoint', 'ComplexValueTracker', 'UnitInterval', 'TangentialArc', 'CurvesAsSubmobjects', 'VDict', 'Cutout', 'ConvexHull', 'ArcBrace', 'LaggedStartMap', 'MaintainPositionRelativeTo', 'Blink', 'Broadcast', 'SpiralIn', 'AddTextWordByWord', 'Animation', 'line_intersection', 'angle_between_vectors', 'DEFAULT_LAGGED_START_LAG_RATIO', 'Graph', 'DiGraph', 'Union', 'Intersection', 'Difference', 'Exclusion', 'Code', 'SVGMobject', 'VMobjectFromSVGPath', 'ImageMobject', 'RESAMPLING_ALGORITHMS', 'ManimColor', 'HSV', 'RGBA', 'LinearBase', 'LogBase', 'DefaultSectionType', 'Add', 'ShowPartial', 'TexTemplate', 'TexTemplateLibrary', 'TexFontTemplates', 'CoordinateSystem', 'PMobject', 'Mobject1D', 'Mobject2D', 'PGroup', 'PointCloudDot', 'Point', 'DEFAULT_POINT_DENSITY_1D', 'DEFAULT_POINT_DENSITY_2D', 'RandomColorGenerator', 'random_color', 'random_bright_color', 'TypeWithCursor', 'UntypeWithCursor', 'AnimatedBoundary', 'ShowPassingFlashWithThinningStrokeWidth', 'FadeTransformPieces', 'ImplicitFunction', 'LabeledPolygram', 'ChangeSpeed', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
