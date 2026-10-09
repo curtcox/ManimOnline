@@ -1454,3 +1454,9 @@ Try **Letter colors, markup and gradients** (`examples/text_effects_scene.py`).
 `MarkupText` supports `<b>`, `<i>`, `<span>` foreground/weight/style/font and
 HTML entities. Unindexed text stays a single element, so long text remains cheap
 to animate. `DecimalNumber` digits are not split into glyphs.
+
+The **Bar charts and polar planes** example covers `BarChart` (gradient bar
+colors, `get_bar_labels`, animated `change_bar_values`) and `PolarPlane` (rings,
+spokes, radian/degree azimuth labels, `pr2pt`/`pt2pr`). Both reproduce Community
+geometry to text-metric differences. `Mobject.set_style` routes fill/stroke
+options, and hex colors truncate channels as Community does (`#7F7F7F` for mid-grey).

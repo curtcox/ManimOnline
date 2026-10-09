@@ -104,7 +104,8 @@ def _color_rgb(color):
 
 
 def _rgb_color(rgb):
-    return '#' + ''.join('%02X' % round(min(1, max(0, v)) * 255) for v in rgb)
+    # Community's ManimColor.to_hex truncates each channel (int(value * 255)).
+    return '#' + ''.join('%02X' % int(min(1, max(0, v)) * 255 + 1e-9) for v in rgb)
 
 
 def color_to_rgb(color):
@@ -1391,6 +1392,14 @@ class Mobject:
             for child in self.children:
                 child.set_z_index(z_index_value, family=True)
         return self
+
+    def set_style(self, fill_color=None, fill_opacity=None, stroke_color=None, stroke_width=None,
+                  stroke_opacity=None, family=True, **kwargs):
+        unsupported = [key for key in kwargs if not key.startswith('background_stroke') and key not in ('sheen_factor', 'sheen_direction')]
+        if unsupported:
+            raise NotImplementedError('Unsupported style options: ' + ', '.join(unsupported))
+        self.set_fill(fill_color, fill_opacity, family=family)
+        return self.set_stroke(stroke_color, stroke_width, stroke_opacity, family=family)
 
     def get_color(self):
         return self.color
@@ -3302,13 +3311,22 @@ def _math_estimate(text, font_size):
         rows = [row for row in array.group(1).split('\\\\') if row.strip()] or ['']
         rows = [row if row.strip() != '\\quad' else '' for row in rows]
     def width(row):
+        # Fractions stack: replace each innermost one by its wider (scaled) operand.
+        pattern = re.compile(r'\\([dt]?)frac\{([^{}]*)\}\{([^{}]*)\}')
+        while True:
+            match = pattern.search(row)
+            if match is None:
+                break
+            size = max(width(match.group(2)), width(match.group(3))) / .55
+            size *= .7 if match.group(1) == 't' else 1
+            row = row[:match.start()] + 'x' * max(1, int(round(size))) + row[match.end():]
         delimiters = len(re.findall(r'\\(?:left|right)[^.a-zA-Z]|\\(?:left|right)\\[a-zA-Z]+', row))
         row = re.sub(r'\\begin\{array\}\{[^}]*\}|\\end\{array\}|\\quad|\\(?:left|right)\.?|\\[,;! ]', '', row)
         cells = row.count('&')
         row = re.sub(r'\\[a-zA-Z]+', 'x', row.replace('&', ''))
         row = re.sub(r'[{}^_\s\\\[\]()|.]', '', row)
         return len(row) * .55 + cells * 1.0 + delimiters * .4
-    tall = 2 if re.search(r'\\(frac|sum|int|prod|binom|dfrac)', text) else 1
+    tall = 2 if re.search(r'\\(frac|sum|int|prod|binom|dfrac|tfrac)', text) else 1
     outer = .4 * len(re.findall(r'\\(?:left|right)[\[\]()|]', body)) if array else 0
     total = max(width(row) for row in rows) + outer
     return max(.3, total) * em, .75 * max(tall, 1.6 * len(rows) if array else 1) * em
@@ -4875,7 +4893,7 @@ class NumberLine(VGroup):
                  tip_width=.35, tip_height=.35, include_numbers=False, font_size=36,
                  label_direction=DOWN, line_to_number_buff=.25,
                  decimal_number_config=None, numbers_to_exclude=None,
-                 numbers_to_include=None, **kwargs):
+                 numbers_to_include=None, label_constructor=None, **kwargs):
         radius = max(1, round(config.frame_width/2))
         values = list(x_range) if x_range is not None else [-radius,radius,1]
         if len(values) == 2:
@@ -4906,10 +4924,16 @@ class NumberLine(VGroup):
         self.include_tip,self.exclude_origin_tick = include_tip,exclude_origin_tick
         self.font_size,self.label_direction = font_size,list(label_direction)
         self.line_to_number_buff = line_to_number_buff
+        self.label_constructor = MathTex if label_constructor is None else label_constructor
         self.numbers_with_elongated_ticks = self._numbers(numbers_with_elongated_ticks or [])
         self.numbers_to_exclude = self._numbers(numbers_to_exclude or [])
         self.numbers_to_include = None if numbers_to_include is None else self._numbers(numbers_to_include)
-        decimals = len(format(values[2],'.12f').rstrip('0').split('.')[-1])
+        # Community counts the digits after the step's printed decimal point (1.0 -> one place);
+        # exponent notation keeps the significant fixed-point digits instead of collapsing to zero.
+        step_text = str(values[2])
+        decimals = (len(step_text.split('.')[-1]) if '.' in step_text and 'e' not in step_text.lower()
+                    else len(format(values[2],'.12f').rstrip('0').split('.')[-1]))
+        decimals = min(12, decimals)
         self.decimal_number_config = dict(decimal_number_config) if decimal_number_config is not None else dict(num_decimal_places=decimals)
         # Validate label formatting even when labels are deferred.
         DecimalNumber(0,font_size=font_size,**self.decimal_number_config)
@@ -5188,6 +5212,19 @@ class Axes(VGroup):
 
     def get_y_axis(self):
         return self.y_axis
+
+    def polar_to_point(self, radius, azimuth):
+        return self.coords_to_point(radius * math.cos(azimuth), radius * math.sin(azimuth))
+
+    def pr2pt(self, radius, azimuth):
+        return self.polar_to_point(radius, azimuth)
+
+    def point_to_polar(self, point):
+        x, y = self.point_to_coords(point)[:2]
+        return math.hypot(x, y), math.atan2(y, x)
+
+    def pt2pr(self, point):
+        return self.point_to_polar(point)
 
     def coords_to_point(self, *coords):
         if len(coords) == 1 and isinstance(coords[0],(list,tuple)):
@@ -5577,6 +5614,208 @@ class Axes(VGroup):
             secant._secant_role = 'secant_line'
             group.add(secant)
         return group
+
+
+class BarChart(Axes):
+    """Community's BarChart: bars on Axes with names, labels and value changes."""
+    def __init__(self, values, bar_names=None, y_range=None, x_length=None, y_length=None,
+                 bar_colors=('#003f5c', '#58508d', '#bc5090', '#ff6361', '#ffa600'), bar_width=0.6,
+                 bar_fill_opacity=0.7, bar_stroke_width=3, **kwargs):
+        values = list(values)
+        if not values:
+            raise ValueError('BarChart needs at least one value')
+        for value in values:
+            NumberLine._real(value, 'Bar value')
+        y_length = config.frame_height - 4 if y_length is None else y_length
+        self.values, self.bar_names, self.bar_colors = values, bar_names, list(bar_colors)
+        self.bar_width, self.bar_fill_opacity, self.bar_stroke_width = bar_width, bar_fill_opacity, bar_stroke_width
+        if y_range is None:
+            y_range = [min(0, min(values)), max(0, max(values)), round(max(values) / y_length, 2)]
+        elif len(y_range) == 2:
+            y_range = [*y_range, round(max(values) / y_length, 2)]
+        x_length = min(len(values), config.frame_width - 2) if x_length is None else x_length
+        x_axis_config = {'font_size': 24, 'label_constructor': Tex} | dict(kwargs.pop('x_axis_config', None) or {})
+        y_axis_config = {'include_numbers': True} | dict(kwargs.pop('y_axis_config', None) or {})
+        super().__init__(x_range=[0, len(values), 1], y_range=y_range, x_length=x_length, y_length=y_length,
+                         x_axis_config=x_axis_config, y_axis_config=y_axis_config, tips=kwargs.pop('tips', False),
+                         **kwargs)
+        self.bars = VGroup(*(self._create_bar(i, value) for i, value in enumerate(values)))
+        self._update_colors()
+        self.add_to_back(self.bars)
+        self.x_labels = self.bar_labels = None
+        if bar_names is not None:
+            self._add_x_axis_labels()
+
+    def _update_colors(self):
+        self.bars.set_color_by_gradient(*self.bar_colors)
+
+    def _add_x_axis_labels(self):
+        labels = VGroup()
+        axis = self.x_axis
+        for i, name in enumerate(self.bar_names):
+            label = axis.label_constructor(name, font_size=axis.font_size)
+            label.next_to(axis.n2p(i + 0.5), UP if self.values[i] < 0 else DOWN, buff=axis.line_to_number_buff)
+            labels.add(label)
+        axis.labels = labels
+        axis.add(labels)
+
+    def _create_bar(self, bar_number, value):
+        height = abs(self.c2p(0, value)[1] - self.c2p(0, 0)[1])
+        width = self.c2p(self.bar_width, 0)[0] - self.c2p(0, 0)[0]
+        bar = Rectangle(height=height, width=width, stroke_width=self.bar_stroke_width,
+                        fill_opacity=self.bar_fill_opacity)
+        return bar.next_to(self.c2p(bar_number + 0.5, 0), UP if value >= 0 else DOWN, buff=0)
+
+    def get_bar_labels(self, color=None, font_size=24, buff=MED_SMALL_BUFF, label_constructor=None):
+        make = Tex if label_constructor is None else label_constructor
+        labels = VGroup()
+        for bar, value in zip(self.bars, self.values):
+            label = make(str(value), font_size=font_size)
+            label.set_color(bar.get_fill_color() if color is None else color)
+            labels.add(label.next_to(bar, UP if value >= 0 else DOWN, buff=buff))
+        return labels
+
+    def change_bar_values(self, values, update_colors=True):
+        values = list(values)
+        for i, (bar, value) in enumerate(zip(list(self.bars), values)):
+            current = self.values[i]
+            limit, edge = (bar.get_bottom(), DOWN) if current > 0 else (bar.get_top(), UP)
+            if current != 0:
+                quotient = value / current
+                if quotient < 0:
+                    edge = UP if current > 0 else DOWN
+                bar.stretch_to_fit_height(abs(quotient) * bar.get_height())
+            else:
+                replacement = self._create_bar(i, value)
+                bar.become(replacement)
+            bar.move_to(limit, edge)
+        if update_colors:
+            self._update_colors()
+        self.values[:len(values)] = values
+        return self
+
+
+class PolarPlane(Axes):
+    """Community's PolarPlane: rings and spokes over radial axes, with azimuth labels."""
+    def __init__(self, radius_max=None, size=None, radius_step=1, azimuth_step=None, azimuth_units='PI radians',
+                 azimuth_compact_fraction=True, azimuth_offset=0, azimuth_direction='CCW',
+                 azimuth_label_buff=SMALL_BUFF, azimuth_label_font_size=24, radius_config=None,
+                 background_line_style=None, faded_line_style=None, faded_line_ratio=1,
+                 make_smooth_after_applying_functions=True, **kwargs):
+        if azimuth_units not in ('PI radians', 'TAU radians', 'degrees', 'gradians', None):
+            raise ValueError('Invalid azimuth units. Expected one of: PI radians, TAU radians, degrees, gradians or None.')
+        if azimuth_direction not in ('CW', 'CCW'):
+            raise ValueError('Invalid azimuth direction. Expected one of: CW, CCW.')
+        radius_max = config.frame_height / 2 if radius_max is None else radius_max
+        NumberLine._real(radius_max, 'radius_max', positive=True)
+        self.azimuth_units, self.azimuth_direction = azimuth_units, azimuth_direction
+        self.azimuth_step = ({'PI radians': 20, 'TAU radians': 20, 'degrees': 36, 'gradians': 40, None: 1}[azimuth_units]
+                             if azimuth_step is None else azimuth_step)
+        NumberLine._real(self.azimuth_step, 'azimuth_step', positive=True)
+        if self.azimuth_step * max(1, faded_line_ratio) > 720:
+            raise ValueError('PolarPlane is limited to 720 azimuth lines')
+        self.radius_config = {'stroke_width': 2, 'include_ticks': False, 'include_tip': False,
+                              'line_to_number_buff': SMALL_BUFF, 'label_direction': DL, 'font_size': 24} | dict(radius_config or {})
+        self.background_line_style = {'stroke_color': BLUE_D, 'stroke_width': 2, 'stroke_opacity': 1} | dict(background_line_style or {})
+        self.faded_line_style, self.faded_line_ratio = faded_line_style, faded_line_ratio
+        self.make_smooth_after_applying_functions = make_smooth_after_applying_functions
+        self.azimuth_offset, self.azimuth_label_buff = azimuth_offset, azimuth_label_buff
+        self.azimuth_label_font_size, self.azimuth_compact_fraction = azimuth_label_font_size, azimuth_compact_fraction
+        # Community passes size=None through to unit-length radial axes.
+        size = 2 * radius_max if size is None else size
+        # Community builds a NumPy range, promoting every bound to float when any bound is a float.
+        bounds = [-radius_max, radius_max, radius_step]
+        if any(isinstance(value, float) for value in bounds):
+            bounds = [float(value) for value in bounds]
+        super().__init__(x_range=bounds, y_range=bounds[:],
+                         x_length=size, y_length=size, axis_config=self.radius_config, **kwargs)
+        if self.faded_line_style is None:
+            self.faded_line_style = {key: value * .5 if isinstance(value, _REAL) and not isinstance(value, bool) else value
+                                     for key, value in self.background_line_style.items()}
+        background, faded = self._get_lines()
+        background.set_style(**self.background_line_style)
+        faded.set_style(**self.faded_line_style)
+        background._plane_role, faded._plane_role = 'background', 'faded'
+        self.add_to_back(faded, background)
+
+    def _get_lines(self):
+        center = self.get_origin()
+        ratio = self.faded_line_ratio or 1
+        rstep = self.x_axis.x_range[2] / ratio
+        astep = TAU / self.azimuth_step / ratio
+        rings, faded_rings, spokes, faded_spokes = VGroup(), VGroup(), VGroup(), VGroup()
+        count = int(math.floor(self.x_axis.x_range[1] / rstep + 1e-9)) + 1
+        for k in range(count):
+            circle = Circle(radius=k * rstep * self.x_axis.get_unit_size()).move_to(center)
+            (rings if k % ratio == 0 else faded_rings).add(circle)
+        spoke = Line(center, self.get_x_axis().get_end())
+        for k in range(int(math.ceil(TAU / astep - 1e-9))):
+            line = spoke.copy().rotate(k * astep + self.azimuth_offset, about_point=center)
+            (spokes if k % ratio == 0 else faded_spokes).add(line)
+        return VGroup(*spokes, *rings), VGroup(*faded_spokes, *faded_rings)
+
+    def _plane_group(self, role):
+        for child in self.children:
+            if child.__dict__.get('_plane_role') == role:
+                return child
+        raise ValueError('PolarPlane has no ' + role + ' lines')
+
+    @property
+    def background_lines(self):
+        return self._plane_group('background')
+
+    @property
+    def faded_lines(self):
+        return self._plane_group('faded')
+
+    def get_vector(self, coords, **kwargs):
+        kwargs['buff'] = 0
+        return Arrow(self.coords_to_point(0, 0), self.coords_to_point(*coords), **kwargs)
+
+    def get_radian_label(self, number, font_size=24, **kwargs):
+        from fractions import Fraction
+        constant = {'PI radians': '\\pi', 'TAU radians': '\\tau'}[self.azimuth_units]
+        frac = Fraction(number * {'PI radians': 2, 'TAU radians': 1}[self.azimuth_units]).limit_denominator(100)
+        if frac.numerator == 0:
+            string = '0'
+        elif frac.numerator == 1 and frac.denominator == 1:
+            string = constant
+        elif frac.numerator == 1:
+            string = ('\\tfrac{' + constant + '}{' + str(frac.denominator) + '}' if self.azimuth_compact_fraction
+                      else '\\tfrac{1}{' + str(frac.denominator) + '}' + constant)
+        elif frac.denominator == 1:
+            string = str(frac.numerator) + constant
+        elif self.azimuth_compact_fraction:
+            string = '\\tfrac{' + str(frac.numerator) + constant + '}{' + str(frac.denominator) + '}'
+        else:
+            string = '\\tfrac{' + str(frac.numerator) + '}{' + str(frac.denominator) + '}' + constant
+        return MathTex(string, font_size=font_size, **kwargs)
+
+    def get_coordinate_labels(self, r_values=None, a_values=None, **kwargs):
+        if r_values is None:
+            r_values = [r for r in self.get_x_axis().get_tick_range() if r >= 0]
+        if a_values is None:
+            a_values = [i / self.azimuth_step for i in range(int(math.ceil(self.azimuth_step - 1e-9)))]
+        r_mobs = self.get_x_axis().add_numbers(r_values)
+        sign = 1 if self.azimuth_direction == 'CCW' else -1
+        reach = self.get_right()[0]
+        labels = []
+        for value in a_values:
+            angle = sign * value * TAU + self.azimuth_offset
+            point = Vector((reach * math.cos(angle), reach * math.sin(angle), 0))
+            if self.azimuth_units in ('PI radians', 'TAU radians'):
+                label = self.get_radian_label(value, font_size=self.azimuth_label_font_size)
+            else:
+                factor, suffix = {'degrees': (360, '^{\\circ}'), 'gradians': (400, '^{g}'), None: (1, '')}[self.azimuth_units]
+                label = MathTex(f'{factor * value:g}' + suffix, font_size=self.azimuth_label_font_size)
+            labels.append(label.next_to(point, direction=point, aligned_edge=point, buff=self.azimuth_label_buff))
+        self.coordinate_labels = VGroup(r_mobs, VGroup(*labels))
+        return self.coordinate_labels
+
+    def add_coordinates(self, r_values=None, a_values=None):
+        # Community's label group repeats x_axis (add_numbers returns it), and its family
+        # deduplication renders that axis once. Attach only the new azimuth labels here.
+        return self.add(self.get_coordinate_labels(r_values, a_values)[1])
 
 
 class NumberPlane(Axes):
@@ -7827,7 +8066,7 @@ class MovingCameraScene(Scene):
 EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
            'Triangle', 'Polygon', 'Polygram', 'RegularPolygram', 'RegularPolygon', 'Star', 'Brace', 'BraceBetweenPoints', 'BraceLabel', 'BraceText',
            'Title', 'BulletedList', 'Tex', 'SingleStringMathTex', 'MarkupText', 'LabeledDot', 'Variable', 'always', 'f_always', 'always_shift', 'always_rotate',
-           'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'NumberPlane', 'ComplexPlane', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
+           'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'BarChart', 'PolarPlane', 'NumberPlane', 'ComplexPlane', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform',

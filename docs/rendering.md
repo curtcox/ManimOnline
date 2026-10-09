@@ -2210,3 +2210,16 @@ separate horizontal/vertical buffers; dividing lines bisect neighboring rows and
 columns as in Community. Frames now omit any attribute holding mobject
 references, including lists such as `mob_matrix`. The MathTex estimator
 understands arrays and `\left/\right` delimiters for the first render pass.
+
+`BarChart` subclasses Axes with Community's defaults: `y_length = frame_height - 4`,
+`x_length = min(len(values), frame_width - 2)`, Tex x labels at font size 24 and an
+automatic `y_range` of `[min(0, min), max(0, max), round(max / y_length, 2)]`.
+`change_bar_values` stretches the existing Rectangle identities about their
+baseline. `PolarPlane` passes `size=None` through to unit-length radial axes
+(8 × 8 by default) and builds rings and spokes into role-tagged background/faded
+groups. As in Community, the radial NumberLine uses a float step when any bound is
+a float, so labels read `1.0`; NumberLine now derives decimal places from the
+printed step. `add_coordinates` attaches only the azimuth labels because the radius
+numbers already belong to the axis (Community's group repeats the axis but its
+family deduplication renders it once). The MathTex estimator now stacks
+`\frac`/`\tfrac`/`\dfrac` operands.

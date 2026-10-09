@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import math
 from pathlib import Path
 import unittest
 
@@ -16,6 +17,55 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_bar_chart_matches_community_geometry_and_updates(self):
+        chart=lite.BarChart([1,2,-1,3],bar_names=['a','b','c','d'],y_range=[-2,4,1],y_length=5,x_length=6)
+        # Bar centers, heights and gradient colors measured with Manim Community 0.22.
+        for bar,center,height in zip(chart.bars,[(-2.25,-.417),(-.75,0),(.75,-1.25),(2.25,.417)],[.833,1.667,.833,2.5]):
+            self.assertAlmostEqual(bar.get_center()[0],center[0],places=3)
+            self.assertAlmostEqual(bar.get_center()[1],center[1],places=3)
+            self.assertAlmostEqual(bar.get_height(),height,places=3)
+        self.assertEqual([bar.fill_color for bar in chart.bars],['#003F5C','#79508E','#E85C70','#FFA600'])
+        self.assertEqual(len(chart.get_bar_labels(font_size=20)),4)
+        ids=[id(bar) for bar in chart.bars]
+        chart.change_bar_values([2,-1.5,1,.5])
+        self.assertEqual([id(bar) for bar in chart.bars],ids)
+        for bar,height in zip(chart.bars,[1.667,1.25,.833,.417]):
+            self.assertAlmostEqual(bar.get_height(),height,places=3)
+        self.assertEqual(lite.BarChart([.5,2.5,1.25]).y_range,[0,2.5,.62])
+        frame=render('self.add(BarChart([1,2,3]))')['frames'][0]
+        self.assertEqual(len(frame['mobjects']),1)
+
+    def test_polar_plane_rings_spokes_labels_and_conversions(self):
+        plane=lite.PolarPlane()
+        # Community passes size=None to unit-length radial axes: an 8x8 plane by default.
+        self.assertAlmostEqual(plane.get_width(),8)
+        self.assertEqual((len(plane.background_lines),len(plane.faded_lines)),(25,0))
+        self.assertPointAlmostEqual(plane.pr2pt(1.5,1),(1.5*math.cos(1),1.5*math.sin(1),0))
+        self.assertPointAlmostEqual(plane.pt2pr(plane.pr2pt(2,1)),(2,1))
+        small=lite.PolarPlane(size=6).add_coordinates()
+        radii,angles=small.coordinate_labels
+        self.assertIs(radii,small.x_axis)
+        self.assertEqual([n.get_value() for n in small.x_axis.numbers],[1,2,3,4])
+        self.assertEqual(small.x_axis.decimal_number_config['num_decimal_places'],1)
+        self.assertEqual(len(angles),20)
+        self.assertPointAlmostEqual(angles[0].get_center(),(3.3,0,0))
+        self.assertEqual(small.get_radian_label(.75).tex_string,'\\tfrac{3\\pi}{2}')
+        dense=lite.PolarPlane(radius_max=3,radius_step=.5,azimuth_units='degrees',faded_line_ratio=2)
+        self.assertEqual((len(dense.background_lines),len(dense.faded_lines)),(43,42))
+        self.assertAlmostEqual(dense.faded_lines[0].stroke_width,1)
+        with self.assertRaises(ValueError): lite.PolarPlane(azimuth_units='turns')
+        with self.assertRaises(ValueError): lite.PolarPlane(azimuth_direction='up')
+        with self.assertRaises(ValueError): lite.PolarPlane(azimuth_step=1000)
+        frame=render('self.add(PolarPlane(size=4).add_coordinates())')['frames'][0]
+        self.assertEqual(len(frame['mobjects']),1)
+
+    def test_set_style_routes_fill_and_stroke(self):
+        square=lite.Square().set_style(fill_color=lite.RED,fill_opacity=.5,stroke_color=lite.BLUE,
+                                       stroke_width=6,stroke_opacity=.25,background_stroke_width=0)
+        self.assertEqual((square.fill_color,square.fill_opacity,square.stroke_color,square.stroke_width,square.stroke_opacity),
+                         (lite.RED,.5,lite.BLUE,6,.25))
+        with self.assertRaises(NotImplementedError): square.set_style(glow=1)
+
     def test_text_effects_gallery_renders_glyph_groups(self):
         result=json.loads(lite.render_scene((ROOT/'examples/text_effects_scene.py').read_text()))
         title=result['frames'][25]['mobjects'][0]
@@ -723,11 +773,12 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertEqual((lite.YELLOW,lite.ORANGE,lite.PINK,lite.TEAL,lite.GREY_BROWN),
                          ('#F7D96F','#FF862F','#D147BD','#5CD0B3','#736357'))
         self.assertEqual(lite.LIGHT_GREY,lite.GRAY_B)
-        self.assertEqual(lite.interpolate_color(lite.BLACK,lite.WHITE,.5),'#808080')
-        self.assertEqual(lite.color_gradient([lite.PURE_RED,lite.PURE_BLUE],3),['#FF0000','#800080','#0000FF'])
+        # Community truncates channels when converting to hex (Manim 0.22 values).
+        self.assertEqual(lite.interpolate_color(lite.BLACK,lite.WHITE,.5),'#7F7F7F')
+        self.assertEqual(lite.color_gradient([lite.PURE_RED,lite.PURE_BLUE],3),['#FF0000','#7F007F','#0000FF'])
         self.assertEqual(lite.color_gradient([lite.PURE_RED,lite.PURE_BLUE],1),['#0000FF'])
-        self.assertEqual(lite.average_color(lite.PURE_RED,lite.PURE_GREEN),'#808000')
-        self.assertEqual(lite.rgb_to_color((1,.5,0)),'#FF8000')
+        self.assertEqual(lite.average_color(lite.PURE_RED,lite.PURE_GREEN),'#7F7F00')
+        self.assertEqual(lite.rgb_to_color((1,.5,0)),'#FF7F00')
         self.assertEqual(lite.rgb_to_color((255,128,0)),'#FF8000')
         self.assertPointAlmostEqual(lite.color_to_rgb('#ff0000'),(1,0,0))
         for bad in (lambda:lite.interpolate_color('red',lite.WHITE,.5),lambda:lite.color_gradient([],2),
@@ -740,7 +791,7 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertEqual(group[3].color,lite.WHITE)
         dots=lite.VGroup(lite.Dot(),lite.Dot(lite.RIGHT*.5),lite.Dot(lite.RIGHT*3))
         dots.set_colors_by_radial_gradient(lite.ORIGIN,1,lite.WHITE,lite.BLACK)
-        self.assertEqual([d.fill_color for d in dots],['#FFFFFF','#808080','#000000'])
+        self.assertEqual([d.fill_color for d in dots],['#FFFFFF','#7F7F7F','#000000'])
         faded=lite.VGroup(lite.Square(fill_opacity=.8),lite.Circle()).fade(.25)
         for member,expected in zip(faded,[(.6,.75),(0,.75)]): self.assertPointAlmostEqual((member.fill_opacity,member.stroke_opacity),expected)
         with self.assertRaises(ValueError): faded.fade(2)
@@ -750,7 +801,7 @@ assert isinstance(t.get_value(), (int, float))""")
                           matched.get_stroke_width(),matched.get_stroke_opacity()),(lite.BLUE,lite.RED,.4,7,1))
         self.assertEqual(lite.Square().match_color(source).get_color(),lite.RED)
         toward=lite.Square(color=lite.PURE_RED).fade_to(lite.PURE_BLUE,.5)
-        self.assertEqual(toward.color,'#800080')
+        self.assertEqual(toward.color,'#7F007F')
         row=lite.VGroup(lite.Dot(lite.RIGHT),lite.Dot(lite.LEFT),lite.Dot())
         ids=[id(d) for d in row]
         row.sort()
