@@ -3,6 +3,7 @@ import bisect
 import cmath
 import copy
 import inspect
+import itertools
 import json
 import math
 import numbers
@@ -485,12 +486,8 @@ class PreviewConfig:
         setattr(self, name, value)
 
     def to_dict(self):
-        result = {name: getattr(self, name) for name in
-                  ('pixel_width','pixel_height','frame_width','frame_height','background_color')}
-        # Strokes keep Community's on-screen width relative to the configured frame,
-        # even while a moving camera zooms.
-        result['reference_frame_width'] = self.__dict__['frame_height'] * self.pixel_width / self.pixel_height
-        return result
+        return {name: getattr(self, name) for name in
+                ('pixel_width','pixel_height','frame_width','frame_height','background_color')}
 
 
 config = PreviewConfig()
@@ -783,6 +780,32 @@ class Mobject:
             mobject.updating_suspended = False
         return self.update(0, recursive=recursive)
 
+    # Community's width/height: world extents, and assigning one rescales uniformly.
+    # Analytical shapes keep their local dimensions in __dict__ under the same names.
+    @property
+    def width(self):
+        return self.__dict__['width'] if 'width' in self.__dict__ else self.get_width()
+
+    @width.setter
+    def width(self, value):
+        self.rescale_to_fit(value, 0)
+
+    @width.deleter
+    def width(self):
+        self.__dict__.pop('width', None)
+
+    @property
+    def height(self):
+        return self.__dict__['height'] if 'height' in self.__dict__ else self.get_height()
+
+    @height.setter
+    def height(self, value):
+        self.rescale_to_fit(value, 1)
+
+    @height.deleter
+    def height(self):
+        self.__dict__.pop('height', None)
+
     def _world_container(self):
         # Pure containers pass rigid motions to their children, so children keep
         # Community's world-space coordinates instead of parent-local ones.
@@ -946,7 +969,12 @@ class Mobject:
             old._geometry_center()
             def world(point):
                 return parent_world(old._point_to_world(Vector(point)))
-            origin = mapped(world(ORIGIN)) if linear else world(ORIGIN)
+            if old._type in ('vgroup','mobject'):
+                # Pure containers stay at their parent's origin, so their children keep
+                # world-space coordinates (and no synthetic origin is ever mapped).
+                origin = Vector(parent_origin)
+            else:
+                origin = mapped(world(ORIGIN)) if linear else world(ORIGIN)
             def local(point):
                 return list(mapped(world(point))-origin)
             kind = old._type
@@ -1571,7 +1599,7 @@ class Mobject:
         if self._type in ('square', 'rectangle', 'triangle'):
             return [curve[0] for curve in _path_curves(self.to_dict() if self._type == 'triangle' else
                     {'type': self._type, 'side_length': getattr(self, 'side_length', 0),
-                     'width': getattr(self, 'width', 0), 'height': getattr(self, 'height', 0)})]
+                     'width': self.__dict__.get('width', 0), 'height': self.__dict__.get('height', 0)})]
         return None
 
     def _rotated_family(self):
@@ -1640,6 +1668,18 @@ class Mobject:
                 max(p[0] for p in points), max(p[1] for p in points))
 
     def scale(self, scale_factor, *, about_point=None, about_edge=None):
+        if not isinstance(scale_factor, _REAL) and (isinstance(scale_factor, (list, tuple)) or
+                                                   hasattr(scale_factor, 'tolist')):
+            # Community multiplies points by a per-axis vector (NumPy broadcasting).
+            factors = list(scale_factor.tolist() if hasattr(scale_factor, 'tolist') else scale_factor)
+            if not 1 <= len(factors) <= 3:
+                raise ValueError('A per-axis scale factor needs one to three values')
+            for value in factors:
+                NumberLine._real(value, 'Scale factor')
+            fx, fy = (factors * 2)[:2] if len(factors) == 1 else factors[:2]
+            pivot = self._pivot(about_point, about_edge)
+            return self.apply_matrix([[fx, 0], [0, fy]],
+                                     about_point=self.get_center() if pivot is None else pivot)
         if not math.isfinite(scale_factor):
             raise ValueError('Scale factor must be finite')
         about_point = self._pivot(about_point, about_edge)
@@ -2779,7 +2819,8 @@ class Ellipse(Circle):
                not math.isfinite(v) or v < 0 for v in (width, height)):
             raise ValueError('Ellipse dimensions must be nonnegative and finite')
         super().__init__(**kwargs)
-        self._type, self.width, self.height = 'ellipse', width, height
+        self._type = 'ellipse'
+        self.__dict__.update(width=width, height=height)
 
 
 class ArcBetweenPoints(Arc):
@@ -3012,7 +3053,8 @@ class Rectangle(Polygon):
     """Community Rectangle (a Polygon); keeps analytical width/height geometry."""
     def __init__(self, width=4, height=2, color=WHITE, **kwargs):
         super().__init__(color=color, **kwargs)
-        self._type, self.width, self.height = 'rectangle', width, height
+        self._type = 'rectangle'
+        self.__dict__.update(width=width, height=height)
 
 
 class Square(Rectangle):
@@ -3114,7 +3156,7 @@ class MovingCamera(PreviewConfig):
             return
         super().__setattr__(name, value)
         if '_frame' in self.__dict__ and name in ('pixel_width','pixel_height'):
-            self.frame.width = self.frame.height * self.pixel_width / self.pixel_height
+            self.frame.__dict__['width'] = self.frame.height * self.pixel_width / self.pixel_height
 
     @property
     def frame_center(self):
@@ -8432,7 +8474,7 @@ class Scene:
     camera_class = PreviewConfig
 
     def __init__(self, camera_config=None):
-        self.camera = self.camera_class(**{k: v for k, v in config.to_dict().items() if k != 'reference_frame_width'})
+        self.camera = self.camera_class(**config.to_dict())
         for name, value in (camera_config or {}).items():
             setattr(self.camera, name, value)
         self.mobjects, self.frames = [], []
@@ -8441,6 +8483,66 @@ class Scene:
         self.updaters, self.sounds, self.subcaptions = [], [], []
         self.sections = [{'name': 'autocreated', 'type': DefaultSectionType.NORMAL, 'skip_animations': False, 'frame': 0}]
         self._skipping = False
+        self._camera_views = []
+
+    def _add_camera_view(self, display):
+        """Community's MultiCamera.add_image_mobject_from_camera."""
+        if not isinstance(display, ImageMobjectFromCamera):
+            raise TypeError('Camera views must be ImageMobjectFromCamera displays')
+        if all(display is not view for view, _ in self._camera_views):
+            self._camera_views.append((display, display.camera))
+
+    @staticmethod
+    def _sampled_clone(mobject, overrides):
+        """An independent family copy showing an object's sampled animation state."""
+        clone = copy.deepcopy(mobject)
+        states = overrides.get(mobject) if overrides else None
+        if not states:
+            return clone
+        def apply(target, snapshot):
+            for key, value in snapshot.items():
+                if key not in ('type', 'children', 'geometry_center'):
+                    target.__dict__[key] = copy.deepcopy(value)
+            target._type = snapshot['type']
+            target._sampled_geometry_center = snapshot['geometry_center']
+            target.__dict__.pop('_family_pivot_cache', None)
+            children = snapshot['children']
+            target.children = target.children[:len(children)]
+            for child, state in zip(target.children, children):
+                apply(child, state)
+        apply(clone, max(states, key=lambda state: state['opacity']))
+        return clone
+
+    def _camera_view_data(self, overrides, camera):
+        """Community's MultiCamera.update_sub_cameras, then each view's frame and display box."""
+        views = []
+        for display, sub_camera in self._camera_views:
+            box = self._sampled_clone(display, overrides)._bounds()
+            if not all(math.isfinite(v) for v in box):
+                raise ValueError('Zoomed displays must stay finite')
+            # Sub-cameras take the display's whole-pixel shape, keeping the frame width.
+            pixel_width = int(camera['pixel_width'] * (box[2] - box[0]) / camera['frame_width'])
+            pixel_height = int(camera['pixel_height'] * (box[3] - box[1]) / camera['frame_height'])
+            frame = sub_camera.frame
+            states = overrides.get(frame) if overrides else None
+            target = self._sampled_clone(frame, overrides) if states else frame
+            if pixel_width > 0 and pixel_height > 0 and target.get_height() > 0:
+                height = target.get_width() * pixel_height / pixel_width
+                if math.isfinite(height) and height > 0 and abs(height - target.get_height()) > 1e-12:
+                    target.stretch_to_fit_height(height)
+                    if states and len(states) == 1:
+                        sampled = target.to_dict()
+                        sampled['children'] = states[0]['children']
+                        overrides[frame] = [sampled]
+            source = target._bounds()
+            if not all(math.isfinite(v) for v in source):
+                raise ValueError('Zoomed camera frames must stay finite')
+            if source[2] - source[0] <= 1e-9 or source[3] - source[1] <= 1e-9:
+                continue  # A collapsed camera frame shows nothing.
+            views.append({'id': display.camera_view, 'source': list(source), 'display': list(box),
+                          'background': sub_camera.background_color,
+                          'background_opacity': sub_camera.background_opacity})
+        return views
 
     @property
     def time(self):
@@ -8591,6 +8693,16 @@ class Scene:
             return
         if len(self.frames) >= MAX_FRAMES:
             raise ValueError('Preview exceeds 60 seconds / 900 frames. Shorten the scene.')
+        if isinstance(self.camera, MovingCamera):
+            frame_states = overrides.get(self.camera.frame) if overrides else None
+            if frame_states is not None and len(frame_states) != 1:
+                raise ValueError('Camera animation must produce one frame rectangle')
+            camera = self.camera.to_dict(frame_states[0] if frame_states else None)
+        else:
+            camera = self.camera.to_dict()
+        if self._camera_views:
+            overrides = dict(overrides or {})
+            camera['views'] = self._camera_view_data(overrides, camera)
         objects = []
         def states(mobject):
             if overrides and mobject in overrides:
@@ -8605,13 +8717,6 @@ class Scene:
             if isinstance(mobject, (CameraFrame, ValueTracker)):
                 continue
             objects.extend(states(mobject))
-        if isinstance(self.camera, MovingCamera):
-            states = overrides.get(self.camera.frame) if overrides else None
-            if states is not None and len(states) != 1:
-                raise ValueError('Camera animation must produce one frame rectangle')
-            camera = self.camera.to_dict(states[0] if states else None)
-        else:
-            camera = self.camera.to_dict()
         self.frames.append({'mobjects': objects, 'camera': camera})
         if advance_time:
             self._elapsed_frames += 1
@@ -8801,6 +8906,141 @@ class Scene:
 
 class MovingCameraScene(Scene):
     camera_class = MovingCamera
+
+
+class _ZoomedCamera:
+    """A sub-camera: a visible ScreenRectangle frame whose view a display shows."""
+    def __init__(self, frame=None, fixed_dimension=0, default_frame_stroke_color=WHITE,
+                 default_frame_stroke_width=0, background_color=None, background_opacity=1, **kwargs):
+        if kwargs:
+            raise NotImplementedError('Unsupported zoomed camera options: ' + ', '.join(kwargs))
+        NumberLine._real(background_opacity, 'Camera background opacity')
+        if frame is None:
+            frame = ScreenRectangle(height=config.frame_height)
+            frame.set_stroke(default_frame_stroke_color, default_frame_stroke_width)
+        elif not isinstance(frame, Mobject):
+            raise TypeError('A camera frame must be a Mobject')
+        self.frame, self.fixed_dimension = frame, fixed_dimension
+        self.default_frame_stroke_color = default_frame_stroke_color
+        self.default_frame_stroke_width = default_frame_stroke_width
+        self.background_color = _paint(config.background_color if background_color is None else background_color)
+        self.background_opacity = min(1, max(0, background_opacity))
+
+    def __deepcopy__(self, memo):
+        return self  # Copies of a display keep showing the same camera.
+
+    @property
+    def frame_width(self):
+        return self.frame.get_width()
+
+    @property
+    def frame_height(self):
+        return self.frame.get_height()
+
+    @property
+    def frame_center(self):
+        return self.frame.get_center()
+
+
+class ImageMobjectFromCamera(Mobject):
+    """A display that shows its camera's frame stretched to fit (vector, not pixels).
+
+    A pure container keeps Community's world-space children: an invisible screen
+    rectangle marks the view and add_display_frame adds the border.
+    """
+    _frame_excluded = ('camera', 'default_display_frame_config')
+    _view_ids = itertools.count(1)
+
+    def __init__(self, camera, default_display_frame_config=None, **kwargs):
+        if not isinstance(camera, (_ZoomedCamera, MovingCamera)):
+            raise TypeError('ImageMobjectFromCamera needs a moving camera')
+        super().__init__(**kwargs)
+        self.camera = camera
+        self.default_display_frame_config = ({'stroke_width': 3, 'stroke_color': WHITE, 'buff': 0}
+                                             if default_display_frame_config is None
+                                             else dict(default_display_frame_config))
+        self.camera_view = next(self._view_ids)
+        # Community's camera images start 3 units tall at the pixel aspect ratio.
+        screen = Rectangle(width=3 * config.pixel_width / config.pixel_height, height=3,
+                           stroke_width=0, fill_opacity=0)
+        screen.camera_screen = self.camera_view
+        self.add(screen)
+
+    @property
+    def display_frame(self):
+        for child in self.children:
+            if getattr(child, '_display_frame', False):
+                return child
+        raise AttributeError('This display has no display frame; call add_display_frame()')
+
+    def add_display_frame(self, **kwargs):
+        options = dict(self.default_display_frame_config)
+        options.update(kwargs)
+        frame = SurroundingRectangle(self, **options)
+        frame._display_frame = True
+        return self.add(frame)
+
+
+class ZoomedScene(MovingCameraScene):
+    """A scene with a magnified inset: zoomed_camera.frame is shown in zoomed_display."""
+    def __init__(self, camera_class=None, zoomed_display_height=3, zoomed_display_width=3,
+                 zoomed_display_center=None, zoomed_display_corner=UP + RIGHT,
+                 zoomed_display_corner_buff=DEFAULT_MOBJECT_TO_EDGE_BUFFER,
+                 zoomed_camera_config=None, zoomed_camera_image_mobject_config=None,
+                 zoomed_camera_frame_starting_position=ORIGIN, zoom_factor=0.15,
+                 image_frame_stroke_width=3, zoom_activated=False, **kwargs):
+        self.zoomed_display_height, self.zoomed_display_width = zoomed_display_height, zoomed_display_width
+        self.zoomed_display_center, self.zoomed_display_corner = zoomed_display_center, zoomed_display_corner
+        self.zoomed_display_corner_buff = zoomed_display_corner_buff
+        self.zoomed_camera_config = ({'default_frame_stroke_width': 2, 'background_opacity': 1}
+                                     if zoomed_camera_config is None else dict(zoomed_camera_config))
+        self.zoomed_camera_image_mobject_config = dict(zoomed_camera_image_mobject_config or {})
+        self.zoomed_camera_frame_starting_position = zoomed_camera_frame_starting_position
+        self.zoom_factor, self.image_frame_stroke_width = zoom_factor, image_frame_stroke_width
+        self.zoom_activated = zoom_activated
+        super().__init__(**kwargs)
+
+    def setup(self):
+        super().setup()
+        zoomed_camera = _ZoomedCamera(**self.zoomed_camera_config)
+        zoomed_display = ImageMobjectFromCamera(zoomed_camera, **self.zoomed_camera_image_mobject_config)
+        zoomed_display.add_display_frame()
+        for mobject in (zoomed_camera.frame, zoomed_display):
+            mobject.stretch_to_fit_height(self.zoomed_display_height)
+            mobject.stretch_to_fit_width(self.zoomed_display_width)
+        zoomed_camera.frame.scale(self.zoom_factor)
+        zoomed_camera.frame.move_to(self.zoomed_camera_frame_starting_position)
+        if self.zoomed_display_center is not None:
+            zoomed_display.move_to(self.zoomed_display_center)
+        else:
+            zoomed_display.to_corner(self.zoomed_display_corner, buff=self.zoomed_display_corner_buff)
+        self.zoomed_camera, self.zoomed_display = zoomed_camera, zoomed_display
+
+    def activate_zooming(self, animate=False):
+        self.zoom_activated = True
+        self._add_camera_view(self.zoomed_display)
+        if animate:
+            self.play(self.get_zoom_in_animation())
+            self.play(self.get_zoomed_display_pop_out_animation())
+        self.add_foreground_mobjects(self.zoomed_camera.frame, self.zoomed_display)
+
+    def get_zoom_in_animation(self, run_time=2, **kwargs):
+        frame = self.zoomed_camera.frame
+        frame.save_state()
+        frame.stretch_to_fit_width(self.camera.frame_width)
+        frame.stretch_to_fit_height(self.camera.frame_height)
+        frame.center()
+        frame.set_stroke(width=0)
+        return ApplyMethod(frame.restore, run_time=run_time, **kwargs)
+
+    def get_zoomed_display_pop_out_animation(self, **kwargs):
+        display = self.zoomed_display
+        display.save_state()
+        display.replace(self.zoomed_camera.frame, stretch=True)
+        return ApplyMethod(display.restore, **kwargs)
+
+    def get_zoom_factor(self):
+        return self.zoomed_camera.frame.get_height() / self.zoomed_display.get_height()
 
 
 DEFAULT_LAGGED_START_LAG_RATIO = 0.05
@@ -10785,8 +11025,8 @@ class ImageMobject(Mobject):
             raise ValueError('ImageMobject needs a nonempty image')
         NumberLine._real(scale_to_resolution, 'scale_to_resolution', positive=True)
         self.scale_to_resolution, self.invert, self.image_mode = scale_to_resolution, invert, image_mode
-        self.height = self.pixel_height / scale_to_resolution * config.frame_height
-        self.width = self.height * self.pixel_width / self.pixel_height
+        height = self.pixel_height / scale_to_resolution * config.frame_height
+        self.__dict__.update(height=height, width=height * self.pixel_width / self.pixel_height)
         self.resampling_algorithm = 'bicubic'
 
     def get_pixel_array(self):
@@ -11860,7 +12100,7 @@ class _StreamLinesEnd(Animation):
             line.time = 0
 
 
-EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
+EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'ZoomedScene', 'ImageMobjectFromCamera', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
            'Triangle', 'Polygon', 'Polygram', 'RegularPolygram', 'RegularPolygon', 'Star', 'Brace', 'BraceBetweenPoints', 'BraceLabel', 'BraceText',
            'Title', 'BulletedList', 'Tex', 'SingleStringMathTex', 'MarkupText', 'LabeledDot', 'Variable', 'always', 'f_always', 'always_shift', 'always_rotate',
            'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'BarChart', 'PolarPlane', 'NumberPlane', 'ComplexPlane', 'VectorField', 'ArrowVectorField', 'StreamLines', 'sigmoid', 'ScreenRectangle', 'FullScreenRectangle', 'VectorizedPoint', 'ComplexValueTracker', 'UnitInterval', 'TangentialArc', 'CurvesAsSubmobjects', 'VDict', 'Cutout', 'ConvexHull', 'ArcBrace', 'LaggedStartMap', 'MaintainPositionRelativeTo', 'Blink', 'Broadcast', 'SpiralIn', 'AddTextWordByWord', 'Animation', 'line_intersection', 'angle_between_vectors', 'DEFAULT_LAGGED_START_LAG_RATIO', 'Graph', 'DiGraph', 'Union', 'Intersection', 'Difference', 'Exclusion', 'Code', 'SVGMobject', 'VMobjectFromSVGPath', 'ImageMobject', 'RESAMPLING_ALGORITHMS', 'ManimColor', 'HSV', 'RGBA', 'LinearBase', 'LogBase', 'DefaultSectionType', 'Add', 'ShowPartial', 'TexTemplate', 'TexTemplateLibrary', 'TexFontTemplates', 'CoordinateSystem', 'PMobject', 'Mobject1D', 'Mobject2D', 'PGroup', 'PointCloudDot', 'Point', 'DEFAULT_POINT_DENSITY_1D', 'DEFAULT_POINT_DENSITY_2D', 'RandomColorGenerator', 'random_color', 'random_bright_color', 'TypeWithCursor', 'UntypeWithCursor', 'AnimatedBoundary', 'ShowPassingFlashWithThinningStrokeWidth', 'FadeTransformPieces', 'ImplicitFunction', 'LabeledPolygram', 'ChangeSpeed', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',

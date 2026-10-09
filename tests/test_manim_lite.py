@@ -17,6 +17,100 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_zoomed_scene_matches_community_frame_and_display_geometry(self):
+        source = """from manim import *
+class Demo(ZoomedScene):
+    def __init__(self, **kwargs):
+        ZoomedScene.__init__(self, zoom_factor=0.3, zoomed_display_height=1, zoomed_display_width=3,
+                             zoomed_camera_config={'default_frame_stroke_width': 3}, **kwargs)
+    def construct(self):
+        self.add(Dot().set_color(GREEN))
+        frame, display = self.zoomed_camera.frame, self.zoomed_display
+        assert display.display_frame.get_stroke_width() == 3 and frame.get_stroke_width() == 3
+        self.activate_zooming(animate=True)
+        self.play(frame.animate.scale(4))
+        self.play(display.animate.scale([0.5, 1.5, 0]))
+        self.result = (frame.get_center(), frame.get_width(), frame.get_height(), display.get_center(),
+                       display.display_frame.get_center(), self.get_zoom_factor())
+"""
+        namespace = {}
+        exec(compile(source, '<test>', 'exec'), namespace)
+        scene = namespace['Demo']()
+        scene.render()
+        frame_center, width, height, display_center, border_center, factor = scene.result
+        # Manim 0.22: each capture gives the frame the display's whole-pixel aspect.
+        self.assertAlmostEqual(width, 3.6)
+        self.assertAlmostEqual(height, 3.6)
+        for actual, expected in ((frame_center, (0, 0)), (display_center, (46/9, 3)), (border_center, (46/9, 3))):
+            self.assertAlmostEqual(actual[0], expected[0])
+            self.assertAlmostEqual(actual[1], expected[1])
+        self.assertAlmostEqual(factor, 2.4)
+        views = scene.frames[-1]['camera']['views']
+        self.assertEqual(len(views), 1)
+        for actual, expected in zip(views[0]['source'] + views[0]['display'],
+                                    (-1.8, -1.8, 1.8, 1.8, 46/9-.75, 2.25, 46/9+.75, 3.75)):
+            self.assertAlmostEqual(actual, expected)
+        # The first zoom-in frame starts from the full frame, forced to the 3:1 display.
+        first = scene.frames[0]['camera']['views'][0]['source']
+        self.assertAlmostEqual(first[2] - first[0], 128/9)
+        self.assertAlmostEqual(first[3] - first[1], 128/27)
+        display = [node for node in scene.frames[-1]['mobjects'] if node.get('camera_view')]
+        self.assertEqual(len(display), 1)
+        self.assertEqual(display[0]['children'][0]['camera_screen'], display[0]['camera_view'])
+        self.assertNotIn('camera', display[0])
+
+    def test_zoomed_display_pop_out_and_default_layout(self):
+        result = json.loads(lite.render_scene("""from manim import *
+class Demo(ZoomedScene):
+    def construct(self):
+        self.add(Square())
+        self.play(self.get_zoomed_display_pop_out_animation())
+        self.activate_zooming()
+        self.wait(0.1)
+"""))
+        first, last = result['frames'][0], result['frames'][-1]
+        self.assertNotIn('views', first['camera'])  # Not yet registered with the camera.
+        view = last['camera']['views'][0]
+        # Default 3x3 display in the upper-right corner, frame 0.45 units square.
+        for actual, expected in zip(view['display'], (128/18-3.5, 0.5, 128/18-0.5, 3.5)):
+            self.assertAlmostEqual(actual, expected)
+        for actual, expected in zip(view['source'], (-0.225, -0.225, 0.225, 0.225)):
+            self.assertAlmostEqual(actual, expected)
+        self.assertEqual((view['background'], view['background_opacity']), ('#000000', 1))
+        with self.assertRaises(NotImplementedError):
+            lite.render_scene("from manim import *\nclass Demo(ZoomedScene):\n    def __init__(self):\n"
+                              "        super().__init__(zoomed_camera_config={'fov': 1})\n"
+                              "    def construct(self): pass")
+
+    def test_width_and_height_assignment_rescales_uniformly_like_community(self):
+        circle = lite.Circle()
+        circle.width = 4
+        self.assertAlmostEqual(circle.get_height(), 4)
+        self.assertAlmostEqual(circle.height, 4)
+        rectangle = lite.Rectangle()
+        rectangle.width = 8
+        self.assertAlmostEqual(rectangle.get_height(), 4)
+        image = lite.ImageMobject([[0, 100, 30, 200], [255, 0, 5, 33]])
+        image.height = 7
+        self.assertAlmostEqual(image.get_width(), 14)
+        group = lite.VGroup(lite.Square(), lite.Square().shift((2, 0, 0)))
+        group.width = 2
+        self.assertAlmostEqual(group.get_height(), 1)
+
+    def test_per_axis_scale_and_mapped_groups_keep_world_children(self):
+        group = lite.VGroup(lite.Square(), lite.Circle()).shift((3, 2, 0))
+        group.scale([0.5, 1.5, 0])
+        self.assertEqual(group.position, [0, 0, 0])
+        for child in group.children:
+            self.assertAlmostEqual(child.get_center()[0], 3)
+            self.assertAlmostEqual(child.get_center()[1], 2)
+        self.assertAlmostEqual(group.get_width(), 1)
+        self.assertAlmostEqual(group.get_height(), 3)
+        square = lite.Square().scale([2])
+        self.assertAlmostEqual(square.get_width(), 4)
+        with self.assertRaises(ValueError):
+            lite.Square().scale([1, 2, 3, 4])
+
     def test_bar_chart_matches_community_geometry_and_updates(self):
         chart=lite.BarChart([1,2,-1,3],bar_names=['a','b','c','d'],y_range=[-2,4,1],y_length=5,x_length=6)
         # Bar centers, heights and gradient colors measured with Manim Community 0.22.
@@ -4989,13 +5083,12 @@ self.wait(1)""")
         source = "from manim import *\nconfig.pixel_width=600\nconfig.pixel_height=600\nconfig.frame_width=8\nconfig['background_color']=WHITE\nclass Demo(Scene):\n    def construct(self): self.add(Circle())"
         result = json.loads(lite.render_scene(source))
         camera = result['frames'][0]['camera']
-        self.assertEqual(camera,dict(pixel_width=600,pixel_height=600,frame_width=8,frame_height=8,background_color=lite.WHITE,
-                                     reference_frame_width=8))
+        self.assertEqual(camera,dict(pixel_width=600,pixel_height=600,frame_width=8,frame_height=8,background_color=lite.WHITE))
         with self.assertRaises(RuntimeError):
             lite.render_scene("from manim import *\nconfig.background_color=RED\nraise RuntimeError('failed')")
         defaults = render('self.add(Circle())')['frames'][0]['camera']
         self.assertEqual(defaults,dict(pixel_width=800,pixel_height=450,frame_width=128/9,frame_height=8,
-                                       background_color=lite.BLACK,reference_frame_width=128/9))
+                                       background_color=lite.BLACK))
 
     def test_camera_snapshots_preserve_background_changes_and_ignore_later_config(self):
         result = render("self.wait(1)\nself.camera.background_color=WHITE\nconfig.background_color=RED\nself.wait(1)")

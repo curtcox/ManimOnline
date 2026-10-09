@@ -513,7 +513,7 @@ OfflineAssets.optional caches the wheel without making it a readiness requiremen
 
 Read `examples/annotation_scene.py` for braces, Title, Tex, bullets and Variable.
 Default frame height is 8 (Community). Renderer strokes are local-unit widths
-from camera.reference_frame_width; keep inheritedScale threading in renderMobject.
+in scene units (they thicken under camera zoom, as in Cairo); keep inheritedScale threading in renderMobject.
 _BOUNDS_WITH_HANDLES is only set by get_width/get_height; pivots always use
 anchors. get_center may differ from _pivot_point for rotated outlines; use
 _pivot_point in transform math. Scenes see the arrow as `Vector`; internally
@@ -595,3 +595,9 @@ DecimalNumber units are a `unit_sign` child in local coordinates.
 Read `examples/point_cloud_scene.py` for point clouds, Add and sections. Only
 `_instant` animations may have zero run_time; capture() drops frames while a section
 skips animations. TexTemplate objects are accepted and ignored by MathJax.
+
+Read `examples/zoomed_scene.py` for ZoomedScene. The display is a pure container
+(`camera_view`) with a `camera_screen` rectangle child and the display frame; capture
+syncs the zoomed frame to the display's whole-pixel aspect and writes `camera.views`.
+The renderer draws views as clipped, transformed re-renders (no pixels). Assigning
+`width`/`height` rescales (Community); write analytical dimensions via `__dict__`.

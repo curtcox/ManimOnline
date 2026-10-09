@@ -46,38 +46,98 @@ const ManimRenderer = {
     mainGroup.setAttribute('transform', `translate(${width / 2}, ${height / 2}) scale(${width / frameWidth / this.UNIT_SCALE}, ${-height / frameHeight / this.UNIT_SCALE})`);
     if (center[0] || center[1]) mainGroup.setAttribute('transform', mainGroup.getAttribute('transform') + ` translate(${-center[0] * this.UNIT_SCALE}, ${-center[1] * this.UNIT_SCALE})`);
     svg.appendChild(mainGroup);
-    // Community strokes are stroke_width * 0.01 frame units, constant on screen
-    // under camera zoom (relative to the configured frame width).
-    const reference = Number.isFinite(camera.reference_frame_width) && camera.reference_frame_width > 0
-      ? camera.reference_frame_width : frameWidth;
-    this._strokeUnit = 0.01 * this.UNIT_SCALE * frameWidth / reference;
+    // Community strokes are stroke_width * 0.01 scene units, so they thicken
+    // on screen as a moving camera zooms in (Cairo user-space line widths).
+    this._strokeUnit = 0.01 * this.UNIT_SCALE;
 
     // Sort drawable leaves globally, keeping each leaf's ancestor transforms.
     // A child can sit behind or in front of a shape outside its VGroup.
     const layers = [];
-    const collect = (mobject, ancestors = []) => {
+    const collect = (mobject, ancestors = [], views = []) => {
+      // Camera displays (ZoomedScene) never show their own family.
+      if (Number.isInteger(mobject.camera_view)) views = [...views, mobject.camera_view];
       if (mobject.type === 'vgroup') {
-        for (const child of mobject.children || []) collect(child, [...ancestors, mobject]);
+        for (const child of mobject.children || []) collect(child, [...ancestors, mobject], views);
       } else {
         let branch = { ...mobject, children: [] };
         for (let i = ancestors.length - 1; i >= 0; i--) {
           branch = { ...ancestors[i], children: [branch] };
         }
-        layers.push({ branch, z: mobject.z_index ?? 0 });
+        layers.push({ branch, leaf: mobject, views, z: mobject.z_index ?? 0 });
         // Geometry-bearing families paint their own path and their descendants.
         const parent = { ...mobject, type: 'vgroup' };
-        for (const child of mobject.children || []) collect(child, [...ancestors, parent]);
+        for (const child of mobject.children || []) collect(child, [...ancestors, parent], views);
       }
     };
     for (const mobject of sceneData.mobjects || []) collect(mobject);
     // Stable sorting preserves scene/family order for equal z_index values.
     layers.sort((a, b) => a.z - b.z);
-    for (const { branch } of layers) {
-      const element = this.renderMobject(branch, mathGlyphs);
+    const views = new Map();
+    for (const view of camera.views || []) {
+      const boxes = [view.source, view.display];
+      if (!Number.isInteger(view.id) || !boxes.every(box => Array.isArray(box) && box.length === 4 &&
+          box.every(Number.isFinite) && box[2] >= box[0] && box[3] >= box[1]) ||
+          !(view.source[2] > view.source[0] && view.source[3] > view.source[1]) ||
+          !/^#[0-9a-f]{6}$/i.test(view.background) ||
+          !(view.background_opacity >= 0 && view.background_opacity <= 1)) throw new Error('Invalid camera view');
+      views.set(view.id, view);
+    }
+    for (const { branch, leaf } of layers) {
+      const view = views.get(leaf.camera_screen);
+      const element = view ? this.renderCameraView(view, leaf, layers, mathGlyphs)
+        : this.renderMobject(branch, mathGlyphs);
       if (element) mainGroup.appendChild(element);
     }
     delete this._strokeUnit;
     return svg;
+  },
+
+  /**
+   * A ZoomedScene display: the scene seen through its camera frame, stretched to the
+   * display box like Community's camera image, over the camera background.
+   */
+  renderCameraView(view, display, layers, mathGlyphs) {
+    const unit = this.UNIT_SCALE;
+    const [left, bottom, right, top] = view.display;
+    const [sourceLeft, sourceBottom, sourceRight, sourceTop] = view.source;
+    const group = document.createElementNS(this.SVG_NS, 'g');
+    group.setAttribute('opacity', display.opacity ?? 1);
+    group.setAttribute('data-camera-view', view.id);
+    const id = `manim-view-${this._viewSerial = (this._viewSerial || 0) + 1}`;
+    const clip = document.createElementNS(this.SVG_NS, 'clipPath');
+    clip.setAttribute('id', id);
+    const box = () => {
+      const rect = document.createElementNS(this.SVG_NS, 'rect');
+      rect.setAttribute('x', left * unit);
+      rect.setAttribute('y', bottom * unit);
+      rect.setAttribute('width', (right - left) * unit);
+      rect.setAttribute('height', (top - bottom) * unit);
+      return rect;
+    };
+    clip.appendChild(box());
+    const defs = document.createElementNS(this.SVG_NS, 'defs');
+    defs.appendChild(clip);
+    group.appendChild(defs);
+    const body = document.createElementNS(this.SVG_NS, 'g');
+    body.setAttribute('clip-path', `url(#${id})`);
+    const backdrop = box();
+    backdrop.setAttribute('fill', view.background);
+    backdrop.setAttribute('fill-opacity', view.background_opacity);
+    body.appendChild(backdrop);
+    const content = document.createElementNS(this.SVG_NS, 'g');
+    const scaleX = (right - left) / (sourceRight - sourceLeft);
+    const scaleY = (top - bottom) / (sourceTop - sourceBottom);
+    content.setAttribute('transform', `translate(${(left + right) / 2 * unit}, ${(bottom + top) / 2 * unit}) ` +
+      `scale(${scaleX}, ${scaleY}) translate(${-(sourceLeft + sourceRight) / 2 * unit}, ${-(sourceBottom + sourceTop) / 2 * unit})`);
+    for (const layer of layers) {
+      // Other displays' own boxes stay out of a view: no recursive cameras.
+      if (layer.views.includes(view.id) || Number.isInteger(layer.leaf.camera_screen)) continue;
+      const element = this.renderMobject(layer.branch, mathGlyphs);
+      if (element) content.appendChild(element);
+    }
+    body.appendChild(content);
+    group.appendChild(body);
+    return group;
   },
 
   /**

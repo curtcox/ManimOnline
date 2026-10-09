@@ -1404,8 +1404,8 @@ accepts any mobject method (not updater/checkpoint bookkeeping).
 The default frame is now Community's 14.22 × 8 units (it was 16 × 9), so
 `to_edge`, `Title` and other frame-relative placement match Manim, and strokes
 are drawn like Manim: `stroke_width × 0.01` frame units, unchanged by object
-scale and constant on screen while a moving camera zooms. Strokes therefore look
-thinner than before and scale with the player size. Bounds follow Community's
+scale and, as in Cairo, thickened on screen when a moving camera zooms in. Strokes
+therefore look thinner than before and scale with the player size. Bounds follow Community's
 rules: edges, centers and `next_to` use path anchors, while `width`/`height`
 include Bézier handles; rotated straight-edged shapes report the bounds of their
 rotated points.
@@ -1527,3 +1527,13 @@ APIs: `next_section(skip_animations=True)` (state applies, frames are dropped),
 scene-level `add_updater`, `wait_until`, `pause`, `replace`, and recorded-only
 `add_sound`/`add_subcaption`. `TexTemplate`, `TexTemplateLibrary` and
 `TexFontTemplates` are accepted, but MathJax ignores LaTeX preambles and fonts.
+
+The **Zoomed inset camera** example ports Community's `ZoomedSceneExample`.
+`ZoomedScene` provides `zoomed_camera.frame` (a visible `ScreenRectangle`) and
+`zoomed_display` (an `ImageMobjectFromCamera` with `display_frame`), with
+`activate_zooming(animate=...)`, `get_zoom_in_animation`,
+`get_zoomed_display_pop_out_animation` and `get_zoom_factor`. The display is drawn as
+vector content (the scene seen through the frame, stretched to the display over the
+camera background), not pixels; as in Community, each frame gives the zoomed frame
+the display's whole-pixel aspect ratio. Also new: per-axis `scale([sx, sy, 0])`, and
+assigning `mob.width`/`mob.height` rescales uniformly like Community.

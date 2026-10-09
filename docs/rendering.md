@@ -2146,9 +2146,9 @@ segments stay math. `Vector` is exported to scenes as `Vector`; internally the
 coordinate tuple class keeps that name.
 
 Frame and stroke calibration: `PreviewConfig` now defaults to frame height 8
-(width 128/9). The camera JSON adds `reference_frame_width`, and the renderer
-draws scene strokes in local units as `stroke_width · 0.01 · UNIT_SCALE ·
-frame_width / reference_frame_width / (inherited object scale)`, without
+(width 128/9). The renderer draws scene strokes in local units as
+`stroke_width · 0.01 · UNIT_SCALE / (inherited object scale)` (scene units, so
+a zooming moving camera thickens them as Cairo does), without
 `non-scaling-stroke`; Create dashes therefore use the same widths. Standalone
 `renderMobject` calls keep the previous screen-pixel strokes.
 
@@ -2323,3 +2323,23 @@ so points keep their size, like Cairo's pixel thickening. `Add` and groups made 
 of instant animations may have run_time 0 (no frames). Skipped sections still advance
 scene time and update state but keep no frames. Scene updaters run first in each
 update pass (Community's update_self).
+
+ZoomedScene: `ImageMobjectFromCamera` is a pure container (identity pose) holding an
+invisible screen rectangle tagged `camera_screen` plus the `display_frame` border, so
+children stay in world coordinates; the container carries `camera_view`. Scenes keep
+registered `(display, camera)` pairs; each capture mirrors `MultiCamera.update_sub_cameras`
+(whole-pixel display size, frame height = width × pixel aspect, stretched about its
+center — live when idle, in the sampled override while animated) and writes
+`camera.views` entries `{id, source, display, background, background_opacity}` (XY
+bounds). The renderer draws the view at the screen layer: a clip of the display box,
+the background, then every layer outside that display's family through
+`translate(display) scale(display/source) translate(-source)`, so strokes magnify as
+in a sub-camera. Other displays' screens are skipped inside a view (no recursion).
+Strokes are now plain scene units (`stroke_width · 0.01`), thickening under a moving
+camera zoom like Cairo (measured with Manim 0.22: 2 px → 9 px at 4× zoom).
+`_apply_xy_map` keeps pure containers at their parent's origin, so stretched or
+matrix-mapped groups keep world-space children. `Mobject.width`/`height` are
+properties: reads return stored analytical dimensions when present (local), else
+world extents; assignment calls `rescale_to_fit`. Internal geometry writes must use
+`__dict__`.
+

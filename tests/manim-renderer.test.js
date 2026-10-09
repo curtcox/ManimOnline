@@ -468,8 +468,8 @@ test('curved arrow rendering uses sampled fitted shaft curves', () => {
   assert.equal(path.getAttribute('d'),'M 25,0 C 50,100 100,100 125,0');
 });
 
-test('scene strokes use Community frame units, undo object scale and stay constant under zoom', () => {
-  const scene = { camera: { pixel_width: 800, pixel_height: 450, frame_width: 16, frame_height: 9, reference_frame_width: 16 },
+test('scene strokes use Community frame units, undo object scale and zoom with the camera', () => {
+  const scene = { camera: { pixel_width: 800, pixel_height: 450, frame_width: 16, frame_height: 9 },
     mobjects: [{ type: 'circle', radius: 1, stroke_width: 4 },
       { type: 'vgroup', geometry_scale: 2, children: [{ type: 'circle', radius: 1, stroke_width: 4, geometry_scale: 0.5 }] }] };
   const svg = renderer.render(scene);
@@ -479,6 +479,38 @@ test('scene strokes use Community frame units, undo object scale and stay consta
   assert.equal(plain.getAttribute('vector-effect'), null);
   assert.equal(group.children[0].getAttribute('stroke-width'), '2');
   const zoomed = renderer.render({ ...scene, camera: { ...scene.camera, frame_width: 8, frame_height: 4.5 } });
-  assert.equal(zoomed.children[1].children[0].getAttribute('stroke-width'), '1');
+  assert.equal(zoomed.children[1].children[0].getAttribute('stroke-width'), '2');
   assert.equal(renderer.renderMobject({ type: 'circle', stroke_width: 4 }).getAttribute('vector-effect'), 'non-scaling-stroke');
+});
+
+test('camera views draw the scene through the zoomed frame inside the display box', () => {
+  const scene = {
+    camera: { pixel_width: 800, pixel_height: 450, frame_width: 16, frame_height: 9,
+      views: [{ id: 1, source: [-1, -1, 1, 1], display: [4, 2, 7, 4], background: '#112233', background_opacity: 1 }] },
+    mobjects: [
+      { type: 'circle', radius: 0.5, stroke_width: 4 },
+      { type: 'mobject', camera_view: 1, children: [
+        { type: 'rectangle', width: 3, height: 2, position: [5.5, 3, 0], camera_screen: 1, stroke_width: 0 },
+        { type: 'rectangle', width: 3, height: 2, position: [5.5, 3, 0], stroke_width: 3 }] }] };
+  const svg = renderer.render(scene);
+  const main = svg.children[1];
+  const [circle, view, border] = main.children;
+  assert.equal(main.children.length, 3);
+  assert.equal(view.getAttribute('data-camera-view'), '1');
+  const [defs, body] = view.children;
+  const clip = defs.children[0];
+  assert.equal(clip.tag, 'clipPath');
+  assert.equal(clip.children[0].getAttribute('x'), '200');
+  assert.equal(clip.children[0].getAttribute('width'), '150');
+  assert.equal(body.getAttribute('clip-path'), `url(#${clip.getAttribute('id')})`);
+  assert.equal(body.children[0].getAttribute('fill'), '#112233');
+  const content = body.children[1];
+  assert.equal(content.getAttribute('transform'), 'translate(275, 150) scale(1.5, 1) translate(0, 0)');
+  // Only the circle is seen through the camera; the display family stays out.
+  assert.equal(content.children.length, 1);
+  assert.equal(content.children[0].tag, circle.tag);
+  // The display border is drawn after the view.
+  assert.equal(border.getAttribute('data-camera-view'), null);
+  assert.throws(() => renderer.render({ ...scene, camera: { ...scene.camera,
+    views: [{ id: 1, source: [0, 0, 0, 1], display: [0, 0, 1, 1], background: '#000000', background_opacity: 1 }] } }));
 });

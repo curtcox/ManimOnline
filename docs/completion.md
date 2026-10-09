@@ -305,3 +305,5 @@ implemented with Community checks.
 Point clouds, Add, ShowPartial, sections/skip_animations, scene updaters, wait_until,
 replace, TexTemplate stubs and CoordinateSystem are implemented; audio and
 subcaptions are recorded only.
+
+- ZoomedScene (vector inset views, Community frame/display geometry and per-frame aspect sync) is implemented; pixel-level camera images (`get_pixel_array`) are not.
