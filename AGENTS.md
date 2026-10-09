@@ -479,10 +479,13 @@ matchers. One vertex group stays type `polygon`; several use bezierpath with
 subpath_lengths. Rectangle/Square subclass Polygon but keep analytical types;
 VMobject._materialize_path converts analytical outlines before raw path edits.
 Mobject._world_container: identity-pose Group/VGroup/Mobject containers pass
-shift and scale to children (world coordinates). Do not propagate rotation there
-without solving rigid Transform interpolation; rotated groups keep local children.
-Mobject._to_local_pose converts world-placed matchers before attaching to a
-transformed parent.
+shift and scale to children (world coordinates); exact Group/VGroup/Mobject also
+pass rotation, so plain groups never hold a pose. Subclasses (NumberLine, Axes,
+...) keep their pose. Transform interpolates differing poses with `_lerp_pose`
+(complex scale*e^(i angle) lerp), which equals Community's pointwise straight_path;
+only Rotate/Rotating turn rigidly. Mobject._to_local_pose converts world-placed
+members before attaching to a transformed parent; turn about the pivot itself,
+since a world container's bounds center is not rotation covariant.
 
 
 Read `examples/text_layout_scene.py` for measured text, numbers and formulas.
@@ -560,15 +563,20 @@ Read `examples/effects_scene.py` for hulls, cutouts, tangent arcs, arc braces an
 attention effects. Nonlinear maps must keep Community's 1%-handle derivative rule;
 tests compare against `community_mapped`. VDict keeps `submob_dict` (excluded from
 frames) and still accepts plain Mobjects in add/remove for group internals.
-UpdateFromFunc animations complete last in play(); Succession stages built from
-them carry a starting-state copy for sampling.
+UpdateFromFunc animations complete last in play(). Succession runs live: each
+stage is prepared on the real scene when the previous one completes (Community's
+update_active_animation), so stage callbacks may touch live objects.
 
 Read `examples/graph_scene.py` for graph layouts, attached edges and animated graph
 editing. Keep `_MT19937`/`_PCG64` exact; layout tests compare against networkx via
 Community. Bookkeeping that holds tuples or non-JSON keys goes in `_frame_excluded`.
 `become` deep-copies target attributes with a memo mapping replaced descendants to
 live members; don't reintroduce stale child references. play() ends with a dt=0
-update pass after completion, matching Community.
+update pass after completion, matching Community: no time passes after the last
+frame of a play/wait. A wait with no time-based or scene updaters is static
+(int(duration*fps) frames, no updaters); other waits run update(0) first.
+Transform runs the mobject's updaters on its start/target copies every frame
+(`_advance_copies`), as Community's Animation.update_mobjects does.
 
 Read `examples/boolean_scene.py` for boolean outline operations. The engine lives in
 `_boolean`/`_BOOLEAN_RULES`; outputs must stay closed cubic contours with explicit

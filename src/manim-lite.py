@@ -704,9 +704,10 @@ class Mobject:
                 self._place_in_world(mobject)
 
     def _place_in_world(self, mobject):
-        world = self._point_to_world(Vector(mobject._pivot_point()))
-        mobject.scale(self.geometry_scale).rotate(self.angle)
-        return mobject.shift(world - Vector(mobject._pivot_point()))
+        pivot = Vector(mobject._pivot_point())
+        world = self._point_to_world(pivot)
+        mobject.scale(self.geometry_scale, about_point=pivot).rotate(self.angle, about_point=pivot)
+        return mobject.shift(world - pivot)
 
     def _world_member(self, child):
         """A world-placed copy of a direct child (child queries are parent-local)."""
@@ -2209,6 +2210,14 @@ class Mobject:
             matrix = rotation_about_z(angle)
             return self._map_points_3d(lambda p: _apply_rows(matrix, p), pivot)
         about_point = self._pivot(about_point, about_edge)
+        if type(self) in (Group, VGroup, Mobject) and self._world_container():
+            # Like shift and scale, a pure container turns its members about one pivot,
+            # keeping their (Community) world coordinates.
+            pivot = self.get_center() if about_point is None else Vector(about_point)
+            for child in self.children:
+                Mobject.rotate(child, angle, about_point=pivot)
+            self.__dict__.pop('_family_pivot_cache', None)
+            return self
         self._geometry_center()
         if about_point is None and self.get_center() != self._pivot_point():
             about_point = self.get_center()  # Community rotates about the bounds center.
@@ -2453,11 +2462,13 @@ class Mobject:
         if not self.geometry_scale:
             raise NotImplementedError('Cannot attach world geometry to a collapsed parent')
         center = self._geometry_center()
-        offset = mobject._pivot_point() - Vector(self.position) - center
+        pivot = mobject._pivot_point()
+        offset = pivot - Vector(self.position) - center
         c, s = math.cos(-self.angle), math.sin(-self.angle)
         local = center + Vector((offset[0]*c - offset[1]*s, offset[0]*s + offset[1]*c, 0)) * (1 / self.geometry_scale)
-        mobject.rotate(-self.angle).scale(1 / self.geometry_scale)
-        return mobject.shift(local - mobject._pivot_point())
+        # Turn about the pivot itself: a pure container's bounds center is not covariant.
+        mobject.rotate(-self.angle, about_point=pivot).scale(1 / self.geometry_scale, about_point=pivot)
+        return mobject.shift(local - pivot)
 
     def generate_target(self, use_deepcopy=False):
         self.target = None  # Do not copy an earlier target into the new one.
@@ -6461,23 +6472,10 @@ class NumberLine(VGroup):
                     stroke_width=self.stroke_width,stroke_opacity=self.stroke_opacity)
 
     def _add_world_decoration(self, decoration, role):
-        # New geometry is positioned in world coordinates. Invert this parent,
-        # then let common family insertion preserve its bounding-box pivot.
+        # New geometry is positioned in world coordinates; add() re-poses it into this
+        # parent's frame and common family insertion preserves the bounding-box pivot.
         if self.geometry_scale == 0:
             raise ValueError('Cannot add decorations to a collapsed NumberLine')
-        center = self._geometry_center()
-        def local(point):
-            offset = Vector(point)-Vector(self.position)-center
-            return center+Vector((offset[0]*math.cos(self.angle)+offset[1]*math.sin(self.angle),
-                                  -offset[0]*math.sin(self.angle)+offset[1]*math.cos(self.angle),0))*(1/self.geometry_scale)
-        for child in decoration.children:
-            if isinstance(child, Line):
-                child.put_start_and_end_on(local(child.get_start()),local(child.get_end()))
-            else:
-                center = local(child.get_center())
-                child.move_to(center)
-                # Rotate/scale about the center so families (e.g. units) keep their layout.
-                child.rotate(-self.angle, about_point=center).scale(1/self.geometry_scale, about_point=center)
         decoration._number_line_role = role
         self.add(decoration)
         return self
@@ -7464,14 +7462,7 @@ class ComplexPlane(NumberPlane):
         if self.geometry_scale == 0:
             raise ValueError('Cannot add labels to a collapsed ComplexPlane')
         labels = self.get_coordinate_labels(*numbers,**kwargs)
-        center = self._geometry_center()
-        for label in labels:
-            offset = label._pivot_point()-Vector(self.position)-center
-            local = center+Vector((offset[0]*math.cos(self.angle)+offset[1]*math.sin(self.angle),
-                                   -offset[0]*math.sin(self.angle)+offset[1]*math.cos(self.angle),0))*(1/self.geometry_scale)
-            label.shift(local-label._pivot_point())
-            # Rotate/scale about the pivot so labels with unit parts keep their layout.
-            label.rotate(-self.angle, about_point=local).scale(1/self.geometry_scale, about_point=local)
+        # add() re-poses the world-placed labels into this plane's frame.
         self.add(labels)
         del self._coordinate_labels
         self._geometry_center()
@@ -7893,6 +7884,32 @@ def _align_path_snapshots(start, target):
     return tuple(result)
 
 
+def _pose_turns(start, target):
+    """Whether two snapshots differ in rotation (or reflection), which Community
+    interpolates point by point rather than as a rigid turn."""
+    a, b = start.get('angle', 0), target.get('angle', 0)
+    sa, sb = start.get('geometry_scale', 1), target.get('geometry_scale', 1)
+    return abs(a - b) > 1e-9 or (sa < 0) != (sb < 0)
+
+
+def _lerp_pose(result, start, target, alpha):
+    """Community's straight_path moves every point linearly. Between two similarity
+    poses of the same local geometry that is again a similarity: the complex factor
+    scale * e^(i angle) and the image of the local origin interpolate linearly."""
+    def factor(node):
+        return cmath.rect(node.get('geometry_scale', 1), node.get('angle', 0))
+    def origin(node, z):
+        p, c = node['position'], node.get('geometry_center', ORIGIN)
+        return complex(p[0] + c[0], p[1] + c[1]) - z * complex(c[0], c[1])
+    z0, z1 = factor(start), factor(target)
+    z = z0 + (z1 - z0) * alpha
+    offset = origin(start, z0) + (origin(target, z1) - origin(start, z0)) * alpha
+    c = result.get('geometry_center', ORIGIN)
+    moved = offset - complex(c[0], c[1]) + z * complex(c[0], c[1])
+    result['position'] = [moved.real, moved.imag, result['position'][2]]
+    result['geometry_scale'], result['angle'] = abs(z), (cmath.phase(z) if z else 0.0)
+
+
 def _transform_plan(start, target):
     """Align immutable family snapshots once, before sampling their timeline."""
     if start['type'] == 'vgroup' or target['type'] == 'vgroup':
@@ -7988,6 +8005,8 @@ def _sample_transform(plan, alpha, path_arc=0, member_alpha=None):
         last['opacity'] *= alpha
         return [first, last]
     result = interpolate(start, target, alpha)
+    if _pose_turns(start, target) and 'position' in result:
+        _lerp_pose(result, start, target, alpha)
     if kind == 'group':
         result['children'] = [snapshot for child in children
                               for snapshot in _sample_transform(child, alpha, path_arc, member_alpha)]
@@ -8123,6 +8142,9 @@ class Animation:
         if self.remover:
             scene.remove(self.mobject)
 
+    def _advance_copies(self, dt):
+        """Community's Animation.update_mobjects: run updaters on internal copies."""
+
     def begin(self, scene):
         scene._introduce(self.mobject)
         self.start = self.mobject.to_dict()
@@ -8173,6 +8195,8 @@ class FadeIn(Animation):
     _fading_in = True
 
     def __init__(self, *mobjects, shift=None, target_position=None, scale=1, **kwargs):
+        if self._fading_in:
+            kwargs.setdefault('introducer', True)
         super().__init__(_faded_group(mobjects, type(self).__name__), **kwargs)
         if shift is not None:
             shift = Mobject._xy_vector(shift, 'Fade shift')
@@ -8234,6 +8258,7 @@ def _strip_children(data):
 class GrowFromPoint(Animation):
     """Scale a snapshot from a fixed XY point to its original geometry."""
     def __init__(self, mobject, point, **kwargs):
+        kwargs.setdefault('introducer', True)
         super().__init__(mobject, **kwargs)
         self.point = Vector(point)
         if not all(math.isfinite(v) for v in self.point):
@@ -8305,6 +8330,7 @@ class Create(Animation):
 class ShowPassingFlash(Animation):
     """Move a temporary cubic-parameter window over supported vector outlines."""
     def __init__(self, mobject, time_width=.1, **kwargs):
+        kwargs.setdefault('introducer', True)
         super().__init__(mobject, **kwargs)
         if (isinstance(time_width, bool) or not isinstance(time_width, _REAL)
                 or not math.isfinite(time_width) or time_width < 0):
@@ -8447,6 +8473,10 @@ class Transform(Animation):
         super().begin(scene)
         self._transform_plan = None
         self._path_target = None
+        # Community updates the starting and target copies (which keep the mobject's
+        # updaters) every frame, so e.g. a rotating updater keeps turning the morph.
+        self._live_start = (self.mobject.copy() if any(m.updaters for m in self.mobject.get_family())
+                            else None)
         if self.mobject.__dict__.get('_stretch_baked') or self.target.__dict__.get('_stretch_baked'):
             def canonical(mobject):
                 # Already-baked families are canonical; re-mapping them is costly.
@@ -8459,6 +8489,14 @@ class Transform(Animation):
                 pass  # Unsupported target types keep the existing fade/morph plan.
             else:
                 self.start,self._path_target = start,target
+                self._live_start = None
+
+    def _advance_copies(self, dt):
+        if self.__dict__.get('_live_start') is None:
+            return
+        self._live_start.update(dt)
+        self.target.update(dt)
+        self.start, self._transform_plan = self._live_start.to_dict(), None
 
     def sample(self, alpha):
         end = self._path_target or self.target.to_dict()
@@ -8872,9 +8910,14 @@ class Animate(Transform):
 
 class AnimationGroup:
     """Combine independent animations on a timeline, optionally overlapping."""
-    def __init__(self, *animations, lag_ratio=0, run_time=None, rate_func=linear):
+    introducer = False
+
+    def __init__(self, *animations, lag_ratio=0, run_time=None, rate_func=linear, group=None, introducer=False):
         if not animations or any(not isinstance(a, (Animation, AnimationGroup)) for a in animations):
             raise TypeError('AnimationGroup expects at least one supported animation')
+        if group is not None and not isinstance(group, Mobject):
+            raise TypeError('AnimationGroup group must be a Mobject')
+        self._group, self.introducer = group, bool(introducer)
         if not math.isfinite(lag_ratio) or lag_ratio < 0:
             raise ValueError('lag_ratio must be nonnegative and finite')
         self.animations, self.rate_func = animations, rate_func
@@ -8897,6 +8940,18 @@ class AnimationGroup:
     def _instant(self):
         return all(animation._instant for animation in self.animations)
 
+    @property
+    def mobject(self):
+        return self.group
+
+    @property
+    def group(self):
+        """Community's group of the non-introducer members' mobjects, built on first use."""
+        if self._group is None:
+            members = [a.mobject for a in self.animations if not a.introducer and a.mobject is not None]
+            self._group = Group(*dict.fromkeys(members))
+        return self._group
+
     def objects(self):
         return [m for animation in self.animations for m in animation.objects()]
 
@@ -8918,6 +8973,10 @@ class AnimationGroup:
     def _complete(self, scene):
         self.finish(scene)
 
+    def _advance_copies(self, dt):
+        for animation in self.animations:
+            animation._advance_copies(dt)
+
 
 class LaggedStart(AnimationGroup):
     def __init__(self, *animations, lag_ratio=0.05, **kwargs):
@@ -8925,7 +8984,8 @@ class LaggedStart(AnimationGroup):
 
 
 class Succession(AnimationGroup):
-    """Prepare consecutive stages from preceding terminal states on an isolated scene."""
+    """Run consecutive stages live, as Community does: each stage begins on the live
+    scene when the previous one finishes, so stage callbacks see real objects."""
     def __init__(self, *animations, lag_ratio=1, **kwargs):
         if lag_ratio != 1:
             raise NotImplementedError('Succession supports non-overlapping stages with lag_ratio=1')
@@ -8935,35 +8995,23 @@ class Succession(AnimationGroup):
         return list(dict.fromkeys(super().objects()))
 
     def prepare(self, scene):
-        owned = self.objects()
-        self._initial = [m for m in owned if m in scene.mobjects]
-        memo = {}
-        roots, animations = copy.deepcopy((scene.mobjects, self.animations), memo)
-        staging = Scene().add(*roots)
-        originals = {}
-        def remember(mobject):
-            originals[id(memo[id(mobject)])] = mobject
-            for child in mobject.children:
-                remember(child)
-        for root in scene.mobjects + owned:
-            remember(root)
-        self._stages = []
-        for animation in animations:
-            staging.validate(animation)
-            # Update-function stages act on a live object; sample them from a copy of
-            # the stage's starting state instead.
-            source = animation.mobject.copy() if isinstance(animation, UpdateFromFunc) else None
-            animation.prepare(staging)
-            baseline = {originals[id(m)]: [m.to_dict()] for m in staging.mobjects
-                        if originals[id(m)] in owned}
-            # Remap only identity keys; start/terminal geometry stays snapshotted.
-            prepared = copy.deepcopy(animation, originals.copy())
-            self._stages.append((baseline, prepared, source))
-            animation._complete(staging)
-        # Placeholder roots allow capture() to include later introductions. Their
-        # states remain empty until the relevant stage; geometry stays untouched.
-        for mobject in owned:
+        self._scene, self._active = scene, -1
+        # Objects first introduced by a later stage stay hidden until it begins.
+        self._hidden = {m for m in self.objects() if m not in scene.get_mobject_family_members()}
+        self._advance(0)
+        # Placeholder roots keep the capture order stable for later introductions.
+        for mobject in self.objects():
             scene._introduce(mobject)
+
+    def _advance(self, stage):
+        while self._active < stage:
+            if self._active >= 0:
+                self.animations[self._active]._complete(self._scene)
+            self._active += 1
+            animation = self.animations[self._active]
+            self._scene.validate(animation)
+            animation.prepare(self._scene)
+            self._hidden.difference_update(animation.objects())
 
     def states(self, alpha, rate_func=None):
         time = self.natural_duration if alpha >= 1 else (rate_func or self.rate_func)(max(0, alpha)) * self.natural_duration
@@ -8971,22 +9019,16 @@ class Succession(AnimationGroup):
         for index, (start, _) in enumerate(self.timings):
             if start <= time:
                 stage = index
-        start, duration = self.timings[stage]
-        baseline, animation, source = self._stages[stage]
-        result = {m: [] for m in self.objects()}
-        result.update(baseline)
-        result.update(animation.states((time - start) / duration if duration else 1))
-        if source is not None:
-            probe = source.copy()
-            animation._call(probe)
-            result[animation.mobject] = [probe.to_dict()]
+        self._advance(stage)
+        start, duration = self.timings[self._active]
+        result = {m: [] for m in self._hidden}
+        result.update(self.animations[self._active].states((time - start) / duration if duration else 1))
         return result
 
     def finish(self, scene):
-        scene.remove(*(m for m in self.objects() if m not in self._initial))
-        for animation in self.animations:
-            animation.prepare(scene)
-            animation._complete(scene)
+        self._advance(len(self.animations) - 1)
+        self.animations[-1]._complete(scene)
+        self._active = len(self.animations)
 
 
 class ApplyMethod(Animate):
@@ -9365,6 +9407,7 @@ class AddTextLetterByLetter(Animation):
         glyphs = sum(1 for char in text.text if not char.isspace())
         if run_time is None:
             run_time = max(0.06, time_per_char * glyphs)
+        kwargs.setdefault('introducer', True)
         super().__init__(text, run_time=run_time, rate_func=rate_func, **kwargs)
         self.int_func = int_func
 
@@ -9793,6 +9836,8 @@ class Scene:
             for frame in range(count):
                 time = frame / FPS
                 overrides = {}
+                for animation in animations:
+                    animation._advance_copies(0 if frame == 0 else 1 / FPS)
                 for animation, duration in zip(animations, durations):
                     overrides.update(animation.states(time / duration if duration else 1))
                 self._update_mobjects(0 if frame == 0 else 1 / FPS, overrides)

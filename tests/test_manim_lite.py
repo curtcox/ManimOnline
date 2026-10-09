@@ -1415,9 +1415,12 @@ assert isinstance(t.get_value(), (int, float))""")
         frame=render('g = VGroup(Square(), Circle()).arrange().shift(UP)\nb = SurroundingRectangle(g[1])\nself.add(g, b)')['frames'][-1]['mobjects']
         self.assertPointAlmostEqual(frame[1]['position'],frame[0]['children'][1]['position'])
         # Rotated groups still store their pose; their children remain parent-local.
-        rotated=lite.VGroup(lite.Square().shift(lite.RIGHT)).rotate(lite.PI/2).shift(lite.UP)
-        self.assertEqual(rotated.angle,lite.PI/2)
-        self.assertPointAlmostEqual(rotated.get_center(),(1,1,0))
+        # Rotation also reaches the members, which keep world coordinates.
+        rotated=lite.VGroup(lite.Square().shift(lite.RIGHT),lite.Dot()).rotate(lite.PI/2).shift(lite.UP)
+        self.assertEqual((rotated.angle,rotated[0].angle),(0,lite.PI/2))
+        # Both turn about the family's bounds center (0.96, 0).
+        self.assertPointAlmostEqual(rotated[0].get_center(),(0.96,1.04,0))
+        self.assertPointAlmostEqual(rotated[1].get_center(),(0.96,0.04,0))
 
     def test_shape_matchers_surround_background_cross_and_underline(self):
         group=lite.VGroup(lite.Square(),lite.Circle()).arrange().shift(lite.UP*2).scale(.5)
@@ -1685,7 +1688,7 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertEqual(len(middle['children'][1]['children'][1]['children']),2)
         restored=result['frames'][105]['mobjects'][0]
         self.assertEqual(restored['children'][0]['type'],'circle')
-        self.assertAlmostEqual(restored['angle'],lite.PI/12)
+        self.assertAlmostEqual(restored['children'][0]['angle'],lite.PI/12)
         self.assertAlmostEqual(restored['children'][0]['radius'],1)
         self.assertAlmostEqual(restored['children'][1]['children'][0]['width'],1.4)
         self.assertEqual(result['frames'][-1]['mobjects'],[])
@@ -5092,15 +5095,17 @@ self.wait(1)""")
         dot.add_updater(lambda m, dt:m.shift(lite.DOWN * dt))
         scene.add(dot, follower)
         scene.play(dot.animate.shift(lite.RIGHT*4), run_time=2, rate_func=lite.linear)
+        # As in Manim 0.22, the animation's start/target copies keep running the dot's
+        # own (suspended) updater, so it also drifts down: (4, -29/15) at the end.
         midpoint = scene.frames[15]
-        self.assertEqual(midpoint['mobjects'][1]['position'], [2,1,0])
-        self.assertEqual(midpoint['camera']['frame_center'], [2,0,0])
-        self.assertEqual(dot.get_center(), lite.RIGHT*4)
-        self.assertEqual(follower.get_center(), lite.RIGHT*4+lite.UP)
-        self.assertEqual(scene.camera.frame_center, lite.RIGHT*4)
+        self.assertPointAlmostEqual(midpoint['mobjects'][1]['position'], (2,0,0))
+        self.assertPointAlmostEqual(midpoint['camera']['frame_center'], (2,-1,0))
+        self.assertPointAlmostEqual(dot.get_center(), (4,-29/15,0))
+        self.assertPointAlmostEqual(follower.get_center(), (4,1-29/15,0))
+        self.assertPointAlmostEqual(scene.camera.frame_center, (4,-29/15,0))
         scene.wait(1)
-        self.assertAlmostEqual(dot.get_center()[1], -1 + 1/lite.FPS)
-        self.assertAlmostEqual(scene.camera.frame_center[1], -1 + 1/lite.FPS)
+        self.assertAlmostEqual(dot.get_center()[1], -29/15 - 1 + 1/lite.FPS)
+        self.assertAlmostEqual(scene.camera.frame_center[1], -29/15 - 1 + 1/lite.FPS)
 
     def test_updater_management_recursive_suspension_and_shared_family_dedup(self):
         events = []
@@ -6280,8 +6285,7 @@ self.wait(1)""")
             lite.TransformFromCopy(source, 'target')
         with self.assertRaises(ValueError):
             lite.Scene().play(lite.TransformFromCopy(source, target), lite.FadeIn(target))
-        with self.assertRaises(NotImplementedError):
-            lite.Scene().add(lite.VGroup(target).scale(2).rotate(1)).play(lite.TransformFromCopy(source, target))
+        lite.Scene().add(lite.VGroup(target.copy()).scale(2).rotate(1)).play(lite.TransformFromCopy(source, target))
         scene = lite.Scene().add(lite.VGroup(target))
         scene.play(lite.TransformFromCopy(source, target))
         self.assertEqual(len(scene.mobjects), 1)
@@ -6332,7 +6336,7 @@ self.wait(1)""")
         scene = lite.Scene()
         scene.play(effect, run_time=2)
         peak = scene.frames[15]['mobjects'][0]
-        self.assertEqual(peak['geometry_scale'], 1.2)
+        self.assertEqual([c['geometry_scale'] for c in peak['children']], [1.2, 1.2])
         self.assertEqual(peak['children'][0]['stroke_color'], lite.ORANGE.lower())
         self.assertEqual(group.to_dict(), original)
         self.assertIs(group.children[0], child)
@@ -6538,9 +6542,9 @@ self.wait(1)""")
         scene = lite.Scene()
         scene.play(lite.GrowFromCenter(group), run_time=2, rate_func=lite.linear)
         middle = scene.frames[15]['mobjects'][0]
-        # The 0.8 scale lives on the children; growth scales the rotated group.
-        self.assertEqual(middle['geometry_scale'], 0.5)
-        self.assertEqual(middle['children'], original['children'])
+        # Growth scales the members from the family center: 0.8 * 0.5 halfway.
+        self.assertEqual(middle['geometry_scale'], 1)
+        self.assertEqual([c['geometry_scale'] for c in middle['children']], [0.4, 0.4])
         self.assertEqual(group.to_dict(), original)
         other = lite.Dot()
         shrink_center = group.get_center()
@@ -6548,7 +6552,7 @@ self.wait(1)""")
                                        lite.GrowFromCenter(other, run_time=2)), rate_func=lite.linear)
         self.assertEqual(len(scene.frames[45]['mobjects']), 1)
         self.assertEqual(scene.mobjects, [other])
-        self.assertEqual(group.geometry_scale, 0)
+        self.assertEqual([c.geometry_scale for c in group], [0, 0])
         # Community shrinks toward the bounds center of the rotated family.
         self.assertPointAlmostEqual(group.get_center(), shrink_center)
 
@@ -6795,8 +6799,9 @@ self.wait(1)""")
         self.assertEqual(len(frame), 1)
         self.assertAlmostEqual(frame[0]['children'][0]['opacity'], 7/15)
         self.assertEqual(frame[0]['children'][1]['opacity'], 1)
-        with self.assertRaisesRegex(NotImplementedError, 'rotated or transformed'):
-            render('d = Dot()\nself.add(VGroup(d).rotate(1))\nself.play(FadeIn(d))')
+        # A turned plain group turns its members, so they animate in world coordinates.
+        frame = render('d = Dot().shift(RIGHT)\nself.add(VGroup(d, Dot()).rotate(PI))\nself.play(FadeIn(d))')['frames'][-1]['mobjects']
+        self.assertPointAlmostEqual(frame[0]['children'][0]['position'], (0, 0, 0))
         for kwargs in ({'lag_ratio': -1}, {'lag_ratio': float('inf')}, {'run_time': 0}):
             with self.assertRaises(ValueError):
                 lite.AnimationGroup(lite.FadeIn(lite.Dot()), **kwargs)
@@ -7029,8 +7034,11 @@ self.wait(1)""")
         self.assertEqual(result['duration'],9)
         for index in (30,45,60,75,90,105):
             group = result['frames'][index]['mobjects'][0]
-            self.assertAlmostEqual(group['angle'],lite.PI/10)
-            self.assertAlmostEqual(group['geometry_scale'],.8)
+            # The group's turn and scale live on its members (world coordinates).
+            self.assertEqual((group['angle'],group['geometry_scale']),(0,1))
+            for child in group['children']:
+                self.assertAlmostEqual(child['angle'],lite.PI/10)
+                self.assertAlmostEqual(child['geometry_scale'],.8)
             self.assertEqual(len(group['children']),6)
         data = result['frames'][60]['mobjects'][0]
         group = lite.Mobject()
@@ -7107,9 +7115,12 @@ self.wait(1)""")
             group.arrange_in_grid(rows=2,cols=2,buff=(.5,.7))
             self.assertPointAlmostEqual(group.get_center(),start)
             self.assertEqual(group.children,refs)
-            self.assertAlmostEqual(group.angle,.3)
-            self.assertAlmostEqual(group.geometry_scale,scale)
-            world = [group._point_to_world(child.get_center()) for child in group]
+            # Members carry the turn and scale; their centers are world coordinates.
+            self.assertEqual((group.angle,group.geometry_scale),(0,1))
+            for child in group:
+                self.assertAlmostEqual(child[0].angle,.3)
+                self.assertAlmostEqual(child[0].geometry_scale,scale)
+            world = [child.get_center() for child in group]
             size = .4*abs(scale)*(lite.math.cos(.3)+lite.math.sin(.3))
             self.assertAlmostEqual(world[1][0]-world[0][0],size+.5)
             self.assertAlmostEqual(world[0][1]-world[2][1],size+.7)
@@ -7134,16 +7145,17 @@ self.wait(1)""")
         with self.assertRaises(NotImplementedError):
             group.arrange_in_grid(cell_alignment=lite.OUT)
         self.assertEqual(group.to_dict(),saved)
-        with self.assertRaisesRegex(NotImplementedError,'collapsed'):
-            lite.Group(lite.Dot()).rotate(1).scale(0).arrange_in_grid()
+        lite.Group(lite.Dot()).rotate(1).scale(0).arrange_in_grid()
 
     def test_transformed_layout_gallery_restores_orientation_and_cleans_up(self):
         result = json.loads(lite.render_scene((ROOT/'examples/transformed_layout_scene.py').read_text()))
         self.assertEqual(result['duration'],9)
         for index in (30,45,60,75,90,105):
             group = result['frames'][index]['mobjects'][0]
-            self.assertAlmostEqual(group['angle'],lite.PI/6)
-            self.assertAlmostEqual(group['geometry_scale'],.8)
+            self.assertEqual((group['angle'],group['geometry_scale']),(0,1))
+            for child in group['children']:
+                self.assertAlmostEqual(child['angle'],lite.PI/6)
+                self.assertAlmostEqual(child['geometry_scale'],.8)
         initial = result['frames'][30]['mobjects'][0]
         restored = result['frames'][105]['mobjects'][0]
         for a,b in zip([initial]+initial['children'],[restored]+restored['children']):
@@ -7196,11 +7208,6 @@ self.wait(1)""")
         with self.assertRaises(NotImplementedError):
             group.arrange(lite.OUT)
         self.assertEqual(group.to_dict(),saved)
-        tiny = lite.VGroup(lite.Square(),lite.Circle()).rotate(.2).scale(1e-320)
-        saved = tiny.to_dict()
-        with self.assertRaisesRegex(ValueError,'translations'):
-            tiny.arrange(buff=1)
-        self.assertEqual(tiny.to_dict(),saved)
         # Unrotated groups scale their children, so collapsed members arrange natively.
         collapsed = lite.VGroup(lite.Square(),lite.Circle()).scale(0).arrange(buff=1)
         self.assertAlmostEqual(collapsed[1].get_center()[0]-collapsed[0].get_center()[0],1)
@@ -7208,9 +7215,12 @@ self.wait(1)""")
     def test_animated_transformed_layout_preserves_pose_and_interpolates_positions(self):
         result = render('g = VGroup(Rectangle(width=2,height=1),Circle(radius=.4),Square(side_length=.6)).arrange(RIGHT,buff=.4).rotate(.6).scale(.8)\nself.add(g)\nself.play(g.animate.arrange(DOWN,buff=.5),run_time=2,rate_func=linear)')
         first,middle,last = [result['frames'][i]['mobjects'][0] for i in (0,15,30)]
+        # Plain groups turn and scale their members (Community world coordinates).
         for data in (first,middle,last):
-            self.assertAlmostEqual(data['angle'],.6)
-            self.assertAlmostEqual(data['geometry_scale'],.8)
+            self.assertEqual((data['angle'],data['geometry_scale']),(0,1))
+            for child in data['children']:
+                self.assertAlmostEqual(child['angle'],.6)
+                self.assertAlmostEqual(child['geometry_scale'],.8)
         for a,b,c in zip(first['children'],middle['children'],last['children']):
             self.assertPointAlmostEqual(b['position'],[(x+y)/2 for x,y in zip(a['position'],c['position'])])
         self.assertNotEqual(first['children'][1]['position'],last['children'][1]['position'])
@@ -7252,8 +7262,8 @@ self.wait(1)""")
             lite.Dot().move_to((float('nan'), 0))
         with self.assertRaises(TypeError):
             lite.Dot().next_to(lite.ORIGIN, coor_mask=(1, 0, 0))
-        with self.assertRaisesRegex(NotImplementedError, 'collapsed'):
-            lite.VGroup(lite.Dot()).rotate(1).scale(0).arrange()
+        # A collapsed plain group collapses its members, which still arrange natively.
+        lite.VGroup(lite.Dot()).rotate(1).scale(0).arrange()
 
     def test_baseline_animation(self):
         result = json.loads(lite.render_scene((ROOT / 'examples/minimal_scene.py').read_text()))
@@ -7406,8 +7416,12 @@ self.wait(1)""")
     def test_animated_scale_and_rotation_have_intermediate_states(self):
         result = render('s = Square()\nself.play(s.animate.scale(2).rotate(PI / 2), run_time=2, rate_func=linear)')
         midpoint = result['frames'][15]['mobjects'][0]
-        self.assertEqual(midpoint['geometry_scale'], 1.5)
-        self.assertAlmostEqual(midpoint['angle'], lite.PI / 4)
+        # Community moves points straight: the corner (1, 1) passes (-0.5, 1.5), i.e. the
+        # pose factor 1 -> 2i is halfway at 0.5 + i.
+        self.assertAlmostEqual(midpoint['geometry_scale'], abs(0.5 + 1j))
+        self.assertAlmostEqual(midpoint['angle'], math.atan2(1, 0.5))
+        corner = complex(0.5, 1) * complex(1, 1)
+        self.assertAlmostEqual((corner.real, corner.imag), (-0.5, 1.5))
         final = result['frames'][-1]['mobjects'][0]
         self.assertEqual(final['geometry_scale'], 2)
         self.assertAlmostEqual(final['angle'], lite.PI / 2)
