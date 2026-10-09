@@ -16,6 +16,26 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_numpy_inputs_scalars_and_np_export(self):
+        try:
+            import numpy as np
+        except ImportError:
+            self.skipTest('NumPy is not installed')
+        result=render("""d = Dot(np.array([1, 2, 0]))
+s = Square(side_length=np.int64(2)).shift(np.array([0, -1, 0]))
+p = RegularPolygon(np.int64(5), radius=np.float64(1.5))
+t = ValueTracker(np.float64(.5))
+v = VMobject().set_points_as_corners([np.array([x, np.sin(x), 0]) for x in np.linspace(-3, 3, 7)])
+self.add(d, s, p, v)
+self.play(d.animate.move_to(np.zeros(3)), Rotate(s, np.pi / 2), t.animate.set_value(np.int64(3)))
+assert isinstance(t.get_value(), (int, float))""")
+        final=result['frames'][-1]['mobjects']
+        self.assertEqual([m['type'] for m in final],['circle','square','polygon','polyline'])
+        self.assertPointAlmostEqual(final[0]['position'],(0,0,0))
+        self.assertEqual(type(lite.Vector(np.array([1,2,3]))[0]),int)
+        self.assertEqual(type(lite.Vector(np.array([1.5]))[0]),float)
+        self.assertEqual(lite.color_gradient([lite.RED,lite.BLUE],np.int64(3))[1],lite.interpolate_color(lite.RED,lite.BLUE,.5))
+
     def test_animation_tour_gallery_and_there_and_back_transforms(self):
         result=json.loads(lite.render_scene((ROOT/'examples/animation_tour_scene.py').read_text()))
         self.assertEqual(result['duration'],12)

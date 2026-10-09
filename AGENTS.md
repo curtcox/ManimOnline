@@ -503,3 +503,9 @@ animation is completed. Scene.add/remove use Community restructuring and
 Scene._introduce only adds absent mobjects; capture() draws animated members
 inside their on-screen group, so Scene.validate rejects members of non-identity
 pose groups. play(rate_func=...) assigns animation.rate_func before prepare.
+
+
+NumPy: validations use _REAL (numbers.Real) / numbers.Integral, never (int, float),
+so NumPy scalars work; Vector normalizes scalars and render_scene's JSON default
+handles leftovers. The worker loads NumPy only for sources mentioning np/numpy;
+OfflineAssets.optional caches the wheel without making it a readiness requirement.

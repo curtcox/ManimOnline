@@ -2123,3 +2123,14 @@ Verification: all 381 Python and 80 Node tests passed. Local Pyodide playback in
 Chromium showed the written title, sequential creation, the bouncing arrow,
 simultaneous Circumscribe/Flash/Wiggle, the arc swap, the paused MoveToTarget,
 the lagged scaled exits and an empty final frame.
+
+
+**NumPy.** Numeric validation uses `numbers.Real`/`numbers.Integral`, so NumPy
+scalars pass the same checks as Python numbers (booleans stay excluded where they
+were). `Vector` converts NumPy scalars to Python numbers, ValueTracker stores
+floats like Community, and frame serialization converts remaining NumPy values.
+The worker calls `loadPackage('numpy')` only when the source matches
+`\b(np|numpy)\b`; the wheel is an optional offline asset, cached on first use but
+not required for “Ready offline”. Verification: all 382 Python and 81 Node tests
+passed, and a Chromium/Pyodide render of a curve built from `np.linspace` and
+`np.sin` showed the traced sine curve and the dot moving along it.

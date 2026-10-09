@@ -24,6 +24,11 @@ self.onmessage = event => {
     try {
       if (type !== 'render-manim') throw new Error(`Unknown message type: ${type}`);
       const { runtime, source } = await initPyodide();
+      // `from manim import *` exports np; load NumPy only for sources that use it.
+      if (/\b(?:np|numpy)\b/.test(code)) {
+        self.postMessage({ id, type: 'numpy-loading' });
+        await runtime.loadPackage('numpy');
+      }
       self.postMessage({ id, type: 'pyodide-ready' });
       // Rebuild the compatibility definitions and use a fresh source namespace.
       await runtime.runPythonAsync(source);

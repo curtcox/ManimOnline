@@ -1381,3 +1381,11 @@ each animation's rate function, and a transform whose rate function ends at 0
 (such as `there_and_back`) finishes at its starting state. Glyph-level
 `TransformMatchingShapes`/`TransformMatchingTex`, `ApplyWave` and `Homotopy`
 are not implemented.
+
+
+**NumPy.** `from manim import *` provides `np` when NumPy is available. The worker
+loads Pyodide's NumPy package (about 12 MB, cached for offline use after the first
+download) only when a script mentions `np` or `numpy`. Preview APIs accept NumPy
+arrays and scalars (including `np.int64`) and return plain tuples/floats; frames
+are converted to plain JSON numbers. Mobject points are not stored as NumPy arrays,
+so code that mutates `mobject.points` in place is not supported.

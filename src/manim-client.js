@@ -29,6 +29,7 @@ class ManimClient {
         const data = event.data;
         if (data.type === 'pyodide-loading') this.onStatus('Loading Python…');
         if (!this.pending || data.id !== this.pending.id) return;
+        if (data.type === 'numpy-loading') { this.onStatus('Loading NumPy…'); return; }
         if (data.type === 'pyodide-ready') { this.onStatus('Rendering animation…'); return; }
         if (data.type !== 'error' && data.type !== 'manim-result') return;
         const pending = this.pending;

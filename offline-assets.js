@@ -1,6 +1,6 @@
 /** Exact offline dependencies. Bump VERSION whenever any listed local file changes. */
 const OfflineAssets = {
-  VERSION: 'manimonline-offline-v84',
+  VERSION: 'manimonline-offline-v85',
   local: [
     'examples/animation_tour_scene.py',
     'examples/text_layout_scene.py',
@@ -62,6 +62,8 @@ const OfflineAssets = {
     ...['pyodide.js', 'pyodide.asm.js', 'pyodide.asm.wasm', 'python_stdlib.zip', 'pyodide-lock.json']
       .map(file => 'https://cdn.jsdelivr.net/pyodide/v0.27.0/full/' + file)
   ],
+  // Cached after first use (e.g. NumPy for scripts that import it), never required for readiness.
+  optional: ['https://cdn.jsdelivr.net/pyodide/v0.27.0/full/numpy-2.0.2-cp312-cp312-pyodide_2024_0_wasm32.whl'],
   urls(scope) { return [...this.local.map(path => new URL(path, scope).href), ...this.remote]; },
   key(request, scope) {
     if (request.method !== 'GET') return null;
@@ -73,7 +75,7 @@ const OfflineAssets = {
     // Local script version queries do not create additional cache entries.
     if (url.origin === base.origin) url.search = '';
     url.hash = '';
-    return this.urls(scope).includes(url.href) ? url.href : null;
+    return this.urls(scope).includes(url.href) || this.optional.includes(url.href) ? url.href : null;
   }
 };
 if (typeof module !== 'undefined') module.exports = OfflineAssets;

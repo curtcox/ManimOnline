@@ -238,3 +238,7 @@ Wiggle, FocusOn), arc transforms and swaps, targets/ApplyMethod, function
 updates, subsets and letter-by-letter text now have tests and browser playback.
 Scene add/remove restructuring and in-place member animation follow Community
 for identity-pose groups. TransformMatching*, ApplyWave and Homotopy remain open.
+
+
+NumPy is available as `np` (lazy Pyodide package) and preview APIs accept NumPy
+arrays/scalars. In-place mutation of NumPy point arrays remains unsupported.

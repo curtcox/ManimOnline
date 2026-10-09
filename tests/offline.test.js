@@ -111,3 +111,11 @@ test('partial cache offline provides a recovery page instead of a broken editor'
   assert.equal(status.ready, true);
   assert.equal(status.missing, 0);
 });
+
+test('optional NumPy wheel is cacheable but not required for readiness', () => {
+  const scope = 'https://example.test/ManimOnline/';
+  const wheel = Assets.optional[0];
+  assert.match(wheel, /numpy-.*\.whl$/);
+  assert.equal(Assets.key({ method: 'GET', url: wheel, mode: 'cors' }, scope), wheel);
+  assert.ok(!Assets.urls(scope).includes(wheel));
+});

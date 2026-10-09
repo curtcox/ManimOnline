@@ -4,6 +4,7 @@ import copy
 import inspect
 import json
 import math
+import numbers
 import operator
 import sys
 import types
@@ -12,9 +13,19 @@ FPS = 15
 MAX_FRAMES = 901  # 900 timed samples plus a final seekable state.
 
 
+_REAL = numbers.Real  # Includes NumPy scalars; bool is excluded where it matters.
+
+
+def _plain_number(value):
+    # NumPy scalars become Python numbers so frames stay JSON-serializable.
+    if type(value) in (int, float) or not isinstance(value, numbers.Real):
+        return value
+    return int(value) if isinstance(value, numbers.Integral) else float(value)
+
+
 class Vector(tuple):
     def __new__(cls, values):
-        values = list(values)
+        values = [_plain_number(v) for v in values]
         return super().__new__(cls, values[:3] + [0] * max(0, 3 - len(values)))
 
     def __mul__(self, value):
@@ -83,7 +94,7 @@ def color_to_rgb(color):
 
 def rgb_to_color(rgb):
     rgb = list(rgb)
-    if len(rgb) != 3 or any(isinstance(v, bool) or not isinstance(v, (int, float)) or
+    if len(rgb) != 3 or any(isinstance(v, bool) or not isinstance(v, _REAL) or
                             not math.isfinite(v) for v in rgb):
         raise ValueError('RGB colors need three finite components')
     if any(v > 1 for v in rgb):
@@ -95,7 +106,7 @@ rgb_to_hex, hex_to_rgb = rgb_to_color, color_to_rgb
 
 
 def interpolate_color(color1, color2, alpha):
-    if isinstance(alpha, bool) or not isinstance(alpha, (int, float)) or not math.isfinite(alpha):
+    if isinstance(alpha, bool) or not isinstance(alpha, _REAL) or not math.isfinite(alpha):
         raise ValueError('Color interpolation alpha must be finite')
     a, b = _color_rgb(color1), _color_rgb(color2)
     return _rgb_color([x * (1 - alpha) + y * alpha for x, y in zip(a, b)])
@@ -103,7 +114,7 @@ def interpolate_color(color1, color2, alpha):
 
 def color_gradient(reference_colors, length_of_output):
     colors = list(reference_colors)
-    if isinstance(length_of_output, bool) or not isinstance(length_of_output, int) or not 0 <= length_of_output <= 10000:
+    if isinstance(length_of_output, bool) or not isinstance(length_of_output, numbers.Integral) or not 0 <= length_of_output <= 10000:
         raise ValueError('Gradient length must be an integer from 0 to 10000')
     if not colors:
         raise ValueError('A color gradient needs at least one color')
@@ -152,10 +163,10 @@ class PreviewConfig:
 
     def __setattr__(self, name, value):
         if name in ('pixel_width', 'pixel_height'):
-            if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 4096:
+            if isinstance(value, bool) or not isinstance(value, numbers.Integral) or not 1 <= value <= 4096:
                 raise ValueError('Pixel dimensions must be integers from 1 to 4096')
         elif name in ('frame_width', 'frame_height'):
-            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+            if isinstance(value, bool) or not isinstance(value, _REAL) or not math.isfinite(value) or value <= 0:
                 raise ValueError('Frame dimensions must be positive and finite')
         elif name == 'background_color':
             if not isinstance(value, str) or len(value) != 7 or value[0] != '#' or any(c not in '0123456789abcdefABCDEF' for c in value[1:]):
@@ -303,7 +314,7 @@ class Mobject:
         if alignment[2]:
             raise NotImplementedError('Grid layout supports only the XY plane')
         gaps = list(buff) if isinstance(buff,(list,tuple)) else [buff,buff]
-        if len(gaps) != 2 or any(isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v) for v in gaps):
+        if len(gaps) != 2 or any(isinstance(v,bool) or not isinstance(v,_REAL) or not math.isfinite(v) for v in gaps):
             raise ValueError('Grid buffer needs a finite number or horizontal/vertical pair')
         if flow_order not in ('rd','dr','ld','dl','ru','ur','lu','ul'):
             raise ValueError('Grid flow_order must be rd, dr, ld, dl, ru, ur, lu or ul')
@@ -316,7 +327,7 @@ class Mobject:
                 raise ValueError('Invalid grid row/column alignment')
             if dimensions[i] is None:
                 dimensions[i] = len(aligns[i]) if aligns[i] is not None else len(sizes[i]) if sizes[i] is not None else None
-            if dimensions[i] is not None and (isinstance(dimensions[i],bool) or not isinstance(dimensions[i],int) or not 1 <= dimensions[i] <= 1000):
+            if dimensions[i] is not None and (isinstance(dimensions[i],bool) or not isinstance(dimensions[i], numbers.Integral) or not 1 <= dimensions[i] <= 1000):
                 raise ValueError('Grid dimensions must be integers from 1 to 1000')
         count = len(self.children)
         rows,cols = dimensions
@@ -331,7 +342,7 @@ class Mobject:
         for size,align,num in zip(sizes,aligns,(rows,cols)):
             if size is not None and len(size) != num or align is not None and len(align) != num:
                 raise ValueError('Grid row/column options must match its dimensions')
-            if size is not None and any(v is not None and (isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v) or v < 0) for v in size):
+            if size is not None and any(v is not None and (isinstance(v,bool) or not isinstance(v,_REAL) or not math.isfinite(v) or v < 0) for v in size):
                 raise ValueError('Grid cell sizes must be nonnegative finite numbers or None')
         targets = self._layout_targets()
         start = self.get_center()
@@ -535,7 +546,7 @@ class Mobject:
 
     @staticmethod
     def _fit_dimension(dim):
-        if isinstance(dim,bool) or not isinstance(dim,int) or dim not in (0,1):
+        if isinstance(dim,bool) or not isinstance(dim, numbers.Integral) or dim not in (0,1):
             raise ValueError('Size fitting dimension must be 0 (width) or 1 (height)')
         return dim
 
@@ -724,7 +735,7 @@ class Mobject:
     @staticmethod
     def _xy_vector(value, name):
         value = Vector(value)
-        if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in value):
+        if not all(isinstance(v, _REAL) and not isinstance(v, bool) and math.isfinite(v) for v in value):
             raise ValueError(name + ' must be finite')
         if value[2]:
             raise NotImplementedError(name + ' supports only the XY plane')
@@ -749,7 +760,7 @@ class Mobject:
 
     @staticmethod
     def _coordinate_dim(dim):
-        if isinstance(dim, bool) or not isinstance(dim, int) or dim not in (0, 1, 2):
+        if isinstance(dim, bool) or not isinstance(dim, numbers.Integral) or dim not in (0, 1, 2):
             raise ValueError('Coordinate dimension must be 0, 1 or 2')
         return dim
 
@@ -957,7 +968,7 @@ class Mobject:
                 'polyline', 'polygon', 'bezierpath', 'circle', 'arc', 'ellipse',
                 'square', 'rectangle', 'triangle', 'line', 'annulus'):
             raise TypeError('Partial geometry expects a supported vector outline')
-        if any(isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v)
+        if any(isinstance(v,bool) or not isinstance(v,_REAL) or not math.isfinite(v)
                for v in (a,b)):
             raise ValueError('Partial curve bounds must be finite real values')
         a, b = max(0,min(1,a)), max(0,min(1,b))
@@ -1002,7 +1013,7 @@ class Mobject:
 
     def get_subcurve(self, a, b):
         result = self.copy()
-        if (isinstance(a,(int,float)) and isinstance(b,(int,float)) and
+        if (isinstance(a,_REAL) and isinstance(b,_REAL) and
                 math.isfinite(a) and math.isfinite(b) and a > b and self.is_closed()):
             result.pointwise_become_partial(self,a,1)
             second = self.copy().pointwise_become_partial(self,0,b)
@@ -1234,7 +1245,7 @@ class Mobject:
         return self
 
     def set_z_index(self, z_index_value, family=True):
-        if not isinstance(z_index_value, (int, float)) or not math.isfinite(z_index_value):
+        if not isinstance(z_index_value, _REAL) or not math.isfinite(z_index_value):
             raise ValueError('z_index must be a finite number')
         self.z_index = z_index_value
         if family:
@@ -1440,13 +1451,14 @@ class ValueTracker(Mobject):
         return self.position[0]
 
     def set_value(self, value):
-        if not isinstance(value, (int, float)) or not math.isfinite(value):
+        if not isinstance(value, _REAL) or not math.isfinite(value):
             raise ValueError('ValueTracker requires a finite real number')
-        self.position[0] = value
+        # Community stores tracker values in a float point array.
+        self.position[0] = float(value)
         return self
 
     def increment_value(self, d_value):
-        if not isinstance(d_value, (int, float)):
+        if not isinstance(d_value, _REAL):
             raise ValueError('ValueTracker increments must be real numbers')
         return self.set_value(self.get_value() + d_value)
 
@@ -1456,7 +1468,7 @@ class ValueTracker(Mobject):
 
 def _tracker_arithmetic(operation, inplace=False):
     def calculate(self, value):
-        if not isinstance(value, (int, float)):
+        if not isinstance(value, _REAL):
             raise ValueError('ValueTracker arithmetic expects a real scalar')
         result = operation(self.get_value(), value)
         return self.set_value(result) if inplace else ValueTracker(result)
@@ -1746,7 +1758,7 @@ def _smooth_path_curves(anchors):
 
 
 def _curve_length_data(mobject, samples):
-    if isinstance(samples,bool) or not isinstance(samples,int) or not 2 <= samples <= 1000:
+    if isinstance(samples,bool) or not isinstance(samples, numbers.Integral) or not 2 <= samples <= 1000:
         raise ValueError('Curve length samples must be an integer from 2 to 1000')
     points = mobject.get_points()
     count = len(points)//4
@@ -1866,7 +1878,7 @@ class TracedPath(VMobject):
         if not callable(traced_point_func):
             raise TypeError('TracedPath expects a callable returning an XY point')
         if (dissipating_time is not None and
-                (not isinstance(dissipating_time, (int, float)) or
+                (not isinstance(dissipating_time, _REAL) or
                  not math.isfinite(dissipating_time) or dissipating_time < 0)):
             raise ValueError('dissipating_time must be nonnegative and finite')
         super().__init__(stroke_width=stroke_width,
@@ -2202,7 +2214,7 @@ class Circle(Arc):
 
 class Ellipse(Circle):
     def __init__(self, width=2, height=1, **kwargs):
-        if any(isinstance(v, bool) or not isinstance(v, (int, float)) or
+        if any(isinstance(v, bool) or not isinstance(v, _REAL) or
                not math.isfinite(v) or v < 0 for v in (width, height)):
             raise ValueError('Ellipse dimensions must be nonnegative and finite')
         super().__init__(**kwargs)
@@ -2214,9 +2226,9 @@ class ArcBetweenPoints(Arc):
     def __init__(self, start, end, angle=PI/2, radius=None, **kwargs):
         kwargs.setdefault('stroke_width',4)
         start,end = Line._endpoints(start,end)
-        if isinstance(angle,bool) or not isinstance(angle,(int,float)) or not math.isfinite(angle):
+        if isinstance(angle,bool) or not isinstance(angle,_REAL) or not math.isfinite(angle):
             raise ValueError('Arc angle must be finite')
-        if radius is not None and (isinstance(radius,bool) or not isinstance(radius,(int,float))
+        if radius is not None and (isinstance(radius,bool) or not isinstance(radius,_REAL)
                 or not math.isfinite(radius) or radius == 0):
             raise ValueError('Endpoint arc radius must be finite and nonzero')
         chord = end-start
@@ -2249,7 +2261,7 @@ class AnnularSector(Arc, VMobject):
     """One connected outline: inner arc, radial edge, reversed outer arc, edge."""
     def __init__(self, inner_radius=1, outer_radius=2, angle=PI/2, start_angle=0,
                  fill_opacity=1, stroke_width=0, color=WHITE, arc_center=ORIGIN, **kwargs):
-        if any(isinstance(v, bool) or not isinstance(v, (int, float)) or
+        if any(isinstance(v, bool) or not isinstance(v, _REAL) or
                not math.isfinite(v) or v < 0 for v in (inner_radius, outer_radius)):
             raise ValueError('Sector radii must be nonnegative and finite')
         super().__init__(radius=outer_radius, angle=angle, start_angle=start_angle,
@@ -2280,7 +2292,7 @@ class Annulus(Circle):
     def __init__(self, inner_radius=1, outer_radius=2, fill_opacity=1,
                  stroke_width=0, color=WHITE, mark_paths_closed=False,
                  arc_center=ORIGIN, **kwargs):
-        if any(isinstance(v, bool) or not isinstance(v, (int, float)) or
+        if any(isinstance(v, bool) or not isinstance(v, _REAL) or
                not math.isfinite(v) or v < 0 for v in (inner_radius, outer_radius)):
             raise ValueError('Annulus radii must be nonnegative and finite')
         center = Vector(arc_center)
@@ -2353,12 +2365,12 @@ class Polygram(VMobject):
 
     def round_corners(self, radius=0.5, evenly_distribute_anchors=False, components_per_rounded_corner=2):
         radii = list(radius) if isinstance(radius, (list, tuple)) else [radius]
-        if not radii or any(isinstance(r, bool) or not isinstance(r, (int, float)) or
+        if not radii or any(isinstance(r, bool) or not isinstance(r, _REAL) or
                             not math.isfinite(r) for r in radii):
             raise ValueError('Corner radii must be finite real values in a nonempty sequence')
         if not isinstance(evenly_distribute_anchors, bool):
             raise ValueError('evenly_distribute_anchors must be a boolean')
-        if (isinstance(components_per_rounded_corner, bool) or not isinstance(components_per_rounded_corner, int)
+        if (isinstance(components_per_rounded_corner, bool) or not isinstance(components_per_rounded_corner, numbers.Integral)
                 or not 2 <= components_per_rounded_corner <= 64):
             raise ValueError('components_per_rounded_corner must be an integer from 2 to 64')
         if radii == [0]:
@@ -2451,11 +2463,11 @@ class Square(Rectangle):
 class RoundedRectangle(Rectangle):
     """A closed rectangle with circular, optionally concave corner cuts."""
     def __init__(self, corner_radius=0.5, width=4, height=2, **kwargs):
-        if any(isinstance(v, bool) or not isinstance(v, (int, float)) or
+        if any(isinstance(v, bool) or not isinstance(v, _REAL) or
                not math.isfinite(v) or v < 0 for v in (width, height)):
             raise ValueError('Rounded rectangle dimensions must be nonnegative and finite')
         radii = list(corner_radius) if isinstance(corner_radius, (list, tuple)) else [corner_radius]
-        if not radii or any(isinstance(v, bool) or not isinstance(v, (int, float)) or
+        if not radii or any(isinstance(v, bool) or not isinstance(v, _REAL) or
                             not math.isfinite(v) for v in radii):
             raise ValueError('Corner radii must be finite real values in a nonempty sequence')
         super().__init__(width=width, height=height, **kwargs)
@@ -2565,7 +2577,7 @@ class MovingCamera(PreviewConfig):
 
     def auto_zoom(self, mobjects, margin=0, only_mobjects_in_frame=False, animate=True):
         """Fit XY bounds; margin adds to the chosen dimension, as in Manim."""
-        if not isinstance(margin, (int, float)) or not math.isfinite(margin):
+        if not isinstance(margin, _REAL) or not math.isfinite(margin):
             raise ValueError('Camera margin must be finite')
         objects = [mobjects] if isinstance(mobjects, Mobject) else list(mobjects)
         bounds = []
@@ -2605,7 +2617,7 @@ class Line(TipableVMobject):
         ArrowTip._tip_dimension(tip_length,'length')
         if tip_style is not None and not isinstance(tip_style,dict):
             raise TypeError('tip_style must be a dictionary')
-        if isinstance(buff,bool) or not isinstance(buff,(int,float)) or not math.isfinite(buff) or buff < 0:
+        if isinstance(buff,bool) or not isinstance(buff,_REAL) or not math.isfinite(buff) or buff < 0:
             raise ValueError('Line buffer must be nonnegative and finite')
         span = math.dist(start,end)
         if not math.isfinite(span):
@@ -2669,13 +2681,13 @@ class Line(TipableVMobject):
         return math.tan(self.get_angle())
 
     def set_angle(self, angle, about_point=None):
-        if isinstance(angle,bool) or not isinstance(angle,(int,float)) or not math.isfinite(angle):
+        if isinstance(angle,bool) or not isinstance(angle,_REAL) or not math.isfinite(angle):
             raise ValueError('Line angle must be finite')
         pivot = self.get_start() if about_point is None else about_point
         return self.rotate(angle-self.get_angle(),about_point=pivot)
 
     def set_length(self, length):
-        if isinstance(length,bool) or not isinstance(length,(int,float)) or not math.isfinite(length) or length < 0:
+        if isinstance(length,bool) or not isinstance(length,_REAL) or not math.isfinite(length) or length < 0:
             raise ValueError('Line length must be nonnegative and finite')
         current = self.get_length()
         if not math.isfinite(current) or current == 0:
@@ -2729,11 +2741,11 @@ class TangentLine(Line):
                 'polyline','polygon','bezierpath','circle','arc','ellipse',
                 'square','rectangle','triangle','line','annulus'):
             raise TypeError('TangentLine needs a supported vector outline')
-        if isinstance(alpha,bool) or not isinstance(alpha,(int,float)) or not math.isfinite(alpha) or not 0 <= alpha <= 1:
+        if isinstance(alpha,bool) or not isinstance(alpha,_REAL) or not math.isfinite(alpha) or not 0 <= alpha <= 1:
             raise ValueError('Tangent proportion must be finite and between 0 and 1')
-        if isinstance(length,bool) or not isinstance(length,(int,float)) or not math.isfinite(length) or length < 0:
+        if isinstance(length,bool) or not isinstance(length,_REAL) or not math.isfinite(length) or length < 0:
             raise ValueError('Tangent length must be nonnegative and finite')
-        if isinstance(d_alpha,bool) or not isinstance(d_alpha,(int,float)) or not math.isfinite(d_alpha) or d_alpha <= 0:
+        if isinstance(d_alpha,bool) or not isinstance(d_alpha,_REAL) or not math.isfinite(d_alpha) or d_alpha <= 0:
             raise ValueError('Tangent sample distance must be positive and finite')
         super().__init__(LEFT,RIGHT,**kwargs)
         a,b = max(0,alpha-d_alpha),min(1,alpha+d_alpha)
@@ -2788,7 +2800,7 @@ class ArrowTip(VMobject):
 
     @staticmethod
     def _tip_dimension(value, name):
-        if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or value < 0:
+        if isinstance(value,bool) or not isinstance(value,_REAL) or not math.isfinite(value) or value < 0:
             raise ValueError('Tip '+name+' must be nonnegative and finite')
 
 
@@ -2797,7 +2809,7 @@ class ArrowTriangleTip(ArrowTip):
                  fill_opacity=0, stroke_width=3, **kwargs):
         self._tip_dimension(length,'length')
         self._tip_dimension(width,'width')
-        if isinstance(start_angle,bool) or not isinstance(start_angle,(int,float)) or not math.isfinite(start_angle):
+        if isinstance(start_angle,bool) or not isinstance(start_angle,_REAL) or not math.isfinite(start_angle):
             raise ValueError('Tip start_angle must be finite')
         super().__init__(fill_opacity=fill_opacity,stroke_width=stroke_width,**kwargs)
         phase = math.atan2(math.sin(start_angle),math.cos(start_angle))
@@ -2819,7 +2831,7 @@ class ArrowCircleTip(ArrowTip):
     def __init__(self, length=.35, start_angle=PI, fill_opacity=0,
                  stroke_width=3, **kwargs):
         self._tip_dimension(length,'length')
-        if isinstance(start_angle,bool) or not isinstance(start_angle,(int,float)) or not math.isfinite(start_angle):
+        if isinstance(start_angle,bool) or not isinstance(start_angle,_REAL) or not math.isfinite(start_angle):
             raise ValueError('Tip start_angle must be finite')
         super().__init__(fill_opacity=fill_opacity,stroke_width=stroke_width,**kwargs)
         phase = math.atan2(math.sin(start_angle),math.cos(start_angle))
@@ -2837,7 +2849,7 @@ class ArrowSquareTip(ArrowTip):
     def __init__(self, length=.35, start_angle=PI, fill_opacity=0,
                  stroke_width=3, **kwargs):
         self._tip_dimension(length,'length')
-        if isinstance(start_angle,bool) or not isinstance(start_angle,(int,float)) or not math.isfinite(start_angle):
+        if isinstance(start_angle,bool) or not isinstance(start_angle,_REAL) or not math.isfinite(start_angle):
             raise ValueError('Tip start_angle must be finite')
         super().__init__(fill_opacity=fill_opacity,stroke_width=stroke_width,**kwargs)
         half = length/2
@@ -2856,7 +2868,7 @@ class StealthTip(ArrowTip):
     def __init__(self, length=.175, start_angle=PI, fill_opacity=1,
                  stroke_width=3, **kwargs):
         self._tip_dimension(length,'length')
-        if isinstance(start_angle,bool) or not isinstance(start_angle,(int,float)) or not math.isfinite(start_angle):
+        if isinstance(start_angle,bool) or not isinstance(start_angle,_REAL) or not math.isfinite(start_angle):
             raise ValueError('Tip start_angle must be finite')
         super().__init__(fill_opacity=fill_opacity,stroke_width=stroke_width,**kwargs)
         factor = length/3.2
@@ -2950,9 +2962,9 @@ class CurvedDoubleArrow(CurvedArrow):
 
 class RegularPolygram(Polygram):
     def __init__(self, num_vertices, *, density=2, radius=1, start_angle=None, **kwargs):
-        if isinstance(num_vertices, bool) or not isinstance(num_vertices, int) or not 1 <= num_vertices <= 10000:
+        if isinstance(num_vertices, bool) or not isinstance(num_vertices, numbers.Integral) or not 1 <= num_vertices <= 10000:
             raise ValueError('num_vertices must be an integer from 1 to 10000')
-        if isinstance(density, bool) or not isinstance(density, int) or density < 1:
+        if isinstance(density, bool) or not isinstance(density, numbers.Integral) or density < 1:
             raise ValueError('density must be a positive integer')
         NumberLine._real(radius, 'Polygram radius')
         if start_angle is not None:
@@ -2981,12 +2993,12 @@ class RegularPolygon(RegularPolygram):
 
 class Star(Polygon):
     def __init__(self, n=5, *, outer_radius=1, inner_radius=None, density=2, start_angle=TAU / 4, **kwargs):
-        if isinstance(n, bool) or not isinstance(n, int) or not 2 <= n <= 10000:
+        if isinstance(n, bool) or not isinstance(n, numbers.Integral) or not 2 <= n <= 10000:
             raise ValueError('Star points must be an integer from 2 to 10000')
         NumberLine._real(outer_radius, 'Star outer radius')
         inner_angle = TAU / (2 * n)
         if inner_radius is None:
-            if isinstance(density, bool) or not isinstance(density, (int, float)) or density <= 0 or density >= n / 2:
+            if isinstance(density, bool) or not isinstance(density, _REAL) or density <= 0 or density >= n / 2:
                 raise ValueError(f'Incompatible density {density} for number of points {n}')
             outer_angle = TAU * density / n
             inverse_x = 1 - math.tan(inner_angle) * ((math.cos(outer_angle) - 1) / math.sin(outer_angle))
@@ -3104,9 +3116,9 @@ def _math_box(text, font_size):
 
 class Text(Mobject):
     def __init__(self, text, font_size=48, line_spacing=-1, font='', slant=NORMAL, weight=NORMAL, **kwargs):
-        if isinstance(font_size, bool) or not isinstance(font_size, (int, float)) or not math.isfinite(font_size) or font_size <= 0:
+        if isinstance(font_size, bool) or not isinstance(font_size, _REAL) or not math.isfinite(font_size) or font_size <= 0:
             raise ValueError('font_size must be positive and finite')
-        if isinstance(line_spacing, bool) or not isinstance(line_spacing, (int, float)) or not math.isfinite(line_spacing):
+        if isinstance(line_spacing, bool) or not isinstance(line_spacing, _REAL) or not math.isfinite(line_spacing):
             raise ValueError('line_spacing must be finite')
         if not isinstance(font, str) or len(font) > 128 or any(c in font for c in '<>;{}"\\'):
             raise ValueError('font must be a plain font family name')
@@ -3131,7 +3143,7 @@ class Text(Mobject):
 
 
 def _number_text(number, options):
-    if not isinstance(number, (int, float)) or not math.isfinite(number):
+    if not isinstance(number, _REAL) or not math.isfinite(number):
         raise ValueError('Numeric labels require a finite real value')
     precision = options['num_decimal_places']
     spec = ('+' if options['include_sign'] else '') + (',' if options['group_with_commas'] else '')
@@ -3145,14 +3157,14 @@ class DecimalNumber(Text):
     """A finite real numeric label using the preview's centered SVG text."""
     def __init__(self, number=0, num_decimal_places=2, include_sign=False,
                  group_with_commas=True, show_ellipsis=False, unit=None, font_size=48, **kwargs):
-        if (isinstance(num_decimal_places, bool) or not isinstance(num_decimal_places, int) or
+        if (isinstance(num_decimal_places, bool) or not isinstance(num_decimal_places, numbers.Integral) or
                 not 0 <= num_decimal_places <= 12):
             raise ValueError('num_decimal_places must be an integer from 0 to 12')
         if not all(isinstance(v, bool) for v in (include_sign, group_with_commas, show_ellipsis)):
             raise ValueError('Numeric formatting flags must be booleans')
         if unit is not None and (not isinstance(unit, str) or len(unit) > 256):
             raise ValueError('Numeric unit must be a string of at most 256 characters')
-        if not isinstance(font_size, (int, float)) or not math.isfinite(font_size) or font_size <= 0:
+        if not isinstance(font_size, _REAL) or not math.isfinite(font_size) or font_size <= 0:
             raise ValueError('Numeric font size must be positive and finite')
         options = dict(num_decimal_places=num_decimal_places, include_sign=include_sign,
                        group_with_commas=group_with_commas, show_ellipsis=show_ellipsis, unit=unit)
@@ -3168,7 +3180,7 @@ class DecimalNumber(Text):
         return self
 
     def increment_value(self, delta_t=1):
-        if not isinstance(delta_t,(int, float)):
+        if not isinstance(delta_t,_REAL):
             raise ValueError('Numeric increments must be real values')
         return self.set_value(self.get_value() + delta_t)
 
@@ -3253,7 +3265,7 @@ class SurroundingRectangle(RoundedRectangle):
             NumberLine._real(value, 'Surrounding buffer')
         width, height = right - left + 2 * buffs[0], top - bottom + 2 * buffs[1]
         radii = corner_radius if isinstance(corner_radius, (list, tuple)) else [corner_radius]
-        if all(not isinstance(r, bool) and isinstance(r, (int, float)) and r == 0 for r in radii):
+        if all(not isinstance(r, bool) and isinstance(r, _REAL) and r == 0 for r in radii):
             if any(not math.isfinite(v) or v < 0 for v in (width, height)):
                 raise ValueError('Surrounding dimensions must be nonnegative and finite')
             Rectangle.__init__(self, width=width, height=height, color=color, **kwargs)
@@ -3358,7 +3370,7 @@ class Elbow(VMobject):
     """An open two-segment corner, rotated about the origin."""
     def __init__(self, width=.2, angle=0, **kwargs):
         for value in (width, angle):
-            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            if isinstance(value, bool) or not isinstance(value, _REAL) or not math.isfinite(value):
                 raise ValueError('Elbow dimensions must be finite real numbers')
         if width < 0:
             raise ValueError('Elbow width must be nonnegative')
@@ -3375,12 +3387,12 @@ class Angle(VMobject):
         if not all(isinstance(line, Line) for line in (line1,line2)):
             raise TypeError('Angle requires two Lines')
         if not isinstance(quadrant,(tuple,list)) or len(quadrant) != 2 or any(
-                isinstance(q,bool) or not isinstance(q,int) or q not in (-1,1) for q in quadrant):
+                isinstance(q,bool) or not isinstance(q, numbers.Integral) or q not in (-1,1) for q in quadrant):
             raise ValueError('Angle quadrant needs two signs, each -1 or 1')
         if not all(isinstance(value,bool) for value in (other_angle,dot,elbow)):
             raise ValueError('Angle flags must be booleans')
         for value in (radius,dot_radius,dot_distance):
-            if value is not None and (isinstance(value,bool) or not isinstance(value,(int,float))
+            if value is not None and (isinstance(value,bool) or not isinstance(value,_REAL)
                     or not math.isfinite(value) or value < 0):
                 raise ValueError('Angle radii and dot distance must be nonnegative and finite')
         if dot_distance is None:
@@ -3453,11 +3465,11 @@ class DashedVMobject(VMobject,VGroup):
                 'polyline','polygon','bezierpath','circle','arc','ellipse',
                 'square','rectangle','triangle','line','annulus'):
             raise TypeError('DashedVMobject needs a supported vector outline')
-        if isinstance(num_dashes,bool) or not isinstance(num_dashes,int) or not 0 <= num_dashes <= 1000:
+        if isinstance(num_dashes,bool) or not isinstance(num_dashes, numbers.Integral) or not 0 <= num_dashes <= 1000:
             raise ValueError('Dash count must be an integer from 0 to 1000')
-        if isinstance(dashed_ratio,bool) or not isinstance(dashed_ratio,(int,float)) or not math.isfinite(dashed_ratio) or not 0 <= dashed_ratio <= 1:
+        if isinstance(dashed_ratio,bool) or not isinstance(dashed_ratio,_REAL) or not math.isfinite(dashed_ratio) or not 0 <= dashed_ratio <= 1:
             raise ValueError('Dashed ratio must be finite and between 0 and 1')
-        if isinstance(dash_offset,bool) or not isinstance(dash_offset,(int,float)) or not math.isfinite(dash_offset):
+        if isinstance(dash_offset,bool) or not isinstance(dash_offset,_REAL) or not math.isfinite(dash_offset):
             raise ValueError('Dash offset must be finite')
         if not isinstance(equal_lengths,bool):
             raise ValueError('Equal lengths must be a boolean')
@@ -3523,9 +3535,9 @@ class DashedLine(Line,VGroup):
     """A straight line made from individually addressable dash segments."""
     def __init__(self, start=LEFT, end=RIGHT, dash_length=.05, dashed_ratio=.5, **kwargs):
         start,end = Line._endpoints(start,end)
-        if isinstance(dash_length,bool) or not isinstance(dash_length,(int,float)) or not math.isfinite(dash_length) or dash_length <= 0:
+        if isinstance(dash_length,bool) or not isinstance(dash_length,_REAL) or not math.isfinite(dash_length) or dash_length <= 0:
             raise ValueError('Dash length must be positive and finite')
-        if isinstance(dashed_ratio,bool) or not isinstance(dashed_ratio,(int,float)) or not math.isfinite(dashed_ratio) or not 0 <= dashed_ratio <= 1:
+        if isinstance(dashed_ratio,bool) or not isinstance(dashed_ratio,_REAL) or not math.isfinite(dashed_ratio) or not 0 <= dashed_ratio <= 1:
             raise ValueError('Dashed ratio must be finite and between 0 and 1')
         length = math.hypot(*(end-start))
         count = length/dash_length*dashed_ratio
@@ -3689,7 +3701,7 @@ class NumberLine(VGroup):
 
     @staticmethod
     def _real(value, name, positive=False, nonnegative=False):
-        if (isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value)
+        if (isinstance(value,bool) or not isinstance(value,_REAL) or not math.isfinite(value)
                 or positive and value <= 0 or nonnegative and value < 0):
             raise ValueError(name + ' must be a finite real value' + (' greater than zero' if positive else ''))
         return value
@@ -4044,7 +4056,7 @@ class Axes(VGroup):
 
     def get_line_from_axis_to_point(self, index, point, line_func=DashedLine,
                                     line_config=None, color=None, stroke_width=2):
-        if isinstance(index,bool) or not isinstance(index,int) or index not in (0,1):
+        if isinstance(index,bool) or not isinstance(index, numbers.Integral) or index not in (0,1):
             raise ValueError('Axis index must be 0 or 1')
         point,_ = Line._endpoints(point,point)
         if not callable(line_func):
@@ -4139,7 +4151,7 @@ class Axes(VGroup):
                                   use_vectorized=False, **kwargs):
         function = self._scalar_graph_function(graph)
         NumberLine._real(y_intercept,'Antiderivative intercept')
-        if isinstance(samples,bool) or not isinstance(samples,int) or not 2 <= samples <= 10000:
+        if isinstance(samples,bool) or not isinstance(samples, numbers.Integral) or not 2 <= samples <= 10000:
             raise ValueError('Antiderivative samples must be an integer from 2 to 10000')
         def integral(x):
             values = [NumberLine._real(function(x*(index/(samples-1))),'Integral sample')
@@ -4282,7 +4294,7 @@ class Axes(VGroup):
                 return None
             if isinstance(value,Mobject):
                 return value.copy()
-            if isinstance(value,(int,float)) and not isinstance(value,bool):
+            if isinstance(value,_REAL) and not isinstance(value,bool):
                 NumberLine._real(value,'Secant label')
             elif not isinstance(value,str):
                 raise TypeError('Secant labels must be strings, real numbers or Mobjects')
@@ -4338,7 +4350,7 @@ class NumberPlane(Axes):
     def __init__(self, x_range=None, y_range=None, x_length=None, y_length=None,
                  background_line_style=None, faded_line_style=None, faded_line_ratio=1,
                  make_smooth_after_applying_functions=True, **kwargs):
-        if isinstance(faded_line_ratio,bool) or not isinstance(faded_line_ratio,int) or faded_line_ratio < 0:
+        if isinstance(faded_line_ratio,bool) or not isinstance(faded_line_ratio, numbers.Integral) or faded_line_ratio < 0:
             raise ValueError('NumberPlane faded_line_ratio must be a nonnegative integer')
         if not isinstance(make_smooth_after_applying_functions,bool):
             raise ValueError('NumberPlane smoothing flag must be a boolean')
@@ -4358,7 +4370,7 @@ class NumberPlane(Axes):
             result.update(copy.deepcopy(options or {}))
             return result
         background = merged(dict(stroke_color=BLUE_D,stroke_width=2,stroke_opacity=1),background_line_style)
-        faded = ({key: value*.5 if isinstance(value,(int,float)) and not isinstance(value,bool) else value
+        faded = ({key: value*.5 if isinstance(value,_REAL) and not isinstance(value,bool) else value
                   for key,value in background.items()} if faded_line_style is None else
                  merged({},faded_line_style))
         # Validate styles even if the chosen grid has no faded lines.
@@ -4699,7 +4711,7 @@ rate_functions = types.SimpleNamespace(**{name: globals()[name] for name in (
 
 
 def interpolate(start, end, alpha):
-    if isinstance(start, (int, float)) and isinstance(end, (int, float)):
+    if isinstance(start, _REAL) and isinstance(end, _REAL):
         return start + (end - start) * alpha
     if isinstance(start, list) and isinstance(end, list) and len(start) == len(end):
         return [interpolate(a, b, alpha) for a, b in zip(start, end)]
@@ -5015,7 +5027,7 @@ def _painted_paths(data, path=(), nested=True):
 class Animation:
     def __init__(self, mobject, run_time=1, rate_func=smooth, lag_ratio=0, remover=False,
                  introducer=False, name=None, suspend_mobject_updating=True, reverse_rate_function=False):
-        if isinstance(lag_ratio, bool) or not isinstance(lag_ratio, (int, float)) or not math.isfinite(lag_ratio) or lag_ratio < 0:
+        if isinstance(lag_ratio, bool) or not isinstance(lag_ratio, _REAL) or not math.isfinite(lag_ratio) or lag_ratio < 0:
             raise ValueError('lag_ratio must be nonnegative and finite')
         if not callable(rate_func):
             raise TypeError('rate_func must be callable')
@@ -5227,7 +5239,7 @@ class ShowPassingFlash(Animation):
     """Move a temporary cubic-parameter window over supported vector outlines."""
     def __init__(self, mobject, time_width=.1, **kwargs):
         super().__init__(mobject, **kwargs)
-        if (isinstance(time_width, bool) or not isinstance(time_width, (int, float))
+        if (isinstance(time_width, bool) or not isinstance(time_width, _REAL)
                 or not math.isfinite(time_width) or time_width < 0):
             raise ValueError('ShowPassingFlash time_width must be nonnegative and finite')
         self.time_width = time_width
@@ -5987,7 +5999,7 @@ class Flash(AnimationGroup):
     def __init__(self, point, line_length=0.2, num_lines=12, flash_radius=0.1, line_stroke_width=3,
                  color=YELLOW, time_width=1, run_time=1.0, **kwargs):
         center = point.get_center() if isinstance(point, Mobject) else Mobject._xy_vector(point, 'Flash point')
-        if isinstance(num_lines, bool) or not isinstance(num_lines, int) or not 1 <= num_lines <= 360:
+        if isinstance(num_lines, bool) or not isinstance(num_lines, numbers.Integral) or not 1 <= num_lines <= 360:
             raise ValueError('num_lines must be an integer from 1 to 360')
         lines = VGroup()
         for index in range(num_lines):
@@ -6303,9 +6315,16 @@ EXPORTS += [name for name in _PALETTE if name not in EXPORTS]
 
 def _render_scene(source, scene_name=None):
     module = types.ModuleType('manim')
-    module.__all__ = EXPORTS
+    module.__all__ = list(EXPORTS)
     for name in EXPORTS:
         setattr(module, name, globals()[name])
+    try:
+        import numpy  # Loaded by the worker only when the source mentions it.
+    except ImportError:
+        pass
+    else:
+        module.np = numpy
+        module.__all__.append('np')
     sys.modules['manim'] = module
     namespace = {'__name__': '__scene__'}
     exec(compile(source, '<scene>', 'exec'), namespace)
@@ -6320,7 +6339,13 @@ def _render_scene(source, scene_name=None):
     result = scenes[name]().render()
     result['scene'] = name
     result['scenes'] = list(scenes)
-    return json.dumps(result, allow_nan=False)
+    def plain(value):
+        if hasattr(value, 'tolist'):
+            return value.tolist()
+        if isinstance(value, numbers.Real):
+            return _plain_number(value)
+        raise TypeError(f'Object of type {type(value).__name__} is not part of a preview frame')
+    return json.dumps(result, allow_nan=False, default=plain)
 
 
 def _set_math_metrics(math_metrics):
@@ -6332,7 +6357,7 @@ def _set_math_metrics(math_metrics):
         for text, size in items:
             size = list(size)
             if (not isinstance(text, str) or len(text) > 4096 or len(size) != 2 or
-                    any(isinstance(v, bool) or not isinstance(v, (int, float)) or
+                    any(isinstance(v, bool) or not isinstance(v, _REAL) or
                         not math.isfinite(v) or not 0 <= v <= 1000 for v in size)):
                 raise ValueError('Math metrics must map expressions to finite [width, height] in em')
             metrics[text] = (float(size[0]), float(size[1]))
