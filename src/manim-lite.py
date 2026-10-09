@@ -34,12 +34,104 @@ LEFT, RIGHT = Vector((-1, 0, 0)), Vector((1, 0, 0))
 ORIGIN = Vector((0, 0, 0))
 OUT, IN = Vector((0, 0, 1)), Vector((0, 0, -1))
 UL, UR, DL, DR = UP + LEFT, UP + RIGHT, DOWN + LEFT, DOWN + RIGHT
-BLUE_D = '#29ABCA'
-BLUE, RED, GREEN = '#58C4DD', '#FC6255', '#83C167'
-YELLOW, PURPLE, ORANGE = '#FFFF00', '#9A72AC', '#FF8C00'
-WHITE, BLACK, GRAY = '#FFFFFF', '#000000', '#888888'
-GREY, PINK = GRAY, '#FF69B4'
+# Manim Community's named palette (manim.utils.color.manim_colors).
+_PALETTE = {
+    'WHITE': '#FFFFFF', 'GRAY_A': '#DDDDDD', 'GRAY_B': '#BBBBBB', 'GRAY_C': '#888888',
+    'GRAY_D': '#444444', 'GRAY_E': '#222222', 'BLACK': '#000000',
+    'PURE_RED': '#FF0000', 'PURE_GREEN': '#00FF00', 'PURE_BLUE': '#0000FF',
+    'PURE_CYAN': '#00FFFF', 'PURE_MAGENTA': '#FF00FF', 'PURE_YELLOW': '#FFFF00',
+    'BLUE_A': '#C7E9F1', 'BLUE_B': '#9CDCEB', 'BLUE_C': '#58C4DD', 'BLUE_D': '#29ABCA', 'BLUE_E': '#236B8E',
+    'TEAL_A': '#ACEAD7', 'TEAL_B': '#76DDC0', 'TEAL_C': '#5CD0B3', 'TEAL_D': '#55C1A7', 'TEAL_E': '#49A88F',
+    'GREEN_A': '#C9E2AE', 'GREEN_B': '#A6CF8C', 'GREEN_C': '#83C167', 'GREEN_D': '#77B05D', 'GREEN_E': '#699C52',
+    'YELLOW_A': '#FFF1B6', 'YELLOW_B': '#FFEA94', 'YELLOW_C': '#F7D96F', 'YELLOW_D': '#F4D345', 'YELLOW_E': '#E8C11C',
+    'GOLD_A': '#F7C797', 'GOLD_B': '#F9B775', 'GOLD_C': '#F0AC5F', 'GOLD_D': '#E1A158', 'GOLD_E': '#C78D46',
+    'RED_A': '#F7A1A3', 'RED_B': '#FF8080', 'RED_C': '#FC6255', 'RED_D': '#E65A4C', 'RED_E': '#CF5044',
+    'MAROON_A': '#ECABC1', 'MAROON_B': '#EC92AB', 'MAROON_C': '#C55F73', 'MAROON_D': '#A24D61', 'MAROON_E': '#94424F',
+    'PURPLE_A': '#CAA3E8', 'PURPLE_B': '#B189C6', 'PURPLE_C': '#9A72AC', 'PURPLE_D': '#715582', 'PURPLE_E': '#644172',
+    'PINK': '#D147BD', 'LIGHT_PINK': '#DC75CD', 'ORANGE': '#FF862F', 'LIGHT_BROWN': '#CD853F',
+    'DARK_BROWN': '#8B4513', 'GRAY_BROWN': '#736357', 'LOGO_WHITE': '#ECE7E2', 'LOGO_GREEN': '#87C2A5',
+    'LOGO_BLUE': '#525893', 'LOGO_RED': '#E07A5F', 'LOGO_BLACK': '#343434'}
+for _name in ('BLUE', 'TEAL', 'GREEN', 'YELLOW', 'GOLD', 'RED', 'MAROON', 'PURPLE'):
+    _PALETTE[_name] = _PALETTE[_name + '_C']
+_PALETTE.update(GRAY=_PALETTE['GRAY_C'], LIGHTER_GRAY=_PALETTE['GRAY_A'], LIGHT_GRAY=_PALETTE['GRAY_B'],
+                DARK_GRAY=_PALETTE['GRAY_D'], DARKER_GRAY=_PALETTE['GRAY_E'], DARK_BLUE=_PALETTE['BLUE_E'])
+for _name in [n for n in _PALETTE if 'GRAY' in n]:
+    _PALETTE[_name.replace('GRAY', 'GREY')] = _PALETTE[_name]
+globals().update(_PALETTE)
 PI, TAU, DEGREES = math.pi, math.tau, math.pi / 180
+SMALL_BUFF, MED_SMALL_BUFF, MED_LARGE_BUFF, LARGE_BUFF = 0.1, 0.25, 0.5, 1
+DEFAULT_MOBJECT_TO_EDGE_BUFFER, DEFAULT_MOBJECT_TO_MOBJECT_BUFFER = MED_LARGE_BUFF, MED_SMALL_BUFF
+DEFAULT_STROKE_WIDTH, DEFAULT_FONT_SIZE = 4, 48
+DEFAULT_DOT_RADIUS, DEFAULT_SMALL_DOT_RADIUS = 0.08, 0.04
+DEFAULT_ARROW_TIP_LENGTH = 0.35
+
+
+def _color_rgb(color):
+    if (not isinstance(color, str) or len(color) != 7 or color[0] != '#' or
+            any(c not in '0123456789abcdefABCDEF' for c in color[1:])):
+        raise ValueError('Colors must be six-digit hex strings such as #58C4DD')
+    return [int(color[i:i+2], 16) / 255 for i in (1, 3, 5)]
+
+
+def _rgb_color(rgb):
+    return '#' + ''.join('%02X' % round(min(1, max(0, v)) * 255) for v in rgb)
+
+
+def color_to_rgb(color):
+    return _color_rgb(color)
+
+
+def rgb_to_color(rgb):
+    rgb = list(rgb)
+    if len(rgb) != 3 or any(isinstance(v, bool) or not isinstance(v, (int, float)) or
+                            not math.isfinite(v) for v in rgb):
+        raise ValueError('RGB colors need three finite components')
+    if any(v > 1 for v in rgb):
+        rgb = [v / 255 for v in rgb]
+    return _rgb_color(rgb)
+
+
+rgb_to_hex, hex_to_rgb = rgb_to_color, color_to_rgb
+
+
+def interpolate_color(color1, color2, alpha):
+    if isinstance(alpha, bool) or not isinstance(alpha, (int, float)) or not math.isfinite(alpha):
+        raise ValueError('Color interpolation alpha must be finite')
+    a, b = _color_rgb(color1), _color_rgb(color2)
+    return _rgb_color([x * (1 - alpha) + y * alpha for x, y in zip(a, b)])
+
+
+def color_gradient(reference_colors, length_of_output):
+    colors = list(reference_colors)
+    if isinstance(length_of_output, bool) or not isinstance(length_of_output, int) or not 0 <= length_of_output <= 10000:
+        raise ValueError('Gradient length must be an integer from 0 to 10000')
+    if not colors:
+        raise ValueError('A color gradient needs at least one color')
+    rgbs = [_color_rgb(color) for color in colors]
+    if length_of_output == 0:
+        return []
+    if len(rgbs) == 1:
+        return [_rgb_color(rgbs[0])] * length_of_output
+    result = []
+    for i in range(length_of_output):
+        # Community's linspace quirk: the final sample is always the last color.
+        position = 0 if length_of_output == 1 else i * (len(rgbs) - 1) / (length_of_output - 1)
+        floor, alpha = int(position), position % 1
+        if i == length_of_output - 1:
+            floor, alpha = len(rgbs) - 2, 1
+        result.append(_rgb_color([a * (1 - alpha) + b * alpha for a, b in zip(rgbs[floor], rgbs[floor + 1])]))
+    return result
+
+
+def average_color(*colors):
+    rgbs = [_color_rgb(color) for color in colors]
+    if not rgbs:
+        raise ValueError('Averaging needs at least one color')
+    return _rgb_color([sum(values) / len(rgbs) for values in zip(*rgbs)])
+
+
+def invert_color(color):
+    return _rgb_color([1 - v for v in _color_rgb(color)])
 
 
 class PreviewConfig:
@@ -373,11 +465,22 @@ class Mobject:
         self.position = list(Vector(self.position) + direction)
         return self
 
-    def move_to(self, point):
-        target = point.get_center() if isinstance(point, Mobject) else Vector(point)
+    def move_to(self, point, aligned_edge=ORIGIN, coor_mask=(1, 1, 1)):
+        aligned_edge, mask = Vector(aligned_edge), Vector(coor_mask)
+        if not all(math.isfinite(v) for v in (*aligned_edge, *mask)):
+            raise ValueError('Alignment edge and coordinate mask must be finite')
+        if aligned_edge[2]:
+            raise NotImplementedError('Alignment supports only XY directions')
+        if any(aligned_edge):
+            target = (point.get_critical_point(aligned_edge) if isinstance(point, Mobject)
+                      else Vector(point))
+            current = self.get_critical_point(aligned_edge)
+        else:
+            target = point.get_center() if isinstance(point, Mobject) else Vector(point)
+            current = self.get_center()
         if not all(math.isfinite(v) for v in target):
             raise ValueError('Position must be finite')
-        return self.shift(target - self.get_center())
+        return self.shift(Vector(a * m for a, m in zip(target - current, mask)))
 
     def _critical_point(self, direction):
         left, bottom, right, top = self._bounds()
@@ -604,6 +707,113 @@ class Mobject:
             raise ValueError('Layout target must be finite')
         anchor = self._critical_point(aligned_edge - direction)
         return self.shift(target - anchor + direction * buff)
+
+    @staticmethod
+    def _xy_vector(value, name):
+        value = Vector(value)
+        if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in value):
+            raise ValueError(name + ' must be finite')
+        if value[2]:
+            raise NotImplementedError(name + ' supports only the XY plane')
+        return value
+
+    def align_on_border(self, direction, buff=DEFAULT_MOBJECT_TO_EDGE_BUFFER):
+        direction = self._xy_vector(direction, 'Border direction')
+        NumberLine._real(buff, 'Border buffer')
+        sign = [(v > 0) - (v < 0) for v in direction]
+        target = Vector((sign[0] * config.frame_width / 2, sign[1] * config.frame_height / 2, 0))
+        offset = target - self.get_critical_point(direction) - direction * buff
+        return self.shift(Vector((offset[0] * abs(sign[0]), offset[1] * abs(sign[1]), 0)))
+
+    def to_edge(self, edge=LEFT, buff=DEFAULT_MOBJECT_TO_EDGE_BUFFER):
+        return self.align_on_border(edge, buff)
+
+    def to_corner(self, corner=DL, buff=DEFAULT_MOBJECT_TO_EDGE_BUFFER):
+        return self.align_on_border(corner, buff)
+
+    def center(self):
+        return self.shift(Vector(ORIGIN) - self.get_center())
+
+    @staticmethod
+    def _coordinate_dim(dim):
+        if isinstance(dim, bool) or not isinstance(dim, int) or dim not in (0, 1, 2):
+            raise ValueError('Coordinate dimension must be 0, 1 or 2')
+        return dim
+
+    def get_coord(self, dim, direction=ORIGIN):
+        self._coordinate_dim(dim)
+        direction = self._xy_vector(direction, 'Coordinate direction')
+        return self.get_critical_point(direction)[dim]
+
+    def get_x(self, direction=ORIGIN):
+        return self.get_coord(0, direction)
+
+    def get_y(self, direction=ORIGIN):
+        return self.get_coord(1, direction)
+
+    def get_z(self, direction=ORIGIN):
+        return self.get_coord(2, direction)
+
+    def set_coord(self, value, dim, direction=ORIGIN):
+        NumberLine._real(value, 'Coordinate')
+        if self._coordinate_dim(dim) == 2:
+            if value != self.get_coord(2, direction):
+                raise NotImplementedError('Preview objects stay in the XY plane')
+            return self
+        offset = [0, 0, 0]
+        offset[dim] = value - self.get_coord(dim, direction)
+        return self.shift(Vector(offset))
+
+    def set_x(self, x, direction=ORIGIN):
+        return self.set_coord(x, 0, direction)
+
+    def set_y(self, y, direction=ORIGIN):
+        return self.set_coord(y, 1, direction)
+
+    def set_z(self, z, direction=ORIGIN):
+        return self.set_coord(z, 2, direction)
+
+    def align_to(self, mobject_or_point, direction=ORIGIN):
+        direction = self._xy_vector(direction, 'Alignment direction')
+        point = (mobject_or_point.get_critical_point(direction) if isinstance(mobject_or_point, Mobject)
+                 else self._xy_vector(mobject_or_point, 'Alignment point'))
+        offset = [point[dim] - self.get_coord(dim, direction) if direction[dim] else 0 for dim in (0, 1)]
+        return self.shift(Vector(offset))
+
+    def match_dim_size(self, mobject, dim, **kwargs):
+        if not isinstance(mobject, Mobject):
+            raise TypeError('Size matching expects a Mobject')
+        return self.rescale_to_fit(mobject.length_over_dim(dim), dim, **kwargs)
+
+    def match_width(self, mobject, **kwargs):
+        return self.match_dim_size(mobject, 0, **kwargs)
+
+    def match_height(self, mobject, **kwargs):
+        return self.match_dim_size(mobject, 1, **kwargs)
+
+    def match_coord(self, mobject, dim, direction=ORIGIN):
+        if not isinstance(mobject, Mobject):
+            raise TypeError('Coordinate matching expects a Mobject')
+        return self.set_coord(mobject.get_coord(dim, direction), dim, direction)
+
+    def match_x(self, mobject, direction=ORIGIN):
+        return self.match_coord(mobject, 0, direction)
+
+    def match_y(self, mobject, direction=ORIGIN):
+        return self.match_coord(mobject, 1, direction)
+
+    def match_z(self, mobject, direction=ORIGIN):
+        return self.match_coord(mobject, 2, direction)
+
+    def flip(self, axis=UP, *, about_point=None, about_edge=None):
+        return self.rotate(TAU / 2, axis, about_point=about_point, about_edge=about_edge)
+
+    def _pivot(self, about_point, about_edge):
+        if about_point is not None and about_edge is not None:
+            raise ValueError('Pass about_point or about_edge, not both')
+        if about_edge is not None:
+            return self.get_critical_point(self._xy_vector(about_edge, 'Pivot edge'))
+        return None if about_point is None else self._xy_vector(about_point, 'Pivot point')
 
     def _own_local_bounds(self):
         if self._type == 'annulus':
@@ -906,9 +1116,10 @@ class Mobject:
         return (min(p[0] for p in points), min(p[1] for p in points),
                 max(p[0] for p in points), max(p[1] for p in points))
 
-    def scale(self, scale_factor, *, about_point=None):
+    def scale(self, scale_factor, *, about_point=None, about_edge=None):
         if not math.isfinite(scale_factor):
             raise ValueError('Scale factor must be finite')
+        about_point = self._pivot(about_point, about_edge)
         self._geometry_center()
         if about_point is not None:
             pivot = Vector(about_point)
@@ -917,9 +1128,25 @@ class Mobject:
         self.geometry_scale *= scale_factor
         return self
 
-    def rotate(self, angle, *, about_point=None):
+    def rotate(self, angle, axis=OUT, *, about_point=None, about_edge=None):
         if not math.isfinite(angle):
             raise ValueError('Rotation angle must be finite')
+        axis = Vector(axis)
+        if not all(math.isfinite(v) for v in axis) or not any(axis):
+            raise ValueError('Rotation axis must be finite and nonzero')
+        about_point = self._pivot(about_point, about_edge)
+        if not axis[0] and not axis[1]:
+            angle = angle if axis[2] > 0 else -angle
+        elif not axis[2] and abs(math.sin(angle)) < 1e-12 and math.cos(angle) < 0:
+            # A half turn about an in-plane axis is the XY reflection across it.
+            length = math.hypot(axis[0], axis[1])
+            ux, uy = axis[0] / length, axis[1] / length
+            return self.apply_matrix([[2*ux*ux-1, 2*ux*uy], [2*ux*uy, 2*uy*uy-1]],
+                                     about_point=self.get_center() if about_point is None else about_point)
+        elif angle % TAU:
+            raise NotImplementedError('Only rotations about OUT/IN or in-plane half turns are supported')
+        else:
+            return self
         self._geometry_center()
         if about_point is not None:
             pivot = Vector(about_point)
@@ -990,6 +1217,98 @@ class Mobject:
         if family:
             for child in self.children:
                 child.set_z_index(z_index_value, family=True)
+        return self
+
+    def get_color(self):
+        return self.color
+
+    def get_fill_color(self):
+        return self.fill_color
+
+    def get_stroke_color(self):
+        return self.stroke_color
+
+    def get_fill_opacity(self):
+        return self.fill_opacity
+
+    def get_stroke_opacity(self):
+        return self.stroke_opacity
+
+    def get_stroke_width(self):
+        return self.stroke_width
+
+    def match_color(self, mobject):
+        if not isinstance(mobject, Mobject):
+            raise TypeError('Color matching expects a Mobject')
+        return self.set_color(mobject.get_color())
+
+    def match_style(self, mobject, family=True):
+        if not isinstance(mobject, Mobject):
+            raise TypeError('Style matching expects a Mobject')
+        self.color = mobject.color
+        self.set_fill(mobject.fill_color, mobject.fill_opacity, family=False)
+        self.set_stroke(mobject.stroke_color, mobject.stroke_width, mobject.stroke_opacity, family=False)
+        if family:
+            # Community pairs children by position after aligning family sizes;
+            # here unmatched children keep their style.
+            for child, source in zip(self.children, mobject.children):
+                child.match_style(source)
+        return self
+
+    def _painted_members(self):
+        return [m for m in self.get_family() if m.has_points() or m._type in ('text', 'mathtex')]
+
+    def set_color_by_gradient(self, *colors):
+        if not colors:
+            raise ValueError('Need at least one color')
+        if len(colors) == 1:
+            return self.set_color(colors[0])
+        members = self._painted_members()
+        for member, color in zip(members, color_gradient(colors, len(members))):
+            member.set_color(color, family=False)
+        return self
+
+    set_submobject_colors_by_gradient = set_color_by_gradient
+
+    def set_colors_by_radial_gradient(self, center=None, radius=1, inner_color=WHITE, outer_color=BLACK):
+        NumberLine._real(radius, 'Gradient radius', positive=True)
+        center = self.get_center() if center is None else self._xy_vector(center, 'Gradient center')
+        _color_rgb(inner_color), _color_rgb(outer_color)
+        for member in self._painted_members():
+            offset = member.get_center() - center
+            t = min(math.hypot(offset[0], offset[1]) / radius, 1)
+            member.set_color(interpolate_color(inner_color, outer_color, t), family=False)
+        return self
+
+    set_submobject_colors_by_radial_gradient = set_colors_by_radial_gradient
+
+    def fade(self, darkness=0.5, family=True):
+        NumberLine._real(darkness, 'Fade darkness')
+        if not 0 <= darkness <= 1:
+            raise ValueError('Fade darkness must be between 0 and 1')
+        for member in (self.get_family() if family else [self]):
+            member.fill_opacity *= 1 - darkness
+            member.stroke_opacity *= 1 - darkness
+        return self
+
+    def fade_to(self, color, alpha, family=True):
+        _color_rgb(color)
+        painted = self._painted_members()
+        for member in (self.get_family() if family else [self]):
+            if member in painted:
+                member.set_color(interpolate_color(member.get_color(), color, alpha), family=False)
+        return self
+
+    def sort(self, point_to_num_func=lambda point: point[0], submob_func=None):
+        key = submob_func or (lambda mobject: point_to_num_func(mobject.get_center()))
+        self.children = sorted(self.children, key=key)
+        return self
+
+    def invert(self, recursive=False):
+        if recursive:
+            for child in self.children:
+                child.invert(True)
+        self.children = self.children[::-1]
         return self
 
     def copy(self):
@@ -1989,10 +2308,10 @@ class RoundedRectangle(Rectangle, VMobject):
 
 class CameraFrame(Rectangle):
     """Invisible, axis-aligned view rectangle used by MovingCameraScene."""
-    def scale(self, scale_factor, *, about_point=None):
+    def scale(self, scale_factor, **kwargs):
         if not math.isfinite(scale_factor) or scale_factor <= 0:
             raise ValueError('Camera scale must be positive and finite')
-        return super().scale(scale_factor, about_point=about_point)
+        return super().scale(scale_factor, **kwargs)
 
     def shift(self, direction):
         direction = Vector(direction)
@@ -4379,19 +4698,25 @@ class Indicate(Animation):
 
 class Rotate(Animation):
     """Sample a rigid rotation from the original object rather than its endpoints."""
-    def __init__(self, mobject, angle=PI, axis=OUT, about_point=None, **kwargs):
+    def __init__(self, mobject, angle=PI, axis=OUT, about_point=None, about_edge=None, **kwargs):
         super().__init__(mobject, **kwargs)
         if not math.isfinite(angle):
             raise ValueError('Rotation angle must be finite')
         axis = Vector(axis)
         if axis not in (OUT, IN):
             raise NotImplementedError('Only 2D rotation about OUT or IN is supported')
+        if about_point is not None and about_edge is not None:
+            raise ValueError('Pass about_point or about_edge, not both')
         self.angle = angle if axis == OUT else -angle
         self.about_point = Vector(about_point) if about_point is not None else None
+        self.about_edge = None if about_edge is None else Mobject._xy_vector(about_edge, 'Pivot edge')
 
     def begin(self, scene):
         super().begin(scene)
         self.original = self.mobject.copy()
+        if self.about_edge is not None:
+            # The edge is resolved once, at the stage start, like Community's pivot.
+            self.about_point = self.original.get_critical_point(self.about_edge)
 
     def sample(self, alpha):
         current = self.original.copy()
@@ -4462,7 +4787,11 @@ class Animate(Transform):
     def __getattr__(self, name):
         if name.startswith('__'):
             raise AttributeError(name)
-        if name not in ('become', 'set_value', 'increment_value', 'shift', 'move_to', 'set_width', 'set_height', 'rescale_to_fit', 'scale_to_fit_width', 'scale_to_fit_height', 'stretch', 'apply_matrix', 'apply_function', 'apply_complex_function', 'stretch_to_fit_width', 'stretch_to_fit_height', 'replace', 'surround', 'set_length', 'move_arc_center_to', 'put_start_and_end_on', 'set_angle', 'next_to', 'arrange', 'arrange_submobjects', 'arrange_in_grid', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'pointwise_become_partial', 'set_points', 'append_points', 'clear_points', 'add_subpath', 'append_vectorized_mobject', 'start_new_path', 'close_path', 'set_points_as_corners', 'set_points_smoothly', 'make_smooth', 'make_jagged', 'change_anchor_mode', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
+        if name not in ('become', 'set_value', 'increment_value', 'shift', 'move_to', 'to_edge', 'to_corner',
+                        'align_on_border', 'center', 'align_to', 'set_coord', 'set_x', 'set_y', 'match_x',
+                        'match_y', 'match_coord', 'match_width', 'match_height', 'match_dim_size', 'flip',
+                        'match_color', 'match_style', 'set_color_by_gradient', 'set_colors_by_radial_gradient',
+                        'fade', 'fade_to', 'set_width', 'set_height', 'rescale_to_fit', 'scale_to_fit_width', 'scale_to_fit_height', 'stretch', 'apply_matrix', 'apply_function', 'apply_complex_function', 'stretch_to_fit_width', 'stretch_to_fit_height', 'replace', 'surround', 'set_length', 'move_arc_center_to', 'put_start_and_end_on', 'set_angle', 'next_to', 'arrange', 'arrange_submobjects', 'arrange_in_grid', 'set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_z_index', 'pointwise_become_partial', 'set_points', 'append_points', 'clear_points', 'add_subpath', 'append_vectorized_mobject', 'start_new_path', 'close_path', 'set_points_as_corners', 'set_points_smoothly', 'make_smooth', 'make_jagged', 'change_anchor_mode', 'add_points_as_corners', 'add_line_to', 'add_cubic_bezier_curve_to', 'reverse_direction', 'restore', 'scale', 'rotate'):
             raise NotImplementedError(f'animate.{name} is not supported yet')
         def apply(*args, **kwargs):
             getattr(self.target, name)(*args, **kwargs)
@@ -4794,7 +5123,14 @@ EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'a
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform', 'UP', 'DOWN', 'LEFT',
            'RIGHT', 'ORIGIN', 'OUT', 'IN', 'UL', 'UR', 'DL', 'DR', 'BLUE', 'BLUE_D', 'RED', 'GREEN',
            'YELLOW', 'PURPLE', 'ORANGE', 'WHITE', 'BLACK', 'GRAY', 'GREY', 'PINK',
-           'linear', 'smooth', 'there_and_back', 'PI', 'TAU', 'DEGREES']
+           'linear', 'smooth', 'there_and_back', 'PI', 'TAU', 'DEGREES',
+           'SMALL_BUFF', 'MED_SMALL_BUFF', 'MED_LARGE_BUFF', 'LARGE_BUFF',
+           'DEFAULT_MOBJECT_TO_EDGE_BUFFER', 'DEFAULT_MOBJECT_TO_MOBJECT_BUFFER',
+           'DEFAULT_STROKE_WIDTH', 'DEFAULT_FONT_SIZE', 'DEFAULT_DOT_RADIUS',
+           'DEFAULT_SMALL_DOT_RADIUS', 'DEFAULT_ARROW_TIP_LENGTH', 'color_to_rgb', 'rgb_to_color',
+           'rgb_to_hex', 'hex_to_rgb', 'interpolate_color', 'color_gradient', 'average_color',
+           'invert_color']
+EXPORTS += [name for name in _PALETTE if name not in EXPORTS]
 
 
 def _render_scene(source, scene_name=None):

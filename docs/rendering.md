@@ -1989,3 +1989,36 @@ queries after nonlinear deformation remain unfinished. Coordinate helper inversi
 does not become a general nonlinear inverse merely because its outline is warped.
 
 Reference: [Manim matrix, point and complex-function mapping](https://docs.manim.community/en/stable/reference/manim.mobject.mobject.Mobject.html).
+
+
+Try **Align to edges and color gradients** (`examples/positioning_scene.py`).
+Frame-edge placement follows Community's `align_on_border`: the target is the sign
+of each direction component times the current preview frame half-size, minus
+`buff` along that direction; components that are zero are left unchanged.
+`align_to`, `set_coord` and `match_coord` move one dimension using the same
+critical points as `next_to`, so rotated families use their conservative bounds.
+`move_to` accepts `aligned_edge` and `coor_mask`. Pivots accept `about_edge` on
+`scale`, `rotate` and `Rotate`; supplying both a point and an edge is an error.
+`rotate(angle, axis)` treats IN as a negated OUT rotation. A half turn about an
+in-plane axis is applied as the equivalent XY reflection through the existing
+matrix-map pipeline, so `flip()` materializes analytical outlines as cubic paths
+and keeps tip-bearing connectors aligned. Other tilted rotations require 3D and
+raise `NotImplementedError`.
+
+Colors are six-digit hex strings. `color_gradient` reproduces Community's
+sampling, including a single-sample gradient returning the final color.
+`set_color_by_gradient` colors painted family members in order: path-bearing
+members plus Text/MathTex leaves, which have no path points in this preview.
+`fade` multiplies family fill and stroke opacities. `match_style` pairs children
+by position and leaves unmatched children unchanged rather than aligning family
+sizes. `YELLOW`, `ORANGE` and `PINK` changed to Community's values, which changes
+inverted Riemann colors accordingly.
+
+Reference: [Manim Mobject positioning](https://docs.manim.community/en/stable/reference/manim.mobject.mobject.Mobject.html),
+[Manim colors](https://docs.manim.community/en/stable/reference/manim.utils.color.manim_colors.html).
+
+Verification: all 367 Python and 78 Node tests passed. Local Pyodide playback in
+Chromium showed the gradient row against the top edge, the arrow width-matched to
+the row, placed beside the triangle and flipped, the row faded into the lower
+corner, the triangle rotated about its lower-right edge and recentered, and an
+empty final frame. A DOT graph rendered Editor → Render → Preview.

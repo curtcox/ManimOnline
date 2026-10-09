@@ -463,3 +463,12 @@ ORIGIN; stretch defaults to the family center. Explicit real arrow children allo
 Arrow-to-cubic alignment; legacy snapshots without explicit_tips retain their
 prior morph behavior. Post-warp endpoint/tip edits and analytical centers remain
 implementation work; native NumPy and 3D are not supplied by these APIs.
+
+
+Read `examples/positioning_scene.py` for frame-edge placement, alignment, flips,
+gradients and fades. align_on_border reads the module `config` at call time (it is
+reset per render). Coordinate helpers use critical points and reject nonzero z.
+rotate(angle, axis): OUT/IN only, except a half turn about an in-plane axis, which
+delegates to apply_matrix as a reflection. Palette values come from Community's
+manim_colors; colors are plain hex strings, not ManimColor. Gradient helpers treat
+Text/MathTex leaves as painted members even though they have no path points.

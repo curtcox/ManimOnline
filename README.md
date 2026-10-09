@@ -1298,3 +1298,25 @@ Glyph/camera/shared-family mapping, arbitrary 3D, native NumPy arrays, adaptive
 nonlinear preparation, post-warp connector/tip mutations and analytical arc-center
 queries after nonlinear deformation remain unfinished. Coordinate helper inversion
 does not become a general nonlinear inverse merely because its outline is warped.
+
+
+Try **Align to edges and color gradients** (`examples/positioning_scene.py`).
+Everyday positioning helpers now follow Manim Community: `to_edge`, `to_corner`,
+`align_on_border`, `center`, `align_to`, `get_x/get_y/get_coord`,
+`set_x/set_y/set_coord`, `match_x/match_y`, `match_width/match_height` and
+`move_to(..., aligned_edge=..., coor_mask=...)`. Edge placement uses the current
+preview `config` frame. `scale` and `rotate` accept `about_edge`; `rotate` accepts
+an `axis` (OUT/IN, or a half turn about an in-plane axis, which is an XY reflection),
+and `flip()` mirrors about the object's center. `Rotate` accepts `about_edge`.
+
+The full Community color palette (`BLUE_A`…`BLUE_E`, `TEAL`, `GOLD`, `MAROON`,
+`GRAY_A`…`GRAY_E`, `PURE_RED`, `LOGO_*` and GRAY/GREY aliases) and buffer constants
+(`SMALL_BUFF`, `MED_SMALL_BUFF`, `MED_LARGE_BUFF`, `LARGE_BUFF`) are available.
+`YELLOW`, `ORANGE` and `PINK` now use Community's values. Color helpers
+`interpolate_color`, `color_gradient`, `average_color`, `invert_color`,
+`color_to_rgb` and `rgb_to_color` work on six-digit hex strings; `ManimColor`
+objects and named-color strings are not implemented. Mobjects gain style getters,
+`match_color`, `match_style`, `set_color_by_gradient`,
+`set_colors_by_radial_gradient`, `fade`, `fade_to`, `sort` and `invert`; these
+work in `.animate` chains. Z coordinates other than zero, general 3D rotation axes
+and text flipping (glyph mapping) remain unsupported and fail explicitly.

@@ -210,3 +210,9 @@ coverage verifies exact transformed controls, pivots, nested identities, callbac
 domain/validation, animated interpolation, restoration and tip-bearing connectors.
 Adaptive nonlinear preparation/inversion, glyph/camera/shared-family mapping,
 native NumPy, 3D and post-warp analytical/mutation APIs remain open.
+
+
+Common positioning (frame edges/corners, alignment, coordinate setters/matching,
+edge pivots, flips) and Community's color palette/utilities, gradients, fading and
+style matching now have Python tests and a gallery scene. ManimColor objects,
+named-color parsing, 3D axes/coordinates and text glyph flipping remain open.
