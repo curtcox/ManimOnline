@@ -1,7 +1,8 @@
 /** Exact offline dependencies. Bump VERSION whenever any listed local file changes. */
 const OfflineAssets = {
-  VERSION: 'manimonline-offline-v82',
+  VERSION: 'manimonline-offline-v83',
   local: [
+    'examples/text_layout_scene.py',
     'examples/polygram_scene.py',
     'examples/positioning_scene.py',
     'examples/point_map_scene.py',

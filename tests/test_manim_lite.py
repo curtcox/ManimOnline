@@ -16,6 +16,71 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_text_layout_gallery_places_text_numbers_and_measured_formula(self):
+        source=(ROOT/'examples/text_layout_scene.py').read_text()
+        result=json.loads(lite.render_scene(source,math_metrics={r'e^{i\pi} + 1 = 0':[4.2,1.05]}))
+        self.assertEqual(result['math_estimated'],[])
+        frame=result['frames'][75]['mobjects']
+        title,line,items,formula,box,number=frame[0],frame[1],frame[2:5],frame[5],frame[6],frame[7]
+        self.assertAlmostEqual(lite.Text('Measured text layout',font_size=40).to_edge(lite.UP).get_center()[1],title['position'][1])
+        self.assertAlmostEqual(box['width'],4.2*60/96+.2)
+        self.assertAlmostEqual(box['height'],1.05*60/96+.2)
+        lefts=[item['position'][0]-item['layout']['width']/2 for item in items]
+        self.assertAlmostEqual(min(lefts),max(lefts))
+        self.assertEqual(number['layout']['family'],'serif')
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+
+    def test_text_bounds_match_community_liberation_sans_metrics(self):
+        # Reference sizes measured with Manim Community 0.22, font='Liberation Sans'.
+        for text,width,height in (('H',.3719,.4586),('Hello',1.4367,.4891),('  Hi  ',.5299,.4833),
+                                  ('acemnorsuvwxz',4.7178,.3648),('gjpqy',1.5643,.6211)):
+            mob=lite.Text(text)
+            self.assertAlmostEqual(mob.get_width(),width,delta=.012*width+.005)
+            self.assertAlmostEqual(mob.get_height(),height,delta=.02)
+            self.assertPointAlmostEqual(mob.get_center(),lite.ORIGIN)
+        self.assertAlmostEqual(lite.Text('H',font_size=96).get_height(),2*lite.Text('H').get_height())
+        layout=lite._text_layout(lite.Text('Hello\nworld!!!').__dict__)
+        self.assertEqual([line['text'] for line in layout['lines']],['Hello','world!!!'])
+        self.assertAlmostEqual(layout['lines'][0]['y']-layout['lines'][1]['y'],.65)
+        self.assertAlmostEqual(layout['lines'][0]['x'],layout['lines'][1]['x'])
+        self.assertAlmostEqual(lite._text_layout(lite.Text('A\nB',line_spacing=1).__dict__)['lines'][0]['y']
+                               -lite._text_layout(lite.Text('A\nB',line_spacing=1).__dict__)['lines'][1]['y'],1)
+        self.assertEqual(lite.Text('').get_width(),0)
+        self.assertGreater(lite.Text('漢字').get_width(),lite.Text('ab').get_width())
+        for value,width,height in ((3.14,.7886,.3427),(-2.5,1.1564,.3427),(1000,1.66,.4172),(0,.8259,.3427)):
+            number=lite.DecimalNumber(value)
+            self.assertAlmostEqual(number.get_width(),width,delta=.01)
+            self.assertAlmostEqual(number.get_height(),height,delta=.005)
+        self.assertAlmostEqual(lite.Integer(42).get_height(),.3372,delta=.005)
+        label=lite.Text('Title').to_edge(lite.UP)
+        self.assertAlmostEqual(label.get_top()[1],4)
+        for bad in ({'font_size':0},{'line_spacing':float('nan')},{'font':'x;y'},{'slant':'WIDE'},{'weight':'FAT'}):
+            with self.assertRaises(ValueError): lite.Text('x',**bad)
+        styled=lite.Text('x',font='Inter',weight=lite.BOLD,slant=lite.ITALIC).to_dict()
+        self.assertEqual((styled['font'],styled['weight'],styled['slant']),('Inter','BOLD','ITALIC'))
+
+    def test_rendered_text_layouts_and_math_metric_round_trip(self):
+        source='from manim import *\nclass Demo(Scene):\n    def construct(self):\n        t = Text("Hi")\n        m = MathTex("x^2").next_to(t, RIGHT, buff=0)\n        n = DecimalNumber(1.5)\n        self.add(VGroup(t, n), m)\n'
+        estimated=json.loads(lite.render_scene(source))
+        self.assertEqual(estimated['math_estimated'],['x^2'])
+        group,formula=estimated['frames'][-1]['mobjects']
+        text,number=group['children']
+        self.assertEqual((text['layout']['family'],number['layout']['family']),('sans','serif'))
+        self.assertAlmostEqual(text['layout']['em'],48/72)
+        self.assertAlmostEqual(number['layout']['em'],48/96)
+        self.assertNotIn('layout',formula)
+        measured=json.loads(lite.render_scene(source,math_metrics={'x^2':[.9,.8]}))
+        self.assertEqual(measured['math_estimated'],[])
+        t=lite.Text('Hi')
+        formula=measured['frames'][-1]['mobjects'][1]
+        self.assertAlmostEqual(formula['position'][0],t.get_right()[0]+.9*.5/2)
+        # Metrics are per render, not leaked into later renders.
+        self.assertEqual(json.loads(lite.render_scene(source))['math_estimated'],['x^2'])
+        for bad in ({'x':[1]},{'x':[float('nan'),1]},{3:[1,1]},[1,2]):
+            with self.assertRaises((ValueError,TypeError)): lite.render_scene(source,math_metrics=bad)
+        estimate=lite.MathTex(r'\frac{a}{b}')
+        self.assertGreater(estimate.get_height(),lite.MathTex('ab').get_height())
+
     def test_polygram_gallery_matchers_follow_moved_group_children(self):
         result=json.loads(lite.render_scene((ROOT/'examples/polygram_scene.py').read_text()))
         self.assertEqual(result['duration'],10)
@@ -2122,7 +2187,8 @@ class SceneTests(unittest.TestCase):
         self.assertEqual(group.df_label.color,lite.RED)
         self.assertEqual(group.df_label.text,'df')
         self.assertEqual(group.df_label._type,'mathtex')
-        self.assertLessEqual(len(label.text)*.6*label.font_size/50*group.dx_label.geometry_scale,.8*.5+1e-9)
+        self.assertLessEqual(group.dx_label.get_width(),.8*.5+1e-9)
+        self.assertAlmostEqual(group.dx_line.get_center()[1]-group.dx_label.get_top()[1],group.dx_label.get_height()/2)
         self.assertLess(group.dx_label.get_center()[1],group.dx_line.get_center()[1])
         negative = axes.get_secant_slope_group(1,graph,dx=-.5,dx_label='dx',dy_label=3,include_secant_line=False)
         self.assertGreater(negative.dx_label.get_center()[1],negative.dx_line.get_center()[1])
@@ -3878,11 +3944,13 @@ self.wait(1)""")
                                  ([lite.Circle()], {'margin':float('nan')}),
                                  ([lite.Circle()], {'margin':-2}),
                                  ([lite.Circle().shift(lite.RIGHT*30)], {'only_mobjects_in_frame':True}),
-                                 ([lite.Text('unknown metrics')], {}),
                                  ([lite.Circle().shift((0,0,1))], {})]:
             with self.assertRaises((ValueError, TypeError, NotImplementedError)):
                 camera.auto_zoom(objects, animate=False, **options)
             self.assertEqual(camera.frame.to_dict(), before)
+        # Text now has estimated ink bounds, so it can be framed.
+        words = lite.Text('framed words', font_size=96)
+        lite.MovingCameraScene().camera.auto_zoom(words, animate=False)
         camera.auto_zoom(lite.Circle().shift(lite.RIGHT*3), margin=1, animate=False)
         camera.frame.restore()
         self.assertEqual(camera.frame.to_dict(), before)

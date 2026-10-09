@@ -224,3 +224,9 @@ tests and browser playback. Polygon/Triangle/Rectangle/Square use Community
 classes and defaults. Group translation and scaling now keep children in world
 space; rotated-group children, Cutout/ConvexHull/boolean operations and
 Rectangle grid lines remain open.
+
+
+Text, DecimalNumber/Integer and MathTex now have Community-calibrated ink bounds
+and sizes (Text from Liberation Sans metrics, numbers from TeX glyph layout,
+formulas measured by MathJax with a second render pass). Glyph-level text
+submobjects, t2c, MarkupText and Paragraph remain open.

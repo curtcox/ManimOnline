@@ -1338,3 +1338,19 @@ matchers and arrows between members of a moved group land where expected.
 Rotation is still stored on the group: children of rotated groups keep
 parent-local coordinates. Text has no measured bounds yet, so matchers around text
 are not sized to the glyphs.
+
+
+Try **Measured text and formula layout** (`examples/text_layout_scene.py`).
+`Text`, `DecimalNumber`/`Integer` and `MathTex` now have ink bounds, so `next_to`,
+`to_edge`, `arrange`, `SurroundingRectangle`, `Underline` and camera framing use
+their real size. Sizes follow Manim Community: a `Text` em is `font_size/72` scene
+units, a TeX em (`MathTex`, numbers) is `font_size/96`, and multi-line `Text`
+lines are `1.3 · font_size/96` apart (`line_spacing` adjusts this). Text and
+formulas therefore render about half as large as in earlier previews, matching
+Manim. `Text` is drawn in Liberation Sans/Arial with each line's width pinned to
+the Python layout; `font`, `slant` and `weight` are passed to the browser.
+Numbers use Community's TeX digit layout in a serif face. Formulas are typeset
+and measured by MathJax: the first render estimates unmeasured formulas, then the
+page re-renders once with the measured sizes (cached for later renders).
+Per-character text APIs (`t2c`, indexing glyphs), MarkupText, Paragraph and exact
+system-font metrics are not implemented.

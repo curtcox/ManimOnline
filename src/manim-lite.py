@@ -858,8 +858,12 @@ class Mobject:
         elif self._type == 'triangle':
             height = math.sqrt(3) / 2
             points = [(0, height * 2 / 3), (-0.5, -height / 3), (0.5, -height / 3)]
+        elif self._type in ('text', 'mathtex'):
+            # Text is centered on its estimated (Text) or measured (MathTex) ink box.
+            width, height = (_math_box(self.text, self.font_size) if self._type == 'mathtex' else
+                             (lambda layout: (layout['width'], layout['height']))(_text_layout(self.__dict__)))
+            return (-width / 2, -height / 2, width / 2, height / 2)
         else:
-            # Text is anchored at its visual center; font metrics are browser-owned.
             return (0, 0, 0, 0)
         if not points:
             return (0, 0, 0, 0)
@@ -2995,12 +2999,129 @@ class Triangle(RegularPolygon):
         super().__init__(n=3, **kwargs)
 
 
+# Liberation Sans (Arial-metric) advance and ink box per glyph, in 1/1000 em:
+# (advance, x_min, x_max, y_min, y_max). The renderer draws this family and pins
+# each line's advance with textLength, so preview bounds match the drawn text.
+_SANS_GLYPHS = {' ':(278,0,0,0,0), '!':(278,90,187,0,688), '"':(355,42,312,472,688), '#':(556,4,551,0,684), '$':(556,11,540,-69,740), '%':(889,36,854,-6,694), '&':(667,35,651,-10,692), "'":(191,51,141,472,688), '(':(333,62,327,-207,725), ')':(333,6,271,-207,725), '*':(389,16,374,337,688), '+':(584,49,535,88,577), ',':(278,90,188,-128,107), '-':(333,44,289,227,305), '.':(278,91,187,0,107), '/':(278,0,278,-10,725), '0':(556,39,517,-10,698), '1':(556,76,507,0,688), '2':(556,50,506,0,698), '3':(556,38,512,-10,698), '4':(556,23,527,0,688), '5':(556,40,514,-10,688), '6':(556,51,512,-10,698), '7':(556,51,506,0,688), '8':(556,43,513,-10,698), '9':(556,47,509,-10,698), ':':(278,91,187,0,528), ';':(278,90,188,-128,528), '<':(584,49,535,75,583), '=':(584,49,535,168,490), '>':(584,49,535,75,583), '?':(556,41,519,0,698), '@':(1015,79,929,-138,725), 'A':(667,2,665,0,688), 'B':(667,82,614,0,688), 'C':(722,51,684,-10,698), 'D':(722,82,674,0,688), 'E':(667,82,624,0,688), 'F':(611,82,571,0,688), 'G':(778,50,703,-10,698), 'H':(722,82,641,0,688), 'I':(278,92,186,0,688), 'J':(500,16,426,-10,688), 'K':(667,82,656,0,688), 'L':(556,82,523,0,688), 'M':(833,82,751,0,688), 'N':(722,82,641,0,688), 'O':(778,47,730,-10,698), 'P':(667,82,614,0,688), 'Q':(778,47,730,-189,698), 'R':(722,82,676,0,688), 'S':(667,45,621,-10,698), 'T':(611,22,588,0,688), 'U':(722,77,645,-10,688), 'V':(667,4,663,0,688), 'W':(944,4,940,0,688), 'X':(667,22,646,0,688), 'Y':(667,22,645,0,688), 'Z':(611,32,580,0,688), '[':(278,71,270,-208,725), '\\':(278,0,278,-10,725), ']':(278,8,207,-208,725), '^':(469,5,464,329,688), '_':(556,-15,567,-199,-135), '`':(333,52,259,586,736), 'a':(556,42,556,-10,538), 'b':(556,64,514,-10,725), 'c':(500,42,474,-10,538), 'd':(556,42,492,-10,725), 'e':(556,42,512,-10,538), 'f':(278,14,279,0,724), 'g':(556,42,492,-208,537), 'h':(556,69,491,0,725), 'i':(222,67,155,0,725), 'j':(222,-24,155,-208,725), 'k':(500,67,501,0,725), 'l':(222,67,155,0,725), 'm':(833,66,767,0,538), 'n':(556,66,491,0,538), 'o':(556,42,514,-10,538), 'p':(556,64,514,-208,538), 'q':(556,42,492,-208,538), 'r':(333,66,316,0,538), 's':(500,28,464,-10,537), 't':(278,15,271,-8,646), 'u':(556,65,490,-10,528), 'v':(500,3,497,0,528), 'w':(722,-1,725,0,528), 'x':(500,11,489,0,528), 'y':(500,2,498,-208,528), 'z':(500,41,450,0,528), '{':(334,17,316,-208,725), '|':(260,89,170,-212,725), '}':(334,17,316,-208,725), '~':(584,45,539,270,394), '\xa0':(278,0,0,0,0), '¡':(333,118,215,-160,528), '¢':(556,66,497,-15,688), '£':(556,28,539,0,698), '¤':(556,55,501,110,556), '¥':(556,-1,558,0,688), '¦':(260,89,170,-212,725), '§':(556,56,500,-84,725), '¨':(333,22,294,595,685), '©':(737,15,721,-8,698), 'ª':(370,13,374,318,699), '«':(556,41,516,69,459), '¬':(584,49,535,88,368), '\xad':(333,44,289,227,305), '®':(737,15,721,-8,698), '¯':(552,-8,561,709,755), '°':(400,60,340,420,698), '±':(549,32,518,0,595), '²':(333,20,314,275,694), '³':(333,13,313,269,694), '´':(333,35,242,586,736), 'µ':(576,68,553,-208,528), '¶':(537,39,495,-129,688), '·':(333,119,214,218,325), '¸':(333,58,236,-212,0), '¹':(333,39,311,275,688), 'º':(365,13,353,318,699), '»':(556,41,516,69,459), '¼':(834,27,845,-18,688), '½':(834,27,807,0,688), '¾':(834,36,845,-18,694), '¿':(611,64,542,-170,528), 'À':(667,2,665,0,867), 'Á':(667,2,665,0,867), 'Â':(667,2,665,0,874), 'Ã':(667,2,665,0,878), 'Ä':(667,2,665,0,837), 'Å':(667,2,665,0,873), 'Æ':(1000,12,957,0,688), 'Ç':(722,51,684,-212,698), 'È':(667,82,624,0,867), 'É':(667,82,624,0,867), 'Ê':(667,82,624,0,874), 'Ë':(667,82,624,0,837), 'Ì':(278,4,211,0,867), 'Í':(278,69,276,0,867), 'Î':(278,-22,301,0,874), 'Ï':(278,3,275,0,837), 'Ð':(722,7,674,0,688), 'Ñ':(722,82,641,0,878), 'Ò':(778,47,730,-10,867), 'Ó':(778,47,730,-10,867), 'Ô':(778,47,730,-10,874), 'Õ':(778,47,730,-10,878), 'Ö':(778,47,730,-10,837), '×':(584,69,515,110,556), 'Ø':(778,35,744,-26,716), 'Ù':(722,77,645,-10,867), 'Ú':(722,77,645,-10,867), 'Û':(722,77,645,-10,874), 'Ü':(722,77,645,-10,837), 'Ý':(667,22,645,0,867), 'Þ':(667,82,614,0,688), 'ß':(611,69,570,-10,725), 'à':(556,42,556,-10,736), 'á':(556,42,556,-10,736), 'â':(556,42,556,-10,728), 'ã':(556,42,556,-10,717), 'ä':(556,42,556,-10,685), 'å':(556,42,556,-10,806), 'æ':(889,32,845,-10,538), 'ç':(500,42,474,-212,538), 'è':(556,42,512,-10,736), 'é':(556,42,512,-10,736), 'ê':(556,42,512,-10,728), 'ë':(556,42,512,-10,685), 'ì':(278,5,212,0,736), 'í':(278,66,273,0,736), 'î':(278,-22,301,0,728), 'ï':(278,4,276,0,685), 'ð':(556,42,519,-10,739), 'ñ':(556,68,493,0,717), 'ò':(556,42,514,-10,736), 'ó':(556,42,514,-10,736), 'ô':(556,42,514,-10,728), 'õ':(556,42,514,-10,717), 'ö':(556,42,514,-10,685), '÷':(549,32,518,109,557), 'ø':(611,21,588,-19,545), 'ù':(556,68,493,-10,736), 'ú':(556,68,493,-10,736), 'û':(556,68,493,-10,728), 'ü':(556,68,493,-10,685), 'ý':(500,2,498,-208,736), 'þ':(556,67,514,-208,725), 'ÿ':(500,2,498,-208,685), 'Α':(667,2,665,0,688), 'Β':(667,82,614,0,688), 'Γ':(551,82,523,0,688), 'Δ':(668,30,638,0,688), 'Ε':(667,82,624,0,688), 'Ζ':(611,32,580,0,688), 'Η':(722,82,641,0,688), 'Θ':(778,47,730,-10,698), 'Ι':(278,92,186,0,688), 'Κ':(667,82,656,0,688), 'Λ':(668,5,663,0,688), 'Μ':(833,82,751,0,688), 'Ν':(722,82,641,0,688), 'Ξ':(650,44,606,0,688), 'Ο':(778,47,730,-10,698), 'Π':(722,82,641,0,688), 'Ρ':(667,82,614,0,688), 'Σ':(618,53,579,0,688), 'Τ':(611,22,588,0,688), 'Υ':(667,22,645,0,688), 'Φ':(798,57,741,-5,693), 'Χ':(667,22,646,0,688), 'Ψ':(835,71,765,0,688), 'Ω':(748,42,705,0,698), 'Ϊ':(278,3,275,0,837), 'Ϋ':(667,22,645,0,837), 'ά':(578,42,549,-10,753), 'έ':(446,34,427,-10,753), 'ή':(556,52,491,-207,753), 'ί':(222,67,212,0,753), 'ΰ':(547,65,499,-10,782), 'α':(578,42,549,-10,538), 'β':(575,69,536,-208,725), 'γ':(500,3,497,-207,528), 'δ':(557,42,514,-10,725), 'ε':(446,34,427,-10,538), 'ζ':(441,42,422,-172,725), 'η':(556,52,491,-207,538), 'θ':(556,52,504,-10,724), 'ι':(222,67,194,0,528), 'κ':(500,67,501,0,528), 'λ':(500,7,491,0,725), 'μ':(576,67,503,-192,528), 'ν':(500,0,462,0,528), 'ξ':(448,42,427,-172,725), 'ο':(556,42,514,-10,538), 'π':(690,39,646,-10,528), 'ρ':(569,64,529,-208,539), 'ς':(482,42,451,-172,538), 'σ':(617,42,602,-10,528), 'τ':(395,14,387,-10,528), 'υ':(547,65,499,-10,528), 'φ':(648,42,606,-208,540), 'χ':(525,10,513,-207,539), 'ψ':(713,66,646,-208,654), 'ω':(781,41,740,-10,539), '–':(556,0,556,220,287), '—':(1000,0,1000,220,287), '‘':(222,62,160,465,688), '’':(222,62,160,465,688), '“':(333,37,296,465,688), '”':(333,37,296,465,688), '•':(350,40,311,196,467), '…':(1000,136,864,0,107), '€':(556,8,542,-10,698), '−':(584,49,535,297,368), '∞':(713,42,670,99,480), '≤':(549,31,518,0,601), '≥':(549,32,518,0,601), '≠':(549,32,518,27,633), '→':(1000,204,796,49,283), '←':(1000,204,796,49,283), '↑':(500,133,367,-30,562), '↓':(500,133,367,-30,562), '≈':(549,27,521,164,494), '√':(549,25,548,-7,791), '∑':(713,75,648,-212,688), '∫':(274,-48,322,-212,736), '∂':(494,27,466,-13,721), '∆':(612,2,610,0,688), 'π':(690,39,646,-10,528), 'θ':(556,52,504,-10,724)}
+# Computer Modern (cmr10/cmsy10 AFM) glyphs used by Community's DecimalNumber.
+_CM_GLYPHS = {'0': (500,39,460,-22,666), '1': (500,89,419,0,666), '2': (500,50,449,0,666),
+              '3': (500,42,457,-22,666), '4': (500,28,471,0,677), '5': (500,50,449,-22,666),
+              '6': (500,42,457,-22,666), '7': (500,56,485,-22,676), '8': (500,42,457,-22,666),
+              '9': (500,42,457,-22,666), '.': (277,86,192,0,106), ',': (277,86,203,-193,106),
+              '+': (777,56,721,-83,583), '-': (777,83,694,230,270), '…': (1172,86,1086,0,106)}
+# Community scales Pango text so an em is font_size/72 units and TeX so it is
+# font_size/96 units; Text lines are 1.3 * font_size/96 apart by default.
+TEXT_EM_PER_POINT, TEX_EM_PER_POINT = 1 / 72, 1 / 96
+NORMAL, ITALIC, OBLIQUE, BOLD = 'NORMAL', 'ITALIC', 'OBLIQUE', 'BOLD'
+THIN, ULTRALIGHT, LIGHT, SEMILIGHT, BOOK, MEDIUM = 'THIN', 'ULTRALIGHT', 'LIGHT', 'SEMILIGHT', 'BOOK', 'MEDIUM'
+SEMIBOLD, ULTRABOLD, HEAVY, ULTRAHEAVY = 'SEMIBOLD', 'ULTRABOLD', 'HEAVY', 'ULTRAHEAVY'
+_MATH_METRICS = {}  # expression -> (width_em, height_em), measured by the browser
+_MATH_ESTIMATED = set()
+
+
+def _glyph_box(char, table):
+    if char in table:
+        return table[char]
+    import unicodedata
+    if unicodedata.east_asian_width(char) in 'WF':
+        return (1000, 50, 950, -120, 830)
+    if unicodedata.category(char) in ('Mn', 'Me', 'Cf', 'Cc'):
+        return (0, 0, 0, 0, 0)
+    return (556, 50, 506, 0, 716)
+
+
+def _text_layout(snapshot):
+    """Ink-centered line layout for a Text/DecimalNumber snapshot, in scene units."""
+    font_size = snapshot['font_size']
+    numeric = '_number_format' in snapshot
+    em = font_size * (TEX_EM_PER_POINT if numeric else TEXT_EM_PER_POINT) / 1000
+    lines, ink = [], None
+    def merge(box):
+        nonlocal ink
+        ink = box if ink is None else (min(ink[0], box[0]), min(ink[1], box[1]),
+                                       max(ink[2], box[2]), max(ink[3], box[3]))
+    if numeric:
+        # Community arranges separate TeX glyphs with 0.001 * font_size gaps,
+        # bottom-aligned; commas drop by half their height.
+        gap, x, boxes = 0.001 * font_size, 0, []
+        for char in snapshot['text']:
+            _, x0, x1, y0, y1 = _glyph_box(char, _CM_GLYPHS)
+            width, height = (x1 - x0) * em, (y1 - y0) * em
+            boxes.append([x, x + width, 0, height, y0 * em])
+            x += width + gap
+        for i, (char, box) in enumerate(zip(snapshot['text'], boxes)):
+            if char == ',':
+                box[2] -= (box[3] - box[2]) / 2
+                box[3] = box[2] + (_CM_GLYPHS[','][4] - _CM_GLYPHS[','][3]) * em
+            elif char == '-' and i + 1 < len(boxes):
+                following = boxes[i + 1]
+                height = box[3] - box[2]
+                box[3] = following[3] - (following[3] - following[2]) / 2
+                box[2] = box[3] - height
+            merge((box[0], box[2], box[1], box[3]))
+        if ink is not None:
+            # Draw the string on a baseline that puts digit bottoms on y = 0.
+            lines.append({'text': snapshot['text'], 'x': ink[0], 'y': 0, 'length': ink[2] - ink[0]})
+    else:
+        pitch = font_size * (1 + snapshot.get('line_spacing', .3)) * TEX_EM_PER_POINT
+        for row, line in enumerate(snapshot['text'].split('\n')):
+            x, baseline = 0, -row * pitch
+            for char in line:
+                advance, x0, x1, y0, y1 = _glyph_box(char, _SANS_GLYPHS)
+                if x1 > x0 or y1 > y0:
+                    merge(((x + x0) * em, baseline + y0 * em, (x + x1) * em, baseline + y1 * em))
+                x += advance
+            lines.append({'text': line, 'x': 0, 'y': baseline, 'length': x * em})
+    if ink is None:
+        return {'width': 0, 'height': 0, 'lines': [], 'em': em * 1000}
+    cx, cy = (ink[0] + ink[2]) / 2, (ink[1] + ink[3]) / 2
+    for line in lines:
+        line['x'] -= cx
+        line['y'] -= cy
+    return {'width': ink[2] - ink[0], 'height': ink[3] - ink[1], 'lines': lines, 'em': em * 1000,
+            'family': 'serif' if numeric else 'sans'}
+
+
+def _math_box(text, font_size):
+    em = font_size * TEX_EM_PER_POINT
+    if text in _MATH_METRICS:
+        width, height = _MATH_METRICS[text]
+        return width * em, height * em
+    _MATH_ESTIMATED.add(text)
+    # Rough placeholder until the browser measures the typeset formula.
+    import re
+    body = re.sub(r'\\[a-zA-Z]+', 'x', text)
+    body = re.sub(r'[{}^_\s\\]', '', body)
+    tall = 2 if re.search(r'\\(frac|sum|int|prod|binom|dfrac)', text) else 1
+    return max(1, len(body)) * .55 * em, .75 * tall * em
+
+
 class Text(Mobject):
-    def __init__(self, text, font_size=48, **kwargs):
+    def __init__(self, text, font_size=48, line_spacing=-1, font='', slant=NORMAL, weight=NORMAL, **kwargs):
+        if isinstance(font_size, bool) or not isinstance(font_size, (int, float)) or not math.isfinite(font_size) or font_size <= 0:
+            raise ValueError('font_size must be positive and finite')
+        if isinstance(line_spacing, bool) or not isinstance(line_spacing, (int, float)) or not math.isfinite(line_spacing):
+            raise ValueError('line_spacing must be finite')
+        if not isinstance(font, str) or len(font) > 128 or any(c in font for c in '<>;{}"\\'):
+            raise ValueError('font must be a plain font family name')
+        if slant not in (NORMAL, ITALIC, OBLIQUE):
+            raise ValueError('slant must be NORMAL, ITALIC or OBLIQUE')
+        if weight not in (NORMAL, THIN, ULTRALIGHT, LIGHT, SEMILIGHT, BOOK, MEDIUM, SEMIBOLD, BOLD, ULTRABOLD, HEAVY, ULTRAHEAVY):
+            raise ValueError('Unsupported font weight')
         kwargs.setdefault('fill_opacity', 1)
         kwargs.setdefault('stroke_width', 0)
         super().__init__(**kwargs)
         self._type, self.text, self.font_size = 'text', str(text), font_size
+        if len(self.text) > 10000:
+            raise ValueError('Text is limited to 10000 characters')
+        if line_spacing != -1:
+            self.line_spacing = line_spacing
+        if font:
+            self.font = font
+        if slant != NORMAL:
+            self.slant = slant
+        if weight != NORMAL:
+            self.weight = weight
 
 
 def _number_text(number, options):
@@ -4170,26 +4291,12 @@ class Axes(VGroup):
             line._secant_role = role
             group.add(line)
         def label_bounds(label):
-            # Font metrics live in the browser; use an explicit size estimate here.
-            if label._type in ('text','mathtex'):
-                height = label.font_size/50
-                width = max(1,len(label.text))*.6*height
-                center = label._geometry_center()
-                corners = [label._point_to_world(center+Vector((a*width/2,b*height/2,0)))
-                           for a in (-1,1) for b in (-1,1)]
-            elif label.children:
-                corners = []
-                for child in label.children:
-                    left,bottom,right,top = label_bounds(child)
-                    corners.extend(label._point_to_world((a,b,0))
-                                   for a in (left,right) for b in (bottom,top))
-            else:
-                return label._bounds()
-            return (min(p[0] for p in corners),min(p[1] for p in corners),
-                    max(p[0] for p in corners),max(p[1] for p in corners))
-        labels = VGroup(*(label for label in (dx_mob,df_mob) if label is not None))
-        if len(labels):
-            left,bottom,right,top = label_bounds(labels)
+            return label._bounds()
+        labels = [label for label in (dx_mob,df_mob) if label is not None]
+        if labels:
+            corners = [label_bounds(label) for label in labels]
+            left,bottom = min(c[0] for c in corners),min(c[1] for c in corners)
+            right,top = max(c[2] for c in corners),max(c[3] for c in corners)
             width,height = right-left,top-bottom
             span_x,span_y = abs(p2[0]-p1[0]),abs(p2[1]-p1[1])
             factor = min(1,.8*span_x/width if width else 1,
@@ -4201,11 +4308,8 @@ class Axes(VGroup):
                                           (df_mob,'df_label',group.df_line,RIGHT*sign)):
             if label is not None:
                 left,bottom,right,top = label_bounds(label)
-                # Center anchors lack glyph bounds: explicitly leave room for text.
-                offset = (top-bottom)/2
-                if label._type in ('text','mathtex'):
-                    offset += (top-bottom)/2 if direction[1] else (right-left)/2
-                label.next_to(line,direction,buff=offset).set_color(line.color)
+                # Community leaves half the label height between label and line.
+                label.next_to(line,direction,buff=(top-bottom)/2).set_color(line.color)
                 label._secant_role = role
                 group.add(label)
         if include_secant_line:
@@ -5386,7 +5490,16 @@ class Scene:
         self._update_mobjects(0)
         # A final state is seekable without advancing the scene clock.
         self.capture(advance_time=False)
-        return {'frames': self.frames, 'fps': FPS, 'duration': (len(self.frames)-1)/FPS}
+        def lay_out(node):
+            if node.get('type') == 'text' and 'layout' not in node:
+                node['layout'] = _text_layout(node)
+            for child in node.get('children', []):
+                lay_out(child)
+        for frame in self.frames:
+            for node in frame['mobjects']:
+                lay_out(node)
+        return {'frames': self.frames, 'fps': FPS, 'duration': (len(self.frames)-1)/FPS,
+                'math_estimated': sorted(_MATH_ESTIMATED)}
 
 
 class MovingCameraScene(Scene):
@@ -5406,7 +5519,8 @@ EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'a
            'DEFAULT_STROKE_WIDTH', 'DEFAULT_FONT_SIZE', 'DEFAULT_DOT_RADIUS',
            'DEFAULT_SMALL_DOT_RADIUS', 'DEFAULT_ARROW_TIP_LENGTH', 'color_to_rgb', 'rgb_to_color',
            'rgb_to_hex', 'hex_to_rgb', 'interpolate_color', 'color_gradient', 'average_color',
-           'invert_color']
+           'invert_color', 'NORMAL', 'ITALIC', 'OBLIQUE', 'BOLD', 'THIN', 'ULTRALIGHT', 'LIGHT',
+           'SEMILIGHT', 'BOOK', 'MEDIUM', 'SEMIBOLD', 'ULTRABOLD', 'HEAVY', 'ULTRAHEAVY']
 EXPORTS += [name for name in _PALETTE if name not in EXPORTS]
 
 
@@ -5432,11 +5546,33 @@ def _render_scene(source, scene_name=None):
     return json.dumps(result, allow_nan=False)
 
 
-def render_scene(source, scene_name=None):
+def _set_math_metrics(math_metrics):
+    metrics = {}
+    if math_metrics is not None:
+        items = math_metrics.items() if hasattr(math_metrics, 'items') else None
+        if items is None:
+            raise TypeError('Math metrics must map expressions to [width, height] in em')
+        for text, size in items:
+            size = list(size)
+            if (not isinstance(text, str) or len(text) > 4096 or len(size) != 2 or
+                    any(isinstance(v, bool) or not isinstance(v, (int, float)) or
+                        not math.isfinite(v) or not 0 <= v <= 1000 for v in size)):
+                raise ValueError('Math metrics must map expressions to finite [width, height] in em')
+            metrics[text] = (float(size[0]), float(size[1]))
+            if len(metrics) > 1024:
+                raise ValueError('At most 1024 math metrics may be supplied')
+    _MATH_METRICS.clear()
+    _MATH_METRICS.update(metrics)
+    _MATH_ESTIMATED.clear()
+
+
+def render_scene(source, scene_name=None, math_metrics=None):
+    """Render frames; math_metrics holds browser-measured MathTex ink sizes in em."""
     global config
     previous = config
     config = PreviewConfig()
     try:
+        _set_math_metrics(math_metrics)
         return _render_scene(source, scene_name)
     finally:
         config = previous

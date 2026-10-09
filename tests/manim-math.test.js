@@ -1,4 +1,4 @@
-const { test } = require('node:test');
+const { test, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const math = require('../src/manim-math.js');
 const frame = (...mobjects) => ({ mobjects });
@@ -7,6 +7,8 @@ function svgResult(expression, box = '0 -700 1000 900') {
   const svg = { getAttribute: () => box, querySelectorAll: () => [], outerHTML: `<svg viewBox="${box}"><path d="${expression}"/></svg>` };
   return { querySelector: selector => selector === 'svg' ? svg : null };
 }
+
+beforeEach(() => math.cache.clear());
 
 test('math preprocessing deduplicates formulas across frames and nested groups', async () => {
   const compiled = [];
@@ -58,4 +60,17 @@ test('unsupported glyph geometry is rejected before player construction', async 
   await assert.rejects(math.prepare(scene, () => true, async () => ({ tex2svgPromise: async () => ({
     querySelector: selector => selector === 'svg' ? { querySelectorAll: () => [{ localName: 'text' }] } : null
   }) })), /glyph or SVG feature/);
+});
+
+test('compiled formulas are cached across renders and expose em metrics', async () => {
+  let compiles = 0;
+  const load = async () => ({ tex2svgPromise: async text => { compiles++; return svgResult(text); } });
+  const scene = { frames: [frame(formula('z'))] };
+  const first = await math.prepare(scene, () => true, load);
+  const second = await math.prepare(scene, () => true, load);
+  assert.equal(compiles, 1);
+  assert.equal(second.get('z'), first.get('z'));
+  // Without a layout engine there is no ink box, so Python keeps its estimate.
+  assert.equal(first.get('z').bbox, null);
+  assert.deepEqual(math.metrics(new Map([['w', { bbox: [10, -600, 450, 700] }], ['v', { bbox: null }]])), { w: [0.45, 0.7] });
 });

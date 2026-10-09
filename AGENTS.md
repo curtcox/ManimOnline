@@ -483,3 +483,13 @@ shift and scale to children (world coordinates). Do not propagate rotation there
 without solving rigid Transform interpolation; rotated groups keep local children.
 Mobject._to_local_pose converts world-placed matchers before attaching to a
 transformed parent.
+
+
+Read `examples/text_layout_scene.py` for measured text, numbers and formulas.
+Text em = font_size/72 (Pango at 96 dpi), TeX em = font_size/96 — both measured
+with Manim Community 0.22; do not reintroduce the old font_size/50 scale.
+_text_layout builds ink-centered lines from _SANS_GLYPHS (Liberation Sans) or
+_CM_GLYPHS (DecimalNumber); Scene.render attaches it as `layout` after capture and
+the renderer pins tspans with textLength. MathTex sizes come from per-render
+math_metrics (browser getBBox); unknown formulas are estimated and reported in
+math_estimated, and index.html re-renders once with measurements.

@@ -2058,3 +2058,37 @@ Chromium showed the pentagon, star, hexagram and rounded triangle, the rounded
 surrounding box moving from the star to the hexagram, the underline, cross and
 background rectangle, the star transforming into a pentagram, and an empty final
 frame.
+
+
+Try **Measured text and formula layout** (`examples/text_layout_scene.py`).
+Calibration came from Manim Community 0.22 with Pango and TeX Live: `Text`
+renders Pango size `font_size/4.8` pt at 96 dpi, scaled by 0.05 (em =
+`font_size/72` units); TeX output is scaled by `font_size/960` per pt at 10 pt
+(em = `font_size/96`). Text ink boxes use per-glyph Liberation Sans advances and
+bounds (fontTools extraction, 1/1000 em) and agree with Community's
+`font='Liberation Sans'` measurements within about 1%. Text is centered on its
+ink box like Community's SVG mobjects; lines are left-aligned. The frame JSON
+carries a `layout` (em, family, per-line x/baseline/advance) computed after
+capture, and the renderer pins each tspan with `textLength` so drawn width and
+Python bounds agree even when another sans font is substituted.
+
+`DecimalNumber` reproduces Community's construction from separate TeX glyphs:
+cmr10/cmsy10 AFM ink boxes, bottom-aligned with `0.001 · font_size` gaps, commas
+dropped by half their height and a minus centered on the following glyph. The
+preview draws the string in a serif face with a true minus sign.
+
+`MathTex` bounds come from `render_scene(..., math_metrics)`: the page measures
+MathJax output with `getBBox` (MathJax uses 1000 units per em) and the renderer
+centers that ink box. Unmeasured formulas use a rough estimate and are listed in
+`math_estimated`; the page then repeats the render once with measured sizes.
+MathJax glyphs and metrics are cached by expression (256 and 1024 entries).
+Native glyph-level submobjects, `t2c`/`t2w`, MarkupText and Paragraph remain open.
+
+Reference: [Manim Text](https://docs.manim.community/en/stable/reference/manim.mobject.text.text_mobject.Text.html),
+[DecimalNumber](https://docs.manim.community/en/stable/reference/manim.mobject.text.numbers.DecimalNumber.html).
+
+Verification: all 375 Python and 80 Node tests passed. Local Pyodide playback in
+Chromium showed the title on the top edge with a fitted underline, left-aligned
+items, a surrounding box fitted to the MathJax-measured formula after the second
+pass, a serif counter beside it, and the math and number-line galleries at
+Community scale.

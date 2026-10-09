@@ -55,7 +55,11 @@ test('math glyphs render with transforms, styles, and no external SVG content', 
     { type: 'mathtex', text: 'x', font_size: 48, fill_color: '#FF0000', position: [2, 1, 0] }
   ] }, glyphs);
   const shape = group.children[0];
-  assert.match(shape.getAttribute('transform'), /translate\(100, 50\).*scale\(1, -1\) scale\(0.048\)/);
+  // TeX em = font_size / 96 scene units, at 50 px per unit and 1000 MathJax units per em.
+  assert.match(shape.getAttribute('transform'), /translate\(100, 50\).*scale\(1, -1\) scale\(0.025\) translate\(-500, 250\)/);
+  glyphs.set('x', { svg: '<svg/>', viewBox: [0, -700, 1000, 900], bbox: [100, -600, 400, 600] });
+  const inked = renderer.renderMobject({ type: 'mathtex', text: 'x', font_size: 96 }, glyphs);
+  assert.match(inked.getAttribute('transform'), /scale\(0.05\) translate\(-300, 300\)/);
   assert.equal(shape.getAttribute('fill'), '#FF0000');
   assert.equal(shape.children[0].getAttribute('d'), 'M 0 0 L 1000 0');
   assert.equal(shape.children[0].getAttribute('onclick'), null);
@@ -63,6 +67,30 @@ test('math glyphs render with transforms, styles, and no external SVG content', 
   assert.throws(() => renderer.renderMobject({ type: 'mathtex', text: 'x' }, glyphs), /Unsupported math SVG/);
   assert.throws(() => renderer.renderMobject({ type: 'mathtex', text: 'y' }, glyphs), /not been prepared/);
   delete global.DOMParser;
+});
+
+test('laid-out text pins each line to the Python ink layout', () => {
+  const text = renderer.renderMobject({ type: 'text', text: 'Hi\nthere', weight: 'BOLD', slant: 'ITALIC',
+    font: 'Inter', layout: { em: 0.5, family: 'sans', lines: [
+      { text: 'Hi', x: -1, y: 0.25, length: 0.6 }, { text: '', x: -1, y: -0.4, length: 0 }] } });
+  assert.equal(text.getAttribute('font-size'), '25');
+  assert.match(text.getAttribute('font-family'), /^'Inter', 'Liberation Sans'/);
+  assert.equal(text.getAttribute('font-weight'), '700');
+  assert.equal(text.getAttribute('font-style'), 'italic');
+  const [first, second] = text.children;
+  assert.equal(first.tag, 'tspan');
+  assert.equal(first.getAttribute('x'), '-50');
+  assert.equal(first.getAttribute('y'), '-12.5');
+  assert.equal(first.getAttribute('textLength'), '30');
+  assert.equal(first.getAttribute('lengthAdjust'), 'spacingAndGlyphs');
+  assert.equal(first.textContent, 'Hi');
+  assert.equal(second.getAttribute('textLength'), null);
+  const unsafe = renderer.renderMobject({ type: 'text', text: 'x', font: "x'; }", layout: { em: 1, lines: [] } });
+  assert.doesNotMatch(unsafe.getAttribute('font-family'), /x';/);
+  const serif = renderer.renderMobject({ type: 'text', text: '-1', layout: { em: 1, family: 'serif',
+    lines: [{ text: '-1', x: 0, y: 0, length: 1 }] } });
+  assert.match(serif.getAttribute('font-family'), /Latin Modern Roman/);
+  assert.equal(serif.children[0].textContent, '\u22121');
 });
 
 test('primitive fill and stroke channels render independently, including zero opacity', () => {

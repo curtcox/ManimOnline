@@ -29,13 +29,16 @@ self.onmessage = event => {
       await runtime.runPythonAsync(source);
       runtime.globals.set('_source', code);
       runtime.globals.set('_scene_name', options.sceneName || null);
+      // Browser-measured MathTex ink sizes let Python place formulas exactly.
+      runtime.globals.set('_math_metrics', runtime.toPy(options.mathMetrics || {}));
       try {
-        const result = await runtime.runPythonAsync('render_scene(_source, _scene_name)');
+        const result = await runtime.runPythonAsync('render_scene(_source, _scene_name, _math_metrics)');
         if (result.length > 12 * 1024 * 1024) throw new Error('Preview is too large. Use fewer objects or shorter animations.');
         self.postMessage({ id, type: 'manim-result', sceneData: JSON.parse(result) });
       } finally {
         runtime.globals.delete('_source');
         runtime.globals.delete('_scene_name');
+        runtime.globals.delete('_math_metrics');
       }
     } catch (error) {
       self.postMessage({ id, type: 'error', error: String(error.message || error).slice(-8000) });

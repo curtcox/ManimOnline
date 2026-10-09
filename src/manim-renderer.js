@@ -466,14 +466,44 @@ const ManimRenderer = {
     text.setAttribute('fill', mobject.color || '#FFFFFF');
     text.setAttribute('stroke', mobject.stroke_color ?? mobject.color ?? '#FFFFFF');
     text.setAttribute('stroke-width', mobject.stroke_width ?? 0);
-    text.setAttribute('font-size', mobject.font_size || 24);
-    text.setAttribute('font-family', 'Arial, sans-serif');
-    text.setAttribute('text-anchor', 'middle');
-    text.setAttribute('dominant-baseline', 'middle');
     // Flip text back since canvas is y-inverted
     text.setAttribute('transform', 'scale(1, -1)');
     text.setAttribute('fill-opacity', mobject.fill_opacity ?? 1);
-    text.textContent = mobject.text || '';
+    const layout = mobject.layout;
+    if (!layout || !Array.isArray(layout.lines)) {
+      text.setAttribute('font-size', mobject.font_size || 24);
+      text.setAttribute('font-family', 'Arial, sans-serif');
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('dominant-baseline', 'middle');
+      text.textContent = mobject.text || '';
+      return text;
+    }
+    // Python lays out lines on the ink-centered origin with Liberation Sans or
+    // Computer Modern metrics; textLength pins each advance to that layout.
+    const family = layout.family === 'serif'
+      ? "'Latin Modern Roman', 'CMU Serif', 'Computer Modern', 'Times New Roman', serif"
+      : "'Liberation Sans', Arial, Helvetica, sans-serif";
+    const font = typeof mobject.font === 'string' && /^[\w .-]{1,128}$/.test(mobject.font) ? `'${mobject.font}', ` : '';
+    text.setAttribute('font-family', font + family);
+    text.setAttribute('font-size', layout.em * this.UNIT_SCALE);
+    const weights = { THIN: 100, ULTRALIGHT: 200, LIGHT: 300, SEMILIGHT: 350, BOOK: 380, MEDIUM: 500,
+      SEMIBOLD: 600, BOLD: 700, ULTRABOLD: 800, HEAVY: 900, ULTRAHEAVY: 950 };
+    if (weights[mobject.weight]) text.setAttribute('font-weight', weights[mobject.weight]);
+    if (mobject.slant === 'ITALIC' || mobject.slant === 'OBLIQUE') text.setAttribute('font-style', mobject.slant.toLowerCase());
+    text.setAttribute('xml:space', 'preserve');
+    text.setAttribute('style', 'white-space: pre');
+    for (const line of layout.lines) {
+      const span = document.createElementNS(this.SVG_NS, 'tspan');
+      span.setAttribute('x', line.x * this.UNIT_SCALE);
+      span.setAttribute('y', -line.y * this.UNIT_SCALE);
+      if (line.length > 0) {
+        span.setAttribute('textLength', line.length * this.UNIT_SCALE);
+        span.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+      }
+      // TeX numbers use a true minus sign; the advance is pinned by textLength.
+      span.textContent = layout.family === 'serif' ? line.text.replace(/-/g, '\u2212') : line.text;
+      text.appendChild(span);
+    }
     return text;
   },
 
@@ -485,8 +515,10 @@ const ManimRenderer = {
     if (!asset) throw new Error('MathTex glyphs have not been prepared.');
     const parsed = new DOMParser().parseFromString(asset.svg, 'image/svg+xml');
     const group = document.createElementNS(this.SVG_NS, 'g');
-    const scale = (mobject.font_size || 48) / 1000;
-    const [x, y, width, height] = asset.viewBox;
+    // Community's TeX em is font_size/96 scene units; MathJax uses 1000 units per em.
+    const scale = (mobject.font_size || 48) / 96 * this.UNIT_SCALE / 1000;
+    // Center the measured ink box, as Community centers dvisvgm output.
+    const [x, y, width, height] = asset.bbox || asset.viewBox;
     group.setAttribute('transform', `scale(1, -1) scale(${scale}) translate(${-x - width / 2}, ${-y - height / 2})`);
     group.setAttribute('fill', mobject.color || '#FFFFFF');
     group.setAttribute('fill-opacity', mobject.fill_opacity ?? 1);
