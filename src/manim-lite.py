@@ -1292,7 +1292,9 @@ class Mobject:
             if member.position[2]:
                 return True
             state = member.__dict__
-            points = list(state.get('vertices') or [])
+            vertices = state.get('vertices')
+            # Graph keeps a vertex dict under the same name; only point lists count.
+            points = list(vertices) if isinstance(vertices, list) else []
             for key in ('start', 'end', 'shaft_start', 'shaft_end'):
                 if state.get(key) is not None:
                     points.append(state[key])
@@ -6818,6 +6820,95 @@ class Axes(VGroup, CoordinateSystem):
 
     def get_lines_to_point(self, point, **kwargs):
         return VGroup(self.get_horizontal_line(point,**kwargs),self.get_vertical_line(point,**kwargs))
+
+    def get_z_axis(self):
+        return self.get_axis(2)
+
+    @staticmethod
+    def _create_label_tex(label, constructor=None, **kwargs):
+        if isinstance(label, Mobject):
+            return label
+        return (MathTex if constructor is None else constructor)(str(label), **kwargs)
+
+    def get_graph_label(self, graph, label='f(x)', x_val=None, direction=RIGHT, buff=MED_SMALL_BUFF,
+                        color=None, dot=False, dot_config=None):
+        """Community's graph label: beside the graph at x_val, or its last on-screen point."""
+        color = graph.get_color() if color is None else color
+        label_object = self._create_label_tex(label).set_color(color)
+        if x_val is None:
+            # Search from right to left, as Community does.
+            low, high = self.x_range[0], self.x_range[1]
+            for index in range(100):
+                x = high + (low - high) * index / 99
+                point = self.input_to_graph_point(x, graph)
+                if point[1] < config.frame_y_radius:
+                    break
+        else:
+            point = self.input_to_graph_point(x_val, graph)
+        label_object.next_to(point, direction, buff=buff)
+        label_object.shift_onto_screen()
+        if dot:
+            marker = Dot(point=point, **(dot_config or {}))
+            label_object.add(marker)
+            label_object.dot = marker
+        return label_object
+
+    def get_vertical_lines_to_graph(self, graph, x_range=None, num_lines=20, **kwargs):
+        x_range = self.x_range if x_range is None else list(x_range)
+        if isinstance(num_lines, bool) or not isinstance(num_lines, numbers.Integral) or not 0 <= num_lines <= 1000:
+            raise ValueError('num_lines must be an integer from 0 to 1000')
+        values = [x_range[0] + (x_range[1] - x_range[0]) * (i / (num_lines - 1) if num_lines > 1 else 0)
+                  for i in range(num_lines)]
+        return VGroup(*(self.get_vertical_line(self.i2gp(x, graph), **kwargs) for x in values))
+
+    def get_T_label(self, x_val, graph, label=None, label_color=None, triangle_size=MED_SMALL_BUFF,
+                    triangle_color=WHITE, line_func=Line, line_color=PURE_YELLOW):
+        group = VGroup()
+        triangle = RegularPolygon(n=3, start_angle=PI / 2, stroke_width=0).set_fill(color=triangle_color, opacity=1)
+        triangle.height = triangle_size
+        triangle.move_to(self.coords_to_point(x_val, 0), UP)
+        if label is not None:
+            options = {} if label_color is None else {'color': label_color}
+            group.add(self._create_label_tex(label, **options).next_to(triangle, DOWN))
+        line = self.get_vertical_line(self.i2gp(x_val, graph), color=line_color, line_func=line_func)
+        return group.add(triangle, line)
+
+    def plot_implicit_curve(self, func, min_depth=5, max_quads=1500, **kwargs):
+        if not callable(func):
+            raise TypeError('plot_implicit_curve expects func(x, y)')
+        x_scale, y_scale = self.get_x_axis().scaling, self.get_y_axis().scaling
+        graph = ImplicitFunction(lambda x, y: func(x_scale.function(x), y_scale.function(y)),
+                                 x_range=self.x_range[:2], y_range=self.y_range[:2],
+                                 min_depth=min_depth, max_quads=max_quads, **kwargs)
+        graph.stretch(self.get_x_unit_size(), 0, about_point=ORIGIN).stretch(self.get_y_unit_size(), 1, about_point=ORIGIN)
+        return graph.shift(self.get_origin())
+
+    def plot_polar_graph(self, r_func, theta_range=None, **kwargs):
+        if not callable(r_func):
+            raise TypeError('plot_polar_graph expects r(theta)')
+        theta_range = [0, TAU] if theta_range is None else theta_range
+        graph = ParametricFunction(lambda theta: self.pr2pt(r_func(theta), theta), t_range=theta_range, **kwargs)
+        graph.underlying_function = r_func
+        return graph
+
+    def plot_line_graph(self, x_values, y_values, z_values=None, line_color=PURE_YELLOW, add_vertex_dots=True,
+                        vertex_dot_radius=DEFAULT_DOT_RADIUS, vertex_dot_style=None, **kwargs):
+        xs = list(x_values.tolist() if hasattr(x_values, 'tolist') else x_values)
+        ys = list(y_values.tolist() if hasattr(y_values, 'tolist') else y_values)
+        zs = [0] * len(xs) if z_values is None else list(z_values.tolist() if hasattr(z_values, 'tolist') else z_values)
+        if not len(xs) == len(ys) == len(zs):
+            raise ValueError('plot_line_graph needs equally many x, y (and z) values')
+        if len(xs) > 10000:
+            raise ValueError('plot_line_graph is limited to 10000 vertices')
+        vertices = [self.coords_to_point(x, y, z) if z else self.coords_to_point(x, y) for x, y, z in zip(xs, ys, zs)]
+        line_graph = VDict()
+        graph = VMobject(color=line_color, **kwargs)
+        graph.set_points_as_corners(vertices)
+        line_graph['line_graph'] = graph
+        if add_vertex_dots:
+            style = vertex_dot_style or {}
+            line_graph['vertex_dots'] = VGroup(*(Dot(point=vertex, radius=vertex_dot_radius, **style) for vertex in vertices))
+        return line_graph
 
     def plot(self, function, x_range=None, use_vectorized=False, **kwargs):
         if not callable(function):
@@ -12567,9 +12658,300 @@ def _tree_layout(tree, root_vertex=None, scale=2, vertex_spacing=None, orientati
     return {v: [(x - center[0]) * sx, (y - center[1]) * sy] for v, (x, y) in pos.items()}
 
 
+def _graph_matrix(graph):
+    """networkx.to_numpy_array (unweighted), symmetrized for directed graphs."""
+    nodes = graph.nodes
+    index = {node: i for i, node in enumerate(nodes)}
+    matrix = [[0.0] * len(nodes) for _ in nodes]
+    for u, v in graph.edges:
+        matrix[index[u]][index[v]] += 1.0
+        if not graph.directed and u != v:
+            matrix[index[v]][index[u]] += 1.0
+    if graph.directed:
+        matrix = [[matrix[i][j] + matrix[j][i] for j in range(len(nodes))] for i in range(len(nodes))]
+    return matrix
+
+
+def _symmetric_eigen(matrix):
+    """Eigenvalues and column eigenvectors of a symmetric matrix (NumPy when loaded, else Jacobi)."""
+    try:
+        import numpy
+    except ImportError:
+        numpy = None
+    if numpy is not None:
+        values, vectors = numpy.linalg.eig(numpy.array(matrix, dtype=float))
+        return [float(v) for v in numpy.real(values)], numpy.real(vectors).tolist()
+    n = len(matrix)
+    a = [row[:] for row in matrix]
+    v = [[float(i == j) for j in range(n)] for i in range(n)]
+    for _ in range(100):
+        off = sum(a[i][j] ** 2 for i in range(n) for j in range(n) if i != j)
+        if off < 1e-22:
+            break
+        for p in range(n):
+            for q in range(p + 1, n):
+                if abs(a[p][q]) < 1e-300:
+                    continue
+                theta = (a[q][q] - a[p][p]) / (2 * a[p][q])
+                t = (1 if theta >= 0 else -1) / (abs(theta) + math.sqrt(theta * theta + 1))
+                c = 1 / math.sqrt(t * t + 1)
+                s_ = t * c
+                for k in range(n):
+                    akp, akq = a[k][p], a[k][q]
+                    a[k][p], a[k][q] = c * akp - s_ * akq, s_ * akp + c * akq
+                for k in range(n):
+                    apk, aqk = a[p][k], a[q][k]
+                    a[p][k], a[q][k] = c * apk - s_ * aqk, s_ * apk + c * aqk
+                for k in range(n):
+                    vkp, vkq = v[k][p], v[k][q]
+                    v[k][p], v[k][q] = c * vkp - s_ * vkq, s_ * vkp + c * vkq
+    return [a[i][i] for i in range(n)], v
+
+
+def _spectral_layout(graph, weight='weight', scale=2, center=None, dim=2):
+    """networkx spectral_layout: the Laplacian's smallest nonzero eigenvectors."""
+    scale, nodes = _layout_scale(scale), graph.nodes
+    if len(nodes) > 500:
+        raise ValueError('The spectral layout is limited to 500 vertices')
+    if len(nodes) <= 2:
+        return {node: [0.0, 0.0] for node in nodes}
+    matrix = _graph_matrix(graph)
+    laplacian = [[(sum(row) if i == j else 0.0) - row[j] for j in range(len(row))] for i, row in enumerate(matrix)]
+    values, vectors = _symmetric_eigen(laplacian)
+    order = sorted(range(len(values)), key=lambda i: values[i])[1:3]
+    points = [[vectors[row][order[0]], vectors[row][order[1]]] for row in range(len(nodes))]
+    return dict(zip(nodes, _rescale_layout(points, scale)))
+
+
+def _dcstep(stx, fx, dx, sty, fy, dy, stp, fp, dp, brackt, stpmin, stpmax):
+    """MINPACK-2 dcstep (as ported in SciPy): a safeguarded cubic/quadratic step."""
+    sgnd = math.copysign(1, dp) * math.copysign(1, dx) if dp and dx else 0.0
+    if fp > fx:
+        theta = 3.0 * (fx - fp) / (stp - stx) + dx + dp
+        s = max(abs(theta), abs(dx), abs(dp))
+        gamma = s * math.sqrt((theta / s) ** 2 - (dx / s) * (dp / s))
+        if stp < stx:
+            gamma = -gamma
+        p = (gamma - dx) + theta
+        q = ((gamma - dx) + gamma) + dp
+        stpc = stx + p / q * (stp - stx)
+        stpq = stx + ((dx / ((fx - fp) / (stp - stx) + dx)) / 2.0) * (stp - stx)
+        stpf = stpc if abs(stpc - stx) <= abs(stpq - stx) else stpc + (stpq - stpc) / 2.0
+        brackt = True
+    elif sgnd < 0.0:
+        theta = 3 * (fx - fp) / (stp - stx) + dx + dp
+        s = max(abs(theta), abs(dx), abs(dp))
+        gamma = s * math.sqrt((theta / s) ** 2 - (dx / s) * (dp / s))
+        if stp > stx:
+            gamma = -gamma
+        p = (gamma - dp) + theta
+        q = ((gamma - dp) + gamma) + dx
+        stpc = stp + p / q * (stx - stp)
+        stpq = stp + (dp / (dp - dx)) * (stx - stp)
+        stpf = stpc if abs(stpc - stp) > abs(stpq - stp) else stpq
+        brackt = True
+    elif abs(dp) < abs(dx):
+        theta = 3 * (fx - fp) / (stp - stx) + dx + dp
+        s = max(abs(theta), abs(dx), abs(dp))
+        gamma = s * math.sqrt(max(0, (theta / s) ** 2 - (dx / s) * (dp / s)))
+        if stp > stx:
+            gamma = -gamma
+        p = (gamma - dp) + theta
+        q = (gamma + (dx - dp)) + gamma
+        r = p / q
+        if r < 0 and gamma != 0:
+            stpc = stp + r * (stx - stp)
+        elif stp > stx:
+            stpc = stpmax
+        else:
+            stpc = stpmin
+        stpq = stp + (dp / (dp - dx)) * (stx - stp)
+        if brackt:
+            stpf = stpc if abs(stpc - stp) < abs(stpq - stp) else stpq
+            stpf = min(stp + 0.66 * (sty - stp), stpf) if stp > stx else max(stp + 0.66 * (sty - stp), stpf)
+        else:
+            stpf = stpc if abs(stpc - stp) > abs(stpq - stp) else stpq
+            stpf = min(max(stpf, stpmin), stpmax)
+    else:
+        if brackt:
+            theta = 3.0 * (fp - fy) / (sty - stp) + dy + dp
+            s = max(abs(theta), abs(dy), abs(dp))
+            gamma = s * math.sqrt((theta / s) ** 2 - (dy / s) * (dp / s))
+            if stp > sty:
+                gamma = -gamma
+            p = (gamma - dp) + theta
+            q = ((gamma - dp) + gamma) + dy
+            stpf = stp + p / q * (sty - stp)
+        elif stp > stx:
+            stpf = stpmax
+        else:
+            stpf = stpmin
+    if fp > fx:
+        sty, fy, dy = stp, fp, dp
+    else:
+        if sgnd < 0:
+            sty, fy, dy = stx, fx, dx
+        stx, fx, dx = stp, fp, dp
+    return stx, fx, dx, sty, fy, dy, stpf, brackt
+
+
+def _dcsrch(phi, stp, f, g, ftol=1e-3, gtol=0.9, xtol=0.1, stpmin=0.0, stpmax=1e10, maxls=20):
+    """MINPACK-2 dcsrch line search, as L-BFGS-B calls it. phi(stp) -> (f, g).
+
+    Returns (stp, f, g, evaluations, ok) for the last evaluated step."""
+    finit, ginit = f, g
+    gtest = ftol * ginit
+    width, width1 = stpmax - stpmin, (stpmax - stpmin) / 0.5
+    stx, fx, gx, sty, fy, gy = 0.0, finit, ginit, 0.0, finit, ginit
+    stmin, stmax = 0.0, stp + 4.0 * stp
+    brackt, stage = False, 1
+    for evaluations in range(1, maxls + 1):
+        f, g = phi(stp)
+        ftest = finit + stp * gtest
+        if stage == 1 and f <= ftest and g >= 0:
+            stage = 2
+        if ((brackt and (stp <= stmin or stp >= stmax)) or (brackt and stmax - stmin <= xtol * stmax)
+                or (stp == stpmax and f <= ftest and g <= gtest) or (stp == stpmin and (f > ftest or g >= gtest))
+                or (f <= ftest and abs(g) <= gtol * -ginit)):
+            return stp, f, g, evaluations, True
+        if stage == 1 and f <= fx and f > ftest:
+            fm, fxm, fym = f - stp * gtest, fx - stx * gtest, fy - sty * gtest
+            gm, gxm, gym = g - gtest, gx - gtest, gy - gtest
+            stx, fxm, gxm, sty, fym, gym, stp, brackt = _dcstep(stx, fxm, gxm, sty, fym, gym, stp, fm, gm,
+                                                                brackt, stmin, stmax)
+            fx, fy, gx, gy = fxm + stx * gtest, fym + sty * gtest, gxm + gtest, gym + gtest
+        else:
+            stx, fx, gx, sty, fy, gy, stp, brackt = _dcstep(stx, fx, gx, sty, fy, gy, stp, f, g,
+                                                            brackt, stmin, stmax)
+        if brackt:
+            if abs(sty - stx) >= 0.66 * width1:
+                stp = stx + 0.5 * (sty - stx)
+            width1, width = width, abs(sty - stx)
+            stmin, stmax = min(stx, sty), max(stx, sty)
+        else:
+            stmin, stmax = stp + 1.1 * (stp - stx), stp + 4.0 * (stp - stx)
+        stp = min(max(stp, stpmin), stpmax)
+        if (brackt and (stp <= stmin or stp >= stmax)) or (brackt and stmax - stmin <= xtol * stmax):
+            stp = stx
+        if not math.isfinite(stp):
+            break
+    return stp, f, g, maxls, False
+
+
+def _lbfgs(function, x, history=10, pgtol=1e-5, factr=1e7, max_iterations=15000):
+    """SciPy's L-BFGS-B without bounds: quasi-Newton directions from the last ten pairs,
+    a first step of 1/|g|, the dcsrch line search and SciPy's stopping tests."""
+    eps = 2.220446049250313e-16
+    f, g = function(x)
+    pairs = []
+    for iteration in range(max_iterations):
+        if max(abs(v) for v in g) <= pgtol:
+            break
+        q = g[:]
+        alphas = []
+        for s_, y, rho in reversed(pairs):
+            a = rho * sum(si * qi for si, qi in zip(s_, q))
+            alphas.append(a)
+            q = [qi - a * yi for qi, yi in zip(q, y)]
+        if pairs:
+            s_, y, rho = pairs[-1]
+            gamma = (1 / rho) / sum(yi * yi for yi in y)
+            q = [gamma * qi for qi in q]
+        for (s_, y, rho), a in zip(pairs, reversed(alphas)):
+            b = rho * sum(yi * ri for yi, ri in zip(y, q))
+            q = [ri + si * (a - b) for ri, si in zip(q, s_)]
+        d = [-qi for qi in q]
+        gd = sum(gi * di for gi, di in zip(g, d))
+        if gd >= 0:
+            pairs, d = [], [-gi for gi in g]
+            gd = -sum(gi * gi for gi in g)
+        dnorm = math.sqrt(sum(di * di for di in d))
+        stp = min(1 / dnorm, 1e10) if iteration == 0 else 1.0
+        state = {}
+        def phi(step):
+            trial = [xi + step * di for xi, di in zip(x, d)]
+            value, gradient = function(trial)
+            state.update(x=trial, f=value, g=gradient)
+            return value, sum(gi * di for gi, di in zip(gradient, d))
+        stp, _, _, _, ok = _dcsrch(phi, stp, f, gd)
+        if not ok and not pairs:
+            break
+        fold, gold = f, g
+        x, f, g = state['x'], state['f'], state['g']
+        if max(abs(v) for v in g) <= pgtol:
+            break
+        if fold - f <= factr * eps * max(abs(fold), abs(f), 1):
+            break
+        s_ = [stp * di for di in d]
+        y = [gn - go for gn, go in zip(g, gold)]
+        dr = sum(yi * si for yi, si in zip(y, s_))
+        if dr > eps * (-gd * stp):
+            pairs.append((s_, y, 1 / dr))
+            if len(pairs) > history:
+                pairs.pop(0)
+    return x
+
+
+def _kamada_kawai_layout(graph, dist=None, pos=None, weight='weight', scale=2, center=None, dim=2):
+    """networkx kamada_kawai_layout: shortest-path spring energy from a circular start."""
+    scale, nodes = _layout_scale(scale), graph.nodes
+    count = len(nodes)
+    if count == 0:
+        return {}
+    if count > 300:
+        raise ValueError('The Kamada-Kawai layout is limited to 300 vertices')
+    if dist is None:
+        neighbors = {node: [] for node in nodes}
+        for u, v in graph.edges:
+            neighbors[u].append(v)
+            if not graph.directed:
+                neighbors[v].append(u)
+        dist = {}
+        for source in nodes:
+            lengths, frontier = {source: 0}, [source]
+            while frontier:
+                following = []
+                for node in frontier:
+                    for other in neighbors[node]:
+                        if other not in lengths:
+                            lengths[other] = lengths[node] + 1
+                            following.append(other)
+                frontier = following
+            dist[source] = lengths
+    matrix = [[float(dist.get(a, {}).get(b, 1e6)) for b in nodes] for a in nodes]
+    start = _circular_layout(graph, scale=1) if pos is None else {n: list(pos[n])[:2] for n in nodes}
+    invdist = [[1 / (matrix[i][j] + (1e-3 if i == j else 0)) for j in range(count)] for i in range(count)]
+    meanweight = 1e-3
+    def cost(vector):
+        points = [(vector[2 * i], vector[2 * i + 1]) for i in range(count)]
+        total, grad = 0.0, [0.0] * (2 * count)
+        for i in range(count):
+            for j in range(count):
+                if i == j:
+                    continue
+                dx, dy = points[i][0] - points[j][0], points[i][1] - points[j][1]
+                separation = math.hypot(dx, dy)
+                offset = separation * invdist[i][j] - 1.0
+                total += 0.5 * offset * offset
+                factor = invdist[i][j] * offset / separation if separation else 0.0
+                grad[2 * i] += factor * dx
+                grad[2 * i + 1] += factor * dy
+                grad[2 * j] -= factor * dx
+                grad[2 * j + 1] -= factor * dy
+        sx, sy = sum(p[0] for p in points), sum(p[1] for p in points)
+        total += 0.5 * meanweight * (sx * sx + sy * sy)
+        for i in range(count):
+            grad[2 * i] += meanweight * sx
+            grad[2 * i + 1] += meanweight * sy
+        return total, grad
+    solution = _lbfgs(cost, [value for node in nodes for value in start[node][:2]])
+    points = [[solution[2 * i], solution[2 * i + 1]] for i in range(count)]
+    return dict(zip(nodes, _rescale_layout(points, scale)))
+
+
 _GRAPH_LAYOUTS = {'circular': _circular_layout, 'shell': _shell_layout, 'spiral': _spiral_layout,
                   'partite': _partite_layout, 'random': _random_layout, 'spring': _spring_layout,
-                  'tree': _tree_layout}
+                  'tree': _tree_layout, 'spectral': _spectral_layout, 'kamada_kawai': _kamada_kawai_layout}
 
 
 def _determine_graph_layout(graph, layout='spring', layout_scale=2, layout_config=None):
@@ -12577,9 +12959,9 @@ def _determine_graph_layout(graph, layout='spring', layout_scale=2, layout_confi
     if isinstance(layout, dict):
         return {node: Vector(point) for node, point in layout.items()}
     if isinstance(layout, str):
-        if layout in ('kamada_kawai', 'planar', 'spectral'):
-            raise NotImplementedError(f"The '{layout}' layout needs NumPy/SciPy solvers; "
-                                      'use circular, shell, spiral, spring, random, partite, tree or a dict')
+        if layout == 'planar':
+            raise NotImplementedError("The 'planar' layout needs networkx's planarity test; use circular, "
+                                      'shell, spiral, spring, random, partite, tree, spectral, kamada_kawai or a dict')
         if layout not in _GRAPH_LAYOUTS:
             raise ValueError(f"The layout '{layout}' is neither a recognized layout, a layout function,"
                              'nor a vertex placement dictionary.')

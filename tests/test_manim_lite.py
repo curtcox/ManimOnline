@@ -546,7 +546,7 @@ self.play(stream.end_animation())""")
         for bad in (lambda: lite.Graph([1],[],layout='tree'),lambda: lite.Graph([1,2],[(1,2),(2,1)],layout='nope'),
                     lambda: lite.Graph([1,2,3],[(1,2),(2,3),(3,1)],layout='tree',root_vertex=1)):
             with self.assertRaises(ValueError): bad()
-        with self.assertRaises(NotImplementedError): lite.Graph([1,2],[(1,2)],layout='kamada_kawai')
+        with self.assertRaises(NotImplementedError): lite.Graph([1,2],[(1,2)],layout='planar')
         labeled=lite.Graph([1,2],[(1,2)],labels=True,layout={1:lite.LEFT,2:lite.RIGHT})
         self.assertIsInstance(labeled[1],lite.LabeledDot)
 
@@ -8038,6 +8038,23 @@ class Demo(Scene):
         self.assertAlmostEqual(rec[15][1], 3.0, 3)
         self.assertAlmostEqual(rec[-1][0], 96.667, 3)
         self.assertAlmostEqual(rec[-1][1], 1.856, 3)
+
+    def test_kamada_kawai_and_spectral_layouts_match_networkx(self):
+        # networkx 3.x layouts (SciPy L-BFGS-B for Kamada-Kawai, NumPy eig for spectral).
+        vertices = [1, 2, 3, 4, 5, 6, 7, 8]
+        edges = [(1,7),(1,8),(2,3),(2,4),(2,5),(2,8),(3,4),(6,1),(6,2),(6,3),(7,2),(7,4)]
+        expected = {
+            ('kamada_kawai', lite.Graph): {1: [1.690134, -0.450872], 2: [-0.213706, 0.109528], 3: [-0.129278, 1.702023], 4: [-1.224894, 0.741994], 5: [-2.0, -0.701481], 6: [1.194323, 1.042196], 7: [-0.192644, -0.936038], 8: [0.876065, -1.507349]},
+            ('spectral', lite.Graph): {1: [-0.532779, 0.74418], 2: [0.088149, -0.137817], 3: [-0.233164, -0.938834], 4: [-0.233164, -0.938834], 5: [2.0, 0.229612], 6: [-0.33159, -0.237515], 7: [-0.33159, -0.237515], 8: [-0.425861, 1.516724]},
+            ('kamada_kawai', lite.DiGraph): {1: [0.984772, -1.767128], 2: [-0.051907, 0.079141], 3: [-0.330107, 1.627919], 4: [-1.622623, 0.229785], 5: [-1.404015, 1.512472], 6: [1.298669, 0.570998], 7: [-0.87479, -1.485118], 8: [2.0, -0.76807]},
+        }
+        for (layout, kind), points in expected.items():
+            with self.subTest(layout=layout, kind=kind.__name__):
+                graph = kind(vertices, edges, layout=layout)
+                for vertex, point in points.items():
+                    self.assertPointAlmostEqual(graph[vertex].get_center()[:2], point, 4)
+        with self.assertRaisesRegex(NotImplementedError, 'planar'):
+            lite.Graph(vertices, edges, layout='planar')
 
 
 if __name__ == '__main__':
