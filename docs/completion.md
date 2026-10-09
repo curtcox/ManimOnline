@@ -287,3 +287,6 @@ deterministic layouts; SciPy-based layouts and networkx graph objects are unavai
 
 Union, Intersection, Difference and Exclusion are implemented with Community area and
 bounds checks; coincident curved (non-straight) boundaries are approximate.
+
+Code is implemented with Community geometry checks (0.001 units) and Pygments colors;
+code_file and custom Pygments Style classes from user code remain unsupported.

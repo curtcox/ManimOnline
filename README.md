@@ -1493,3 +1493,9 @@ The **Boolean shape operations** example covers `Union`, `Intersection`,
 `Difference` and `Exclusion`. Results keep cubic curves (circles stay smooth) and
 separate contours for holes; areas and bounds match Community's skia-pathops results,
 though the starting point and curve count of each contour differ.
+
+The **Syntax-highlighted code** example covers `Code` with Pygments styles, line
+numbers and `rectangle`/`window` backgrounds. The worker loads Pyodide's Pygments
+package for sources that call `Code(...)`; listings use DejaVu Sans Mono metrics
+(Community's usual "Monospace" match) and `code_string` (there is no file system for
+`code_file`). Text with a monospace `font` now uses those metrics everywhere.

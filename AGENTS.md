@@ -573,3 +573,8 @@ update pass after completion, matching Community.
 Read `examples/boolean_scene.py` for boolean outline operations. The engine lives in
 `_boolean`/`_BOOLEAN_RULES`; outputs must stay closed cubic contours with explicit
 subpath_lengths. Tests compare areas/bounds with skia-pathops results, not point order.
+
+Read `examples/code_scene.py` for Code listings. The worker loads Pygments only for
+sources matching `Code(`; keep `_code_tokens` working without it (plain colors).
+Monospace layout depends on `_is_mono(font)` being part of the text-layout cache key.
+Pointless members (`_is_pointless`) are excluded from family bounds.

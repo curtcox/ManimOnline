@@ -2278,3 +2278,11 @@ classify each piece's midpoint by nonzero winding against the other operand. Pie
 lying on the other boundary are "same" or "opposite" by tangent direction, so shared
 edges merge correctly. Kept pieces are relinked into closed contours with explicit
 `subpath_lengths`. Union and Intersection fold pairwise over more than two operands.
+
+`_MONO_GLYPHS` holds DejaVu Sans Mono advances and ink boxes; any Text whose `font`
+names a monospace family uses it for layout, glyph explosion and letter reveals, and
+the renderer draws the `mono` layout family. Code follows Community's construction:
+Pygments colors each character, a ` pA<n>` suffix on the first/last lines fixes the
+vertical bounds before being hidden (kept as zero-width vertical lines for the
+background), and line numbers align to the suffix's digits. Members without points
+(empty Text lines, empty groups) no longer contribute to family bounds, as in Community.

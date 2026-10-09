@@ -333,6 +333,40 @@ self.play(d[2].animate.shift(UP*2))""")
         frame=render('u=Union(Circle(), Square().shift(RIGHT), fill_opacity=.5)\nself.play(Transform(u, Exclusion(Circle(), Square().shift(RIGHT))))')['frames'][-1]
         self.assertEqual(frame['mobjects'][0]['type'],'bezierpath')
 
+    def test_monospace_text_and_code_listing_geometry(self):
+        self.assertAlmostEqual(lite.Text('def f(x):',font='Monospace',font_size=24).get_width(),1.706,places=3)
+        paragraph=lite.Paragraph('ab','','    cd',font='Monospace',font_size=24,line_spacing=.5)
+        self.assertEqual(len(paragraph),3)
+        # Community leaves the empty middle line out of the paragraph's bounds.
+        self.assertAlmostEqual(paragraph.get_width(),paragraph[2].get_right()[0]-paragraph[0].get_left()[0])
+        source="def f(x):\n    return x + 1  # add\n\nprint(f(2))"
+        code=lite.Code(code_string=source,language='python')
+        # Geometry measured with Manim Community 0.22 (DejaVu Sans Mono).
+        self.assertEqual((round(code.get_width(),2),round(code.get_height(),3)),(5.58,2.048))
+        self.assertAlmostEqual(code.get_center()[0],-.209,places=2)
+        self.assertEqual([round(line.get_center()[1],3) for line in code.code_lines],[.575,.22,0,-.562])
+        self.assertEqual([round(n.get_center()[1],2) for n in code.line_numbers],[.59,.22,-.16,-.53])
+        self.assertEqual([len(line) for line in code.code_lines],[8,13,0,11])
+        self.assertEqual(code.background.fill_color,'#000000')
+        bare=lite.Code(code_string='x = 1',add_line_numbers=False,background='window')
+        self.assertFalse(hasattr(bare,'line_numbers'))
+        self.assertEqual([len(bare.background.children),len(bare.background.children[0])],[1,3])
+        with self.assertRaises(ValueError): lite.Code()
+        with self.assertRaises(NotImplementedError): lite.Code(code_file='x.py')
+        with self.assertRaises(ValueError): lite.Code(code_string='x',background='frame')
+        self.assertEqual(len(render('self.add(Code(code_string="print(1)"))')['frames'][0]['mobjects']),1)
+
+    @unittest.skipUnless(importlib.util.find_spec('pygments'),'Pygments is loaded by the browser worker')
+    def test_code_listing_uses_pygments_colors(self):
+        code=lite.Code(code_string="def f(x):\n    return x + 1  # add\n\nprint(f(2))",language='python')
+        # Per-glyph colors from Community's vim style.
+        self.assertEqual([g.color for g in code.code_lines[0]],['#CDCD00']*3+['#CCCCCC']*5)
+        self.assertEqual([g.color for g in code.code_lines[1]],['#CDCD00']*6+['#CCCCCC','#3399CC','#CD00CD']+['#000080']*4)
+        monokai=lite.Code(code_string='def f(x):',language='python',formatter_style='monokai',background='window')
+        self.assertEqual(monokai.background.fill_color,'#272822')
+        self.assertEqual([g.color for g in monokai.code_lines[0]][:4],['#66D9EF']*3+['#A6E22E'])
+        with self.assertRaises(ValueError): lite.Code(code_string='x',language='no-such-language')
+
     def test_set_style_routes_fill_and_stroke(self):
         square=lite.Square().set_style(fill_color=lite.RED,fill_opacity=.5,stroke_color=lite.BLUE,
                                        stroke_width=6,stroke_opacity=.25,background_stroke_width=0)

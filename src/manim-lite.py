@@ -1007,10 +1007,20 @@ class Mobject:
         return (min(p[0] for p in points), min(p[1] for p in points),
                 max(p[0] for p in points), max(p[1] for p in points))
 
+    def _is_pointless(self):
+        """Community leaves members without points (empty text or groups) out of bounds."""
+        if self._type in ('mobject', 'vgroup', 'valuetracker'):
+            return all(child._is_pointless() for child in self.children)
+        if self._type == 'text' and not self.children:
+            return not self.text.strip()
+        return False
+
     def _local_bounds(self):
         if not self.children:
             return self._own_local_bounds()
-        bounds = [child._bounds() for child in self.children]
+        bounds = [child._bounds() for child in self.children if not child._is_pointless()]
+        if not bounds:
+            return self._own_local_bounds()
         has_outline = self._type not in ('mobject','vgroup','valuetracker')
         if self._type in ('polyline','polygon') and not self.vertices:
             has_outline = False
@@ -3339,6 +3349,21 @@ class Triangle(RegularPolygon):
 # (advance, x_min, x_max, y_min, y_max). The renderer draws this family and pins
 # each line's advance with textLength, so preview bounds match the drawn text.
 _SANS_GLYPHS = {' ':(278,0,0,0,0), '!':(278,90,187,0,688), '"':(355,42,312,472,688), '#':(556,4,551,0,684), '$':(556,11,540,-69,740), '%':(889,36,854,-6,694), '&':(667,35,651,-10,692), "'":(191,51,141,472,688), '(':(333,62,327,-207,725), ')':(333,6,271,-207,725), '*':(389,16,374,337,688), '+':(584,49,535,88,577), ',':(278,90,188,-128,107), '-':(333,44,289,227,305), '.':(278,91,187,0,107), '/':(278,0,278,-10,725), '0':(556,39,517,-10,698), '1':(556,76,507,0,688), '2':(556,50,506,0,698), '3':(556,38,512,-10,698), '4':(556,23,527,0,688), '5':(556,40,514,-10,688), '6':(556,51,512,-10,698), '7':(556,51,506,0,688), '8':(556,43,513,-10,698), '9':(556,47,509,-10,698), ':':(278,91,187,0,528), ';':(278,90,188,-128,528), '<':(584,49,535,75,583), '=':(584,49,535,168,490), '>':(584,49,535,75,583), '?':(556,41,519,0,698), '@':(1015,79,929,-138,725), 'A':(667,2,665,0,688), 'B':(667,82,614,0,688), 'C':(722,51,684,-10,698), 'D':(722,82,674,0,688), 'E':(667,82,624,0,688), 'F':(611,82,571,0,688), 'G':(778,50,703,-10,698), 'H':(722,82,641,0,688), 'I':(278,92,186,0,688), 'J':(500,16,426,-10,688), 'K':(667,82,656,0,688), 'L':(556,82,523,0,688), 'M':(833,82,751,0,688), 'N':(722,82,641,0,688), 'O':(778,47,730,-10,698), 'P':(667,82,614,0,688), 'Q':(778,47,730,-189,698), 'R':(722,82,676,0,688), 'S':(667,45,621,-10,698), 'T':(611,22,588,0,688), 'U':(722,77,645,-10,688), 'V':(667,4,663,0,688), 'W':(944,4,940,0,688), 'X':(667,22,646,0,688), 'Y':(667,22,645,0,688), 'Z':(611,32,580,0,688), '[':(278,71,270,-208,725), '\\':(278,0,278,-10,725), ']':(278,8,207,-208,725), '^':(469,5,464,329,688), '_':(556,-15,567,-199,-135), '`':(333,52,259,586,736), 'a':(556,42,556,-10,538), 'b':(556,64,514,-10,725), 'c':(500,42,474,-10,538), 'd':(556,42,492,-10,725), 'e':(556,42,512,-10,538), 'f':(278,14,279,0,724), 'g':(556,42,492,-208,537), 'h':(556,69,491,0,725), 'i':(222,67,155,0,725), 'j':(222,-24,155,-208,725), 'k':(500,67,501,0,725), 'l':(222,67,155,0,725), 'm':(833,66,767,0,538), 'n':(556,66,491,0,538), 'o':(556,42,514,-10,538), 'p':(556,64,514,-208,538), 'q':(556,42,492,-208,538), 'r':(333,66,316,0,538), 's':(500,28,464,-10,537), 't':(278,15,271,-8,646), 'u':(556,65,490,-10,528), 'v':(500,3,497,0,528), 'w':(722,-1,725,0,528), 'x':(500,11,489,0,528), 'y':(500,2,498,-208,528), 'z':(500,41,450,0,528), '{':(334,17,316,-208,725), '|':(260,89,170,-212,725), '}':(334,17,316,-208,725), '~':(584,45,539,270,394), '\xa0':(278,0,0,0,0), '¡':(333,118,215,-160,528), '¢':(556,66,497,-15,688), '£':(556,28,539,0,698), '¤':(556,55,501,110,556), '¥':(556,-1,558,0,688), '¦':(260,89,170,-212,725), '§':(556,56,500,-84,725), '¨':(333,22,294,595,685), '©':(737,15,721,-8,698), 'ª':(370,13,374,318,699), '«':(556,41,516,69,459), '¬':(584,49,535,88,368), '\xad':(333,44,289,227,305), '®':(737,15,721,-8,698), '¯':(552,-8,561,709,755), '°':(400,60,340,420,698), '±':(549,32,518,0,595), '²':(333,20,314,275,694), '³':(333,13,313,269,694), '´':(333,35,242,586,736), 'µ':(576,68,553,-208,528), '¶':(537,39,495,-129,688), '·':(333,119,214,218,325), '¸':(333,58,236,-212,0), '¹':(333,39,311,275,688), 'º':(365,13,353,318,699), '»':(556,41,516,69,459), '¼':(834,27,845,-18,688), '½':(834,27,807,0,688), '¾':(834,36,845,-18,694), '¿':(611,64,542,-170,528), 'À':(667,2,665,0,867), 'Á':(667,2,665,0,867), 'Â':(667,2,665,0,874), 'Ã':(667,2,665,0,878), 'Ä':(667,2,665,0,837), 'Å':(667,2,665,0,873), 'Æ':(1000,12,957,0,688), 'Ç':(722,51,684,-212,698), 'È':(667,82,624,0,867), 'É':(667,82,624,0,867), 'Ê':(667,82,624,0,874), 'Ë':(667,82,624,0,837), 'Ì':(278,4,211,0,867), 'Í':(278,69,276,0,867), 'Î':(278,-22,301,0,874), 'Ï':(278,3,275,0,837), 'Ð':(722,7,674,0,688), 'Ñ':(722,82,641,0,878), 'Ò':(778,47,730,-10,867), 'Ó':(778,47,730,-10,867), 'Ô':(778,47,730,-10,874), 'Õ':(778,47,730,-10,878), 'Ö':(778,47,730,-10,837), '×':(584,69,515,110,556), 'Ø':(778,35,744,-26,716), 'Ù':(722,77,645,-10,867), 'Ú':(722,77,645,-10,867), 'Û':(722,77,645,-10,874), 'Ü':(722,77,645,-10,837), 'Ý':(667,22,645,0,867), 'Þ':(667,82,614,0,688), 'ß':(611,69,570,-10,725), 'à':(556,42,556,-10,736), 'á':(556,42,556,-10,736), 'â':(556,42,556,-10,728), 'ã':(556,42,556,-10,717), 'ä':(556,42,556,-10,685), 'å':(556,42,556,-10,806), 'æ':(889,32,845,-10,538), 'ç':(500,42,474,-212,538), 'è':(556,42,512,-10,736), 'é':(556,42,512,-10,736), 'ê':(556,42,512,-10,728), 'ë':(556,42,512,-10,685), 'ì':(278,5,212,0,736), 'í':(278,66,273,0,736), 'î':(278,-22,301,0,728), 'ï':(278,4,276,0,685), 'ð':(556,42,519,-10,739), 'ñ':(556,68,493,0,717), 'ò':(556,42,514,-10,736), 'ó':(556,42,514,-10,736), 'ô':(556,42,514,-10,728), 'õ':(556,42,514,-10,717), 'ö':(556,42,514,-10,685), '÷':(549,32,518,109,557), 'ø':(611,21,588,-19,545), 'ù':(556,68,493,-10,736), 'ú':(556,68,493,-10,736), 'û':(556,68,493,-10,728), 'ü':(556,68,493,-10,685), 'ý':(500,2,498,-208,736), 'þ':(556,67,514,-208,725), 'ÿ':(500,2,498,-208,685), 'Α':(667,2,665,0,688), 'Β':(667,82,614,0,688), 'Γ':(551,82,523,0,688), 'Δ':(668,30,638,0,688), 'Ε':(667,82,624,0,688), 'Ζ':(611,32,580,0,688), 'Η':(722,82,641,0,688), 'Θ':(778,47,730,-10,698), 'Ι':(278,92,186,0,688), 'Κ':(667,82,656,0,688), 'Λ':(668,5,663,0,688), 'Μ':(833,82,751,0,688), 'Ν':(722,82,641,0,688), 'Ξ':(650,44,606,0,688), 'Ο':(778,47,730,-10,698), 'Π':(722,82,641,0,688), 'Ρ':(667,82,614,0,688), 'Σ':(618,53,579,0,688), 'Τ':(611,22,588,0,688), 'Υ':(667,22,645,0,688), 'Φ':(798,57,741,-5,693), 'Χ':(667,22,646,0,688), 'Ψ':(835,71,765,0,688), 'Ω':(748,42,705,0,698), 'Ϊ':(278,3,275,0,837), 'Ϋ':(667,22,645,0,837), 'ά':(578,42,549,-10,753), 'έ':(446,34,427,-10,753), 'ή':(556,52,491,-207,753), 'ί':(222,67,212,0,753), 'ΰ':(547,65,499,-10,782), 'α':(578,42,549,-10,538), 'β':(575,69,536,-208,725), 'γ':(500,3,497,-207,528), 'δ':(557,42,514,-10,725), 'ε':(446,34,427,-10,538), 'ζ':(441,42,422,-172,725), 'η':(556,52,491,-207,538), 'θ':(556,52,504,-10,724), 'ι':(222,67,194,0,528), 'κ':(500,67,501,0,528), 'λ':(500,7,491,0,725), 'μ':(576,67,503,-192,528), 'ν':(500,0,462,0,528), 'ξ':(448,42,427,-172,725), 'ο':(556,42,514,-10,538), 'π':(690,39,646,-10,528), 'ρ':(569,64,529,-208,539), 'ς':(482,42,451,-172,538), 'σ':(617,42,602,-10,528), 'τ':(395,14,387,-10,528), 'υ':(547,65,499,-10,528), 'φ':(648,42,606,-208,540), 'χ':(525,10,513,-207,539), 'ψ':(713,66,646,-208,654), 'ω':(781,41,740,-10,539), '–':(556,0,556,220,287), '—':(1000,0,1000,220,287), '‘':(222,62,160,465,688), '’':(222,62,160,465,688), '“':(333,37,296,465,688), '”':(333,37,296,465,688), '•':(350,40,311,196,467), '…':(1000,136,864,0,107), '€':(556,8,542,-10,698), '−':(584,49,535,297,368), '∞':(713,42,670,99,480), '≤':(549,31,518,0,601), '≥':(549,32,518,0,601), '≠':(549,32,518,27,633), '→':(1000,204,796,49,283), '←':(1000,204,796,49,283), '↑':(500,133,367,-30,562), '↓':(500,133,367,-30,562), '≈':(549,27,521,164,494), '√':(549,25,548,-7,791), '∑':(713,75,648,-212,688), '∫':(274,-48,322,-212,736), '∂':(494,27,466,-13,721), '∆':(612,2,610,0,688), 'π':(690,39,646,-10,528), 'θ':(556,52,504,-10,724)}
+# DejaVu Sans Mono, the usual fontconfig match for Community's "Monospace" (Code), per 1000 em.
+_MONO_GLYPHS = {' ': (602, 0, 0, 0, 0), '!': (602, 252, 351, 0, 729), '"': (602, 165, 437, 458, 729), '#': (602, 1, 600, 0, 718), '$': (602, 93, 544, -147, 760), '%': (602, 16, 586, 0, 699), '&': (602, 28, 596, -14, 742), "'": (602, 258, 343, 458, 729), '(': (602, 208, 432, -132, 759), ')': (602, 170, 394, -132, 759), '*': (602, 81, 521, 286, 742), '+': (602, 43, 559, 55, 572), ',': (602, 197, 368, -140, 148), '-': (602, 174, 428, 234, 314), '.': (602, 239, 362, 0, 149), '/': (602, 50, 527, -93, 729), '0': (602, 65, 537, -14, 742), '1': (602, 120, 534, 0, 729), '2': (602, 74, 517, 0, 742), '3': (602, 67, 527, -14, 742), '4': (602, 50, 554, 0, 729), '5': (602, 70, 522, -14, 729), '6': (602, 65, 537, -14, 742), '7': (602, 68, 527, 0, 729), '8': (602, 64, 538, -14, 742), '9': (602, 62, 534, -14, 742), ':': (602, 239, 362, 0, 519), ';': (602, 197, 368, -140, 519), '<': (602, 43, 559, 69, 558), '=': (602, 43, 559, 172, 454), '>': (602, 43, 559, 69, 558), '?': (602, 119, 508, 0, 742), '@': (602, 13, 575, -156, 681), 'A': (602, 18, 584, 0, 729), 'B': (602, 81, 555, 0, 729), 'C': (602, 68, 524, -14, 742), 'D': (602, 67, 540, 0, 729), 'E': (602, 96, 538, 0, 729), 'F': (602, 114, 543, 0, 729), 'G': (602, 50, 539, -14, 742), 'H': (602, 67, 535, 0, 729), 'I': (602, 98, 503, 0, 729), 'J': (602, 53, 467, -14, 729), 'K': (602, 67, 598, 0, 729), 'L': (602, 105, 556, 0, 729), 'M': (602, 42, 559, 0, 729), 'N': (602, 68, 534, 0, 729), 'O': (602, 57, 545, -14, 742), 'P': (602, 96, 557, 0, 729), 'Q': (602, 57, 545, -132, 742), 'R': (602, 70, 602, 0, 729), 'S': (602, 68, 536, -14, 742), 'T': (602, 23, 579, 0, 729), 'U': (602, 72, 530, -14, 729), 'V': (602, 28, 574, 0, 729), 'W': (602, 0, 602, 0, 729), 'X': (602, 9, 593, 0, 729), 'Y': (602, 18, 584, 0, 729), 'Z': (602, 76, 571, 0, 729), '[': (602, 226, 433, -132, 760), '\\': (602, 50, 527, -93, 729), ']': (602, 169, 376, -132, 760), '^': (602, 35, 567, 457, 729), '_': (602, 0, 602, -236, -197), '`': (602, 136, 370, 616, 800), 'a': (602, 65, 517, -14, 560), 'b': (602, 94, 543, -14, 760), 'c': (602, 95, 518, -14, 560), 'd': (602, 60, 509, -14, 760), 'e': (602, 60, 543, -14, 560), 'f': (602, 95, 519, 0, 760), 'g': (602, 60, 509, -215, 560), 'h': (602, 95, 513, 0, 760), 'i': (602, 87, 533, 0, 760), 'j': (602, 91, 383, -208, 760), 'k': (602, 115, 587, 0, 760), 'l': (602, 78, 505, 0, 765), 'm': (602, 53, 554, 0, 560), 'n': (602, 95, 513, 0, 560), 'o': (602, 67, 535, -14, 560), 'p': (602, 93, 541, -208, 560), 'q': (602, 67, 515, -210, 558), 'r': (602, 177, 564, 0, 560), 's': (602, 104, 503, -14, 560), 't': (602, 64, 504, 0, 702), 'u': (602, 95, 513, -14, 546), 'v': (602, 49, 553, 0, 547), 'w': (602, 0, 602, 0, 547), 'x': (602, 37, 565, 0, 547), 'y': (602, 51, 563, -208, 547), 'z': (602, 99, 508, 0, 548), '{': (602, 108, 494, -163, 760), '|': (602, 259, 343, -236, 764), '}': (602, 108, 494, -163, 760), '~': (602, 43, 559, 240, 381)}
+_MONO_FONTS = ('monospace', 'mono', 'dejavu sans mono', 'liberation mono', 'courier', 'courier new',
+               'consolas', 'menlo', 'monaco', 'ubuntu mono', 'source code pro', 'fira code', 'fira mono')
+
+
+def _is_mono(font):
+    font = (font or '').strip().lower()
+    return font in _MONO_FONTS or font.endswith(' mono')
+
+
+def _glyph_table(font):
+    return _MONO_GLYPHS if _is_mono(font) else _SANS_GLYPHS
+
+
 # Computer Modern (cmr10/cmsy10 AFM) glyphs used by Community's DecimalNumber.
 _CM_GLYPHS = {'0': (500,39,460,-22,666), '1': (500,89,419,0,666), '2': (500,50,449,0,666),
               '3': (500,42,457,-22,666), '4': (500,28,471,0,677), '5': (500,50,449,-22,666),
@@ -3358,6 +3383,8 @@ _MATH_ESTIMATED = set()
 def _glyph_box(char, table):
     if char in table:
         return table[char]
+    if table is _MONO_GLYPHS:
+        return (602, 0, 0, 0, 0) if char.isspace() else (602, 60, 540, 0, 729)
     import unicodedata
     if unicodedata.east_asian_width(char) in 'WF':
         return (1000, 50, 950, -120, 830)
@@ -3371,7 +3398,8 @@ _TEXT_LAYOUTS = {}
 
 def _text_layout(snapshot):
     """Ink-centered line layout for a Text/DecimalNumber snapshot, in scene units."""
-    key = (snapshot['text'], snapshot['font_size'], snapshot.get('line_spacing', .3), '_number_format' in snapshot)
+    key = (snapshot['text'], snapshot['font_size'], snapshot.get('line_spacing', .3), '_number_format' in snapshot,
+           _is_mono(snapshot.get('font')))
     if key not in _TEXT_LAYOUTS:
         if len(_TEXT_LAYOUTS) > 4096:
             _TEXT_LAYOUTS.clear()
@@ -3381,13 +3409,13 @@ def _text_layout(snapshot):
 
 def _text_extent(snapshot):
     layout = _TEXT_LAYOUTS.get((snapshot['text'], snapshot['font_size'], snapshot.get('line_spacing', .3),
-                                '_number_format' in snapshot))
+                                '_number_format' in snapshot, _is_mono(snapshot.get('font'))))
     if layout is None:
         layout = _text_layout(snapshot)
     return layout['width'], layout['height']
 
 
-def _compute_text_layout(text, font_size, line_spacing, numeric):
+def _compute_text_layout(text, font_size, line_spacing, numeric, mono=False):
     snapshot = {'text': text, 'font_size': font_size, 'line_spacing': line_spacing}
     em = font_size * (TEX_EM_PER_POINT if numeric else TEXT_EM_PER_POINT) / 1000
     lines, ink = [], None
@@ -3422,7 +3450,7 @@ def _compute_text_layout(text, font_size, line_spacing, numeric):
         for row, line in enumerate(snapshot['text'].split('\n')):
             x, baseline = 0, -row * pitch
             for char in line:
-                advance, x0, x1, y0, y1 = _glyph_box(char, _SANS_GLYPHS)
+                advance, x0, x1, y0, y1 = _glyph_box(char, _MONO_GLYPHS if mono else _SANS_GLYPHS)
                 if x1 > x0 or y1 > y0:
                     merge(((x + x0) * em, baseline + y0 * em, (x + x1) * em, baseline + y1 * em))
                 x += advance
@@ -3434,7 +3462,7 @@ def _compute_text_layout(text, font_size, line_spacing, numeric):
         line['x'] -= cx
         line['y'] -= cy
     return {'width': ink[2] - ink[0], 'height': ink[3] - ink[1], 'lines': lines, 'em': em * 1000,
-            'family': 'serif' if numeric else 'sans'}
+            'family': 'serif' if numeric else 'mono' if mono else 'sans'}
 
 
 def _math_estimate(text, font_size):
@@ -3566,7 +3594,7 @@ class Text(Mobject):
         for line in layout['lines']:
             x = line['x']
             for char in line['text']:
-                advance, x0, x1, y0, y1 = _glyph_box(char, _SANS_GLYPHS)
+                advance, x0, x1, y0, y1 = _glyph_box(char, _glyph_table(self.__dict__.get('font')))
                 if not char.isspace() and (x1 > x0 or y1 > y0):
                     glyph = Text(char, font_size=self.font_size, **options, **style)
                     center = Vector((x + (x0 + x1) / 2 * em, line['y'] + (y0 + y1) / 2 * em, 0))
@@ -7877,7 +7905,7 @@ class AddTextLetterByLetter(Animation):
                     shown -= 1
                 kept += char
             line['text'] = kept
-            line['length'] = sum(_glyph_box(char, _SANS_GLYPHS)[0] for char in kept) * em
+            line['length'] = sum(_glyph_box(char, _glyph_table(result.get('font')))[0] for char in kept) * em
         result['layout'] = layout
         return [result]
 
@@ -9536,6 +9564,140 @@ class Exclusion(_BooleanOps):
         self._set_contours(self._operate('exclusion', subject, clip))
 
 
+def _code_tokens(code_string, language, formatter_style):
+    """(lines, per-character colors, foreground, line-number color, background) via Pygments.
+
+    The worker loads Pygments for sources that use Code; without it the listing is
+    drawn in the style's plain foreground on a black background."""
+    lines = code_string.strip('\n').split('\n')  # Pygments lexers strip outer newlines.
+    try:
+        from pygments import lex
+        from pygments.lexers import get_lexer_by_name, guess_lexer
+        from pygments.styles import get_style_by_name
+        from pygments.token import Text as TextToken
+        from pygments.util import ClassNotFound
+    except ImportError:
+        return lines, [[None] * len(line) for line in lines], '#CCCCCC', '#CCCCCC', '#000000'
+    try:
+        style = get_style_by_name(formatter_style) if isinstance(formatter_style, str) else formatter_style
+        lexer = get_lexer_by_name(language) if language is not None else guess_lexer(code_string)
+    except ClassNotFound as error:
+        raise ValueError(str(error)) from None
+    default = style.style_for_token(TextToken).get('color')
+    foreground = BLACK if default is None else '#' + default.upper()
+    number = style.line_number_color
+    number = foreground if number == 'inherit' else _hex_color(number)
+    colors, row = [[]], 0
+    for token, value in lex(code_string, lexer):
+        color = style.style_for_token(token).get('color')
+        color = '#' + color.upper() if color else None
+        for char in value:
+            if char == '\n':
+                colors.append([])
+            else:
+                colors[-1].append(color)
+    # Lexers strip outer newlines too, so colors follow the stripped lines.
+    while len(colors) < len(lines):
+        colors.append([])
+    colors = [row[:len(line)] + [None] * (len(line) - len(row)) for row, line in zip(colors, lines)]
+    return lines, colors, foreground, number, _hex_color(style.background_color)
+
+
+def _hex_color(value):
+    value = str(value or '#000000').strip()
+    if not value.startswith('#'):
+        value = '#' + value
+    if len(value) == 4:
+        value = '#' + ''.join(c * 2 for c in value[1:])
+    return value.upper()
+
+
+class Code(VGroup):
+    """Community's syntax-highlighted listing: monospace Paragraph lines, line numbers
+    and a rectangle or window background. Pygments colors each character."""
+    default_background_config = {'buff': 0.3, 'fill_color': None, 'stroke_color': WHITE, 'corner_radius': 0.2,
+                                 'stroke_width': 1, 'fill_opacity': 1}
+    default_paragraph_config = {'font': 'Monospace', 'font_size': 24, 'line_spacing': 0.5, 'disable_ligatures': True}
+
+    def __init__(self, code_file=None, code_string=None, language=None, formatter_style='vim', tab_width=4,
+                 add_line_numbers=True, line_numbers_from=1, background='rectangle', background_config=None,
+                 paragraph_config=None):
+        super().__init__()
+        if code_file is not None:
+            raise NotImplementedError('The browser preview has no file system; pass code_string instead of code_file.')
+        if not isinstance(code_string, str):
+            raise ValueError('Either a code file or a code string must be specified.')
+        if len(code_string) > 20000 or code_string.count('\n') > 400:
+            raise ValueError('Code listings are limited to 400 lines and 20000 characters')
+        if background not in ('rectangle', 'window'):
+            raise ValueError(f'Unknown background type: {background}')
+        code_string = code_string.expandtabs(tab_width)
+        lines, colors, foreground, number_color, background_color = _code_tokens(code_string, language, formatter_style)
+        config = dict(self.default_paragraph_config)
+        config.update(paragraph_config or {})
+        config.pop('color', None)
+        rendered = lines if any(line.strip() for line in lines) else [''] * len(lines)
+        # Community appends ascender/descender glyphs to the first and last lines so
+        # listings get content-independent vertical bounds, then hides them.
+        suffix = ' pA' + str(line_numbers_from)
+        boundary = sorted({0, len(rendered) - 1})
+        aligned = [line + suffix if index in boundary else line for index, line in enumerate(rendered)]
+        self.code_lines = Paragraph(*aligned, color=foreground, **config)
+        alignment = []
+        for index, (line, line_colors) in enumerate(zip(self.code_lines, colors)):
+            line._explode()
+            text_length = len(rendered[index])
+            kept = []
+            for glyph in line.children:
+                if glyph._char_index < text_length:
+                    color = line_colors[glyph._char_index] if glyph._char_index < len(line_colors) else None
+                    if color:
+                        glyph.set_color(color)
+                    kept.append(glyph)
+                else:
+                    # Keep only each hidden glyph's vertical extent, at its left edge.
+                    left = glyph.get_left()[0]
+                    alignment.append(Line((left, glyph.get_bottom()[1], 0), (left, glyph.get_top()[1], 0), stroke_width=0))
+            reference = [g for g in line.children if g._char_index >= len(rendered[index]) + 3]
+            if index == 0:
+                self._number_reference = VGroup(*(g.copy() for g in reference))
+            line._replace_children(kept)
+        alignment = VGroup(*alignment)
+        if add_line_numbers:
+            numbers = [str(n) for n in range(line_numbers_from, line_numbers_from + len(self.code_lines))]
+            number_config = dict(config, alignment='right')
+            self.line_numbers = Paragraph(*numbers, color=number_color, **number_config)
+            self.line_numbers.next_to(VGroup(self.code_lines, alignment), direction=LEFT)
+            if len(self._number_reference):
+                self.line_numbers.shift(UP * (self._number_reference.get_y() - self.line_numbers[0].get_y()))
+            self.add(self.line_numbers)
+        del self._number_reference
+        self.add(self.code_lines)
+        style = dict(self.default_background_config)
+        style.update(background_config or {})
+        if style['fill_color'] is None:
+            style['fill_color'] = background_color
+        if background == 'rectangle':
+            self.background = SurroundingRectangle(self, alignment, **style)
+        else:
+            buttons = VGroup(*(Dot(radius=0.1, stroke_width=0, color=c) for c in ('#FF5F56', '#FFBD2E', '#27C93F')))
+            buttons.arrange(RIGHT, buff=0.1)
+            listing = VGroup(self.copy(), alignment)
+            buttons.next_to(listing, UP, buff=0.1).align_to(listing, LEFT).shift(LEFT * 0.1)
+            self.background = SurroundingRectangle(listing, buttons, **style)
+            buttons.shift(UP * 0.1 + LEFT * 0.1)
+            self.background.add(buttons)
+        self.add_to_back(self.background)
+
+    @classmethod
+    def get_styles_list(cls):
+        try:
+            from pygments.styles import get_all_styles
+        except ImportError:
+            return ['vim']
+        return list(get_all_styles())
+
+
 class _PCG64:
     """NumPy's default_rng(seed) stream (SeedSequence + PCG64), for exact Community noise."""
     _MULT = 0x2360ED051FC65DA44385DF649FCCF645
@@ -9965,7 +10127,7 @@ class _StreamLinesEnd(Animation):
 EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
            'Triangle', 'Polygon', 'Polygram', 'RegularPolygram', 'RegularPolygon', 'Star', 'Brace', 'BraceBetweenPoints', 'BraceLabel', 'BraceText',
            'Title', 'BulletedList', 'Tex', 'SingleStringMathTex', 'MarkupText', 'LabeledDot', 'Variable', 'always', 'f_always', 'always_shift', 'always_rotate',
-           'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'BarChart', 'PolarPlane', 'NumberPlane', 'ComplexPlane', 'VectorField', 'ArrowVectorField', 'StreamLines', 'sigmoid', 'ScreenRectangle', 'FullScreenRectangle', 'VectorizedPoint', 'ComplexValueTracker', 'UnitInterval', 'TangentialArc', 'CurvesAsSubmobjects', 'VDict', 'Cutout', 'ConvexHull', 'ArcBrace', 'LaggedStartMap', 'MaintainPositionRelativeTo', 'Blink', 'Broadcast', 'SpiralIn', 'AddTextWordByWord', 'Animation', 'line_intersection', 'angle_between_vectors', 'DEFAULT_LAGGED_START_LAG_RATIO', 'Graph', 'DiGraph', 'Union', 'Intersection', 'Difference', 'Exclusion', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
+           'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'BarChart', 'PolarPlane', 'NumberPlane', 'ComplexPlane', 'VectorField', 'ArrowVectorField', 'StreamLines', 'sigmoid', 'ScreenRectangle', 'FullScreenRectangle', 'VectorizedPoint', 'ComplexValueTracker', 'UnitInterval', 'TangentialArc', 'CurvesAsSubmobjects', 'VDict', 'Cutout', 'ConvexHull', 'ArcBrace', 'LaggedStartMap', 'MaintainPositionRelativeTo', 'Blink', 'Broadcast', 'SpiralIn', 'AddTextWordByWord', 'Animation', 'line_intersection', 'angle_between_vectors', 'DEFAULT_LAGGED_START_LAG_RATIO', 'Graph', 'DiGraph', 'Union', 'Intersection', 'Difference', 'Exclusion', 'Code', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform',

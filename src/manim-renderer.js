@@ -518,7 +518,9 @@ const ManimRenderer = {
     // Computer Modern metrics; textLength pins each advance to that layout.
     const family = layout.family === 'serif'
       ? "'Latin Modern Roman', 'CMU Serif', 'Computer Modern', 'Times New Roman', serif"
-      : "'Liberation Sans', Arial, Helvetica, sans-serif";
+      : layout.family === 'mono'
+        ? "'DejaVu Sans Mono', 'Liberation Mono', Menlo, Consolas, monospace"
+        : "'Liberation Sans', Arial, Helvetica, sans-serif";
     const font = typeof mobject.font === 'string' && /^[\w .-]{1,128}$/.test(mobject.font) ? `'${mobject.font}', ` : '';
     text.setAttribute('font-family', font + family);
     text.setAttribute('font-size', layout.em * this.UNIT_SCALE);

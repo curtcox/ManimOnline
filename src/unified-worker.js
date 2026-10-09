@@ -59,6 +59,8 @@ self.onmessage = event => {
         self.postMessage({ id, type: 'numpy-loading' });
         await runtime.loadPackage('numpy');
       }
+      // Code listings use Pygments for syntax colors, as Community does.
+      if (/\bCode\s*\(/.test(code)) await runtime.loadPackage('pygments');
       self.postMessage({ id, type: 'pyodide-ready' });
       // Rebuild the compatibility definitions and use a fresh source namespace.
       await runtime.runPythonAsync(source);
