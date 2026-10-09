@@ -17,7 +17,7 @@ test('catalog points only to shipped local examples with unique IDs', () => {
   for (const example of ExampleCatalog) {
     assert.match(example.path, /^examples\/[a-z_]+\.(py|dot)$/);
     const source = fs.readFileSync(path.join(__dirname, '..', example.path), 'utf8');
-    assert.match(source, example.path.endsWith('.py') ? /class \w+\((?:Scene|MovingCameraScene)\)/ : /digraph/);
+    assert.match(source, example.path.endsWith('.py') ? /class \w+\((?:Scene|MovingCameraScene|ZoomedScene|LinearTransformationScene)\)/ : /digraph/);
   }
 });
 

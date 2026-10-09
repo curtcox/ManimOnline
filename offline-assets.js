@@ -1,7 +1,28 @@
 /** Exact offline dependencies. Bump VERSION whenever any listed local file changes. */
 const OfflineAssets = {
-  VERSION: 'manimonline-offline-v80',
+  VERSION: 'manimonline-offline-v103',
   local: [
+    'examples/banner_scene.py',
+    'examples/linear_transformation_scene.py',
+    'examples/zoomed_scene.py',
+    'examples/point_cloud_scene.py',
+    'examples/log_axes_scene.py',
+    'examples/typing_scene.py',
+    'examples/svg_image_scene.py',
+    'examples/code_scene.py',
+    'examples/boolean_scene.py',
+    'examples/graph_scene.py',
+    'examples/effects_scene.py',
+    'examples/vector_field_scene.py',
+    'examples/chart_scene.py',
+    'examples/text_effects_scene.py',
+    'examples/matrix_table_scene.py',
+    'examples/formula_parts_scene.py',
+    'examples/annotation_scene.py',
+    'examples/animation_tour_scene.py',
+    'examples/text_layout_scene.py',
+    'examples/polygram_scene.py',
+    'examples/positioning_scene.py',
     'examples/point_map_scene.py',
     'examples/stretch_scene.py',
     'examples/surround_scene.py',
@@ -55,9 +76,13 @@ const OfflineAssets = {
   remote: [
     'https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js',
     'https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js',
+    'https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/input/tex/extensions/html.js',
     ...['pyodide.js', 'pyodide.asm.js', 'pyodide.asm.wasm', 'python_stdlib.zip', 'pyodide-lock.json']
       .map(file => 'https://cdn.jsdelivr.net/pyodide/v0.27.0/full/' + file)
   ],
+  // Cached after first use (e.g. NumPy for scripts that import it), never required for readiness.
+  optional: ['https://cdn.jsdelivr.net/pyodide/v0.27.0/full/numpy-2.0.2-cp312-cp312-pyodide_2024_0_wasm32.whl',
+    'https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pygments-2.17.2-py3-none-any.whl'],
   urls(scope) { return [...this.local.map(path => new URL(path, scope).href), ...this.remote]; },
   key(request, scope) {
     if (request.method !== 'GET') return null;
@@ -69,7 +94,7 @@ const OfflineAssets = {
     // Local script version queries do not create additional cache entries.
     if (url.origin === base.origin) url.search = '';
     url.hash = '';
-    return this.urls(scope).includes(url.href) ? url.href : null;
+    return this.urls(scope).includes(url.href) || this.optional.includes(url.href) ? url.href : null;
   }
 };
 if (typeof module !== 'undefined') module.exports = OfflineAssets;

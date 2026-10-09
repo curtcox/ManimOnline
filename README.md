@@ -1298,3 +1298,264 @@ Glyph/camera/shared-family mapping, arbitrary 3D, native NumPy arrays, adaptive
 nonlinear preparation, post-warp connector/tip mutations and analytical arc-center
 queries after nonlinear deformation remain unfinished. Coordinate helper inversion
 does not become a general nonlinear inverse merely because its outline is warped.
+
+
+Try **Align to edges and color gradients** (`examples/positioning_scene.py`).
+Everyday positioning helpers now follow Manim Community: `to_edge`, `to_corner`,
+`align_on_border`, `center`, `align_to`, `get_x/get_y/get_coord`,
+`set_x/set_y/set_coord`, `match_x/match_y`, `match_width/match_height` and
+`move_to(..., aligned_edge=..., coor_mask=...)`. Edge placement uses the current
+preview `config` frame. `scale` and `rotate` accept `about_edge`; `rotate` accepts
+an `axis` (OUT/IN, or a half turn about an in-plane axis, which is an XY reflection),
+and `flip()` mirrors about the object's center. `Rotate` accepts `about_edge`.
+
+The full Community color palette (`BLUE_A`…`BLUE_E`, `TEAL`, `GOLD`, `MAROON`,
+`GRAY_A`…`GRAY_E`, `PURE_RED`, `LOGO_*` and GRAY/GREY aliases) and buffer constants
+(`SMALL_BUFF`, `MED_SMALL_BUFF`, `MED_LARGE_BUFF`, `LARGE_BUFF`) are available.
+`YELLOW`, `ORANGE` and `PINK` now use Community's values. Color helpers
+`interpolate_color`, `color_gradient`, `average_color`, `invert_color`,
+`color_to_rgb` and `rgb_to_color` work on six-digit hex strings; `ManimColor`
+objects and named-color strings are not implemented. Mobjects gain style getters,
+`match_color`, `match_style`, `set_color_by_gradient`,
+`set_colors_by_radial_gradient`, `fade`, `fade_to`, `sort` and `invert`; these
+work in `.animate` chains. Z coordinates other than zero, general 3D rotation axes
+and text flipping (glyph mapping) remain unsupported and fail explicitly.
+
+
+Try **Polygrams, stars and shape matchers** (`examples/polygram_scene.py`).
+`Polygram`, `RegularPolygram`, `RegularPolygon`, `Star` and `round_corners` follow
+Community's vertex order, start angles, density handling and default inner star
+radius. `Polygon`, `Triangle`, `Rectangle` and `Square` are now `Polygram`
+subclasses with Community defaults: polygons are BLUE, rectangles WHITE, vector
+strokes 4 wide, and `Triangle` is a unit-radius `RegularPolygon` (larger than the
+previous preview triangle). `get_vertices`/`get_vertex_groups` return world points.
+
+`SurroundingRectangle` (PURE_YELLOW, `buff` number or x/y pair, optional
+`corner_radius`), `BackgroundRectangle`, `Cross`, `Underline` and
+`add_background_rectangle` are available. Shifting and scaling a `Group`/`VGroup`
+now moves its children in world space, as in Manim, so `group[0].get_center()`,
+matchers and arrows between members of a moved group land where expected.
+Rotation is still stored on the group: children of rotated groups keep
+parent-local coordinates. Text has no measured bounds yet, so matchers around text
+are not sized to the glyphs.
+
+
+Try **Measured text and formula layout** (`examples/text_layout_scene.py`).
+`Text`, `DecimalNumber`/`Integer` and `MathTex` now have ink bounds, so `next_to`,
+`to_edge`, `arrange`, `SurroundingRectangle`, `Underline` and camera framing use
+their real size. Sizes follow Manim Community: a `Text` em is `font_size/72` scene
+units, a TeX em (`MathTex`, numbers) is `font_size/96`, and multi-line `Text`
+lines are `1.3 · font_size/96` apart (`line_spacing` adjusts this). Text and
+formulas therefore render about half as large as in earlier previews, matching
+Manim. `Text` is drawn in Liberation Sans/Arial with each line's width pinned to
+the Python layout; `font`, `slant` and `weight` are passed to the browser.
+Numbers use Community's TeX digit layout in a serif face. Formulas are typeset
+and measured by MathJax: the first render estimates unmeasured formulas, then the
+page re-renders once with the measured sizes (cached for later renders).
+Per-character text APIs (`t2c`, indexing glyphs), MarkupText, Paragraph and exact
+system-font metrics are not implemented.
+
+
+Try **Entrances, emphasis, swaps and exits** (`examples/animation_tour_scene.py`).
+All Community rate functions are available (`rate_functions.ease_out_bounce`,
+`there_and_back_with_pause`, `running_start`, `squish_rate_func`, …; `smooth` is
+now Community's sigmoid curve rather than smoothstep). Animations accept
+`lag_ratio`, `remover` and `reverse_rate_function`; `Create` draws group members
+in sequence by default (`lag_ratio=1`), and `Write`/`Unwrite`/`DrawBorderThenFill`
+follow Community's outline-then-fill phases and length-based defaults (text shows
+a stroked outline, then its fill). `FadeIn`/`FadeOut` accept several mobjects,
+`shift`, `target_position` and `scale`. New animations: `GrowArrow`,
+`GrowFromEdge`, `SpinInFromNothing`, `Circumscribe`, `Flash`, `Wiggle`,
+`FocusOn`, `FadeTransform`, `ClockwiseTransform`, `CounterclockwiseTransform`,
+`Swap`/`CyclicReplace`, `MoveToTarget` with `generate_target()`, `ApplyMethod`,
+`ScaleInPlace`, `FadeToColor`, `UpdateFromFunc`, `UpdateFromAlphaFunc`,
+`ShowIncreasingSubsets`, `ShowSubmobjectsOneByOne`, `AddTextLetterByLetter`,
+`RemoveTextLetterByLetter` and `Wait`. `Transform` accepts `path_arc`.
+
+Scene membership now follows Community: re-adding a mobject brings it to the
+front, adding a group absorbs members that were added on their own, removing a
+member splits its group, and members of on-screen groups can be animated in
+place (e.g. `Indicate(equation[0])`). Members of rotated or transformed groups
+must still be animated through the whole group. `play(rate_func=...)` overrides
+each animation's rate function, and a transform whose rate function ends at 0
+(such as `there_and_back`) finishes at its starting state. Glyph-level
+`TransformMatchingShapes`/`TransformMatchingTex`, `ApplyWave` and `Homotopy`
+are not implemented.
+
+
+**NumPy.** `from manim import *` provides `np` when NumPy is available. The worker
+loads Pyodide's NumPy package (about 12 MB, cached for offline use after the first
+download) only when a script mentions `np` or `numpy`. Preview APIs accept NumPy
+arrays and scalars (including `np.int64`) and return plain tuples/floats; frames
+are converted to plain JSON numbers. Mobject points are not stored as NumPy arrays,
+so code that mutates `mobject.points` in place is not supported.
+
+
+Try **Titles, braces, bullets and variables** (`examples/annotation_scene.py`).
+`Brace` uses Community's SVG brace outline and construction (sharpness, buff,
+any XY direction, tip/direction queries, `put_at_tip`, `get_tex`, `get_text`);
+`BraceLabel`, `BraceText` and `BraceBetweenPoints` are available. `Tex` typesets
+LaTeX text mode with `$math$` through MathJax `\text{}` runs (plus `\textbf`,
+`\textit`, `\emph`, `\texttt`, `\textrm`, `\textsf`; other text macros fail
+explicitly). `Title`, `BulletedList`, `Vector`, `LabeledDot`, `Variable`, `always`,
+`f_always`, `always_shift` and `always_rotate` follow Community. `.animate` now
+accepts any mobject method (not updater/checkpoint bookkeeping).
+
+The default frame is now Community's 14.22 × 8 units (it was 16 × 9), so
+`to_edge`, `Title` and other frame-relative placement match Manim, and strokes
+are drawn like Manim: `stroke_width × 0.01` frame units, unchanged by object
+scale and, as in Cairo, thickened on screen when a moving camera zooms in. Strokes
+therefore look thinner than before and scale with the player size. Bounds follow Community's
+rules: edges, centers and `next_to` use path anchors, while `width`/`height`
+include Bézier handles; rotated straight-edged shapes report the bounds of their
+rotated points.
+
+
+Try **Formula parts and matching transforms** (`examples/formula_parts_scene.py`).
+`MathTex` with several strings, `substrings_to_isolate` or `tex_to_color_map`
+now has Community-style parts: `eq[i]`, `get_part_by_tex`, `get_parts_by_tex`,
+`index_of_part_by_tex`, `set_color_by_tex`, `set_color_by_tex_to_color_map` and
+`set_opacity_by_tex`, and parts can be animated individually (`Indicate(eq[2])`).
+`TransformMatchingTex` slides parts with equal tex strings into place and fades
+the rest (with `key_map`, `transform_mismatches`); `TransformMatchingShapes`
+matches drawable members by normalized outline. Parts are typeset together with
+MathJax `\class`, so TeX spacing is unchanged; each part's position comes from
+the browser's measurement on the second render pass. Glyph-level indexing inside
+a part (`eq[0][1]`) is not implemented.
+
+
+Functional animations now follow Community: `ApplyPointwiseFunction`,
+`ApplyPointwiseFunctionToCenter`, `ApplyMatrix`, `ApplyComplexFunction` (with its
+arc path), `ApplyFunction`, `Homotopy`, `SmoothedVectorizedHomotopy`,
+`ComplexHomotopy`, `ApplyWave`, `PhaseFlow`, `ChangingDecimal` and
+`ChangeDecimalToValue`. `Label`, `LabeledLine`, `LabeledArrow` and
+`AnnotationDot` are available. Nonlinear maps bend cubic control points, so a
+waved or flowed outline becomes an editable cubic path.
+
+
+Try **Matrices, determinants and tables** (`examples/matrix_table_scene.py`).
+`Matrix`, `DecimalMatrix`, `IntegerMatrix`, `MobjectMatrix`, `get_det_text`,
+`matrix_to_tex_string` and `matrix_to_mobject` follow Community, including
+stretched TeX brackets, row/column access and coloring. `Table`, `MathTable`,
+`MobjectTable`, `IntegerTable` and `DecimalTable` support labels, inner/outer
+lines, cells, highlighted cells, `create()` and scaling; `Paragraph` lays out
+lines on Community's baseline pitch with left/center/right alignment. Text and
+formulas can now be stretched along their own axes (`stretch_to_fit_height`),
+which brackets and parentheses rely on; stretching rotated glyphs (a shear) is
+still unsupported.
+
+
+Try **Letter colors, markup and gradients** (`examples/text_effects_scene.py`).
+`Text` behaves like Community's group of glyphs: indexing, slicing, iteration and
+`len()` split it into single-glyph `Text` children placed by the same layout
+(glyph centers agree with Manim to about 0.001 units for Liberation Sans).
+`t2c`, `t2w`, `t2s`, `t2f`, `t2g` (substring or `"[start:stop]"` keys) and
+`gradient` color or style individual glyphs, and `Write` then staggers glyphs.
+`MarkupText` supports `<b>`, `<i>`, `<span>` foreground/weight/style/font and
+HTML entities. Unindexed text stays a single element, so long text remains cheap
+to animate. `DecimalNumber` digits are not split into glyphs.
+
+The **Bar charts and polar planes** example covers `BarChart` (gradient bar
+colors, `get_bar_labels`, animated `change_bar_values`) and `PolarPlane` (rings,
+spokes, radian/degree azimuth labels, `pr2pt`/`pt2pr`). Both reproduce Community
+geometry to text-metric differences. `Mobject.set_style` routes fill/stroke
+options, and hex colors truncate channels as Community does (`#7F7F7F` for mid-grey).
+
+The **Vector fields and stream lines** example covers `ArrowVectorField`
+(Community's sigmoid length, magnitude color scheme and grid), RK4 nudging of
+particles (`nudge`, `get_nudge_updater`, `start_submobject_movement`) and
+`StreamLines` with `create()`, `start_animation()` and `end_animation()`. Stream
+start points use a port of NumPy's `default_rng(0)`, so lines match Community.
+Community colors 2D stream lines from a raster of field colors; the preview
+approximates this with a gradient along each line's chord. Dense stream fields
+are costly: a few hundred lines can take tens of seconds to render. Repeated
+objects and unchanged geometry are pooled when frames leave the worker.
+
+The **Hulls, cutouts and attention effects** example covers `ConvexHull`,
+`Cutout`, `TangentialArc`, `ArcBrace`, `VDict`, `LaggedStartMap`, `Broadcast`,
+`Blink`, `SpiralIn` and `AddTextWordByWord`. Also available: `ScreenRectangle`,
+`FullScreenRectangle`, `VectorizedPoint`, `ComplexValueTracker`, `UnitInterval`,
+`CurvesAsSubmobjects`, `MaintainPositionRelativeTo`, `Mobject.set(...)`,
+`get_center_of_mass`, `get_direction`/`force_direction`, `line_intersection` and
+`angle_between_vectors`. Nonlinear `apply_function`/`apply_complex_function` maps
+now move handles like Community (along the map's local derivative).
+
+The **Graph layouts and directed trees** example covers `Graph` and `DiGraph`:
+labels, vertex/edge configs, attached edges while vertices move, `change_layout`,
+and animated `add_vertices`, `add_edges` and `remove_vertices`. Layouts follow
+networkx exactly for `circular`, `shell`, `spiral`, `partite`, `tree`, and seeded
+`spring`/`random` (a port of NumPy's RandomState); unseeded spring/random use seed
+0 so previews are reproducible. `kamada_kawai`, `planar` and `spectral` need SciPy
+solvers and are not available; custom layout functions receive the browser graph
+structure instead of a networkx graph.
+
+The **Boolean shape operations** example covers `Union`, `Intersection`,
+`Difference` and `Exclusion`. Results keep cubic curves (circles stay smooth) and
+separate contours for holes; areas and bounds match Community's skia-pathops results,
+though the starting point and curve count of each contour differ.
+
+The **Syntax-highlighted code** example covers `Code` with Pygments styles, line
+numbers and `rectangle`/`window` backgrounds. The worker loads Pyodide's Pygments
+package for sources that call `Code(...)`; listings use DejaVu Sans Mono metrics
+(Community's usual "Monospace" match) and `code_string` (there is no file system for
+`code_file`). Text with a monospace `font` now uses those metrics everywhere.
+
+The **Inline SVG and pixel images** example covers `SVGMobject`, `VMobjectFromSVGPath`
+and `ImageMobject`. With no file system in the browser, `SVGMobject` takes SVG markup
+(a string starting with `<svg`) and `ImageMobject` takes a pixel array (lists or
+NumPy, gray/RGB/RGBA) or a base64 PNG/JPEG/GIF data URI. Shapes, styles, transforms,
+`use`, viewBox, sizing and centering follow Community; `<text>` is skipped as there.
+`Circle`/`Ellipse` now default to RED like Community (Dot stays WHITE).
+
+The **Typing, boundaries and implicit curves** example covers `TypeWithCursor`,
+`UntypeWithCursor`, `AnimatedBoundary`, `ChangeSpeed` (Community's speed curves,
+including `ChangeSpeed.add_updater`), `ImplicitFunction`, `LabeledPolygram` (Community's
+polylabel) and `ShowPassingFlashWithThinningStrokeWidth`; `FadeTransformPieces` is
+also available.
+
+The **Logarithmic axes and colors** example covers `LogBase`/`LinearBase` axis
+scaling (coordinates, ticks, `10^k` labels and plots match Community), `ManimColor`
+(colors are now `ManimColor` strings with `interpolate`, `lighter`, `darker`, `invert`,
+`to_rgb`, `from_hsv`, ...; names like `"red"` parse to Manim's palette as in
+Community), seeded `RandomColorGenerator`, and DecimalNumber units, which are now
+typeset as a TeX part after the digits like Community.
+
+The **Point clouds and scene sections** example covers `PMobject`, `Mobject1D`,
+`Mobject2D`, `PGroup`, `PointCloudDot` and `Point` (point counts match Community;
+points draw as fixed pixel-size squares), `Add` inside a `Succession`, and Scene
+APIs: `next_section(skip_animations=True)` (state applies, frames are dropped),
+scene-level `add_updater`, `wait_until`, `pause`, `replace`, and recorded-only
+`add_sound`/`add_subcaption`. `TexTemplate`, `TexTemplateLibrary` and
+`TexFontTemplates` are accepted, but MathJax ignores LaTeX preambles and fonts.
+
+The **Zoomed inset camera** example ports Community's `ZoomedSceneExample`.
+`ZoomedScene` provides `zoomed_camera.frame` (a visible `ScreenRectangle`) and
+`zoomed_display` (an `ImageMobjectFromCamera` with `display_frame`), with
+`activate_zooming(animate=...)`, `get_zoom_in_animation`,
+`get_zoomed_display_pop_out_animation` and `get_zoom_factor`. The display is drawn as
+vector content (the scene seen through the frame, stretched to the display over the
+camera background), not pixels; as in Community, each frame gives the zoomed frame
+the display's whole-pixel aspect ratio. Also new: per-axis `scale([sx, sy, 0])`, and
+assigning `mob.width`/`mob.height` rescales uniformly like Community.
+
+The **Linear transformations of the plane** example covers `LinearTransformationScene`
+(`apply_matrix`, `apply_inverse`, `apply_transposed_matrix`, `apply_nonlinear_transformation`,
+ghost vectors, unit square, transformable labels, titles, coordinates) and the
+`VectorScene` helpers (`add_plane`, `add_vector`, `get_vector_label`, `label_vector`,
+`coords_to_vector`, `vector_to_coords`, `lock_in_faded_grid`, `show_ghost_movement`).
+Vectors and grid points now follow Community's per-point `path_arc` arcs, and
+`play(..., path_arc=..., lag_ratio=...)` sets those options on every animation.
+
+The **Logo banner, sample spaces and utilities** example covers `ManimBanner` (Community's
+logo outlines, `create()` and `expand()`), `SampleSpace` divisions with braces and labels,
+`TransformAnimations`, and Community's utility functions: space operations (`rotate_vector`,
+`normalize`, `rotation_matrix`, `regular_vertices`, `get_unit_normal`, spherical
+coordinates, ...), Bézier helpers (`bezier`, `partial_bezier_points`, `split_bezier`,
+`bezier_remap`, ...), path functions (`straight_path`, `path_along_arc`,
+`clockwise_path`, `counterclockwise_path`, usable as `Transform(path_func=...)`),
+iterable/math helpers, color conversions, `tempconfig`, `override_animate`,
+`override_animation`, `turn_animation_into_updater` and `cycle_animation`. Utilities return
+lite vectors (tuples with arithmetic) and lists rather than NumPy arrays. Members added to a
+moved, rotated or scaled shape now keep their world placement (Community semantics), and
+`restore()` keeps member identities like Community's `become(saved_state)`.
+

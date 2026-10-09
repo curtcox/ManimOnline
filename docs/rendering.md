@@ -1989,3 +1989,392 @@ queries after nonlinear deformation remain unfinished. Coordinate helper inversi
 does not become a general nonlinear inverse merely because its outline is warped.
 
 Reference: [Manim matrix, point and complex-function mapping](https://docs.manim.community/en/stable/reference/manim.mobject.mobject.Mobject.html).
+
+
+Try **Align to edges and color gradients** (`examples/positioning_scene.py`).
+Frame-edge placement follows Community's `align_on_border`: the target is the sign
+of each direction component times the current preview frame half-size, minus
+`buff` along that direction; components that are zero are left unchanged.
+`align_to`, `set_coord` and `match_coord` move one dimension using the same
+critical points as `next_to`, so rotated families use their conservative bounds.
+`move_to` accepts `aligned_edge` and `coor_mask`. Pivots accept `about_edge` on
+`scale`, `rotate` and `Rotate`; supplying both a point and an edge is an error.
+`rotate(angle, axis)` treats IN as a negated OUT rotation. A half turn about an
+in-plane axis is applied as the equivalent XY reflection through the existing
+matrix-map pipeline, so `flip()` materializes analytical outlines as cubic paths
+and keeps tip-bearing connectors aligned. Other tilted rotations require 3D and
+raise `NotImplementedError`.
+
+Colors are six-digit hex strings. `color_gradient` reproduces Community's
+sampling, including a single-sample gradient returning the final color.
+`set_color_by_gradient` colors painted family members in order: path-bearing
+members plus Text/MathTex leaves, which have no path points in this preview.
+`fade` multiplies family fill and stroke opacities. `match_style` pairs children
+by position and leaves unmatched children unchanged rather than aligning family
+sizes. `YELLOW`, `ORANGE` and `PINK` changed to Community's values, which changes
+inverted Riemann colors accordingly.
+
+Reference: [Manim Mobject positioning](https://docs.manim.community/en/stable/reference/manim.mobject.mobject.Mobject.html),
+[Manim colors](https://docs.manim.community/en/stable/reference/manim.utils.color.manim_colors.html).
+
+Verification: all 367 Python and 78 Node tests passed. Local Pyodide playback in
+Chromium showed the gradient row against the top edge, the arrow width-matched to
+the row, placed beside the triangle and flipped, the row faded into the lower
+corner, the triangle rotated about its lower-right edge and recentered, and an
+empty final frame. A DOT graph rendered Editor → Render → Preview.
+
+
+Try **Polygrams, stars and shape matchers** (`examples/polygram_scene.py`).
+A single vertex group is stored as the existing closed `polygon` type; several
+groups use a cubic `bezierpath` with `subpath_lengths`, one closed contour per
+group, so SVG painting, Create, morphing and point queries reuse existing paths.
+`RegularPolygram` divides by gcd(vertices, density) into equal polygons offset by
+TAU/(n·count), with Community's default start angle (0 for even, 90° for odd).
+`Star` computes the default inner radius from the matching polygram edge.
+`round_corners` matches Community's corner/radius ordering (the first radius
+applies to the second vertex), its `num_components - 1` cubic pieces per corner
+and its even-distribution count; sharp or zero-radius corners emit no degenerate
+curve. Rounding materializes a world-space cubic path.
+
+`Rectangle`/`Square` remain analytical `rectangle`/`square` types but inherit
+Polygram/VMobject APIs; adding corners, cubic curves or reversing an analytical
+outline (including circles) first materializes its current points.
+
+Container motion: `shift`, `scale` and every helper built on them pass through a
+pure `Group`/`VGroup` whose own pose is the identity, and update the children.
+This keeps children in Community's world coordinates and interpolates linearly
+under Transform. Rotation remains a group-level pose because per-child linear
+interpolation of a rotation would move children along chords while their own
+outlines rotate rigidly (ticks would leave their axis during `.animate.rotate`).
+Once a group has a non-identity pose, later motions are stored on the group as
+before. `add_background_rectangle` converts the world rectangle into its parent's
+local pose; general world-space attachment to transformed parents remains open.
+
+Reference: [Manim polygram module](https://docs.manim.community/en/stable/reference/manim.mobject.geometry.polygram.html),
+[shape matchers](https://docs.manim.community/en/stable/reference/manim.mobject.geometry.shape_matchers.html).
+
+Verification: all 372 Python and 78 Node tests passed. Local Pyodide playback in
+Chromium showed the pentagon, star, hexagram and rounded triangle, the rounded
+surrounding box moving from the star to the hexagram, the underline, cross and
+background rectangle, the star transforming into a pentagram, and an empty final
+frame.
+
+
+Try **Measured text and formula layout** (`examples/text_layout_scene.py`).
+Calibration came from Manim Community 0.22 with Pango and TeX Live: `Text`
+renders Pango size `font_size/4.8` pt at 96 dpi, scaled by 0.05 (em =
+`font_size/72` units); TeX output is scaled by `font_size/960` per pt at 10 pt
+(em = `font_size/96`). Text ink boxes use per-glyph Liberation Sans advances and
+bounds (fontTools extraction, 1/1000 em) and agree with Community's
+`font='Liberation Sans'` measurements within about 1%. Text is centered on its
+ink box like Community's SVG mobjects; lines are left-aligned. The frame JSON
+carries a `layout` (em, family, per-line x/baseline/advance) computed after
+capture, and the renderer pins each tspan with `textLength` so drawn width and
+Python bounds agree even when another sans font is substituted.
+
+`DecimalNumber` reproduces Community's construction from separate TeX glyphs:
+cmr10/cmsy10 AFM ink boxes, bottom-aligned with `0.001 · font_size` gaps, commas
+dropped by half their height and a minus centered on the following glyph. The
+preview draws the string in a serif face with a true minus sign.
+
+`MathTex` bounds come from `render_scene(..., math_metrics)`: the page measures
+MathJax output with `getBBox` (MathJax uses 1000 units per em) and the renderer
+centers that ink box. Unmeasured formulas use a rough estimate and are listed in
+`math_estimated`; the page then repeats the render once with measured sizes.
+MathJax glyphs and metrics are cached by expression (256 and 1024 entries).
+Native glyph-level submobjects, `t2c`/`t2w`, MarkupText and Paragraph remain open.
+
+Reference: [Manim Text](https://docs.manim.community/en/stable/reference/manim.mobject.text.text_mobject.Text.html),
+[DecimalNumber](https://docs.manim.community/en/stable/reference/manim.mobject.text.numbers.DecimalNumber.html).
+
+Verification: all 375 Python and 80 Node tests passed. Local Pyodide playback in
+Chromium showed the title on the top edge with a fitted underline, left-aligned
+items, a surrounding box fitted to the MathJax-measured formula after the second
+pass, a serif counter beside it, and the math and number-line galleries at
+Community scale.
+
+
+Try **Entrances, emphasis, swaps and exits** (`examples/animation_tour_scene.py`).
+Rate functions are copied from Community and spot-checked against Manim 0.22.
+Lagged animations use Community's sub-alpha timing: drawable family members are
+ordered as `family_members_with_points` (preorder), `full = (n - 1) · lag + 1`,
+and member `i` receives `rate(alpha · full - i · lag)`. Fades treat each drawable
+subtree as one member so nested SVG opacity does not compound; Create and
+DrawBorderThenFill address every drawable member. `reverse_rate_function`
+survives a `play(rate_func=...)` override as in Community, and `remover` is
+applied after `finish` (including the held terminal frame).
+
+`path_arc` uses Community's `path_along_arc`, expressed per point displacement as
+the complex factor `sin(α·θ/2)/sin(θ/2) · e^{i(α-1)θ/2}`; the preview applies it to
+each drawable member's center, so translated shapes follow the arc exactly while
+morphing shapes keep their interpolated outline. `SpinInFromNothing` applies the
+same factor as a scale and rotation about the center. `UpdateFromFunc` and
+`UpdateFromAlphaFunc` register a temporary updater, so callbacks see other
+animations' sampled state through the existing updater exposure. Letter-by-letter
+text keeps the final ink layout fixed and truncates each line's pinned advance.
+
+Scene restructuring mirrors `Scene.get_restructured_mobject_list`: groups that
+contain an added or removed mobject are split into their remaining members.
+Splitting or animating inside a group with a non-identity pose (rotation, or
+legacy group-level transforms) raises `NotImplementedError` because those
+members are stored in parent-local coordinates.
+
+Verification: all 381 Python and 80 Node tests passed. Local Pyodide playback in
+Chromium showed the written title, sequential creation, the bouncing arrow,
+simultaneous Circumscribe/Flash/Wiggle, the arc swap, the paused MoveToTarget,
+the lagged scaled exits and an empty final frame.
+
+
+**NumPy.** Numeric validation uses `numbers.Real`/`numbers.Integral`, so NumPy
+scalars pass the same checks as Python numbers (booleans stay excluded where they
+were). `Vector` converts NumPy scalars to Python numbers, ValueTracker stores
+floats like Community, and frame serialization converts remaining NumPy values.
+The worker calls `loadPackage('numpy')` only when the source matches
+`\b(np|numpy)\b`; the wheel is an optional offline asset, cached on first use but
+not required for “Ready offline”. Verification: all 382 Python and 81 Node tests
+passed, and a Chromium/Pyodide render of a curve built from `np.linspace` and
+`np.sin` showed the traced sine curve and the dot moving along it.
+
+
+Try **Titles, braces, bullets and variables** (`examples/annotation_scene.py`).
+`Brace` parses Community's relative SVG path template (`m/c/h/v/z`), flips it,
+records the tip as the anchor nearest the bottom, stretches it to the target
+width and rotates it from the direction's angle; extents use anchors only. Values
+match Manim 0.22 for axis-aligned and diagonal braces, including a rotated circle.
+`Tex` converts text mode to MathJax: text runs become `\text{...}`, `$...$`
+segments stay math. `Vector` is exported to scenes as `Vector`; internally the
+coordinate tuple class keeps that name.
+
+Frame and stroke calibration: `PreviewConfig` now defaults to frame height 8
+(width 128/9). The renderer draws scene strokes in local units as
+`stroke_width · 0.01 · UNIT_SCALE / (inherited object scale)` (scene units, so
+a zooming moving camera thickens them as Cairo does), without
+`non-scaling-stroke`; Create dashes therefore use the same widths. Standalone
+`renderMobject` calls keep the previous screen-pixel strokes.
+
+Bounds calibration: `width`/`height` measure all points (anchors and handles);
+`get_center`, edges and corners use anchors (`get_points_defining_boundary`).
+Rotated point-based outlines bound their transformed points, and `get_center`
+returns that bounds center (Community's pivot for default rotate/scale), while
+internal transform math uses `_pivot_point`. Rotated circles keep analytical
+bounds (Community measures their anchors, slightly smaller).
+
+Verification: all 386 Python and 82 Node tests passed. Local Pyodide playback in
+Chromium showed the title and rule, Community-shaped braces with tip labels, the
+bullet list, the animated `A = 8.0` variable and the diagonal vector.
+
+
+Reference fixture: `tests/fixtures/community_reference.json` stores 27 scene
+snippets (layout, edges, numbers, polygons, arcs, axes, braces, transforms,
+rotated/scaled groups, stretch, rounding, dashes) with bounds measured in Manim
+Community 0.22 (`dry_run`). `test_scene_bounds_match_community_reference_fixture`
+requires every top-level mobject's corners, center, width and height to agree
+within 0.005 units. Regenerate with `tests/fixtures/generate_community_reference.py`
+in an environment with Manim installed. Text snippets are excluded because
+Community's width depends on the machine's default font.
+
+Rotated families (any member with a non-axis-aligned angle) now bound their
+transformed points, like Community, instead of rotating child boxes; arcs and
+ellipses use their cubic anchors (or all points for width/height). Text layouts
+are cached by content and size.
+
+
+Try **Formula parts and matching transforms** (`examples/formula_parts_scene.py`).
+Multi-part MathTex wraps each piece with `\class{manim-part-i}{...}` (MathJax
+`html` extension, now part of the offline asset list). `_class_wrap` keeps braces
+and `^`/`_` structural and tags balanced runs in place, so pieces split inside a
+group (`e^{i\pi}` isolating `\pi`) remain valid TeX. `ManimMath.splitParts`
+clones the typeset SVG once per part, removing the other parts' groups, and
+measures each clone; metrics carry `[width, height, [[cx, cy, w, h], ...]]` in em
+relative to the formula's ink center. Python places parts from those boxes (or
+left-to-right estimates before measurement); renderer nodes with `part` draw that
+part's SVG centered on its own box. TransformMatchingTex/Shapes pair parts by key:
+same-shape vector outlines use the morph planner, glyph parts slide and
+cross-fade (identical glyphs overlap), unmatched sources fade toward the
+unmatched targets' center (origin if none) and unmatched targets fade in place.
+Verification: all 387 Python and 83 Node tests passed; Chromium playback showed
+colored parts, Indicate/Circumscribe on single parts, parts sliding into
+`c² − b² = a²`, and `e^{iπ}+1=0` with an isolated π.
+
+
+Try **Matrices, determinants and tables** (`examples/matrix_table_scene.py`).
+Glyph stretching: linear maps on text/mathtex leaves are accepted when the
+glyph's world angle is a multiple of 90° and the map is diagonal; the result is
+stored as `glyph_stretch` (applied to bounds and as an inner SVG scale), with the
+pose rebased to world angle/scale. Matrix brackets use Community's `\left[`
+array-of-`\quad` construction stretched to the entries' height plus
+`bracket_v_buff`. Paragraph lines are placed on baselines `1.3 · font_size/96`
+apart and left-aligned at the pen position; Community's Paragraph matches to
+0.001 units with Liberation Sans. The table grid uses `arrange_in_grid` with
+separate horizontal/vertical buffers; dividing lines bisect neighboring rows and
+columns as in Community. Frames now omit any attribute holding mobject
+references, including lists such as `mob_matrix`. The MathTex estimator
+understands arrays and `\left/\right` delimiters for the first render pass.
+
+`BarChart` subclasses Axes with Community's defaults: `y_length = frame_height - 4`,
+`x_length = min(len(values), frame_width - 2)`, Tex x labels at font size 24 and an
+automatic `y_range` of `[min(0, min), max(0, max), round(max / y_length, 2)]`.
+`change_bar_values` stretches the existing Rectangle identities about their
+baseline. `PolarPlane` passes `size=None` through to unit-length radial axes
+(8 × 8 by default) and builds rings and spokes into role-tagged background/faded
+groups. As in Community, the radial NumberLine uses a float step when any bound is
+a float, so labels read `1.0`; NumberLine now derives decimal places from the
+printed step. `add_coordinates` attaches only the azimuth labels because the radius
+numbers already belong to the axis (Community's group repeats the axis but its
+family deduplication renders it once). The MathTex estimator now stacks
+`\frac`/`\tfrac`/`\dfrac` operands.
+
+`VectorField` samples the user function with lite `Vector` points (they support
+`+ - * /` and negation) and accepts tuples, lists or NumPy arrays as outputs.
+`ArrowVectorField` and `StreamLines` reproduce Community's ranges (the stop is
+extended by one step), `0.45·sigmoid(norm)` arrow lengths and color interpolation;
+both are limited to 5000 sample points, and StreamLines to 200000 traced steps.
+StreamLines noise uses `_PCG64`, an exact pure-Python port of NumPy's SeedSequence
++ PCG64 `default_rng(seed).random()`. `create()` shuffles with a fixed seed (Community
+uses the global generator), and lines are introduced as top-level objects, so add the
+field before `start_animation()`. Flow frames reuse cached source points
+(`_flow_points`, excluded from frames) and `_StreamLinesEnd` samples the wait,
+flash continuation and `ease_out_sine` redraw for each line. A `gradient_points`
+pair on a snapshot makes the renderer use a user-space gradient along that chord.
+Frame snapshots now use `_snapshot_copy`, a JSON-shaped deep copy that is several
+times faster than `copy.deepcopy`, and `_holds_mobject` skips plain coordinates.
+
+The worker requests `render_scene(..., compact=True)`, which pools distinct mobject
+snapshots bottom-up: frames and children hold pool indices, and arrays longer than
+400 JSON characters become `{"$pool": index}` references. `expandPooledScene` in
+`src/unified-worker.js` restores the ordinary frame format with shared objects, so
+static backgrounds and style-only animations (Create's `draw_progress`, opacity)
+no longer repeat their geometry. Typical gallery scenes shrink 2–10× below the
+32 MB transfer limit (raised from 12 MB for warped planes). Pooled geometry arrays are
+rounded to 1e-5 scene units, and planar point lists travel as `{"$xy": [x, y, ...],
+"k": k}` (k points per item, e.g. 4 per cubic), expanded back to `[x, y, 0]` lists. Frame data is shared after expansion and must stay read-only.
+`render_scene` without `compact` still returns plain frames for tests and tools.
+
+Nonlinear point maps follow Community's `VMobject.apply_function`: anchors map
+exactly and each handle maps through a point 1% of the way from its anchor, scaled
+back by 100, so curves keep their tangents (ApplyWave on a single-cubic Line barely
+bends, exactly as in Community). Linear maps are unaffected. ConvexHull uses a
+monotone chain, counterclockwise from the lowest-leftmost vertex; Community's
+QuickHull order depends on set hashing and is not reproducible. AddTextWordByWord
+reveals whole words (Community's version iterates characters). In `play()`,
+UpdateFromFunc-based animations complete last so they see their neighbors' final
+states, and Succession samples UpdateFromFunc stages from a copy of the stage's
+starting state (Blink).
+
+Graph/DiGraph store vertices and edges in dicts (excluded from frames through the
+`_frame_excluded` class attribute) and attach an `update_edges` updater. `_MT19937`
+ports NumPy's legacy RandomState stream, which networkx uses for integer seeds, and
+the dense Fruchterman–Reingold loop mirrors networkx's array arithmetic. Line now
+accepts Mobject endpoints (boundary anchors facing the other end, as Community's
+`get_points_defining_boundary` uses anchors) and `set_points_by_ends`.
+`become` maps references to replaced descendants onto the retained live members, so
+attribute dicts such as `Graph.vertices` stay valid after `.animate` stages. After
+each `play()`, lite runs Community's resumed `update_mobjects(0)` pass. Classes may
+declare `_animate_overrides` (Community's `@override_animate`); Graph uses it for
+animated vertex/edge insertion and removal.
+
+Boolean operations normalize each operand's own contours (family members are ignored,
+as in Community) to positive total area, find cubic–cubic intersections by recursive
+subdivision (collinear overlaps report both overlap ends), split pieces exactly, and
+classify each piece's midpoint by nonzero winding against the other operand. Pieces
+lying on the other boundary are "same" or "opposite" by tangent direction, so shared
+edges merge correctly. Kept pieces are relinked into closed contours with explicit
+`subpath_lengths`. Union and Intersection fold pairwise over more than two operands.
+
+`_MONO_GLYPHS` holds DejaVu Sans Mono advances and ink boxes; any Text whose `font`
+names a monospace family uses it for layout, glyph explosion and letter reveals, and
+the renderer draws the `mono` layout family. Code follows Community's construction:
+Pygments colors each character, a ` pA<n>` suffix on the first/last lines fixes the
+vertical bounds before being hidden (kept as zero-width vertical lines for the
+background), and line numbers align to the suffix's digits. Members without points
+(empty Text lines, empty groups) no longer contribute to family bounds, as in Community.
+
+SVGMobject parses markup with ElementTree (DTDs/entities rejected), inherits SVG
+styles through groups, folds fill/stroke opacity into the paint alpha as svgelements
+does, applies element transforms with `apply_matrix` plus a shift, mirrors each shape
+about the drawing's center (lite children are not transformed by posed parents), and
+then centers and fits height/width. Arcs become cubic segments of at most 90 degrees
+(Community approximates with quadratics, so arc paths differ by about 0.005 units).
+ImageMobject encodes arrays as PNG data URIs in Python; the renderer draws only inline
+base64 raster data, upright, with `image-rendering: pixelated` for nearest resampling.
+`set_opacity` uses whole-image opacity rather than Community's per-pixel alpha.
+
+ChangeSpeed wraps any animation, remapping progress through Community's piecewise
+parabolic speed curves (exact frame positions) and publishing `ChangeSpeed.dt` for
+updaters registered with `ChangeSpeed.add_updater`. ImplicitFunction traces
+`f(x, y) = 0` with uniform marching squares (Community uses an adaptive quadtree), then
+smooths. LabeledPolygram ports Community's polylabel, including its min-distance
+priority queue, so poles match. TypeWithCursor adds the cursor as the text's last
+member like Community and samples glyph visibility from copies. `get_points` now
+transforms all points with one pivot computation (previously quadratic).
+
+`ManimColor` subclasses `str` (the truncated `#RRGGBB` hex) and carries RGBA floats, so
+frames and string-based code are unchanged while Community's methods work. Mobject
+color setters parse values through it. NumberLine accepts `scaling`: positions use
+`inverse_function`, ticks/point_to_number use `function`, and LogBase custom labels are
+`Integer(base, unit="^{k}")`. Axes take origin shifts over the scaled range, keep the
+origin tick on scaled axes, sample scaled plots at `function(t)`, and invert in raw
+coordinates. DecimalNumber's unit is a MathTex child (`unit_sign`) placed in the
+number's local frame, top-aligned for superscript units. point_from_proportion and
+MathTex size estimates were sped up for MoveAlongPath-heavy scenes.
+
+Point clouds serialize as `type: pointcloud` with local `cloud` points, per-point
+colors/opacities and `point_size` (stroke_width pixels at Community's 1920-pixel
+width); the renderer batches squares per color and divides by the inherited scale
+so points keep their size, like Cairo's pixel thickening. `Add` and groups made only
+of instant animations may have run_time 0 (no frames). Skipped sections still advance
+scene time and update state but keep no frames. Scene updaters run first in each
+update pass (Community's update_self).
+
+ZoomedScene: `ImageMobjectFromCamera` is a pure container (identity pose) holding an
+invisible screen rectangle tagged `camera_screen` plus the `display_frame` border, so
+children stay in world coordinates; the container carries `camera_view`. Scenes keep
+registered `(display, camera)` pairs; each capture mirrors `MultiCamera.update_sub_cameras`
+(whole-pixel display size, frame height = width × pixel aspect, stretched about its
+center — live when idle, in the sampled override while animated) and writes
+`camera.views` entries `{id, source, display, background, background_opacity}` (XY
+bounds). The renderer draws the view at the screen layer: a clip of the display box,
+the background, then every layer outside that display's family through
+`translate(display) scale(display/source) translate(-source)`, so strokes magnify as
+in a sub-camera. Other displays' screens are skipped inside a view (no recursion).
+Strokes are now plain scene units (`stroke_width · 0.01`), thickening under a moving
+camera zoom like Cairo (measured with Manim 0.22: 2 px → 9 px at 4× zoom).
+`_apply_xy_map` keeps pure containers at their parent's origin, so stretched or
+matrix-mapped groups keep world-space children. `Mobject.width`/`height` are
+properties: reads return stored analytical dimensions when present (local), else
+world extents; assignment calls `rescale_to_fit`. Internal geometry writes must use
+`__dict__`.
+
+VectorScene / LinearTransformationScene are ports of Community's classes. Matrix
+helpers use plain lists (`_matrix_rows`, `_matrix_inverse`, `_transpose`);
+transformation functions return lite `Vector`s. `apply_function` plays
+ApplyPointwiseFunction on transformable mobjects plus piece Transforms of vectors,
+labels and moving mobjects, with play() options set on every animation as in
+Community's `compile_animations` (`path_arc`, `lag_ratio`, `remover`, ...).
+`path_arc` is now applied per point (Community's `path_along_arc`, straight below
+0.01 rad) for aligned paths, polygons and line endpoints, in each member's parent
+frame and then mapped back through the interpolated pose; analytical shapes, text and
+images move their centers along the arc. Scene-level updaters run after mobject
+updaters and see interpolated samples (Community's update_self order).
+`insert_n_curves` follows Community's bezier_remap split counts;
+`prepare_for_nonlinear_transform` exists on NumberPlane/PolarPlane.
+`lock_in_faded_grid` bakes snapshots into `_background_snapshots`, drawn first in
+every later frame. `bring_to_front` is Community's re-add (members split out of
+scene groups). `add_to_back` on text/formula leaves marks children `behind_parent`,
+which the renderer paints before the glyphs (Community glyphs are submobjects).
+Serialization memoizes local bounds per `to_dict` call (`_BOUNDS_MEMO`).
+
+Children of posed parents: `Mobject.add`/`add_to_back`/`submobjects=` call `_adopt`, which
+re-poses newly added world-placed members into the parent's local frame (`_to_local_pose`),
+and `remove`/`submobjects=` call `_release`, which places departing members back in world
+space (`_place_in_world`). Collapsed parents skip adoption (no inverse) but still release.
+Queries on a child of a posed geometry-bearing parent remain parent-local;
+`_world_member(child)` returns a world-placed copy for measurements (SampleSpace braces use
+it). `restore()` is `become(saved_state)` (member identities kept; traced-path clocks are
+restored). `saved_state` returns a copy of the checkpoint. Validation allows a member shared
+inside one family (Community de-duplicates families) but not across animated objects.
+Utilities live in a block before EXPORTS; `interpolate` is exported as `_user_interpolate`
+(frames keep the internal snapshot interpolate). `_PathFunction` objects carry `path_arc`
+for `Transform(path_func=...)`; custom path callables are rejected. `@override_animation`
+is resolved in `Animation.__new__`; `@override_animate` in `Animate.__getattr__`.
+

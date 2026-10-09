@@ -21,7 +21,7 @@ const ManimRenderer = {
     const camera = sceneData.camera || {};
     const width = camera.pixel_width ?? this.CANVAS_WIDTH;
     const height = camera.pixel_height ?? this.CANVAS_HEIGHT;
-    const frameHeight = camera.frame_height ?? 9;
+    const frameHeight = camera.frame_height ?? 8;
     const frameWidth = camera.frame_width ?? frameHeight * width / height;
     const center = camera.frame_center ?? [0, 0, 0];
     if (!Array.isArray(center) || center.length !== 3 || !center.every(Number.isFinite) || center[2] !== 0) throw new Error('Invalid preview camera center');
@@ -46,39 +46,107 @@ const ManimRenderer = {
     mainGroup.setAttribute('transform', `translate(${width / 2}, ${height / 2}) scale(${width / frameWidth / this.UNIT_SCALE}, ${-height / frameHeight / this.UNIT_SCALE})`);
     if (center[0] || center[1]) mainGroup.setAttribute('transform', mainGroup.getAttribute('transform') + ` translate(${-center[0] * this.UNIT_SCALE}, ${-center[1] * this.UNIT_SCALE})`);
     svg.appendChild(mainGroup);
+    // Community strokes are stroke_width * 0.01 scene units, so they thicken
+    // on screen as a moving camera zooms in (Cairo user-space line widths).
+    this._strokeUnit = 0.01 * this.UNIT_SCALE;
 
     // Sort drawable leaves globally, keeping each leaf's ancestor transforms.
     // A child can sit behind or in front of a shape outside its VGroup.
     const layers = [];
-    const collect = (mobject, ancestors = []) => {
+    const collect = (mobject, ancestors = [], views = []) => {
+      // Camera displays (ZoomedScene) never show their own family.
+      if (Number.isInteger(mobject.camera_view)) views = [...views, mobject.camera_view];
       if (mobject.type === 'vgroup') {
-        for (const child of mobject.children || []) collect(child, [...ancestors, mobject]);
+        for (const child of mobject.children || []) collect(child, [...ancestors, mobject], views);
       } else {
         let branch = { ...mobject, children: [] };
         for (let i = ancestors.length - 1; i >= 0; i--) {
           branch = { ...ancestors[i], children: [branch] };
         }
-        layers.push({ branch, z: mobject.z_index ?? 0 });
-        // Geometry-bearing families paint their own path and their descendants.
+        // Geometry-bearing families paint their own path and their descendants;
+        // children added to the back of text paint behind its glyphs.
         const parent = { ...mobject, type: 'vgroup' };
-        for (const child of mobject.children || []) collect(child, [...ancestors, parent]);
+        const children = mobject.children || [];
+        for (const child of children) if (child.behind_parent) collect(child, [...ancestors, parent], views);
+        layers.push({ branch, leaf: mobject, views, z: mobject.z_index ?? 0 });
+        for (const child of children) if (!child.behind_parent) collect(child, [...ancestors, parent], views);
       }
     };
     for (const mobject of sceneData.mobjects || []) collect(mobject);
     // Stable sorting preserves scene/family order for equal z_index values.
     layers.sort((a, b) => a.z - b.z);
-    for (const { branch } of layers) {
-      const element = this.renderMobject(branch, mathGlyphs);
+    const views = new Map();
+    for (const view of camera.views || []) {
+      const boxes = [view.source, view.display];
+      if (!Number.isInteger(view.id) || !boxes.every(box => Array.isArray(box) && box.length === 4 &&
+          box.every(Number.isFinite) && box[2] >= box[0] && box[3] >= box[1]) ||
+          !(view.source[2] > view.source[0] && view.source[3] > view.source[1]) ||
+          !/^#[0-9a-f]{6}$/i.test(view.background) ||
+          !(view.background_opacity >= 0 && view.background_opacity <= 1)) throw new Error('Invalid camera view');
+      views.set(view.id, view);
+    }
+    for (const { branch, leaf } of layers) {
+      const view = views.get(leaf.camera_screen);
+      const element = view ? this.renderCameraView(view, leaf, layers, mathGlyphs)
+        : this.renderMobject(branch, mathGlyphs);
       if (element) mainGroup.appendChild(element);
     }
-
+    delete this._strokeUnit;
     return svg;
+  },
+
+  /**
+   * A ZoomedScene display: the scene seen through its camera frame, stretched to the
+   * display box like Community's camera image, over the camera background.
+   */
+  renderCameraView(view, display, layers, mathGlyphs) {
+    const unit = this.UNIT_SCALE;
+    const [left, bottom, right, top] = view.display;
+    const [sourceLeft, sourceBottom, sourceRight, sourceTop] = view.source;
+    const group = document.createElementNS(this.SVG_NS, 'g');
+    group.setAttribute('opacity', display.opacity ?? 1);
+    group.setAttribute('data-camera-view', view.id);
+    const id = `manim-view-${this._viewSerial = (this._viewSerial || 0) + 1}`;
+    const clip = document.createElementNS(this.SVG_NS, 'clipPath');
+    clip.setAttribute('id', id);
+    const box = () => {
+      const rect = document.createElementNS(this.SVG_NS, 'rect');
+      rect.setAttribute('x', left * unit);
+      rect.setAttribute('y', bottom * unit);
+      rect.setAttribute('width', (right - left) * unit);
+      rect.setAttribute('height', (top - bottom) * unit);
+      return rect;
+    };
+    clip.appendChild(box());
+    const defs = document.createElementNS(this.SVG_NS, 'defs');
+    defs.appendChild(clip);
+    group.appendChild(defs);
+    const body = document.createElementNS(this.SVG_NS, 'g');
+    body.setAttribute('clip-path', `url(#${id})`);
+    const backdrop = box();
+    backdrop.setAttribute('fill', view.background);
+    backdrop.setAttribute('fill-opacity', view.background_opacity);
+    body.appendChild(backdrop);
+    const content = document.createElementNS(this.SVG_NS, 'g');
+    const scaleX = (right - left) / (sourceRight - sourceLeft);
+    const scaleY = (top - bottom) / (sourceTop - sourceBottom);
+    content.setAttribute('transform', `translate(${(left + right) / 2 * unit}, ${(bottom + top) / 2 * unit}) ` +
+      `scale(${scaleX}, ${scaleY}) translate(${-(sourceLeft + sourceRight) / 2 * unit}, ${-(sourceBottom + sourceTop) / 2 * unit})`);
+    for (const layer of layers) {
+      // Other displays' own boxes stay out of a view: no recursive cameras.
+      if (layer.views.includes(view.id) || Number.isInteger(layer.leaf.camera_screen)) continue;
+      const element = this.renderMobject(layer.branch, mathGlyphs);
+      if (element) content.appendChild(element);
+    }
+    body.appendChild(content);
+    group.appendChild(body);
+    return group;
   },
 
   /**
    * Render a single mobject
    */
-  renderMobject(mobject, mathGlyphs) {
+  renderMobject(mobject, mathGlyphs, inheritedScale = 1) {
     const type = mobject.type;
     if (type === 'valuetracker' || type === 'mobject') return null;
     const position = mobject.position || [0, 0, 0];
@@ -125,11 +193,17 @@ const ManimRenderer = {
       case 'text':
         element = this.renderText(mobject);
         break;
+      case 'image':
+        element = this.renderImage(mobject);
+        break;
+      case 'pointcloud':
+        element = this.renderPointCloud(mobject, Math.abs(inheritedScale * (mobject.geometry_scale ?? 1)));
+        break;
       case 'mathtex':
         element = this.renderMathTex(mobject, mathGlyphs);
         break;
       case 'vgroup':
-        element = this.renderVGroup(mobject, mathGlyphs);
+        element = this.renderVGroup(mobject, mathGlyphs, inheritedScale);
         break;
       default:
         console.warn(`Unknown mobject type: ${type}`);
@@ -147,10 +221,22 @@ const ManimRenderer = {
       const gradient = document.createElementNS(this.SVG_NS, 'linearGradient');
       const id = `manim-gradient-${this._gradientSerial = (this._gradientSerial || 0) + 1}`;
       gradient.setAttribute('id', id);
-      gradient.setAttribute('x1', '0%');
-      gradient.setAttribute('y1', '0%');
-      gradient.setAttribute('x2', '100%');
-      gradient.setAttribute('y2', '0%');
+      const ends = mobject.gradient_points;
+      if (Array.isArray(ends) && ends.length === 2 && ends.every(point => Array.isArray(point) &&
+          Number.isFinite(point[0]) && Number.isFinite(point[1])) &&
+          (ends[0][0] !== ends[1][0] || ends[0][1] !== ends[1][1])) {
+        // Local geometry endpoints, e.g. a stream line's chord, in the path's own coordinates.
+        gradient.setAttribute('gradientUnits', 'userSpaceOnUse');
+        gradient.setAttribute('x1', ends[0][0] * this.UNIT_SCALE);
+        gradient.setAttribute('y1', ends[0][1] * this.UNIT_SCALE);
+        gradient.setAttribute('x2', ends[1][0] * this.UNIT_SCALE);
+        gradient.setAttribute('y2', ends[1][1] * this.UNIT_SCALE);
+      } else {
+        gradient.setAttribute('x1', '0%');
+        gradient.setAttribute('y1', '0%');
+        gradient.setAttribute('x2', '100%');
+        gradient.setAttribute('y2', '0%');
+      }
       color.forEach((stopColor, index) => {
         const stop = document.createElementNS(this.SVG_NS, 'stop');
         stop.setAttribute('offset', `${100 * index / (color.length - 1)}%`);
@@ -176,8 +262,27 @@ const ManimRenderer = {
           }
         }
       }
-      for (const leaf of [element, ...element.querySelectorAll('*')]) {
-        leaf.setAttribute('vector-effect', leaf.getAttribute('stroke-dasharray') ? 'none' : 'non-scaling-stroke');
+      if (this._strokeUnit === undefined) {
+        // Standalone rendering keeps screen-pixel strokes.
+        for (const leaf of [element, ...element.querySelectorAll('*')]) {
+          leaf.setAttribute('vector-effect', leaf.getAttribute('stroke-dasharray') ? 'none' : 'non-scaling-stroke');
+        }
+      } else if (type !== 'vgroup') {
+        // Scene strokes are in local units, undoing this object's scale chain.
+        const scale = Math.abs(inheritedScale * (mobject.geometry_scale ?? 1)) *
+          (type === 'mathtex' ? (mobject.font_size || 48) / 96 * this.UNIT_SCALE / 1000 : 1);
+        for (const leaf of [element, ...element.querySelectorAll('*')]) {
+          const width = parseFloat(leaf.getAttribute('stroke-width'));
+          if (Number.isFinite(width)) leaf.setAttribute('stroke-width', scale > 0 ? width * this._strokeUnit / scale : 0);
+        }
+      }
+    }
+
+    if (element && (type === 'text' || type === 'mathtex') && Array.isArray(mobject.glyph_stretch)) {
+      // Axis-aligned glyph stretching happens in the glyph's own frame.
+      const [sx, sy] = mobject.glyph_stretch;
+      if (Number.isFinite(sx) && Number.isFinite(sy)) {
+        element.setAttribute('transform', `scale(${sx}, ${sy}) ${element.getAttribute('transform') || ''}`.trim());
       }
     }
 
@@ -186,7 +291,7 @@ const ManimRenderer = {
       for (const path of [element, ...element.querySelectorAll('line, path')]) {
         // Normalized dashes must scale with the path, including preview resizing.
         // A non-scaling stroke makes the visible fraction depend on viewport size.
-        path.setAttribute('vector-effect', 'none');
+        if (this._strokeUnit === undefined) path.setAttribute('vector-effect', 'none');
         path.setAttribute('pathLength', 1);
         path.setAttribute('stroke-dasharray', '1 1');
         path.setAttribute('stroke-dashoffset', 1 - progress);
@@ -212,6 +317,62 @@ const ManimRenderer = {
     }
 
     return element;
+  },
+
+  /**
+   * Point clouds: one filled path of fixed-size squares per color/opacity, sized like
+   * Community's pixel thickening (not scaled with the object).
+   */
+  renderPointCloud(mobject, scale) {
+    const group = document.createElementNS(this.SVG_NS, 'g');
+    const cloud = Array.isArray(mobject.cloud) ? mobject.cloud : [];
+    const colors = Array.isArray(mobject.cloud_colors) ? mobject.cloud_colors : [];
+    const opacities = Array.isArray(mobject.cloud_opacities) ? mobject.cloud_opacities : [];
+    const side = (Number(mobject.point_size) || 0) * this.UNIT_SCALE / (scale > 0 ? scale : 1);
+    if (!(side > 0)) return group;
+    const half = side / 2;
+    const batches = new Map();
+    cloud.forEach((point, index) => {
+      const color = /^#[0-9a-f]{6}$/i.test(colors[index]) ? colors[index] : '#FFFFFF';
+      const opacity = Number.isFinite(opacities[index]) ? opacities[index] : 1;
+      const key = `${color}|${opacity}`;
+      const x = point[0] * this.UNIT_SCALE - half;
+      const y = point[1] * this.UNIT_SCALE - half;
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      if (!batches.has(key)) batches.set(key, []);
+      batches.get(key).push(`M${x} ${y}h${side}v${side}h${-side}z`);
+    });
+    for (const [key, parts] of batches) {
+      const [color, opacity] = key.split('|');
+      const path = document.createElementNS(this.SVG_NS, 'path');
+      path.setAttribute('d', parts.join(''));
+      // Point colors are per point, so they are set here rather than by the shared paint step.
+      path.setAttribute('data-point-color', color);
+      path.setAttribute('style', `fill:${color};fill-opacity:${opacity}`);
+      group.appendChild(path);
+    }
+    return group;
+  },
+
+  /** Raster images: only inline base64 image data, drawn upright in local units. */
+  renderImage(mobject) {
+    const href = typeof mobject.href === 'string' ? mobject.href : '';
+    if (!/^data:image\/(png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=]+$/.test(href)) {
+      throw new Error('Images must be inline base64 PNG, JPEG, GIF or WebP data.');
+    }
+    const width = (mobject.width ?? 0) * this.UNIT_SCALE;
+    const height = (mobject.height ?? 0) * this.UNIT_SCALE;
+    const image = document.createElementNS(this.SVG_NS, 'image');
+    image.setAttribute('href', href);
+    image.setAttribute('x', -width / 2);
+    image.setAttribute('y', -height / 2);
+    image.setAttribute('width', width);
+    image.setAttribute('height', height);
+    image.setAttribute('preserveAspectRatio', 'none');
+    // The scene is drawn y-up; flip the bitmap back upright like text.
+    image.setAttribute('transform', 'scale(1, -1)');
+    if (mobject.resampling_algorithm === 'nearest') image.setAttribute('style', 'image-rendering: pixelated');
+    return image;
   },
 
   /**
@@ -466,14 +627,46 @@ const ManimRenderer = {
     text.setAttribute('fill', mobject.color || '#FFFFFF');
     text.setAttribute('stroke', mobject.stroke_color ?? mobject.color ?? '#FFFFFF');
     text.setAttribute('stroke-width', mobject.stroke_width ?? 0);
-    text.setAttribute('font-size', mobject.font_size || 24);
-    text.setAttribute('font-family', 'Arial, sans-serif');
-    text.setAttribute('text-anchor', 'middle');
-    text.setAttribute('dominant-baseline', 'middle');
     // Flip text back since canvas is y-inverted
     text.setAttribute('transform', 'scale(1, -1)');
     text.setAttribute('fill-opacity', mobject.fill_opacity ?? 1);
-    text.textContent = mobject.text || '';
+    const layout = mobject.layout;
+    if (!layout || !Array.isArray(layout.lines)) {
+      text.setAttribute('font-size', mobject.font_size || 24);
+      text.setAttribute('font-family', 'Arial, sans-serif');
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('dominant-baseline', 'middle');
+      text.textContent = mobject.text || '';
+      return text;
+    }
+    // Python lays out lines on the ink-centered origin with Liberation Sans or
+    // Computer Modern metrics; textLength pins each advance to that layout.
+    const family = layout.family === 'serif'
+      ? "'Latin Modern Roman', 'CMU Serif', 'Computer Modern', 'Times New Roman', serif"
+      : layout.family === 'mono'
+        ? "'DejaVu Sans Mono', 'Liberation Mono', Menlo, Consolas, monospace"
+        : "'Liberation Sans', Arial, Helvetica, sans-serif";
+    const font = typeof mobject.font === 'string' && /^[\w .-]{1,128}$/.test(mobject.font) ? `'${mobject.font}', ` : '';
+    text.setAttribute('font-family', font + family);
+    text.setAttribute('font-size', layout.em * this.UNIT_SCALE);
+    const weights = { THIN: 100, ULTRALIGHT: 200, LIGHT: 300, SEMILIGHT: 350, BOOK: 380, MEDIUM: 500,
+      SEMIBOLD: 600, BOLD: 700, ULTRABOLD: 800, HEAVY: 900, ULTRAHEAVY: 950 };
+    if (weights[mobject.weight]) text.setAttribute('font-weight', weights[mobject.weight]);
+    if (mobject.slant === 'ITALIC' || mobject.slant === 'OBLIQUE') text.setAttribute('font-style', mobject.slant.toLowerCase());
+    text.setAttribute('xml:space', 'preserve');
+    text.setAttribute('style', 'white-space: pre');
+    for (const line of layout.lines) {
+      const span = document.createElementNS(this.SVG_NS, 'tspan');
+      span.setAttribute('x', line.x * this.UNIT_SCALE);
+      span.setAttribute('y', -line.y * this.UNIT_SCALE);
+      if (line.length > 0) {
+        span.setAttribute('textLength', line.length * this.UNIT_SCALE);
+        span.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+      }
+      // TeX numbers use a true minus sign; the advance is pinned by textLength.
+      span.textContent = layout.family === 'serif' ? line.text.replace(/-/g, '\u2212') : line.text;
+      text.appendChild(span);
+    }
     return text;
   },
 
@@ -481,12 +674,17 @@ const ManimRenderer = {
    * Render a VGroup (container)
    */
   renderMathTex(mobject, mathGlyphs) {
-    const asset = mathGlyphs && mathGlyphs.get(mobject.text);
-    if (!asset) throw new Error('MathTex glyphs have not been prepared.');
+    const whole = mathGlyphs && mathGlyphs.get(mobject.text);
+    if (!whole) throw new Error('MathTex glyphs have not been prepared.');
+    // A multi-part MathTex draws each \class part from the shared formula.
+    const asset = mobject.part === undefined ? whole : whole.parts?.[mobject.part];
+    if (!asset) throw new Error('MathTex part glyphs have not been prepared.');
     const parsed = new DOMParser().parseFromString(asset.svg, 'image/svg+xml');
     const group = document.createElementNS(this.SVG_NS, 'g');
-    const scale = (mobject.font_size || 48) / 1000;
-    const [x, y, width, height] = asset.viewBox;
+    // Community's TeX em is font_size/96 scene units; MathJax uses 1000 units per em.
+    const scale = (mobject.font_size || 48) / 96 * this.UNIT_SCALE / 1000;
+    // Center the measured ink box, as Community centers dvisvgm output.
+    const [x, y, width, height] = asset.bbox || whole.viewBox;
     group.setAttribute('transform', `scale(1, -1) scale(${scale}) translate(${-x - width / 2}, ${-y - height / 2})`);
     group.setAttribute('fill', mobject.color || '#FFFFFF');
     group.setAttribute('fill-opacity', mobject.fill_opacity ?? 1);
@@ -509,11 +707,11 @@ const ManimRenderer = {
     return group;
   },
 
-  renderVGroup(mobject, mathGlyphs) {
+  renderVGroup(mobject, mathGlyphs, inheritedScale = 1) {
     const group = document.createElementNS(this.SVG_NS, 'g');
     if (mobject.children) {
       for (const child of mobject.children) {
-        const element = this.renderMobject(child, mathGlyphs);
+        const element = this.renderMobject(child, mathGlyphs, Math.abs(inheritedScale * (mobject.geometry_scale ?? 1)));
         if (element) {
           group.appendChild(element);
         }

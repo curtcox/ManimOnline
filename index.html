@@ -558,11 +558,11 @@ class HelloWorld(Scene):
   <script src="src/detector.js?v=2"></script>
   <script src="src/render-scheduler.js?v=1"></script>
   <script src="src/share-links.js?v=1"></script>
-  <script src="src/manim-renderer.js?v=mathtex-1"></script>
+  <script src="src/manim-renderer.js?v=parts-1"></script>
   <script src="src/manim-client.js"></script>
   <script src="src/manim-player.js?v=mathtex-1"></script>
   <script src="src/examples.js"></script>
-  <script src="src/manim-math.js?v=1"></script>
+  <script src="src/manim-math.js?v=3"></script>
   <script src="src/manim-export.js?v=1"></script>
   <script src="src/offline.js?v=1"></script>
   <script>
@@ -1049,6 +1049,7 @@ class HelloWorld(Scene):
         });
       }
 
+      const mathMetrics = new Map();
       async function renderManim() {
         const revision = renderRevision;
         reviewer.classList.add('working');
@@ -1056,12 +1057,26 @@ class HelloWorld(Scene):
         show_status('rendering Manim…');
         try {
           const code = editor.getSession().getDocument().getValue();
-          const sceneData = await manimClient.render(code, { sceneName: sceneNameInput.value.trim() });
+          const sceneName = sceneNameInput.value.trim();
+          let sceneData = await manimClient.render(code, { sceneName, mathMetrics: Object.fromEntries(mathMetrics) });
           if (revision !== renderRevision) return;
           const expressions = ManimMath.expressions(sceneData);
           if (expressions.size) pyodideStatus.textContent = 'Rendering math…';
           sceneData.mathGlyphs = await ManimMath.prepare(sceneData, () => revision === renderRevision);
           if (revision !== renderRevision) return;
+          for (const [expression, size] of Object.entries(ManimMath.metrics(sceneData.mathGlyphs))) {
+            mathMetrics.delete(expression);
+            mathMetrics.set(expression, size);
+            if (mathMetrics.size > 1024) mathMetrics.delete(mathMetrics.keys().next().value);
+          }
+          // Python placed unmeasured formulas with estimates; repeat once with real sizes.
+          if ((sceneData.math_estimated || []).some(expression => mathMetrics.has(expression))) {
+            pyodideStatus.textContent = 'Placing math…';
+            sceneData = await manimClient.render(code, { sceneName, mathMetrics: Object.fromEntries(mathMetrics) });
+            if (revision !== renderRevision) return;
+            sceneData.mathGlyphs = await ManimMath.prepare(sceneData, () => revision === renderRevision);
+            if (revision !== renderRevision) return;
+          }
           sceneNamesList.replaceChildren(...sceneData.scenes.map(name => {
             const option = document.createElement('option');
             option.value = name;

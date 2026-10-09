@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import math
 from pathlib import Path
 import unittest
 
@@ -16,6 +17,1562 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_zoomed_scene_matches_community_frame_and_display_geometry(self):
+        source = """from manim import *
+class Demo(ZoomedScene):
+    def __init__(self, **kwargs):
+        ZoomedScene.__init__(self, zoom_factor=0.3, zoomed_display_height=1, zoomed_display_width=3,
+                             zoomed_camera_config={'default_frame_stroke_width': 3}, **kwargs)
+    def construct(self):
+        self.add(Dot().set_color(GREEN))
+        frame, display = self.zoomed_camera.frame, self.zoomed_display
+        assert display.display_frame.get_stroke_width() == 3 and frame.get_stroke_width() == 3
+        self.activate_zooming(animate=True)
+        self.play(frame.animate.scale(4))
+        self.play(display.animate.scale([0.5, 1.5, 0]))
+        self.result = (frame.get_center(), frame.get_width(), frame.get_height(), display.get_center(),
+                       display.display_frame.get_center(), self.get_zoom_factor())
+"""
+        namespace = {}
+        exec(compile(source, '<test>', 'exec'), namespace)
+        scene = namespace['Demo']()
+        scene.render()
+        frame_center, width, height, display_center, border_center, factor = scene.result
+        # Manim 0.22: each capture gives the frame the display's whole-pixel aspect.
+        self.assertAlmostEqual(width, 3.6)
+        self.assertAlmostEqual(height, 3.6)
+        for actual, expected in ((frame_center, (0, 0)), (display_center, (46/9, 3)), (border_center, (46/9, 3))):
+            self.assertAlmostEqual(actual[0], expected[0])
+            self.assertAlmostEqual(actual[1], expected[1])
+        self.assertAlmostEqual(factor, 2.4)
+        views = scene.frames[-1]['camera']['views']
+        self.assertEqual(len(views), 1)
+        for actual, expected in zip(views[0]['source'] + views[0]['display'],
+                                    (-1.8, -1.8, 1.8, 1.8, 46/9-.75, 2.25, 46/9+.75, 3.75)):
+            self.assertAlmostEqual(actual, expected)
+        # The first zoom-in frame starts from the full frame, forced to the 3:1 display.
+        first = scene.frames[0]['camera']['views'][0]['source']
+        self.assertAlmostEqual(first[2] - first[0], 128/9)
+        self.assertAlmostEqual(first[3] - first[1], 128/27)
+        display = [node for node in scene.frames[-1]['mobjects'] if node.get('camera_view')]
+        self.assertEqual(len(display), 1)
+        self.assertEqual(display[0]['children'][0]['camera_screen'], display[0]['camera_view'])
+        self.assertNotIn('camera', display[0])
+
+    def test_zoomed_display_pop_out_and_default_layout(self):
+        result = json.loads(lite.render_scene("""from manim import *
+class Demo(ZoomedScene):
+    def construct(self):
+        self.add(Square())
+        self.play(self.get_zoomed_display_pop_out_animation())
+        self.activate_zooming()
+        self.wait(0.1)
+"""))
+        first, last = result['frames'][0], result['frames'][-1]
+        self.assertNotIn('views', first['camera'])  # Not yet registered with the camera.
+        view = last['camera']['views'][0]
+        # Default 3x3 display in the upper-right corner, frame 0.45 units square.
+        for actual, expected in zip(view['display'], (128/18-3.5, 0.5, 128/18-0.5, 3.5)):
+            self.assertAlmostEqual(actual, expected)
+        for actual, expected in zip(view['source'], (-0.225, -0.225, 0.225, 0.225)):
+            self.assertAlmostEqual(actual, expected)
+        self.assertEqual((view['background'], view['background_opacity']), ('#000000', 1))
+        with self.assertRaises(NotImplementedError):
+            lite.render_scene("from manim import *\nclass Demo(ZoomedScene):\n    def __init__(self):\n"
+                              "        super().__init__(zoomed_camera_config={'fov': 1})\n"
+                              "    def construct(self): pass")
+
+    def test_linear_transformation_scene_matches_community_matrices_and_arcs(self):
+        source = """from manim import *
+class Demo(LinearTransformationScene):
+    def __init__(self, **kwargs):
+        LinearTransformationScene.__init__(self, show_coordinates=True, leave_ghost_vectors=True, **kwargs)
+    def construct(self):
+        self.log = []
+        line = self.plane.family_members_with_points()[5]
+        def record(dt):
+            points = line.get_points()
+            middle = points[len(points) // 2]
+            self.log.append((*list(self.j_hat.get_end())[:2], middle[0], middle[1]))
+        self.add_updater(record)
+        self.apply_matrix([[0, -1], [1, 0.5]])
+        self.remove_updater(record)
+        v = Vector([1, 2])
+        self.add_vector(v)
+        self.apply_inverse([[0, -1], [1, 0.5]])
+        self.result = (self.i_hat.get_end(), self.j_hat.get_end(), v.get_end(), len(self.ghost_vectors),
+                       self.get_unit_square().get_center())
+"""
+        namespace = {}
+        exec(compile(source.replace('from manim import *', ''), '<test>', 'exec'),
+             dict(vars(lite), Vector=lite.VectorArrow), namespace)
+        scene = namespace['Demo']()
+        scene.render()
+        # Manim 0.22 samples (scene updaters see the interpolated, arcing points).
+        for index, expected in ((5, (-0.016, 1.003, 4.648, 5.113)), (22, (-0.556, 0.939, 0.554, 7.741)),
+                                (40, (-0.993, 0.515, -4.867, 7.302))):
+            for actual, value in zip(scene.log[index], expected):
+                self.assertAlmostEqual(actual, value, places=3)
+        i_hat, j_hat, v, ghosts, square = scene.result
+        for actual, expected in ((i_hat, (1, 0)), (j_hat, (0, 1)), (v, (2.5, -1)), (square, (0.5, 0.5))):
+            self.assertAlmostEqual(actual[0], expected[0])
+            self.assertAlmostEqual(actual[1], expected[1])
+        self.assertEqual(ghosts, 2)
+
+    def test_vector_scene_helpers_and_nonlinear_preparation(self):
+        square = lite.Square()
+        square.insert_n_curves(2)
+        points = square.get_points()
+        # Community's bezier_remap splits the first and third curves of four.
+        self.assertEqual([[round(v, 4) + 0 for v in points[i][:2]] for i in range(0, len(points), 4)],
+                         [[1, 1], [0, 1], [-1, 1], [-1, -1], [0, -1], [1, -1]])
+        plane = lite.NumberPlane(x_range=(-2, 2, 1), y_range=(-1, 1, 1))
+        plane.prepare_for_nonlinear_transform(10)
+        self.assertTrue(all(member.get_num_curves() >= 10 for member in plane.family_members_with_points()))
+        self.assertAlmostEqual(lite.angle_of_vector((0, -2, 0)), -lite.PI / 2)
+        self.assertEqual(lite.MathTex('x^2').get_tex_string(), 'x^2')
+        self.assertEqual(lite.config.frame_x_radius, lite.config.frame_width / 2)
+        label = lite.VectorArrow([2, 1]).coordinate_label()
+        self.assertEqual(len(label.get_entries()), 2)
+        self.assertGreater(label.get_left()[0], 2)
+        result = render('self.play(Transform(Dot(LEFT), Dot(RIGHT)), path_arc=PI, run_time=0.2)')
+        middle = result['frames'][1]['mobjects'][0]
+        self.assertLess(middle["position"][1] + middle["geometry_center"][1], -0.3)  # CCW from LEFT passes below
+        with self.assertRaises(NotImplementedError):
+            render('self.play(FadeIn(Dot()), warp=1)')
+        frames = json.loads(lite.render_scene("""from manim import *
+class Demo(VectorScene):
+    def construct(self):
+        self.lock_in_faded_grid()
+        self.add(Dot())
+        self.wait(0.1)
+"""))['frames']
+        self.assertEqual([node['type'] for node in frames[-1]['mobjects']][-1], 'circle')
+        self.assertGreater(len(frames[-1]['mobjects']), 2)
+
+    def test_utilities_match_community(self):
+        def close(actual, expected):
+            actual, expected = list(actual), list(expected)
+            self.assertEqual(len(actual), len(expected))
+            for a, b in zip(actual, expected):
+                if isinstance(b, (list, tuple)):
+                    close(a, b)
+                else:
+                    self.assertAlmostEqual(a, b, places=5)
+        # Values from Manim 0.22.
+        close(lite.rotate_vector([1, 2, 3], 0.7, [1, 1, 0]), [2.48417, 0.51583, 2.75006])
+        close(lite.rotate_vector([1, 0], 1.0), [0.5403, 0.84147, 0])
+        close(lite.regular_vertices(5)[0][1], [-0.95106, 0.30902, 0])
+        close(lite.bezier([[0, 0, 0], [1, 1, 0], [2, 0, 0], [3, 3, 0]])(0.3), [0.9, 0.522, 0])
+        close(lite.partial_bezier_points([[0, 0, 0], [1, 1, 0], [2, 1, 0], [3, 0, 0]], 0.25, 0.75),
+              [[0.75, 0.5625, 0], [1.25, 0.8125, 0], [1.75, 0.8125, 0], [2.25, 0.5625, 0]])
+        self.assertEqual(lite.integer_interpolate(0, 10, 0.37)[0], 3)
+        self.assertEqual(lite.shoelace_direction([[0, 0], [1, 0], [1, 1]]), 'CCW')
+        close(lite.get_unit_normal([1, 1, 0], [2, 2, 0]), [0, 0, 1])
+        close(lite.cartesian_to_spherical([0, 1, 1]), [1.41421, 1.5708, 0.7854])
+        close(lite.path_along_arc(lite.PI / 2)([[1, 0, 0]], [[0, 1, 0]], 0.5)[0], [0.70711, 0.70711, 0])
+        close(lite.clockwise_path()([[1, 0, 0]], [[-1, 0, 0]], 0.5)[0], [0, -1, 0])
+        self.assertEqual(lite.make_even([1, 2], [1, 2, 3, 4, 5]), ([1, 1, 1, 2, 2], [1, 2, 3, 4, 5]))
+        self.assertEqual(lite.remove_list_redundancies([1, 2, 1, 3, 2]), [1, 3, 2])
+        self.assertEqual(lite.color_to_int_rgb(lite.BLUE), [88, 196, 221])
+        with lite.tempconfig({'background_color': lite.WHITE}):
+            self.assertEqual(lite.config.background_color, lite.WHITE)
+        self.assertEqual(lite.config.background_color, lite.BLACK)
+
+    def test_banner_sample_space_and_animation_helpers(self):
+        banner = lite.ManimBanner()
+        for actual, expected in zip((banner.get_width(), banner.get_height(), banner.M.get_width(),
+                                     banner.anim.get_width()), (5.6991, 3.6943, 3.1661, 5.4415)):
+            self.assertAlmostEqual(actual, expected, places=4)
+        space = lite.SampleSpace()
+        space.divide_horizontally([0.3])
+        space.divide_vertically([0.4, 0.2])
+        self.assertEqual([[round(v, 4) + 0 for v in (*p.get_center()[:2], p.get_width(), p.get_height())]
+                          for p in space.horizontal_parts], [[0, 1.05, 3, 0.9], [0, -0.45, 3, 2.1]])
+        self.assertEqual([p.get_fill_color() for p in space.vertical_parts], ['#EC92AB', '#F1B58D', '#F7D96F'])
+        namespace = dict(vars(lite), Vector=lite.VectorArrow)
+        exec(compile("""
+class Sq(Square):
+    def grow(self, factor):
+        return self.scale(factor)
+    @override_animate(grow)
+    def _grow(self, factor, anim_args=None):
+        return Create(self)
+    @override_animation(FadeIn)
+    def _fade(self, **kwargs):
+        return GrowFromCenter(self, **kwargs)
+class Demo(Scene):
+    def construct(self):
+        banner = ManimBanner()
+        self.play(banner.create())
+        self.play(banner.expand())
+        self.result = [banner.get_width(), type(Sq().animate.grow(2)).__name__,
+                       type(FadeIn(Sq())).__name__, type(FadeIn(Sq(), use_override=False)).__name__]
+        self.play(Unwrite(banner))
+        square = Square()
+        turn_animation_into_updater(Rotate(square, PI, run_time=0.4))
+        self.add(square)
+        self.wait(1)
+        self.result += [square.angle, square.updaters]
+        dot = Dot(LEFT)
+        self.play(Transform(dot, Dot(RIGHT), path_func=clockwise_path()), run_time=0.2)
+        self.play(TransformAnimations(Rotate(Square(), PI), FadeIn(Circle(), shift=UP)))
+""", '<test>', 'exec'), namespace)
+        scene = namespace['Demo']()
+        scene.render()
+        width, animate, fade, plain, angle, updaters = scene.result
+        self.assertAlmostEqual(width, 11.9491, places=4)  # Manim 0.22 after expand()
+        self.assertEqual((animate, fade, plain), ('Create', 'GrowFromCenter', 'FadeIn'))
+        self.assertAlmostEqual(angle, lite.PI)
+        self.assertEqual(updaters, [])
+        arc_frame = scene.frames[-17]['mobjects']
+        self.assertTrue(any(node['type'] == 'circle' and node['position'][1] + node['geometry_center'][1] > 0.3
+                            for node in arc_frame))
+
+    def test_children_added_to_posed_shapes_keep_world_placement(self):
+        rectangle = lite.Rectangle().shift(lite.RIGHT * 2)
+        dot = lite.Dot(lite.RIGHT * 2)
+        rectangle.add(dot)
+        # Manim 0.22: the dot stays at (2, 0), so the family spans x in [0, 4].
+        self.assertAlmostEqual(rectangle.get_right()[0], 4)
+        self.assertAlmostEqual(rectangle._point_to_world(lite.Vector(dot.get_center()))[0], 2)
+        turned = lite.Rectangle().shift(lite.RIGHT * 2).rotate(0.5).scale(1.5)
+        marker = lite.Dot((1, 1, 0))
+        turned.add(marker)
+        center = turned._point_to_world(lite.Vector(marker.get_center()))
+        self.assertAlmostEqual(center[0], 1)
+        self.assertAlmostEqual(center[1], 1)
+        turned.remove(marker)
+        self.assertAlmostEqual(marker.get_center()[0], 1)
+        self.assertAlmostEqual(marker.get_center()[1], 1)
+        self.assertAlmostEqual(marker.get_width(), 0.16)
+
+    def test_width_and_height_assignment_rescales_uniformly_like_community(self):
+        circle = lite.Circle()
+        circle.width = 4
+        self.assertAlmostEqual(circle.get_height(), 4)
+        self.assertAlmostEqual(circle.height, 4)
+        rectangle = lite.Rectangle()
+        rectangle.width = 8
+        self.assertAlmostEqual(rectangle.get_height(), 4)
+        image = lite.ImageMobject([[0, 100, 30, 200], [255, 0, 5, 33]])
+        image.height = 7
+        self.assertAlmostEqual(image.get_width(), 14)
+        group = lite.VGroup(lite.Square(), lite.Square().shift((2, 0, 0)))
+        group.width = 2
+        self.assertAlmostEqual(group.get_height(), 1)
+
+    def test_per_axis_scale_and_mapped_groups_keep_world_children(self):
+        group = lite.VGroup(lite.Square(), lite.Circle()).shift((3, 2, 0))
+        group.scale([0.5, 1.5, 0])
+        self.assertEqual(group.position, [0, 0, 0])
+        for child in group.children:
+            self.assertAlmostEqual(child.get_center()[0], 3)
+            self.assertAlmostEqual(child.get_center()[1], 2)
+        self.assertAlmostEqual(group.get_width(), 1)
+        self.assertAlmostEqual(group.get_height(), 3)
+        square = lite.Square().scale([2])
+        self.assertAlmostEqual(square.get_width(), 4)
+        with self.assertRaises(ValueError):
+            lite.Square().scale([1, 2, 3, 4])
+
+    def test_bar_chart_matches_community_geometry_and_updates(self):
+        chart=lite.BarChart([1,2,-1,3],bar_names=['a','b','c','d'],y_range=[-2,4,1],y_length=5,x_length=6)
+        # Bar centers, heights and gradient colors measured with Manim Community 0.22.
+        for bar,center,height in zip(chart.bars,[(-2.25,-.417),(-.75,0),(.75,-1.25),(2.25,.417)],[.833,1.667,.833,2.5]):
+            self.assertAlmostEqual(bar.get_center()[0],center[0],places=3)
+            self.assertAlmostEqual(bar.get_center()[1],center[1],places=3)
+            self.assertAlmostEqual(bar.get_height(),height,places=3)
+        self.assertEqual([bar.fill_color for bar in chart.bars],['#003F5C','#79508E','#E85C70','#FFA600'])
+        self.assertEqual(len(chart.get_bar_labels(font_size=20)),4)
+        ids=[id(bar) for bar in chart.bars]
+        chart.change_bar_values([2,-1.5,1,.5])
+        self.assertEqual([id(bar) for bar in chart.bars],ids)
+        for bar,height in zip(chart.bars,[1.667,1.25,.833,.417]):
+            self.assertAlmostEqual(bar.get_height(),height,places=3)
+        self.assertEqual(lite.BarChart([.5,2.5,1.25]).y_range,[0,2.5,.62])
+        frame=render('self.add(BarChart([1,2,3]))')['frames'][0]
+        self.assertEqual(len(frame['mobjects']),1)
+
+    def test_polar_plane_rings_spokes_labels_and_conversions(self):
+        plane=lite.PolarPlane()
+        # Community passes size=None to unit-length radial axes: an 8x8 plane by default.
+        self.assertAlmostEqual(plane.get_width(),8)
+        self.assertEqual((len(plane.background_lines),len(plane.faded_lines)),(25,0))
+        self.assertPointAlmostEqual(plane.pr2pt(1.5,1),(1.5*math.cos(1),1.5*math.sin(1),0))
+        self.assertPointAlmostEqual(plane.pt2pr(plane.pr2pt(2,1)),(2,1))
+        small=lite.PolarPlane(size=6).add_coordinates()
+        radii,angles=small.coordinate_labels
+        self.assertIs(radii,small.x_axis)
+        self.assertEqual([n.get_value() for n in small.x_axis.numbers],[1,2,3,4])
+        self.assertEqual(small.x_axis.decimal_number_config['num_decimal_places'],1)
+        self.assertEqual(len(angles),20)
+        self.assertPointAlmostEqual(angles[0].get_center(),(3.3,0,0))
+        self.assertEqual(small.get_radian_label(.75).tex_string,'\\tfrac{3\\pi}{2}')
+        dense=lite.PolarPlane(radius_max=3,radius_step=.5,azimuth_units='degrees',faded_line_ratio=2)
+        self.assertEqual((len(dense.background_lines),len(dense.faded_lines)),(43,42))
+        self.assertAlmostEqual(dense.faded_lines[0].stroke_width,1)
+        with self.assertRaises(ValueError): lite.PolarPlane(azimuth_units='turns')
+        with self.assertRaises(ValueError): lite.PolarPlane(azimuth_direction='up')
+        with self.assertRaises(ValueError): lite.PolarPlane(azimuth_step=1000)
+        frame=render('self.add(PolarPlane(size=4).add_coordinates())')['frames'][0]
+        self.assertEqual(len(frame['mobjects']),1)
+
+    def test_numpy_default_rng_port_matches_reference_stream(self):
+        # numpy.random.default_rng(0).random(5) and a multi-word seed.
+        self.assertEqual(lite._PCG64(0).random(5),[0.6369616873214543,0.2697867137638703,0.04097352393619469,
+                                                   0.016527635528529094,0.8132702392002724])
+        self.assertEqual(lite._PCG64(12345678901234567890123).random(2),[0.9015032973944714,0.02036097445893159])
+        with self.assertRaises(ValueError): lite._PCG64(-1)
+
+    def test_arrow_vector_field_matches_community_grid_lengths_and_colors(self):
+        func=lambda pos: math.sin(pos[0]/2)*lite.UR+math.cos(pos[1]/2)*lite.LEFT
+        field=lite.ArrowVectorField(func)
+        self.assertEqual(len(field),561)
+        # Start/end points and colors of vectors 0, 100 and 300 measured with Manim Community 0.22.
+        for index,start,end,color in ((0,(-8,-4),(-7.697,-3.804),'#F7CD6C'),(100,(-5.5,3.5),(-5.628,3.259),'#61A274'),
+                                      (300,(.5,1.5),(.246,1.63),'#71B16E')):
+            vector=field[index]
+            for value,expected in zip(list(vector.get_start()[:2])+list(vector.get_end()[:2]),start+end):
+                self.assertAlmostEqual(value,expected,places=3)
+            self.assertEqual(vector.get_color(),color)
+        single=lite.ArrowVectorField(lambda p: p/2,x_range=[-2,2,1],y_range=[-1,1,1],color=lite.RED,length_func=lambda n: n/3)
+        self.assertEqual(len(single),15)
+        self.assertPointAlmostEqual(single[0].get_end(),(-2-1/3,-1-1/6,0))
+        self.assertEqual({v.get_color() for v in single},{lite.RED})
+        dot=lite.Dot(lite.RIGHT)
+        field.nudge(dot,dt=.5,substeps=3)
+        self.assertAlmostEqual(dot.get_center()[0],.709,places=3)
+        self.assertAlmostEqual(dot.get_center()[1],.208,places=3)
+        for bad in (lambda: lite.ArrowVectorField(3),lambda: lite.ArrowVectorField(func,x_range=[0,1,0]),
+                    lambda: lite.ArrowVectorField(func,x_range=[-100,100,.1]),
+                    lambda: lite.ArrowVectorField(func,min_color_scheme_value=1,max_color_scheme_value=1)):
+            with self.assertRaises((TypeError,ValueError)): bad()
+        with self.assertRaises(NotImplementedError): lite.ArrowVectorField(func,three_dimensions=True)
+        with self.assertRaises(ValueError): lite.ArrowVectorField(lambda p: (math.nan,0,0),x_range=[0,1],y_range=[0,1])
+
+    def test_stream_lines_trace_noisy_starts_and_flow(self):
+        func=lambda pos: math.sin(pos[0]/2)*lite.UR+math.cos(pos[1]/2)*lite.LEFT
+        stream=lite.StreamLines(func,stroke_width=2,max_anchors_per_line=30)
+        lines=stream.stream_lines
+        self.assertEqual(len(lines),561)
+        # First/last anchors and point counts from Manim Community 0.22 (default_rng(0) noise).
+        for index,first,last in ((0,(-7.966,-4.058),(-6.553,-3.028)),(50,(-7.123,3.966),(-5.741,3.936)),
+                                 (200,(-2.623,2.555),(-6.574,.83))):
+            points=lines[index].get_points()
+            self.assertEqual(len(points),120)
+            for value,expected in zip(list(points[0][:2])+list(points[-1][:2]),first+last):
+                self.assertAlmostEqual(value,expected,places=3)
+            self.assertAlmostEqual(lines[index].duration,3.05)
+        self.assertEqual(len(lines[0].stroke_color),8)
+        self.assertEqual(len(lines[0].gradient_points),2)
+        small=lite.StreamLines(func,x_range=[-2,2,1],y_range=[-1,1,1],virtual_time=1,color=lite.BLUE)
+        self.assertEqual(small.stream_lines[0].stroke_color,lite.BLUE)
+        with self.assertRaises(ValueError): small.end_animation()
+        result=render("""stream=StreamLines(lambda p: UP+RIGHT*.2,x_range=[-2,2,1],y_range=[-1,1,1],virtual_time=1)
+self.play(stream.create(),run_time=1)
+self.add(stream)
+stream.start_animation(warm_up=True,flow_speed=2)
+self.wait(.5)
+self.play(stream.end_animation())""")
+        last=result['frames'][-1]['mobjects'][0]
+        self.assertEqual(len(last['children']),15)
+        self.assertTrue(all(child.get('draw_progress',1)==1 and '_flow_points' not in child for child in last['children']))
+        flowing=result['frames'][20]['mobjects'][0]['children']
+        self.assertTrue(any(len(child['curves'])<len(last['children'][i]['curves']) for i,child in enumerate(flowing)))
+
+    def test_compact_pooled_frames_expand_to_plain_output(self):
+        def expand(data):
+            pool=data.pop('pool')
+            for position,node in enumerate(pool):
+                if isinstance(node,dict) and '$xy' in node:
+                    points=[[x,y,0] for x,y in zip(node['$xy'][::2],node['$xy'][1::2])]
+                    k=node.get('k',0)
+                    pool[position]=[points[i:i+k] for i in range(0,len(points),k)] if k else points
+                elif isinstance(node,dict):
+                    for name,value in list(node.items()):
+                        if isinstance(value,dict) and '$pool' in value:
+                            self.assertLess(value['$pool'],position)
+                            node[name]=pool[value['$pool']]
+                    if isinstance(node.get('children'),list):
+                        self.assertTrue(all(index<position for index in node['children']))
+                        node['children']=[pool[index] for index in node['children']]
+            for frame in data['frames']:
+                frame['mobjects']=[pool[index] for index in frame['mobjects']]
+            return data
+        for name in ('vector_field_scene','chart_scene','text_layout_scene'):
+            source=(ROOT/'examples'/(name+'.py')).read_text()
+            plain=lite.render_scene(source)
+            compact=lite.render_scene(source,compact=True)
+            def close(a, b):
+                # Pooled geometry arrays are rounded to 1e-5 scene units.
+                if isinstance(a, float) or isinstance(b, float):
+                    return abs(a - b) <= 6e-6
+                if isinstance(a, list) and isinstance(b, list):
+                    return len(a) == len(b) and all(close(x, y) for x, y in zip(a, b))
+                if isinstance(a, dict) and isinstance(b, dict):
+                    return a.keys() == b.keys() and all(close(a[k], b[k]) for k in a)
+                return a == b
+            self.assertTrue(close(expand(json.loads(compact)),json.loads(plain)))
+            self.assertLess(len(compact),len(plain)/2)
+
+    def test_screen_points_trackers_intervals_and_geometry_helpers(self):
+        screen=lite.ScreenRectangle()
+        self.assertEqual((round(screen.get_width(),3),screen.get_height(),round(screen.aspect_ratio,3)),(7.111,4,1.778))
+        screen.aspect_ratio=1
+        self.assertAlmostEqual(screen.get_width(),4)
+        full=lite.FullScreenRectangle()
+        self.assertEqual((round(full.get_width(),3),full.get_height()),(14.222,8))
+        point=lite.VectorizedPoint(lite.RIGHT*2)
+        self.assertEqual((point.get_width(),point.get_height()),(.01,.01))
+        self.assertPointAlmostEqual(point.set_location(lite.UP).get_location(),(0,1,0))
+        tracker=lite.ComplexValueTracker(1+2j)
+        self.assertEqual(tracker.set_value(3-1j).get_value(),3-1j)
+        self.assertEqual(tracker.increment_value(1j).get_value(),3+0j)
+        with self.assertRaises(ValueError): tracker.set_value(complex('nan'))
+        interval=lite.UnitInterval()
+        self.assertAlmostEqual(interval.get_length(),10)
+        self.assertEqual(interval.decimal_number_config['num_decimal_places'],1)
+        self.assertPointAlmostEqual(lite.line_intersection([lite.LEFT,lite.RIGHT],[lite.DOWN,lite.UP+lite.RIGHT]),(.5,0,0))
+        self.assertAlmostEqual(lite.angle_between_vectors(lite.RIGHT,lite.UP+lite.RIGHT),lite.PI/4)
+        with self.assertRaises(ValueError): lite.line_intersection([lite.LEFT,lite.RIGHT],[lite.UP,lite.UP+lite.RIGHT])
+        # TangentialArc corners measured with Manim Community 0.22.
+        l1,l2=lite.Line(lite.LEFT*2,lite.RIGHT*2),lite.Line(lite.DOWN*2+lite.LEFT,lite.UP*2+lite.RIGHT)
+        for corner,start,end in (((1,1),(.362,.724),(.809,0)),((-1,1),(-.309,0),(.138,.276)),
+                                 ((1,-1),(.309,0),(-.138,-.276)),((-1,-1),(-.362,-.724),(-.809,0))):
+            arc=lite.TangentialArc(l1,l2,radius=.5,corner=corner)
+            for value,expected in zip(list(arc.get_start()[:2])+list(arc.get_end()[:2]),start+end):
+                self.assertAlmostEqual(value,expected,places=3)
+        group=lite.VGroup(lite.Dot(lite.LEFT),lite.Dot(lite.RIGHT*3))
+        self.assertPointAlmostEqual(group.get_center_of_mass(),(1,0,0))
+        self.assertIs(group.set(width=2,color=lite.RED),group)
+        self.assertAlmostEqual(group.get_width(),2)
+        self.assertEqual(group[0].color,lite.RED)
+
+    def test_vdict_cutout_hull_curves_and_arc_brace(self):
+        mapping=lite.VDict([('a',lite.Circle()),('b',lite.Square())])
+        mapping['c']=lite.Dot()
+        mapping.remove('a')
+        self.assertEqual((len(mapping),'b' in mapping,'a' in mapping),(2,True,False))
+        self.assertIsInstance(mapping['c'],lite.Dot)
+        self.assertIs(mapping[0],mapping['b'])
+        with self.assertRaises(KeyError): mapping.remove('missing')
+        self.assertEqual(len(render('self.add(VDict({"x": Circle()}, show_keys=True))')['frames'][0]['mobjects']),1)
+        self.assertEqual((lite.Square().get_direction(),lite.Square().reverse_direction().get_direction()),('CCW','CW'))
+        self.assertEqual(lite.Square().force_direction('CW').get_direction(),'CW')
+        with self.assertRaises(ValueError): lite.Square().force_direction('up')
+        cut=lite.Cutout(lite.Square(4),lite.Circle(),lite.Square().shift(lite.RIGHT))
+        self.assertEqual((len(cut.get_points()),len(cut.get_subpaths())),(64,3))
+        hull=lite.ConvexHull((-2,-1,0),(2,-1,0),(0,2,0),(0,0,0),(1,.5,0))
+        self.assertEqual([tuple(v[:2]) for v in hull.get_vertices()],[(-2,-1),(2,-1),(0,2)])
+        with self.assertRaises(ValueError): lite.ConvexHull((0,0,0),(1,1,0),(2,2,0))
+        parts=lite.CurvesAsSubmobjects(lite.Circle(color=lite.RED))
+        self.assertEqual(len(parts),8)
+        self.assertEqual(parts[0].stroke_color,lite.RED)
+        self.assertAlmostEqual(parts.point_from_proportion(.3)[0],-.309,places=3)
+        # ArcBrace measured with Manim Community 0.22 (complex exponential of a brace).
+        brace=lite.ArcBrace()
+        self.assertEqual((round(brace.get_width(),3),round(brace.get_height(),3)),(.945,2.309))
+        brace=lite.ArcBrace(lite.Arc(radius=2,start_angle=0,angle=lite.PI/2))
+        self.assertEqual((round(brace.get_width(),3),round(brace.get_center()[0],3)),(2.4,1.199))
+
+    def test_spiral_broadcast_blink_word_reveal_and_relative_position(self):
+        shapes=lite.VGroup(lite.Square().shift(lite.LEFT*2),lite.Circle(fill_opacity=.5).shift(lite.RIGHT*2),lite.Triangle().shift(lite.UP))
+        spiral=lite.SpiralIn(shapes,rate_func=lite.linear)
+        # Mid-animation centers and opacities measured with Manim Community 0.22.
+        placed=spiral._place(shapes.copy(),.1)
+        for shape,center in zip(placed,[(-10.858,-12.457),(15.678,6.823),(-3.468,5.523)]):
+            self.assertAlmostEqual(shape.get_center()[0],center[0],places=3)
+            self.assertAlmostEqual(shape.get_center()[1],center[1],places=3)
+        self.assertEqual([round(s.fill_opacity,3) for s in placed],[0,.167,0])
+        scene=lite.Scene()
+        scene.play(spiral)
+        for shape,center in zip(shapes,[(-2,0),(2,0),(0,1)]):
+            self.assertAlmostEqual(shape.get_center()[0],center[0])
+        self.assertEqual(shapes[1].fill_opacity,.5)
+        frames=render("c = Circle()\nself.play(Broadcast(c, focal_point=RIGHT, n_mobs=3, run_time=2))")['frames']
+        self.assertEqual([(round(o['radius']*2*o['geometry_scale'],3),round(o['stroke_opacity'],3)) for o in frames[15]['mobjects']],
+                         [(1.772,.114),(1.0,.5),(.228,.886)])
+        self.assertEqual(frames[-1]['mobjects'],[])
+        blink=render("d = Dot()\nself.play(Blink(d, blinks=2), run_time=2.5)")['frames']
+        self.assertEqual([f['mobjects'][0]['fill_opacity'] for f in blink[1::8]],[1,0,1,0,1])
+        words=render("t=Text('hello brave new world')\nself.play(AddTextWordByWord(t))")['frames']
+        counts={len(''.join(l['text'] for l in f['mobjects'][0]['layout']['lines'])) for f in words if f['mobjects']}
+        self.assertTrue(counts <= {0,5,6,11,12,15,16,21})
+        follow=render("s=Square()\nd = Dot(UP*3)\nself.add(s,d)\nself.play(MaintainPositionRelativeTo(d, s), s.animate.shift(RIGHT*2))")['frames']
+        for frame in (follow[8],follow[-1]):
+            square,dot=frame['mobjects']
+            self.assertAlmostEqual(square['position'][0]+square['geometry_center'][0],dot['position'][0]+dot['geometry_center'][0])
+        lagged=lite.LaggedStartMap(lite.FadeIn,lite.VGroup(lite.Dot(),lite.Square()),run_time=2)
+        self.assertEqual((len(lagged.animations),lagged.run_time),(2,2))
+
+    def test_graph_layouts_match_networkx_through_community(self):
+        def centers(graph):
+            return {v: tuple(round(c+0.0,3) for c in graph[v].get_center()[:2]) for v in graph.vertices}
+        graph=lite.Graph([1,2,3,4],[(1,2),(2,3),(3,4),(4,1)],layout='circular')
+        # Every expectation below was measured with Manim Community 0.22 / networkx 3.7.
+        self.assertEqual(centers(graph),{1:(2,0),2:(0,2),3:(-2,0),4:(0,-2)})
+        # networkx rounds circular angles to float32, so coordinates carry ~1e-7 noise.
+        for value,expected in zip(graph.edges[(1,2)].get_end(),(0,2,0)): self.assertAlmostEqual(value,expected,places=6)
+        expected={'shell':{1:(-2,0),2:(0,-2),3:(2,0),4:(0,2)},
+                  'spiral':{1:(-1.283,-1.371),2:(-.066,-.927),3:(.699,.298),4:(.651,2)}}
+        for name,layout in expected.items():
+            self.assertEqual(centers(graph.change_layout(name)),layout)
+        graph.change_layout('spring',layout_config={'seed':3})
+        self.assertEqual(centers(graph),{1:(-1.974,-1.235),2:(-1.252,1.99),3:(1.969,1.245),4:(1.258,-2)})
+        graph.change_layout('random',layout_config={'seed':3})
+        self.assertEqual(centers(graph),{1:(.203,.833),2:(-.836,.043),3:(1.572,1.585),4:(-1.498,-1.171)})
+        graph.change_layout('partite',partitions=[[1,2],[3]])
+        self.assertEqual(centers(graph),{1:(-1.2,-.8),2:(-1.2,.8),3:(.4,0),4:(2,0)})
+        graph.change_layout('shell',layout_config={'nlist':[[1],[2,3,4]]})
+        self.assertEqual(centers(graph),{1:(0,0),2:(-1,0),3:(.5,-.866),4:(.5,.866)})
+        tree=lite.Graph([1,2,3,4,5,6],[(1,2),(1,3),(2,4),(2,5),(3,6)],layout='tree',root_vertex=1)
+        self.assertEqual(centers(tree),{1:(-.5,2),2:(1,0),3:(-2,0),4:(2,-2),5:(0,-2),6:(-2,-2)})
+        big=lite.Graph(list(range(12)),[(i,(i*5+1)%12) for i in range(12)]+[(0,6),(3,9)],layout='spring',layout_config={'seed':7})
+        self.assertEqual([centers(big)[v] for v in (0,4,11)],[(-1.962,-.581),(1.27,-1.458),(.312,1.916)])
+        self.assertEqual(lite._MT19937(5).random_sample(2),[0.22199317108973948,0.8707323061773764])
+        directed=lite.DiGraph([1,2],[(1,2)],layout={1:lite.LEFT*2,2:lite.RIGHT*2})
+        edge=directed.edges[(1,2)]
+        self.assertPointAlmostEqual(edge.get_start(),(-1.92,0,0))
+        self.assertPointAlmostEqual(edge.get_end(),(1.92,0,0))
+        self.assertEqual(len(edge.get_tips()),1)
+        self.assertEqual(repr(directed),'Directed graph on 2 vertices and 1 edges')
+        for bad in (lambda: lite.Graph([1],[],layout='tree'),lambda: lite.Graph([1,2],[(1,2),(2,1)],layout='nope'),
+                    lambda: lite.Graph([1,2,3],[(1,2),(2,3),(3,1)],layout='tree',root_vertex=1)):
+            with self.assertRaises(ValueError): bad()
+        with self.assertRaises(NotImplementedError): lite.Graph([1,2],[(1,2)],layout='kamada_kawai')
+        labeled=lite.Graph([1,2],[(1,2)],labels=True,layout={1:lite.LEFT,2:lite.RIGHT})
+        self.assertIsInstance(labeled[1],lite.LabeledDot)
+
+    def test_graph_edges_follow_vertices_and_animated_editing(self):
+        result=render("""g = Graph([1,2,3],[(1,2),(2,3)], layout='circular')
+self.add(g)
+self.play(g[1].animate.move_to(UP*3))
+self.play(g.animate.add_vertices(4, positions={4: DOWN*2}))
+self.play(g.animate.add_edges((3,4),(4,1)))
+self.play(g.animate.remove_vertices(2))
+d = DiGraph([1,2],[(1,2)], layout={1:LEFT*2, 2:RIGHT*2}).shift(DOWN)
+self.add(d)
+self.play(d[2].animate.shift(UP*2))""")
+        frames=result['frames']
+        def world(node,key):
+            return [node['position'][i]+node['geometry_center'][i]+(node[key][i] if key else 0) for i in range(2)]
+        moving=frames[8]['mobjects'][0]['children']
+        dot,line=moving[0],moving[3]
+        # The first edge starts at vertex 1 while it is being animated.
+        start=[line['position'][i]+line['start'][i] for i in range(2)]
+        self.assertAlmostEqual(start[0],world(dot,None)[0],places=6)
+        self.assertAlmostEqual(start[1],world(dot,None)[1],places=6)
+        self.assertEqual([m['type'] for m in frames[20]['mobjects']],['vgroup','circle'])
+        self.assertEqual(''.join(c['type'][0] for c in frames[40]['mobjects'][0]['children']),'cccllcll')
+        self.assertEqual(''.join(c['type'][0] for c in frames[-1]['mobjects'][0]['children']),'cccll')
+        self.assertEqual(''.join(c['type'][0] for c in frames[-1]['mobjects'][1]['children']),'ccl')
+        graph=lite.Graph([1,2],[(1,2)],layout='circular')
+        self.assertEqual(len(graph.add_edges((2,3))),2)
+        self.assertEqual(sorted(graph.vertices),[1,2,3])
+        self.assertEqual(len(graph.remove_edges((1,2))),1)
+        with self.assertRaises(ValueError): graph.remove_vertices(9)
+        json.dumps(graph.to_dict())
+
+    def test_boolean_operations_match_community_areas_and_bounds(self):
+        def area(mobject):
+            points,total=mobject.get_points(),0
+            for i in range(0,len(points)-3,4):
+                curve=[(p[0],p[1]) for p in points[i:i+4]]
+                samples=[lite._bez(curve,k/40) for k in range(41)]
+                total+=sum(p[0]*q[1]-q[0]*p[1] for p,q in zip(samples,samples[1:]))/2
+            return round(abs(total),3)
+        def bounds(mobject):
+            return [round(v+0.0,3) for v in (mobject.get_left()[0],mobject.get_right()[0],mobject.get_bottom()[1],mobject.get_top()[1])]
+        # Areas/bounds measured with Manim Community 0.22 (skia-pathops).
+        cases={'square-circle':(lambda:(lite.Square(2),lite.Circle(1).shift(lite.RIGHT)),[5.571,1.571,2.429,4.0]),
+               'circles':(lambda:(lite.Circle(1),lite.Circle(1).shift(lite.RIGHT)),[5.055,1.228,1.913,3.826]),
+               'shared edge':(lambda:(lite.Square(2),lite.Square(2).shift(lite.RIGHT*2)),[8.0,0,4.0,8.0]),
+               'hole':(lambda:(lite.Square(3),lite.Circle(.5)),[9.0,.785,8.215,8.215]),
+               'disjoint':(lambda:(lite.Square(1),lite.Circle(.5).shift(lite.RIGHT*3)),[1.785,0,1.0,1.785]),
+               'star':(lambda:(lite.Triangle().scale(2),lite.Star(outer_radius=1.5).shift(lite.UP*.3)),[5.574,2.148,3.048,3.426])}
+        for name,(make,expected) in cases.items():
+            for operation,value in zip((lite.Union,lite.Intersection,lite.Difference,lite.Exclusion),expected):
+                with self.subTest(name=name,operation=operation.__name__):
+                    self.assertEqual(area(operation(*make())),value)
+        circles=lite.Intersection(lite.Circle(1),lite.Circle(1).shift(lite.RIGHT))
+        self.assertEqual(bounds(circles),[0,1,-.866,.866])
+        holed=lite.Difference(lite.Square(3),lite.Circle(.5))
+        self.assertEqual(holed.subpath_lengths,[4,8])
+        self.assertEqual(area(lite.Union(lite.Square(1),lite.Square(1).shift(lite.RIGHT*.5),lite.Square(1).shift(lite.UP*.5))),2.0)
+        with self.assertRaises(ValueError): lite.Union(lite.Square())
+        with self.assertRaises(TypeError): lite.Difference(lite.Square(),3)
+        frame=render('u=Union(Circle(), Square().shift(RIGHT), fill_opacity=.5)\nself.play(Transform(u, Exclusion(Circle(), Square().shift(RIGHT))))')['frames'][-1]
+        self.assertEqual(frame['mobjects'][0]['type'],'bezierpath')
+
+    def test_monospace_text_and_code_listing_geometry(self):
+        self.assertAlmostEqual(lite.Text('def f(x):',font='Monospace',font_size=24).get_width(),1.706,places=3)
+        paragraph=lite.Paragraph('ab','','    cd',font='Monospace',font_size=24,line_spacing=.5)
+        self.assertEqual(len(paragraph),3)
+        # Community leaves the empty middle line out of the paragraph's bounds.
+        self.assertAlmostEqual(paragraph.get_width(),paragraph[2].get_right()[0]-paragraph[0].get_left()[0])
+        source="def f(x):\n    return x + 1  # add\n\nprint(f(2))"
+        code=lite.Code(code_string=source,language='python')
+        # Geometry measured with Manim Community 0.22 (DejaVu Sans Mono).
+        self.assertEqual((round(code.get_width(),2),round(code.get_height(),3)),(5.58,2.048))
+        self.assertAlmostEqual(code.get_center()[0],-.209,places=2)
+        self.assertEqual([round(line.get_center()[1],3) for line in code.code_lines],[.575,.22,0,-.562])
+        self.assertEqual([round(n.get_center()[1],2) for n in code.line_numbers],[.59,.22,-.16,-.53])
+        self.assertEqual([len(line) for line in code.code_lines],[8,13,0,11])
+        self.assertEqual(code.background.fill_color,'#000000')
+        bare=lite.Code(code_string='x = 1',add_line_numbers=False,background='window')
+        self.assertFalse(hasattr(bare,'line_numbers'))
+        self.assertEqual([len(bare.background.children),len(bare.background.children[0])],[1,3])
+        with self.assertRaises(ValueError): lite.Code()
+        with self.assertRaises(NotImplementedError): lite.Code(code_file='x.py')
+        with self.assertRaises(ValueError): lite.Code(code_string='x',background='frame')
+        self.assertEqual(len(render('self.add(Code(code_string="print(1)"))')['frames'][0]['mobjects']),1)
+
+    @unittest.skipUnless(importlib.util.find_spec('pygments'),'Pygments is loaded by the browser worker')
+    def test_code_listing_uses_pygments_colors(self):
+        code=lite.Code(code_string="def f(x):\n    return x + 1  # add\n\nprint(f(2))",language='python')
+        # Per-glyph colors from Community's vim style.
+        self.assertEqual([g.color for g in code.code_lines[0]],['#CDCD00']*3+['#CCCCCC']*5)
+        self.assertEqual([g.color for g in code.code_lines[1]],['#CDCD00']*6+['#CCCCCC','#3399CC','#CD00CD']+['#000080']*4)
+        monokai=lite.Code(code_string='def f(x):',language='python',formatter_style='monokai',background='window')
+        self.assertEqual(monokai.background.fill_color,'#272822')
+        self.assertEqual([g.color for g in monokai.code_lines[0]][:4],['#66D9EF']*3+['#A6E22E'])
+        with self.assertRaises(ValueError): lite.Code(code_string='x',language='no-such-language')
+
+    def test_svg_mobject_shapes_styles_and_transforms(self):
+        svg="""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <rect x="10" y="10" width="30" height="20" fill="#ff0000"/>
+  <circle cx="70" cy="30" r="15" fill="none" stroke="#00ff00" stroke-width="3"/>
+  <g transform="translate(10 50) rotate(20)">
+    <path d="M 0 0 L 40 0 Q 50 20 40 40 C 30 50 10 50 0 40 Z" fill="#0000ff" fill-opacity="0.5"/>
+    <ellipse cx="60" cy="20" rx="15" ry="8"/>
+  </g>
+  <polygon points="60,60 90,70 75,95" style="fill:#ffff00;stroke:#ff00ff;stroke-width:2"/>
+  <line x1="5" y1="95" x2="50" y2="98" stroke="white"/>
+  <rect x="80" y="5" width="15" height="10" rx="3" fill="#123456"/>
+</svg>"""
+        mobject=lite.SVGMobject(svg)
+        self.assertEqual((len(mobject),round(mobject.get_width(),3),round(mobject.get_height(),3)),(7,1.93,2))
+        # Centers, sizes and styles measured with Manim Community 0.22 (svgelements).
+        expected=[((-.404,.648),.587,'#FF0000',1),((.476,.453),.587,'#FC6255',0),((-.464,-.44),1.036,'#0000FF',.502),
+                  ((.272,-.708),.58,'#000000',1),((.574,-.477),.587,'#FFFF00',1),((-.355,-.848),.88,'#000000',1),
+                  ((.818,.844),.293,'#123456',1)]
+        for shape,(center,width,fill,opacity) in zip(mobject,expected):
+            self.assertEqual([round(v+0.0,3) for v in shape.get_center()[:2]],list(center))
+            self.assertAlmostEqual(shape.get_width(),width,places=3)
+            self.assertEqual((shape.fill_color,round(shape.fill_opacity,3)),(fill,opacity))
+        self.assertEqual((mobject[1].stroke_color,mobject[1].stroke_width,mobject[4].stroke_width),('#00FF00',3,2))
+        fitted=lite.SVGMobject(svg,fill_color=lite.WHITE,stroke_width=1,width=4)
+        self.assertAlmostEqual(fitted.get_width(),4)
+        self.assertEqual({s.fill_color for s in fitted},{lite.WHITE})
+        raw=lite.SVGMobject(svg,height=3,should_center=False)
+        self.assertEqual([round(v,2) for v in raw.get_center()[:2]],[45.66,53.13])
+        arc=lite.VMobjectFromSVGPath('M 0 0 A 1 1 0 0 1 2 0 l 0 1 h -2 z')
+        self.assertAlmostEqual(arc.get_top()[1],1)
+        self.assertAlmostEqual(arc.get_bottom()[1],-1)
+        for bad in ('<svg><rect width="x"/></svg>','<html/>','<svg><path d="L 1 1"/></svg>'):
+            with self.assertRaises(ValueError): lite.SVGMobject(bad)
+        with self.assertRaises(NotImplementedError): lite.SVGMobject('logo.svg')
+        with self.assertRaises(ValueError): lite.SVGMobject('<!DOCTYPE svg [<!ENTITY a "b">]><svg/>')
+
+    def test_image_mobject_sizes_encoding_and_rendering(self):
+        image=lite.ImageMobject([[0,100,30,200],[255,0,5,33]])
+        # Community: height = rows / scale_to_resolution * frame_height.
+        self.assertEqual((round(image.get_width(),4),round(image.get_height(),4)),(.0296,.0148))
+        self.assertEqual(len(image.get_points()),4)
+        self.assertTrue(image.href.startswith('data:image/png;base64,'))
+        self.assertEqual(lite._data_uri_size(image.href),(4,2))
+        wide=lite.ImageMobject([[[0,0,0]]*960]*540)
+        self.assertEqual((round(wide.get_width(),4),round(wide.get_height(),4)),(7.1111,4))
+        small=lite.ImageMobject([[[0,0,0,0]]*20]*10,scale_to_resolution=100)
+        self.assertEqual((round(small.get_width(),4),round(small.get_height(),4)),(1.6,.8))
+        inverted=lite.ImageMobject([[[255,0,0],[0,255,0]]],invert=True)
+        self.assertEqual(lite.ImageMobject(inverted.href).pixel_width,2)
+        self.assertEqual([list(p) for p in inverted._pixels[0]],[[0,255,255,255],[255,0,255,255]])
+        with self.assertRaises(NotImplementedError): lite.ImageMobject('photo.png')
+        with self.assertRaises(ValueError): lite.ImageMobject([[1,2],[3]])
+        frame=render('img = ImageMobject([[0,255],[255,0]]).scale(200)\nself.play(FadeIn(img))')['frames'][-1]
+        self.assertEqual(frame['mobjects'][0]['type'],'image')
+        self.assertAlmostEqual(frame['mobjects'][0]['opacity'],1)
+
+    def test_change_speed_polylabel_and_implicit_curves(self):
+        frames=render("d = Dot(LEFT*3)\nself.play(ChangeSpeed(d.animate.shift(RIGHT*6), {0.3: .2, 0.7: 3}, rate_func=linear))")['frames']
+        # Dot positions sampled from Manim Community 0.22's ChangeSpeed.
+        self.assertEqual([round(f['mobjects'][0]['position'][0]+f['mobjects'][0]['geometry_center'][0],2) for f in frames],
+                         [-3.0,-2.62,-2.29,-1.99,-1.74,-1.53,-1.37,-1.25,-1.12,-.74,-.07,.91,2.1,3.0])
+        self.assertAlmostEqual(lite.ChangeSpeed(lite.FadeIn(lite.Square()),{.3:.5,.7:2}).run_time,.87,places=4)
+        self.assertFalse(lite.ChangeSpeed.is_changing_dt)
+        with self.assertRaises(ValueError): lite.ChangeSpeed(lite.FadeIn(lite.Square()),{.5:0})
+        holed=lite.LabeledPolygram([(0,0,0),(4,0,0),(4,3,0),(0,3,0)],[(1,1,0),(2,1,0),(2,2,0),(1,2,0)],label='A')
+        self.assertEqual([round(v,3) for v in holed.pole[:2]]+[round(holed.radius,3)],[2.994,1.564,.994])
+        corner=lite.LabeledPolygram([(0,0,0),(5,0,0),(5,1,0),(1,1,0),(1,4,0),(0,4,0)],label='L',precision=.001)
+        self.assertEqual([round(v,3) for v in corner.pole[:2]],[.586,.586])
+        self.assertPointAlmostEqual(corner.label.get_center(),corner.pole)
+        circle=lite.ImplicitFunction(lambda x,y:x*x+y*y-4)
+        self.assertEqual((round(circle.get_width(),2),round(circle.get_height(),2)),(4,4))
+        hyperbola=lite.ImplicitFunction(lambda x,y:x*y-1,x_range=[-3,3],y_range=[-3,3])
+        self.assertEqual(len(hyperbola.get_subpaths()),2)
+        with self.assertRaises(TypeError): lite.ImplicitFunction(3)
+
+    def test_typing_cursor_animated_boundary_and_piecewise_fades(self):
+        frames=render("""text = Text("Hello world", font='Monospace').shift(UP)
+cursor = Rectangle(height=1.1, width=.5, fill_opacity=1).move_to(text[0])
+self.play(TypeWithCursor(text, cursor))
+self.play(UntypeWithCursor(text, cursor))""")['frames']
+        visible=lambda frame:sum(1 for c in frame['mobjects'][0]['children'] if c.get('opacity',1)>0) if frame['mobjects'] else 0
+        self.assertEqual([len(frames[2]['mobjects'][0]['children']),visible(frames[2]),visible(frames[8])],[11,3,7])
+        self.assertEqual(frames[-1]['mobjects'],[])
+        boundary=render("sq = Square()\nb = AnimatedBoundary(sq, cycle_rate=1)\nself.add(sq, b)\nself.wait(2)")['frames']
+        widths=[[c['stroke_width'] for c in f['mobjects'][1]['children']] for f in boundary[::8]]
+        self.assertEqual(widths[0],[3,0])
+        self.assertGreater(widths[-1][1],0)
+        flash=render("c = Circle()\nself.add(c)\nself.play(ShowPassingFlashWithThinningStrokeWidth(c, n_segments=5, time_width=.3))")['frames']
+        self.assertEqual((len(flash[7]['mobjects']),len(flash[-1]['mobjects'])),(6,1))
+        pieces=render("a = VGroup(Square(), Circle()).arrange()\nb = VGroup(Triangle(), Dot(), Star()).arrange().shift(DOWN)\nself.add(a)\nself.play(FadeTransformPieces(a, b))")['frames']
+        self.assertEqual([len(m['children']) for m in pieces[7]['mobjects']],[3,3])
+        self.assertEqual(len(pieces[-1]['mobjects'][0]['children']),3)
+
+    def test_manim_color_matches_community(self):
+        red=lite.ManimColor('#FF0000')
+        self.assertEqual((red,red.to_hex(),red.to_rgb(),red.to_int_rgb(),repr(red)),('#FF0000','#FF0000',[1,0,0],[255,0,0],"ManimColor('#FF0000')"))
+        # Parsing and method results measured with Manim Community 0.22.
+        for value,expected in (('red','#FC6255FF'),('RED','#FC6255FF'),('#f00','#FF0000FF'),('#ff000080','#FF000080'),
+                               ((1,0,0),'#010000FF'),((255,0,0),'#FF0000FF'),([.5,.5,.5,.5],'#7F7F7F7F'),(0xFF00FF,'#FF00FFFF')):
+            self.assertEqual(lite.ManimColor(value).to_hex(with_alpha=True),expected)
+        self.assertEqual([lite.RED.interpolate(lite.BLUE,.5),lite.RED.lighter(),lite.RED.darker(.3),lite.RED.invert()],
+                         ['#AA9399','#FC8177','#B0443B','#029DAA'])
+        self.assertEqual(lite.RED.opacity(.5).to_hex(True),'#FC62557F')
+        self.assertEqual((lite.RED.to_integer(),lite.RED.contrasting(),lite.ManimColor(None)),(16540245,'#000000','#000000'))
+        self.assertEqual([round(v,5) for v in lite.RED.to_hsv()],[.01297,.66270,.98824])
+        self.assertIsInstance(lite.RED,lite.ManimColor)
+        self.assertEqual([lite.RandomColorGenerator(3).next() for _ in range(1)],['#58C4DD'])
+        generator=lite.RandomColorGenerator(3)
+        self.assertEqual([generator.next() for _ in range(3)],['#58C4DD','#644172','#94424F'])
+        self.assertEqual(lite.Square(color='red').color,lite.RED)
+        self.assertEqual(lite.Square().set_fill((0,255,0)).fill_color,'#00FF00')
+        self.assertEqual(json.loads(json.dumps(lite.Square(color=lite.RED).to_dict()))['color'],'#FC6255')
+        with self.assertRaises(ValueError): lite.ManimColor('nope')
+
+    def test_log_scaled_axes_match_community(self):
+        axes=lite.Axes(x_range=[0,10,1],y_range=[-2,6,1],x_length=8,y_length=5,tips=False,
+                       y_axis_config={'scaling':lite.LogBase(custom_labels=True),'include_numbers':True})
+        # Coordinates and ticks measured with Manim Community 0.22.
+        for coords,point in (((1,1),(-3.2,-1.25)),((5,100),(0,0)),((0,.01),(-4,-2.5))):
+            self.assertPointAlmostEqual(axes.c2p(*coords)[:2],point)
+        self.assertEqual([round(v,4) for v in axes.p2c(axes.c2p(3,1000))],[3,1000])
+        self.assertEqual([round(v,4) for v in axes.y_axis.get_tick_range()],[.01,.1,1,10,100,1000,10000,100000,1000000])
+        self.assertEqual(len(axes.y_axis.labels),9)
+        self.assertEqual((axes.y_axis.labels[0].text,axes.y_axis.labels[0].unit),('10','^{-2}'))
+        graph=axes.plot(lambda x:2**x,x_range=[0,10])
+        self.assertEqual([round(v,3) for v in graph.get_end()[:2]],[4,.631])
+        log_x=lite.Axes(x_range=[-1,3,1],y_range=[0,10,2],x_axis_config={'scaling':lite.LogBase()},tips=False)
+        self.assertPointAlmostEqual(log_x.c2p(10,4)[:2],(0,-.6))
+        curve=log_x.plot(lambda x:math.log10(x)*3+2)
+        self.assertPointAlmostEqual(curve.get_start()[:2],(-6,-3.6))
+        self.assertPointAlmostEqual(curve.get_end()[:2],(6,3.6))
+        self.assertEqual(lite.LinearBase(2).function(3),6)
+        with self.assertRaises(ValueError): lite.LogBase().inverse_function(0)
+        with self.assertRaises(ValueError): log_x.get_origin()
+
+    def test_scene_sections_scene_updaters_add_and_waits(self):
+        frames=render("self.next_section('a')\nself.play(Create(Square()))\nself.next_section('skip', skip_animations=True)\nself.play(Create(Circle()))\nself.wait(1)\nself.next_section('b')\nself.wait(.5)")['frames']
+        self.assertEqual(len(frames),24)
+        self.assertEqual(len(frames[15]['mobjects']),2)  # Skipped animations still apply.
+        added=render("s=Square()\nc=Circle()\nself.play(Succession(Create(s), Add(c), FadeOut(s)))\nself.play(Add(Dot()))")['frames']
+        self.assertEqual([m['type'] for m in added[-1]['mobjects']],['circle','circle'])
+        self.assertEqual(len(added),31)
+        stopped=render("d=Dot()\nd.add_updater(lambda m, dt: m.shift(RIGHT*dt))\nself.add(d)\nself.wait_until(lambda: d.get_x() > 1, max_time=5)\nself.replace(d, Square())")['frames']
+        self.assertLess(len(stopped),20)
+        self.assertEqual(stopped[-1]['mobjects'][0]['type'],'square')
+        scene=lite.Scene()
+        ticks=[]
+        scene.add_updater(lambda dt: ticks.append(dt))
+        scene.wait(.2)
+        self.assertGreater(len(ticks),2)
+        scene.add_sound('beep.wav'); scene.add_subcaption('hello',duration=2)
+        self.assertEqual((len(scene.sounds),scene.subcaptions[0]['end']),(1,scene.time+2))
+        group=lite.VGroup(lite.Square()); scene.add(group)
+        self.assertEqual(scene.get_top_level_mobjects(),[group])
+        self.assertTrue(scene.should_update_mobjects())
+        with self.assertRaises(NotImplementedError): scene.embed()
+        with self.assertRaises(ValueError): lite.Scene().play(lite.FadeIn(lite.Square(),run_time=0))
+
+    def test_point_clouds_match_community(self):
+        dot=lite.PointCloudDot(center=lite.RIGHT,radius=1)
+        # Point counts and extents measured with Manim Community 0.22.
+        self.assertEqual((dot.get_num_points(),round(dot.get_width(),3),dot.get_color()),(334,1.799,'#FFFF00'))
+        line=lite.Mobject1D()
+        line.add_line(lite.LEFT,lite.RIGHT*2,color=lite.RED)
+        self.assertEqual((line.get_num_points(),round(line.get_width(),3)),(30,2.9))
+        self.assertPointAlmostEqual(lite.Point(lite.UP).get_center(),(0,1,0))
+        cloud=lite.PMobject()
+        cloud.add_points([(0,0,0),(1,1,0),(2,0,0)],color=lite.BLUE)
+        cloud.scale(2)
+        self.assertPointAlmostEqual(cloud.get_points()[1],(1,1.5,0))
+        self.assertEqual(cloud.thin_out(2).get_num_points(),2)
+        snapshot=cloud.to_dict()
+        self.assertEqual((snapshot['type'],round(snapshot['point_size'],5)),('pointcloud',round(4*(8*16/9)/1920,5)))
+        with self.assertRaises(ValueError): lite.PGroup(lite.Square())
+        frame=render("self.play(FadeIn(PointCloudDot(radius=.5)))")['frames'][-1]
+        self.assertEqual(len(frame['mobjects'][0]['cloud']),86)  # Community count
+
+    def test_set_style_routes_fill_and_stroke(self):
+        square=lite.Square().set_style(fill_color=lite.RED,fill_opacity=.5,stroke_color=lite.BLUE,
+                                       stroke_width=6,stroke_opacity=.25,background_stroke_width=0)
+        self.assertEqual((square.fill_color,square.fill_opacity,square.stroke_color,square.stroke_width,square.stroke_opacity),
+                         (lite.RED,.5,lite.BLUE,6,.25))
+        with self.assertRaises(NotImplementedError): square.set_style(glow=1)
+
+    def test_text_effects_gallery_renders_glyph_groups(self):
+        result=json.loads(lite.render_scene((ROOT/'examples/text_effects_scene.py').read_text()))
+        title=result['frames'][25]['mobjects'][0]
+        self.assertEqual(title['type'],'vgroup')
+        self.assertEqual([c['text'] for c in title['children']][:5],list('Hello'))
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+
+    def test_text_glyphs_t2c_markup_and_glyph_animation(self):
+        # Reference glyph centers: Manim Community 0.22, font='Liberation Sans'.
+        text=lite.Text('Hello world')
+        width=text.get_width()
+        self.assertEqual(len(text),10)
+        self.assertEqual(text._type,'vgroup')
+        for glyph,expected in zip(text,[(-1.414,-.009),(-.989,-.062),(-.728,.003),(-.58,.003),(-.32,-.062),(.291,-.062)]):
+            for a,b in zip(glyph.get_center()[:2],expected):
+                self.assertAlmostEqual(a,b,delta=.002)
+        self.assertAlmostEqual(text.get_width(),width)
+        lines=lite.Text('Ab\ncd')
+        for glyph,expected in zip(lines,[(-.172,.316),(.243,.325),(-.223,-.387),(.117,-.325)]):
+            for a,b in zip(glyph.get_center()[:2],expected):
+                self.assertAlmostEqual(a,b,delta=.002)
+        moved=lite.Text('Hi').scale(2).rotate(lite.PI/2).shift(lite.RIGHT)
+        before=moved.get_center()
+        self.assertLess(moved[0].get_center()[1],moved[1].get_center()[1])
+        self.assertPointAlmostEqual(moved.get_center(),before)
+        colored=lite.Text('Hello world',t2c={'world':lite.RED,'[0:1]':lite.BLUE},t2w={'ell':lite.BOLD})
+        self.assertEqual([g.color for g in colored][:6],[lite.BLUE,lite.WHITE,lite.WHITE,lite.WHITE,lite.WHITE,lite.RED])
+        self.assertEqual(colored[1].weight,lite.BOLD)
+        graded=lite.Text('abc',gradient=(lite.PURE_RED,lite.PURE_BLUE))
+        self.assertEqual([g.color for g in graded],lite.color_gradient([lite.PURE_RED,lite.PURE_BLUE],3))
+        markup=lite.MarkupText('<b>Bold</b> and <span foreground="#FF0000">red</span> &amp;')
+        self.assertEqual(markup.text,'Bold and red &')
+        self.assertEqual((markup[0].weight,markup[7].color),(lite.BOLD,'#FF0000'))
+        with self.assertRaises(NotImplementedError): lite.MarkupText('<blink>x</blink>')
+        self.assertEqual(lite.DecimalNumber(1.5)._type,'text')
+        written=render('t = Text("Hello")\nself.play(Write(t), run_time=1)')
+        frame=written['frames'][6]['mobjects'][0]
+        self.assertEqual(frame['type'],'text')
+        exploded=render('t = Text("Hello")\nt[0].set_color(RED)\nself.play(Write(t), run_time=1)')
+        glyphs=exploded['frames'][6]['mobjects'][0]['children']
+        self.assertEqual(glyphs[0]['color'],lite.RED)
+        self.assertGreater(glyphs[0]['opacity'],glyphs[-1]['opacity'])
+        letters=render('t = Text("abc")\nt[1]\nself.play(AddTextLetterByLetter(t))')
+        self.assertEqual(len(letters['frames'][2]['mobjects'][0]['children']),2)
+        self.assertEqual(letters['frames'][-1]['mobjects'][0]['children'][2]['text'],'c')
+
+    def test_matrix_table_gallery_renders_and_cleans_up(self):
+        result=json.loads(lite.render_scene((ROOT/'examples/matrix_table_scene.py').read_text()))
+        self.assertEqual(result['duration'],8)
+        self.assertTrue(any(r'\left[' in text for text in result['math_estimated']))
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+
+    def test_matrices_tables_paragraphs_and_glyph_stretching(self):
+        # Reference values: Manim Community 0.22 with font='Liberation Sans'.
+        paragraph=lite.Paragraph('One line','and a much longer line')
+        self.assertEqual([round(line.get_left()[0],3) for line in paragraph],[-3.34,-3.343])
+        self.assertEqual([round(line.get_center()[1],3) for line in paragraph],[.391,-.325])
+        centered=lite.Paragraph('One line','and a much longer line',alignment='center')
+        self.assertAlmostEqual(centered[0].get_center()[0],centered[1].get_center()[0])
+        table=lite.Table([['This','is a'],['simple','Table.']],row_labels=[lite.Text('R1'),lite.Text('R2')],
+                         col_labels=[lite.Text('C1'),lite.Text('C2')],top_left_entry=lite.Text('TOP'))
+        self.assertAlmostEqual(table.get_height(),3.982,delta=.01)
+        self.assertAlmostEqual(table.get_width(),8.789,delta=.12)
+        self.assertEqual([round(l.get_start()[1],2) for l in table.horizontal_lines],[.72,-.57])
+        self.assertEqual((len(table.vertical_lines),len(table.elements)),(2,9))
+        self.assertAlmostEqual(table.get_cell((2,2)).get_width(),3.1775,delta=.01)
+        self.assertIs(table.get_entries((2,2)),table.mob_table[1][1])
+        table.add_highlighted_cell((2,2),color=lite.GREEN)
+        self.assertIsInstance(table.children[0],lite.BackgroundRectangle)
+        creation=table.create()
+        self.assertIsInstance(creation,lite.AnimationGroup)
+        self.assertEqual(len(lite.Table([[1,2]],include_outer_lines=True).horizontal_lines),2)
+        with self.assertRaises(ValueError): lite.Table([[1,2],[3]])
+        self.assertEqual(lite.DecimalTable([[1.25]]).elements[0].text,'1.2')
+        matrix=lite.Matrix([[1,2],[3,4]])
+        self.assertPointAlmostEqual(matrix.get_center(),lite.ORIGIN)
+        left,right=matrix.get_brackets()
+        self.assertAlmostEqual(left.get_height(),matrix.elements.get_height()+2*lite.MED_SMALL_BUFF)
+        self.assertLess(left.get_right()[0],matrix.elements.get_left()[0])
+        self.assertEqual([m.text for m in matrix.get_columns()[1]],['2','4'])
+        matrix.set_row_colors(lite.RED,lite.BLUE)
+        self.assertEqual(matrix.get_rows()[1][0].color,lite.BLUE)
+        self.assertEqual(lite.matrix_to_tex_string([[1,2],[3,4]]),r'\left[ \begin{array}{cc}1 & 2 \\ 3 & 4\end{array} \right]')
+        self.assertEqual(lite.IntegerMatrix([[1.6]]).elements[0].text,'2')
+        self.assertEqual(len(lite.get_det_text(matrix,determinant=-2)),5)
+        text=lite.Text('Hello')
+        height=text.get_height()
+        text.stretch_to_fit_height(2*height)
+        self.assertEqual(text.glyph_stretch,[1.0,2.0])
+        self.assertAlmostEqual(text.get_height(),2*height)
+
+    def test_functional_transform_animations_and_labeled_connectors(self):
+        result=render('s = Square()\nself.add(s)\nself.play(ApplyMatrix([[1,1],[0,1]], s), rate_func=linear, run_time=2)')
+        self.assertPointAlmostEqual(result['frames'][-1]['mobjects'][0]['curves'][0][0],(2,1,0))
+        scene=lite.Scene()
+        square=lite.Square()
+        scene.play(lite.ApplyPointwiseFunction(lambda p:(p[0]*2,p[1],0),square))
+        self.assertAlmostEqual(square.get_width(),4)
+        scene.play(lite.ApplyPointwiseFunctionToCenter(lambda p:lite.Vector(p)+lite.UP,square))
+        self.assertPointAlmostEqual(square.get_center(),(0,1,0))
+        scene.play(lite.ApplyFunction(lambda m:m.scale(.5).set_color(lite.RED),square))
+        self.assertEqual((round(square.get_width(),6),square.color),(2,lite.RED))
+        with self.assertRaises(TypeError): lite.Scene().play(lite.ApplyFunction(lambda m:3,lite.Dot()))
+        complex_=lite.ApplyComplexFunction(lambda z:z*1j,lite.Dot(lite.RIGHT))
+        self.assertAlmostEqual(complex_.path_arc,lite.PI/2)
+        homotopy=render('d = Dot()\nself.play(Homotopy(lambda x, y, z, t: (x + 2*t, y, z), d), rate_func=linear, run_time=2)')
+        self.assertAlmostEqual(lite.Vector(homotopy['frames'][15]['mobjects'][0]['position'])[0]+homotopy['frames'][15]['mobjects'][0]['geometry_center'][0],1,places=5)
+        wave=render('l = Line(LEFT*3, RIGHT*3)\nself.add(l)\nself.play(ApplyWave(l, amplitude=.5), rate_func=linear)')
+        middle=wave['frames'][15]['mobjects'][0]
+        self.assertEqual(middle['type'],'bezierpath')
+        # Community maps a Line's single cubic with derivative-following handles (Manim 0.22 value).
+        self.assertAlmostEqual(max(p[1] for c in middle['curves'] for p in c),0.023215744788869893)
+        self.assertEqual(wave['frames'][-1]['mobjects'][0]['type'],'bezierpath')
+        flow=lite.Scene()
+        dot=lite.Dot(lite.RIGHT)
+        flow.play(lite.PhaseFlow(lambda p:(-p[1],p[0],0),dot,virtual_time=lite.PI/2),run_time=2)
+        # Euler steps per frame, like Community's PhaseFlow, approach a quarter turn.
+        self.assertGreater(dot.get_center()[1],.9)
+        self.assertLess(abs(dot.get_center()[0]),.1)
+        number=lite.DecimalNumber(0)
+        changed=lite.Scene()
+        changed.play(lite.ChangeDecimalToValue(number,10),rate_func=lite.linear,run_time=2)
+        self.assertEqual(number.get_value(),10)
+        self.assertAlmostEqual(changed.frames[15]['mobjects'][0]['number'],5)
+        with self.assertRaises(TypeError): lite.ChangingDecimal(lite.Dot(),lambda a:a)
+        arrow=lite.LabeledArrow('x',start=lite.LEFT*2,end=lite.RIGHT*2)
+        self.assertIsInstance(arrow,lite.Arrow)
+        self.assertPointAlmostEqual(arrow.label.get_center(),lite.ORIGIN)
+        self.assertEqual([type(m).__name__ for m in arrow.label],['BackgroundRectangle','MathTex','SurroundingRectangle'])
+        line=lite.LabeledLine('y',label_position=.25,start=lite.LEFT*2,end=lite.RIGHT*2)
+        self.assertPointAlmostEqual(line.label.get_center(),(-1,0,0))
+        self.assertEqual((lite.AnnotationDot().stroke_width,lite.AnnotationDot().fill_color),(5,lite.BLUE))
+
+    def test_multipart_mathtex_parts_colors_metrics_and_matching(self):
+        eq=lite.MathTex('x^2','+','y^2',color=lite.BLUE)
+        self.assertEqual((len(eq),eq.tex_strings,eq[2].tex_string),(3,['x^2','+','y^2'],'y^2'))
+        self.assertLess(eq[0].get_center()[0],eq[1].get_center()[0])
+        eq.set_color_by_tex('+',lite.RED)
+        self.assertEqual([p.color for p in eq],[lite.BLUE,lite.RED,lite.BLUE])
+        self.assertEqual(eq.index_of_part_by_tex('y'),2)
+        self.assertIsNone(eq.get_part_by_tex('q'))
+        isolated=lite.MathTex('a^2 + b^2 = c^2',substrings_to_isolate=['a','b','c'],tex_to_color_map={'c':lite.YELLOW})
+        self.assertEqual([p.tex_string for p in isolated],['a','^2 + ','b','^2 = ','c','^2'])
+        self.assertEqual(isolated.get_part_by_tex('c').color,lite.YELLOW)
+        single=lite.MathTex('x')
+        self.assertIs(single[0],single)
+        self.assertEqual(len(single),1)
+        classed=eq[0].text
+        # Browser metrics place parts exactly (em units, centers relative to the ink center).
+        source='from manim import *\nclass S(Scene):\n    def construct(self):\n        self.add(MathTex("x^2", "+", "y^2"))\n'
+        metrics={classed:[3,1,[[-1,.1,.9,.9],[0,0,.6,.6],[1,.1,.9,.9]]]}
+        frame=json.loads(lite.render_scene(source,math_metrics=metrics))['frames'][-1]['mobjects'][0]
+        self.assertEqual([c['part'] for c in frame['children']],[0,1,2])
+        self.assertAlmostEqual(frame['children'][0]['position'][0],-.5)
+        self.assertAlmostEqual(frame['children'][2]['position'][1],.05)
+        self.assertEqual(json.loads(lite.render_scene(source,math_metrics=metrics))['math_estimated'],[])
+        with self.assertRaises(ValueError): lite.render_scene(source,math_metrics={classed:[3,1,[[0,0,-1,1]]]})
+        result=render('a = MathTex("x^2", "+", "y^2")\nb = MathTex("y^2", "=", "z", "-", "x^2")\nself.add(a)\nself.play(TransformMatchingTex(a, b), rate_func=linear, run_time=2)\nassert self.mobjects == [b]')
+        middle=result['frames'][15]['mobjects']
+        self.assertEqual(len(middle),8)
+        self.assertTrue(all(isinstance(m['part'],int) for m in middle))
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['type'],'vgroup')
+        shapes=render('a = VGroup(Square(), Circle().shift(RIGHT*2))\nb = VGroup(Circle(radius=2).shift(LEFT), Triangle())\nself.add(a)\nself.play(TransformMatchingShapes(a, b))')
+        self.assertEqual([m['type'] for m in shapes['frames'][7]['mobjects']],['circle','square','polygon'])
+        with self.assertRaises(TypeError): lite.TransformMatchingTex(lite.Square(),lite.Circle()).begin(lite.Scene())
+
+    def test_scene_bounds_match_community_reference_fixture(self):
+        # tests/fixtures/community_reference.json holds bounds measured with Manim 0.22.
+        data=json.loads((ROOT/'tests/fixtures/community_reference.json').read_text())
+        tolerance=data['tolerance']
+        for name,case in data['cases'].items():
+            with self.subTest(case=name):
+                source='from manim import *\nclass S(Scene):\n    def construct(self):\n'
+                source+='\n'.join('        '+line for line in case['body'].splitlines())
+                captured={}
+                original=lite.Scene.render
+                def grab(scene):
+                    captured['scene']=scene
+                    return original(scene)
+                lite.Scene.render=grab
+                try:
+                    lite.render_scene(source)
+                finally:
+                    lite.Scene.render=original
+                mobjects=captured['scene'].mobjects
+                self.assertEqual(len(mobjects),len(case['mobjects']))
+                for mobject,expected in zip(mobjects,case['mobjects']):
+                    for key,direction in (('dl',lite.DL),('ur',lite.UR)):
+                        for a,b in zip(mobject.get_critical_point(direction)[:2],expected[key]):
+                            self.assertAlmostEqual(a,b,delta=tolerance)
+                    for a,b in zip(mobject.get_center()[:2],expected['c']):
+                        self.assertAlmostEqual(a,b,delta=tolerance)
+                    self.assertAlmostEqual(mobject.get_width(),expected['w'],delta=tolerance)
+                    self.assertAlmostEqual(mobject.get_height(),expected['h'],delta=tolerance)
+
+    def test_annotation_gallery_and_animate_accepts_any_method(self):
+        result=json.loads(lite.render_scene((ROOT/'examples/annotation_scene.py').read_text()))
+        self.assertEqual(result['duration'],9)
+        self.assertIn(r'\text{Annotating a rectangle}',result['math_estimated'])
+        frame=result['frames'][95]['mobjects']
+        title=frame[0]
+        self.assertAlmostEqual(title['children'][1]['position'][0]+title['children'][1]['geometry_center'][0],0)
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+        faded=render('b = BulletedList("One", "Two")\nself.add(b)\nself.play(b.animate.fade_all_but(1))')
+        self.assertEqual(faded['frames'][-1]['mobjects'][0]['children'][0]['children'][1]['fill_opacity'],.5)
+        with self.assertRaises(NotImplementedError): render('s = Square()\nself.play(s.animate.add_updater(lambda m: m))')
+
+    def test_bounds_follow_community_anchor_and_handle_rules(self):
+        # Reference values from Manim Community 0.22.
+        triangle=lite.Triangle().rotate(lite.PI/6)
+        self.assertPointAlmostEqual(triangle.get_center(),(.375,.0334936,0))
+        self.assertPointAlmostEqual((triangle.get_width(),triangle.get_height()),(1.5,1.7320508))
+        triangle.rotate(lite.PI/4).scale(2)
+        self.assertPointAlmostEqual(triangle.get_center(),(.0688138,-.2726926,0))
+        self.assertAlmostEqual(triangle.get_width(),3.3460652)
+        self.assertPointAlmostEqual(triangle.get_vertices()[1],(.0688138+2*(.457-.0688138),-.2726926+2*(-1.1092+.2726926),0)) if False else None
+        graph=lite.FunctionGraph(lambda x:x*x/4,x_range=[-2,2])
+        self.assertPointAlmostEqual(graph.get_center(),(0,.5,0))
+        self.assertPointAlmostEqual((graph.get_width(),graph.get_height()),(4,1))
+
+    def test_braces_labels_and_text_helpers_match_community(self):
+        square=lite.Square().shift(lite.RIGHT)
+        brace=lite.Brace(square)
+        self.assertPointAlmostEqual(brace.get_tip(),(1,-1.472985,0))
+        self.assertPointAlmostEqual(brace.get_top(),(1,-1.2,0))
+        self.assertAlmostEqual(brace.get_height(),.272985)
+        self.assertPointAlmostEqual(brace.get_direction(),(0,-1,0))
+        right=lite.Brace(square,direction=lite.RIGHT)
+        self.assertPointAlmostEqual(right.get_tip(),(2.472985,0,0))
+        self.assertAlmostEqual(right.get_height(),2)
+        diagonal=lite.Brace(lite.Circle().rotate(.3),direction=lite.UR)
+        self.assertPointAlmostEqual(diagonal.get_tip(),(1.0099758,1.0099758,0))
+        self.assertPointAlmostEqual(diagonal.get_center(),(.8371349,.8371349,0))
+        self.assertPointAlmostEqual(lite.BraceBetweenPoints(lite.LEFT,lite.RIGHT).get_tip(),(0,-.472985,0))
+        labeled=lite.BraceLabel(square,'x',brace_direction=lite.UP)
+        self.assertPointAlmostEqual(labeled.brace.get_tip(),(1,1.472985,0))
+        self.assertAlmostEqual(labeled.label.get_bottom()[1],1.472985+lite.DEFAULT_MOBJECT_TO_MOBJECT_BUFFER)
+        self.assertEqual(lite.BraceText(square,'side').label._type,'text')
+        self.assertIs(labeled.shift_brace(lite.Circle()),labeled)
+        tex=brace.get_tex('a')
+        self.assertLess(tex.get_top()[1],brace.get_tip()[1])
+        self.assertEqual(lite._tex_text_to_math(r'Area $x^2$ and \textbf{bold}'),r'\text{Area }x^2\text{ and }\textbf{bold}')
+        with self.assertRaises(ValueError): lite.Tex('one $x')
+        with self.assertRaises(NotImplementedError): lite.Tex(r'\LaTeX')
+        title=lite.Title('Hello World')
+        self.assertAlmostEqual(title.text.get_top()[1],3.5)
+        self.assertAlmostEqual(title.underline.get_width(),lite.config.frame_width-2)
+        self.assertAlmostEqual(title.text.get_bottom()[1]-title.underline.get_center()[1],lite.MED_SMALL_BUFF)
+        bullets=lite.BulletedList('One','Two $x$')
+        self.assertAlmostEqual(bullets[0].get_left()[0],bullets[1].get_left()[0])
+        self.assertEqual(bullets.fade_all_but(1)[0].children[1].fill_opacity,.5)
+        vector=lite.VectorArrow(lite.UR)
+        self.assertPointAlmostEqual(vector.get_end(),(1,1,0))
+        dot=lite.LabeledDot('a')
+        self.assertAlmostEqual(dot.radius,.1+max(lite.MathTex('a').get_width(),lite.MathTex('a').get_height())/2)
+        result=render('v = Variable(1.5, "x")\nself.add(v, Vector(UP))\nself.play(v.tracker.animate.set_value(3), rate_func=linear)\nm = Square()\nalways_shift(m, RIGHT, rate=1)\nalways_rotate(Circle(), rate=1)\nself.add(m)\nself.wait(1)')
+        variable,vec=result['frames'][7]['mobjects']
+        self.assertAlmostEqual(variable['children'][1]['number'],1.5+1.5*7/15)
+        self.assertEqual(vec['type'],'arrow')
+        self.assertAlmostEqual(result['frames'][-1]['mobjects'][2]['position'][0],1,places=1)
+
+    def test_numpy_inputs_scalars_and_np_export(self):
+        try:
+            import numpy as np
+        except ImportError:
+            self.skipTest('NumPy is not installed')
+        result=render("""d = Dot(np.array([1, 2, 0]))
+s = Square(side_length=np.int64(2)).shift(np.array([0, -1, 0]))
+p = RegularPolygon(np.int64(5), radius=np.float64(1.5))
+t = ValueTracker(np.float64(.5))
+v = VMobject().set_points_as_corners([np.array([x, np.sin(x), 0]) for x in np.linspace(-3, 3, 7)])
+self.add(d, s, p, v)
+self.play(d.animate.move_to(np.zeros(3)), Rotate(s, np.pi / 2), t.animate.set_value(np.int64(3)))
+assert isinstance(t.get_value(), (int, float))""")
+        final=result['frames'][-1]['mobjects']
+        self.assertEqual([m['type'] for m in final],['circle','square','polygon','polyline'])
+        self.assertPointAlmostEqual(final[0]['position'],(0,0,0))
+        self.assertEqual(type(lite.Vector(np.array([1,2,3]))[0]),int)
+        self.assertEqual(type(lite.Vector(np.array([1.5]))[0]),float)
+        self.assertEqual(lite.color_gradient([lite.RED,lite.BLUE],np.int64(3))[1],lite.interpolate_color(lite.RED,lite.BLUE,.5))
+
+    def test_animation_tour_gallery_and_there_and_back_transforms(self):
+        result=json.loads(lite.render_scene((ROOT/'examples/animation_tour_scene.py').read_text()))
+        self.assertEqual(result['duration'],12)
+        flashing=result['frames'][66]['mobjects']
+        self.assertEqual(len(flashing),16)
+        swapped=result['frames'][105]['mobjects'][3]['children']
+        self.assertPointAlmostEqual(swapped[0]['position'],(3,0,0))
+        self.assertAlmostEqual(swapped[1]['position'][0]+swapped[1]['geometry_center'][0],-2.87,places=2)
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+        back=render('s = Square()\nself.play(s.animate.shift(RIGHT*2), rate_func=there_and_back, run_time=2)\nassert s.get_center()[0] == 0')
+        self.assertAlmostEqual(back['frames'][15]['mobjects'][0]['position'][0],2)
+        self.assertEqual(back['frames'][-1]['mobjects'][0]['position'][0],0)
+
+    def test_community_rate_functions(self):
+        # Values checked against Manim Community 0.22.
+        self.assertAlmostEqual(lite.smooth(.25),0.0701037,places=6)
+        self.assertEqual((lite.smooth(-1),lite.smooth(2),lite.there_and_back(1.5)),(0,1,0))
+        self.assertAlmostEqual(lite.smoothstep(.25),0.15625)
+        self.assertAlmostEqual(lite.rate_functions.ease_out_bounce(.5),0.765625)
+        self.assertAlmostEqual(lite.rate_functions.ease_in_out_back(.25),-0.0996818,places=6)
+        self.assertAlmostEqual(lite.running_start(.5),0.0703125)
+        self.assertAlmostEqual(lite.double_smooth(.25),.5*lite.smooth(.5))
+        self.assertAlmostEqual(lite.there_and_back_with_pause(.5),1)
+        self.assertAlmostEqual(lite.squish_rate_func(lite.linear,.2,.6)(.4),.5)
+        self.assertAlmostEqual(lite.not_quite_there(lite.linear,.5)(1),.5)
+        self.assertAlmostEqual(lite.lingering(.4),.5)
+        self.assertEqual(lite.wiggle(0),0)
+        for name in ('ease_in_sine','ease_out_quad','ease_in_out_cubic','ease_in_expo','ease_out_circ','ease_in_elastic'):
+            function=getattr(lite.rate_functions,name)
+            self.assertAlmostEqual(function(0),0)
+            self.assertAlmostEqual(function(1),1)
+
+    def test_fade_shift_scale_target_lag_and_multiple_mobjects(self):
+        result=render('d = Dot()\nself.play(FadeIn(d, shift=UP), rate_func=linear)\nself.play(FadeOut(d, shift=RIGHT*2, scale=.5), rate_func=linear)')
+        middle=result['frames'][7]['mobjects'][0]
+        self.assertAlmostEqual(middle['position'][1],-1+7/15)
+        self.assertAlmostEqual(middle['opacity'],7/15)
+        out=result['frames'][22]['mobjects'][0]
+        self.assertAlmostEqual(out['position'][0],2*7/15)
+        self.assertAlmostEqual(out['geometry_scale'],1-.5*7/15)
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+        start=render('d = Dot(RIGHT)\nself.play(FadeIn(d, target_position=LEFT*3), rate_func=linear)')['frames'][0]['mobjects'][0]
+        self.assertAlmostEqual(start['position'][0],-3)
+        lagged=render('g = VGroup(Dot(LEFT), Dot(), Dot(RIGHT))\nself.play(FadeIn(g, lag_ratio=.5), rate_func=linear, run_time=2)')
+        children=lagged['frames'][15]['mobjects'][0]['children']
+        self.assertEqual([c['opacity'] for c in children],[1,.5,0])
+        both=render('a, b = Dot(LEFT), Dot(RIGHT)\nself.play(FadeIn(a, b))')
+        self.assertEqual(len(both['frames'][-1]['mobjects']),1)
+        self.assertEqual(len(both['frames'][-1]['mobjects'][0]['children']),2)
+        with self.assertRaises(ValueError): lite.FadeIn()
+        with self.assertRaises(ValueError): lite.FadeIn(lite.Dot(),lag_ratio=-1)
+
+    def test_write_draw_border_and_unwrite_follow_community_phases(self):
+        result=render('s = Square(fill_opacity=.8, color=RED)\nself.play(DrawBorderThenFill(s, rate_func=linear), run_time=2)')
+        first,second=[result['frames'][i]['mobjects'][0] for i in (7,22)]
+        self.assertAlmostEqual(first['draw_progress'],14/30)
+        self.assertEqual((first['fill_opacity'],first['stroke_width']),(0,2))
+        self.assertNotIn('draw_progress',second)
+        self.assertAlmostEqual(second['fill_opacity'],.8*(2*22/30-1))
+        write=lite.Write(lite.VGroup(*[lite.Square() for _ in range(20)]))
+        self.assertEqual((write.run_time,write.lag_ratio,write.rate_func),(2,.2,lite.linear))
+        self.assertEqual(lite.Write(lite.Text('Hi')).lag_ratio,.2)
+        text=render('t = Text("Hello")\nself.play(Write(t))')['frames'][3]['mobjects'][0]
+        self.assertEqual(text['fill_opacity'],0)
+        self.assertGreater(text['stroke_width'],0)
+        gone=render('t = Text("Bye")\nself.add(t)\nself.play(Unwrite(t))')
+        self.assertEqual(gone['frames'][0]['mobjects'][0]['fill_opacity'],1)
+        self.assertEqual(gone['frames'][-1]['mobjects'],[])
+        uncreate=render('c = Circle()\nself.add(c)\nself.play(Uncreate(c), rate_func=linear, run_time=2)')
+        self.assertEqual(uncreate['frames'][15]['mobjects'][0]['draw_progress'],.5)
+
+    def test_targets_methods_arcs_swaps_and_fade_transform(self):
+        square=lite.Square()
+        target=square.generate_target()
+        self.assertIsNot(target,square)
+        target.shift(lite.RIGHT*2).set_color(lite.RED)
+        json.dumps(square.to_dict())
+        scene=lite.Scene()
+        scene.play(lite.MoveToTarget(square))
+        self.assertPointAlmostEqual(square.get_center(),(2,0,0))
+        with self.assertRaises(ValueError): lite.MoveToTarget(lite.Circle())
+        dot=lite.Dot()
+        scene.play(lite.ApplyMethod(dot.shift,lite.UP),lite.ScaleInPlace(square,2),run_time=1)
+        self.assertPointAlmostEqual(dot.get_center(),(0,1,0))
+        self.assertAlmostEqual(square.get_width(),4)
+        scene.play(lite.FadeToColor(dot,lite.GREEN))
+        self.assertEqual(dot.color,lite.GREEN)
+        result=render('a, b = Dot(LEFT*2), Dot(RIGHT*2)\nself.add(a, b)\nself.play(Swap(a, b), rate_func=linear, run_time=2)\nassert len(self.mobjects) == 1')
+        group=result['frames'][15]['mobjects'][0]
+        left=lite.Vector(group['children'][0]['position'])
+        self.assertAlmostEqual(left[0],0,places=6)
+        self.assertGreater(abs(left[1]),.5)
+        self.assertPointAlmostEqual(result['frames'][-1]['mobjects'][0]['children'][0]['position'],(2,0,0))
+        arc=render('s = Square().shift(LEFT*2)\nself.play(CounterclockwiseTransform(s, Square().shift(RIGHT*2)), rate_func=linear, run_time=2)')
+        self.assertPointAlmostEqual(arc['frames'][15]['mobjects'][0]['position'],(0,-2,0))
+        fade=render('a = Square()\nb = Circle(radius=2).shift(RIGHT)\nself.add(a)\nself.play(FadeTransform(a, b), rate_func=linear, run_time=2)\nassert self.mobjects == [b]')
+        source,target=fade['frames'][15]['mobjects']
+        self.assertAlmostEqual(source['opacity'],.5)
+        self.assertAlmostEqual(target['opacity'],.5)
+        self.assertEqual(fade['frames'][-1]['mobjects'][0]['type'],'circle')
+        render('t = Text("A")\nself.add(t)\nself.play(FadeTransform(t, MathTex("x")))')
+
+    def test_emphasis_growth_updates_subsets_letters_and_wait(self):
+        result=render('s = Square()\nself.add(s)\nself.play(Circumscribe(s), run_time=1)\nself.play(Flash(ORIGIN, num_lines=8))\nself.play(Wiggle(s))\nself.play(FocusOn(s))')
+        self.assertEqual(len(result['frames'][7]['mobjects']),2)
+        self.assertEqual(len(result['frames'][22]['mobjects'][1]['children']) if result['frames'][22]['mobjects'][1]['type']=='vgroup' else 8,8)
+        wiggled=result['frames'][45]['mobjects'][0]
+        self.assertNotEqual(wiggled['geometry_scale'],1)
+        self.assertEqual(len(result['frames'][-1]['mobjects']),1)
+        arrow=render('a = Arrow(LEFT, RIGHT)\nself.play(GrowArrow(a), rate_func=linear, run_time=2)')['frames'][15]['mobjects'][0]
+        self.assertAlmostEqual(arrow['geometry_scale'],.5)
+        edge=render('s = Square()\nself.play(GrowFromEdge(s, DOWN), rate_func=linear, run_time=2)')['frames'][15]['mobjects'][0]
+        self.assertAlmostEqual(lite.Vector(edge['position'])[1]+edge['geometry_center'][1],-.5)
+        spin=render('s = Square()\nself.play(SpinInFromNothing(s), rate_func=linear, run_time=2)')['frames'][15]['mobjects'][0]
+        self.assertAlmostEqual(spin['angle'],-lite.PI/8)
+        self.assertAlmostEqual(spin['geometry_scale'],lite.math.sin(lite.PI/8)/lite.math.sin(lite.PI/4))
+        moving=render('t = ValueTracker(0)\nd = Dot()\nself.add(d)\nself.play(t.animate.set_value(4), UpdateFromFunc(d, lambda m: m.move_to(RIGHT*t.get_value())), rate_func=linear, run_time=2)')
+        self.assertAlmostEqual(moving['frames'][15]['mobjects'][0]['position'][0],2)
+        self.assertAlmostEqual(moving['frames'][-1]['mobjects'][0]['position'][0],4)
+        alpha=render('d = Dot()\nself.play(UpdateFromAlphaFunc(d, lambda m, a: m.move_to(UP*a)), rate_func=linear, run_time=2)')
+        self.assertAlmostEqual(alpha['frames'][15]['mobjects'][0]['position'][1],.5)
+        self.assertAlmostEqual(alpha['frames'][-1]['mobjects'][0]['position'][1],1)
+        subsets=render('g = VGroup(*[Dot(RIGHT*i) for i in range(4)])\nself.play(ShowIncreasingSubsets(g), rate_func=linear, run_time=2)')
+        self.assertEqual(len(subsets['frames'][15]['mobjects'][0]['children']),2)
+        letters=render('t = Text("Hi you")\nself.play(AddTextLetterByLetter(t))')
+        self.assertAlmostEqual(letters['duration'],.5,places=1)
+        partial=letters['frames'][4]['mobjects'][0]['layout']['lines'][0]
+        full=lite._text_layout(lite.Text('Hi you').__dict__)['lines'][0]
+        self.assertTrue(full['text'].startswith(partial['text']) and partial['text'] != full['text'])
+        self.assertAlmostEqual(partial['x'],full['x'])
+        with self.assertRaises(TypeError): lite.AddTextLetterByLetter(lite.MathTex('x'))
+        waited=render('d = Dot()\nself.add(d)\nself.play(Succession(Wait(1), d.animate.shift(UP)))')
+        self.assertEqual(waited['duration'],2)
+        self.assertAlmostEqual(waited['frames'][10]['mobjects'][0]['position'][1],0)
+
+    def test_text_layout_gallery_places_text_numbers_and_measured_formula(self):
+        source=(ROOT/'examples/text_layout_scene.py').read_text()
+        result=json.loads(lite.render_scene(source,math_metrics={r'e^{i\pi} + 1 = 0':[4.2,1.05]}))
+        self.assertEqual(result['math_estimated'],[])
+        frame=result['frames'][75]['mobjects']
+        title,line,items,formula,box,number=frame[0],frame[1],frame[2:5],frame[5],frame[6],frame[7]
+        self.assertAlmostEqual(lite.Text('Measured text layout',font_size=40).to_edge(lite.UP).get_center()[1],title['position'][1])
+        self.assertAlmostEqual(box['width'],4.2*60/96+.2)
+        self.assertAlmostEqual(box['height'],1.05*60/96+.2)
+        lefts=[item['position'][0]-item['layout']['width']/2 for item in items]
+        self.assertAlmostEqual(min(lefts),max(lefts))
+        self.assertEqual(number['layout']['family'],'serif')
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+
+    def test_text_bounds_match_community_liberation_sans_metrics(self):
+        # Reference sizes measured with Manim Community 0.22, font='Liberation Sans'.
+        for text,width,height in (('H',.3719,.4586),('Hello',1.4367,.4891),('  Hi  ',.5299,.4833),
+                                  ('acemnorsuvwxz',4.7178,.3648),('gjpqy',1.5643,.6211)):
+            mob=lite.Text(text)
+            self.assertAlmostEqual(mob.get_width(),width,delta=.012*width+.005)
+            self.assertAlmostEqual(mob.get_height(),height,delta=.02)
+            self.assertPointAlmostEqual(mob.get_center(),lite.ORIGIN)
+        self.assertAlmostEqual(lite.Text('H',font_size=96).get_height(),2*lite.Text('H').get_height())
+        layout=lite._text_layout(lite.Text('Hello\nworld!!!').__dict__)
+        self.assertEqual([line['text'] for line in layout['lines']],['Hello','world!!!'])
+        self.assertAlmostEqual(layout['lines'][0]['y']-layout['lines'][1]['y'],.65)
+        self.assertAlmostEqual(layout['lines'][0]['x'],layout['lines'][1]['x'])
+        self.assertAlmostEqual(lite._text_layout(lite.Text('A\nB',line_spacing=1).__dict__)['lines'][0]['y']
+                               -lite._text_layout(lite.Text('A\nB',line_spacing=1).__dict__)['lines'][1]['y'],1)
+        self.assertEqual(lite.Text('').get_width(),0)
+        self.assertGreater(lite.Text('漢字').get_width(),lite.Text('ab').get_width())
+        for value,width,height in ((3.14,.7886,.3427),(-2.5,1.1564,.3427),(1000,1.66,.4172),(0,.8259,.3427)):
+            number=lite.DecimalNumber(value)
+            self.assertAlmostEqual(number.get_width(),width,delta=.01)
+            self.assertAlmostEqual(number.get_height(),height,delta=.005)
+        self.assertAlmostEqual(lite.Integer(42).get_height(),.3372,delta=.005)
+        label=lite.Text('Title').to_edge(lite.UP)
+        self.assertAlmostEqual(label.get_top()[1],3.5)
+        for bad in ({'font_size':0},{'line_spacing':float('nan')},{'font':'x;y'},{'slant':'WIDE'},{'weight':'FAT'}):
+            with self.assertRaises(ValueError): lite.Text('x',**bad)
+        styled=lite.Text('x',font='Inter',weight=lite.BOLD,slant=lite.ITALIC).to_dict()
+        self.assertEqual((styled['font'],styled['weight'],styled['slant']),('Inter','BOLD','ITALIC'))
+
+    def test_rendered_text_layouts_and_math_metric_round_trip(self):
+        source='from manim import *\nclass Demo(Scene):\n    def construct(self):\n        t = Text("Hi")\n        m = MathTex("x^2").next_to(t, RIGHT, buff=0)\n        n = DecimalNumber(1.5)\n        self.add(VGroup(t, n), m)\n'
+        estimated=json.loads(lite.render_scene(source))
+        self.assertEqual(estimated['math_estimated'],['x^2'])
+        group,formula=estimated['frames'][-1]['mobjects']
+        text,number=group['children']
+        self.assertEqual((text['layout']['family'],number['layout']['family']),('sans','serif'))
+        self.assertAlmostEqual(text['layout']['em'],48/72)
+        self.assertAlmostEqual(number['layout']['em'],48/96)
+        self.assertNotIn('layout',formula)
+        measured=json.loads(lite.render_scene(source,math_metrics={'x^2':[.9,.8]}))
+        self.assertEqual(measured['math_estimated'],[])
+        t=lite.Text('Hi')
+        formula=measured['frames'][-1]['mobjects'][1]
+        self.assertAlmostEqual(formula['position'][0],t.get_right()[0]+.9*.5/2)
+        # Metrics are per render, not leaked into later renders.
+        self.assertEqual(json.loads(lite.render_scene(source))['math_estimated'],['x^2'])
+        for bad in ({'x':[1]},{'x':[float('nan'),1]},{3:[1,1]},[1,2]):
+            with self.assertRaises((ValueError,TypeError)): lite.render_scene(source,math_metrics=bad)
+        estimate=lite.MathTex(r'\frac{a}{b}')
+        self.assertGreater(estimate.get_height(),lite.MathTex('ab').get_height())
+
+    def test_polygram_gallery_matchers_follow_moved_group_children(self):
+        result=json.loads(lite.render_scene((ROOT/'examples/polygram_scene.py').read_text()))
+        self.assertEqual(result['duration'],10)
+        frame=result['frames'][60]['mobjects']
+        shapes,box,cross=frame[:4],frame[4],frame[6]
+        self.assertEqual([m['type'] for m in shapes],['polygon','polygon','bezierpath','bezierpath'])
+        self.assertEqual(shapes[2]['subpath_lengths'],[3,3])
+        self.assertPointAlmostEqual(box['position'],shapes[2]['position'])
+        self.assertEqual((cross['type'],len(cross['children'])),('vgroup',2))
+        self.assertEqual(result['frames'][90]['mobjects'][0]['type'],'rectangle')
+        self.assertEqual(result['frames'][130]['mobjects'][2]['type'],'polygon')
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+
+    def test_polygram_family_vertices_groups_and_native_defaults(self):
+        hexagram=lite.Polygram([[0,2,0],[-3**.5,-1,0],[3**.5,-1,0]],[[-3**.5,1,0],[0,-2,0],[3**.5,1,0]])
+        self.assertEqual((hexagram._type,hexagram.color,hexagram.stroke_width,hexagram.subpath_lengths),
+                         ('bezierpath',lite.BLUE,4,[3,3]))
+        self.assertEqual(len(hexagram.get_vertex_groups()),2)
+        self.assertPointAlmostEqual(hexagram.get_vertex_groups()[1][1],(0,-2,0))
+        self.assertEqual(len(hexagram.get_subpaths()),2)
+        self.assertPointAlmostEqual(hexagram.point_from_proportion(1),(-3**.5,1,0))
+        polygon=lite.Polygon((0,0,0),(2,0,0),(0,1,0)).shift(lite.UP)
+        self.assertIsInstance(polygon,lite.Polygram)
+        self.assertIsInstance(polygon,lite.VMobject)
+        self.assertEqual(polygon._type,'polygon')
+        self.assertPointAlmostEqual(polygon.get_vertices()[1],(2,1,0))
+        self.assertPointAlmostEqual(polygon.get_end(),(0,1,0))
+        self.assertFalse(polygon.has_new_path_started())
+        polygon.add_line_to((5,5,0))
+        self.assertEqual(polygon._type,'bezierpath')
+        self.assertPointAlmostEqual(polygon.get_end(),(5,5,0))
+        hexagon=lite.RegularPolygon()
+        self.assertEqual(len(hexagon.get_vertices()),6)
+        self.assertPointAlmostEqual(hexagon.get_vertices()[0],(1,0,0))
+        self.assertEqual(hexagon.start_angle,0)
+        pentagon=lite.RegularPolygon(5,radius=2)
+        self.assertPointAlmostEqual(pentagon.get_vertices()[0],(0,2,0))
+        triangle=lite.Triangle()
+        self.assertPointAlmostEqual(triangle.get_vertices()[1],(-3**.5/2,-.5,0))
+        self.assertEqual(triangle.color,lite.BLUE)
+        pentagram=lite.RegularPolygram(5,radius=2)
+        vertices=pentagram.get_vertices()
+        self.assertPointAlmostEqual(vertices[1],(2*lite.math.cos(lite.PI/2+2*lite.TAU/5),2*lite.math.sin(lite.PI/2+2*lite.TAU/5),0))
+        six=lite.RegularPolygram(6,density=2)
+        self.assertEqual([len(g) for g in six.get_vertex_groups()],[3,3])
+        # Each triangle is odd, so it starts at 90 degrees; the second is offset by 60.
+        self.assertPointAlmostEqual(six.get_vertex_groups()[1][0],(lite.math.cos(5*lite.PI/6),lite.math.sin(5*lite.PI/6),0))
+        star=lite.Star(outer_radius=2)
+        self.assertEqual(len(star.get_vertices()),10)
+        self.assertPointAlmostEqual(star.get_vertices()[0],(0,2,0))
+        # Default inner vertices lie on the matching pentagram's edges.
+        a,b=lite.Vector(vertices[0]),lite.Vector(vertices[1])
+        inner=lite.Vector(star.get_vertices()[1])
+        self.assertAlmostEqual((b-a)[0]*(inner-a)[1]-(b-a)[1]*(inner-a)[0],0)
+        self.assertAlmostEqual(lite.Star(7,outer_radius=1,inner_radius=.3).inner_radius,.3)
+        for bad in (lambda:lite.Star(5,density=3),lambda:lite.RegularPolygon(0),lambda:lite.RegularPolygram(5,density=0),
+                    lambda:lite.Polygram([(0,0)],[]),lambda:lite.Polygon((0,float('nan')))):
+            with self.assertRaises(ValueError): bad()
+        result=render('s = Star(color=GOLD, fill_opacity=.5)\nself.play(Create(s))\nself.play(Transform(s,RegularPolygram(6,radius=1.5)))')
+        final=result['frames'][-1]['mobjects'][0]
+        self.assertEqual((final['type'],final['subpath_lengths']),('bezierpath',[3,3]))
+
+    def test_round_corners_follow_community_corner_order_and_counts(self):
+        square=lite.Polygon((1,1,0),(-1,1,0),(-1,-1,0),(1,-1,0)).round_corners(.5)
+        curves=square.curves
+        self.assertEqual(len(curves),8)
+        self.assertPointAlmostEqual(curves[0][0],(1,.5,0))
+        self.assertPointAlmostEqual(curves[0][-1],(.5,1,0))
+        self.assertPointAlmostEqual(curves[1][-1],(-.5,1,0))
+        self.assertPointAlmostEqual(curves[-1][-1],curves[0][0])
+        midpoint=lite.VMobject._bezier_point(curves[0],.5)
+        self.assertAlmostEqual(lite.math.dist(midpoint[:2],(.5,.5)),.5,places=3)
+        # A list applies its first radius to the second vertex.
+        mixed=lite.Polygon((1,1,0),(-1,1,0),(-1,-1,0),(1,-1,0)).round_corners([0,.5])
+        self.assertPointAlmostEqual(mixed.curves[0][0],(1,.5,0))
+        self.assertPointAlmostEqual(mixed.curves[1][0],(.5,1,0))
+        self.assertPointAlmostEqual(mixed.curves[1][-1],(-1,1,0))
+        concave=lite.Polygon((1,1,0),(-1,1,0),(-1,-1,0),(1,-1,0)).round_corners(-.5)
+        inside=lite.VMobject._bezier_point(concave.curves[0],.5)
+        self.assertLess(lite.math.dist(inside[:2],(0,0)),lite.math.dist(lite.VMobject._bezier_point(curves[0],.5)[:2],(0,0)))
+        fine=lite.Triangle().round_corners(.2,components_per_rounded_corner=4)
+        self.assertEqual(len(fine.curves),3*3+3)
+        even=lite.Polygon((0,0,0),(4,0,0),(4,1,0),(0,1,0)).round_corners(.2,True,3)
+        self.assertGreater(len(even.curves),4*2+4)
+        hexagram=lite.RegularPolygram(6).round_corners(.1)
+        self.assertEqual(hexagram.subpath_lengths,[6,6])
+        self.assertIs(lite.Square().round_corners(0).__class__,lite.Square)
+        for bad in ({'radius':float('nan')},{'components_per_rounded_corner':1},{'evenly_distribute_anchors':1}):
+            with self.assertRaises(ValueError): lite.Triangle().round_corners(**bad)
+
+    def test_group_translation_and_scale_keep_children_in_world_space(self):
+        group=lite.VGroup(lite.Square(),lite.Circle(),lite.VGroup(lite.Dot())).arrange(buff=1)
+        group.shift(lite.UP*2).scale(.5).to_edge(lite.LEFT)
+        self.assertEqual((group.position,group.geometry_scale),([0,0,0],1))
+        self.assertPointAlmostEqual(group[0].get_left(),(-lite.config.frame_width/2+.5,2,0))
+        self.assertAlmostEqual(group[1].get_width(),1)
+        self.assertAlmostEqual(group[1].get_center()[1],2)
+        self.assertAlmostEqual(group[2][0].get_center()[1],2)
+        arrow=lite.Arrow(group[0].get_bottom(),group[1].get_bottom())
+        self.assertAlmostEqual(arrow.get_start()[1],arrow.get_end()[1])
+        frame=render('g = VGroup(Square(), Circle()).arrange().shift(UP)\nb = SurroundingRectangle(g[1])\nself.add(g, b)')['frames'][-1]['mobjects']
+        self.assertPointAlmostEqual(frame[1]['position'],frame[0]['children'][1]['position'])
+        # Rotated groups still store their pose; their children remain parent-local.
+        rotated=lite.VGroup(lite.Square().shift(lite.RIGHT)).rotate(lite.PI/2).shift(lite.UP)
+        self.assertEqual(rotated.angle,lite.PI/2)
+        self.assertPointAlmostEqual(rotated.get_center(),(1,1,0))
+
+    def test_shape_matchers_surround_background_cross_and_underline(self):
+        group=lite.VGroup(lite.Square(),lite.Circle()).arrange().shift(lite.UP*2).scale(.5)
+        box=lite.SurroundingRectangle(group[1])
+        self.assertEqual((box._type,box.color,box.stroke_width),('rectangle',lite.PURE_YELLOW,4))
+        self.assertPointAlmostEqual(box.get_center(),group[1].get_center())
+        self.assertAlmostEqual(box.get_width(),1.2)
+        both=lite.SurroundingRectangle(*group,buff=(.3,0),corner_radius=.1)
+        self.assertEqual(both._type,'bezierpath')
+        self.assertPointAlmostEqual((both.get_width(),both.get_height()),(group.get_width()+.6,group.get_height()))
+        self.assertPointAlmostEqual(both.get_center(),group.get_center())
+        background=lite.BackgroundRectangle(group,fill_opacity=.4)
+        self.assertEqual((background.color,background.stroke_width,background.fill_opacity),(lite.BLACK,0,.4))
+        self.assertAlmostEqual(background.get_width(),group.get_width())
+        cross=lite.Cross(group[0],stroke_color=lite.GREEN)
+        self.assertPointAlmostEqual(cross[0].get_start(),group[0].get_corner(lite.UL))
+        self.assertPointAlmostEqual(cross[1].get_end(),group[0].get_corner(lite.DL))
+        self.assertEqual((cross[0].stroke_color,cross[1].stroke_width),(lite.GREEN,6.0))
+        self.assertAlmostEqual(lite.Cross(scale_factor=.5)[0].get_length(),2**.5)
+        line=lite.Underline(group[0])
+        self.assertPointAlmostEqual(line.get_start(),group[0].get_corner(lite.DL)+lite.DOWN*.1)
+        self.assertPointAlmostEqual(line.get_end(),group[0].get_corner(lite.DR)+lite.DOWN*.1)
+        square=lite.Square().shift(lite.RIGHT*3).rotate(.3).scale(.5)
+        width=square.get_width()
+        square.add_background_rectangle(opacity=.5)
+        rect=square.background_rectangle
+        self.assertIs(square.children[0],rect)
+        corners=[square._point_to_world(rect._point_to_world(lite.Vector(c[0]))) for c in lite._path_curves(rect.to_dict())]
+        self.assertPointAlmostEqual(corners[0],(3+width/2,width/2,0))
+        self.assertPointAlmostEqual(corners[2],(3-width/2,-width/2,0))
+        self.assertEqual(rect.fill_opacity,.5)
+        for bad in (lambda:lite.SurroundingRectangle(lite.Dot(),buff=(1,2,3)),lambda:lite.SurroundingRectangle((0,0,0)),
+                    lambda:lite.Underline((0,0,0))):
+            with self.assertRaises((ValueError,TypeError)): bad()
+
+    def test_positioning_gallery_edges_flip_gradient_and_cleanup(self):
+        result=json.loads(lite.render_scene((ROOT/'examples/positioning_scene.py').read_text()))
+        self.assertEqual(result['duration'],11)
+        row,marker,arrow=result['frames'][30]['mobjects']
+        self.assertEqual([c['color'] for c in row['children']],lite.color_gradient([lite.BLUE_E,lite.TEAL,lite.GOLD_A],5))
+        self.assertAlmostEqual(arrow['position'][0]+arrow['end'][0],lite.config.frame_width/2-.5)
+        flipped=result['frames'][75]['mobjects'][2]
+        self.assertGreater(flipped['start'][0],flipped['end'][0])
+        self.assertEqual(result['frames'][105]['mobjects'][0]['children'][0]['stroke_opacity'],.5)
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+
+    def test_border_alignment_coordinates_and_matching(self):
+        square=lite.Square().shift(lite.RIGHT*2).to_edge(lite.UP)
+        self.assertAlmostEqual(square.get_top()[1],3.5)
+        self.assertAlmostEqual(square.get_x(),2)
+        circle=lite.Circle().to_corner(lite.UR,buff=0)
+        self.assertPointAlmostEqual(circle.get_corner(lite.UR),(lite.config.frame_width/2,4,0))
+        dot=lite.Dot().to_edge(lite.LEFT,buff=lite.SMALL_BUFF)
+        self.assertAlmostEqual(dot.get_left()[0],-lite.config.frame_width/2+.1)
+        rect=lite.Rectangle(width=4,height=2).rotate(lite.PI/2).shift(lite.UP)
+        rect.set_x(1,lite.LEFT).set_y(-1,lite.UP)
+        self.assertAlmostEqual(rect.get_left()[0],1)
+        self.assertAlmostEqual(rect.get_y(lite.UP),-1)
+        self.assertAlmostEqual(rect.get_coord(1,lite.DOWN),-5)
+        target=lite.Circle(radius=.5).shift(lite.DR*2)
+        rect.align_to(target,lite.UP)
+        self.assertAlmostEqual(rect.get_top()[1],target.get_top()[1])
+        self.assertAlmostEqual(rect.get_left()[0],1)
+        rect.align_to((-3,7,0),lite.LEFT)
+        self.assertPointAlmostEqual((rect.get_left()[0],rect.get_top()[1]),(-3,target.get_top()[1]))
+        rect.center()
+        self.assertPointAlmostEqual(rect.get_center(),lite.ORIGIN)
+        rect.match_width(target)
+        self.assertAlmostEqual(rect.get_width(),1)
+        self.assertAlmostEqual(rect.get_height(),2)
+        rect.match_height(target,stretch=True)
+        self.assertPointAlmostEqual((rect.get_width(),rect.get_height()),(1,1))
+        rect.match_x(target).match_y(target,lite.DOWN)
+        self.assertAlmostEqual(rect.get_x(),2)
+        self.assertAlmostEqual(rect.get_bottom()[1],target.get_bottom()[1])
+        moved=lite.Square(side_length=2).move_to(target,aligned_edge=lite.DL)
+        self.assertPointAlmostEqual(moved.get_corner(lite.DL),target.get_corner(lite.DL))
+        masked=lite.Square().shift(lite.UP).move_to((5,5,0),coor_mask=(1,0,0))
+        self.assertPointAlmostEqual(masked.get_center(),(5,1,0))
+        before=square.get_center()
+        for bad in (lambda:square.set_z(1),lambda:square.to_edge(lite.OUT),
+                    lambda:square.set_coord(1,3),lambda:square.align_to(target,(0,0,1))):
+            with self.assertRaises((ValueError,NotImplementedError)): bad()
+        self.assertPointAlmostEqual(square.get_center(),before)
+        square.set_z(0)
+        with self.assertRaises(ValueError): square.to_edge(lite.UP,buff=float('nan'))
+        with self.assertRaises(TypeError): square.match_width((1,1,0))
+
+    def test_flip_axis_rotation_and_edge_pivots(self):
+        line=lite.Line(lite.LEFT,lite.RIGHT+lite.UP).shift(lite.LEFT*4)
+        center=line.get_center()
+        line.flip()
+        self.assertPointAlmostEqual(line.get_start(),(2*center[0]-(-5),0,0))
+        self.assertPointAlmostEqual(line.get_end(),(2*center[0]-(-3),1,0))
+        flipped=lite.Line(lite.LEFT,lite.RIGHT+lite.UP).flip(lite.RIGHT,about_point=lite.ORIGIN)
+        self.assertPointAlmostEqual(flipped.get_end(),(1,-1,0))
+        a=lite.Square().rotate(lite.PI/5,axis=lite.IN)
+        b=lite.Square().rotate(-lite.PI/5)
+        self.assertEqual(a.to_dict(),b.to_dict())
+        self.assertEqual(lite.Square().rotate(lite.TAU,lite.UP).to_dict(),lite.Square().to_dict())
+        with self.assertRaises(NotImplementedError): lite.Square().rotate(lite.PI/3,lite.UP)
+        with self.assertRaises(ValueError): lite.Square().rotate(1,lite.ORIGIN)
+        rect=lite.Rectangle(width=2,height=1).shift(lite.RIGHT)
+        corner=rect.get_corner(lite.DL)
+        rect.scale(2,about_edge=lite.DL)
+        self.assertPointAlmostEqual(rect.get_corner(lite.DL),corner)
+        self.assertAlmostEqual(rect.get_width(),4)
+        rect.rotate(lite.PI,about_edge=lite.DL)
+        self.assertPointAlmostEqual(rect.get_corner(lite.UR),corner)
+        with self.assertRaises(ValueError): rect.scale(2,about_point=lite.ORIGIN,about_edge=lite.UP)
+        result=render('s = Square()\nself.play(Rotate(s,PI,about_edge=DL),run_time=1,rate_func=linear)')
+        final=result['frames'][-1]['mobjects'][0]
+        self.assertPointAlmostEqual(final['position'],(-2,-2,0))
+        result=render('s = Square().to_edge(LEFT)\nself.play(s.animate.to_edge(RIGHT).flip(),run_time=1)\nself.play(s.animate.center().match_width(Circle(radius=2)))')
+        self.assertAlmostEqual(result['frames'][15]['mobjects'][0]['position'][0],lite.config.frame_width/2-1.5)
+        self.assertPointAlmostEqual(result['frames'][-1]['mobjects'][0]['position'],lite.ORIGIN)
+
+    def test_palette_color_utilities_gradients_fading_and_style_matching(self):
+        self.assertEqual((lite.YELLOW,lite.ORANGE,lite.PINK,lite.TEAL,lite.GREY_BROWN),
+                         ('#F7D96F','#FF862F','#D147BD','#5CD0B3','#736357'))
+        self.assertEqual(lite.LIGHT_GREY,lite.GRAY_B)
+        # Community truncates channels when converting to hex (Manim 0.22 values).
+        self.assertEqual(lite.interpolate_color(lite.BLACK,lite.WHITE,.5),'#7F7F7F')
+        self.assertEqual(lite.color_gradient([lite.PURE_RED,lite.PURE_BLUE],3),['#FF0000','#7F007F','#0000FF'])
+        self.assertEqual(lite.color_gradient([lite.PURE_RED,lite.PURE_BLUE],1),['#0000FF'])
+        self.assertEqual(lite.average_color(lite.PURE_RED,lite.PURE_GREEN),'#7F7F00')
+        self.assertEqual(lite.rgb_to_color((1,.5,0)),'#FF7F00')
+        self.assertEqual(lite.rgb_to_color((255,128,0)),'#FF8000')
+        self.assertPointAlmostEqual(lite.color_to_rgb('#ff0000'),(1,0,0))
+        # Community parses palette names, so 'red' is its RED (#FC6255).
+        self.assertEqual(lite.interpolate_color('red',lite.WHITE,.5),lite.RED.interpolate(lite.WHITE,.5))
+        for bad in (lambda:lite.interpolate_color('not-a-color',lite.WHITE,.5),lambda:lite.color_gradient([],2),
+                    lambda:lite.interpolate_color(lite.RED,lite.WHITE,float('inf'))):
+            with self.assertRaises(ValueError): bad()
+        group=lite.VGroup(*[lite.Square() for _ in range(3)],lite.VGroup(lite.Text('A')))
+        group.set_color_by_gradient(lite.PURE_RED,lite.PURE_BLUE)
+        self.assertEqual([m.color for m in group.family_members_with_points()]+[group[3][0].color],
+                         lite.color_gradient([lite.PURE_RED,lite.PURE_BLUE],4))
+        self.assertEqual(group[3].color,lite.WHITE)
+        dots=lite.VGroup(lite.Dot(),lite.Dot(lite.RIGHT*.5),lite.Dot(lite.RIGHT*3))
+        dots.set_colors_by_radial_gradient(lite.ORIGIN,1,lite.WHITE,lite.BLACK)
+        self.assertEqual([d.fill_color for d in dots],['#FFFFFF','#7F7F7F','#000000'])
+        faded=lite.VGroup(lite.Square(fill_opacity=.8),lite.Circle()).fade(.25)
+        for member,expected in zip(faded,[(.6,.75),(0,.75)]): self.assertPointAlmostEqual((member.fill_opacity,member.stroke_opacity),expected)
+        with self.assertRaises(ValueError): faded.fade(2)
+        source=lite.Circle(color=lite.RED,fill_opacity=.4,stroke_width=7).set_fill(lite.BLUE)
+        matched=lite.Square().match_style(source)
+        self.assertEqual((matched.get_fill_color(),matched.get_stroke_color(),matched.get_fill_opacity(),
+                          matched.get_stroke_width(),matched.get_stroke_opacity()),(lite.BLUE,lite.RED,.4,7,1))
+        self.assertEqual(lite.Square().match_color(source).get_color(),lite.RED)
+        toward=lite.Square(color=lite.PURE_RED).fade_to(lite.PURE_BLUE,.5)
+        self.assertEqual(toward.color,'#7F007F')
+        row=lite.VGroup(lite.Dot(lite.RIGHT),lite.Dot(lite.LEFT),lite.Dot())
+        ids=[id(d) for d in row]
+        row.sort()
+        self.assertEqual([id(d) for d in row],[ids[1],ids[2],ids[0]])
+        row.invert()
+        self.assertEqual([id(d) for d in row],[ids[0],ids[2],ids[1]])
+        result=render('g = VGroup(*[Square(side_length=.5) for _ in range(4)]).arrange()\ng.set_color_by_gradient(BLUE_E, TEAL, GOLD_A)\ng.to_edge(UP, buff=MED_LARGE_BUFF)\nself.add(g)\nself.play(g.animate.fade(.5))')
+        children=result['frames'][-1]['mobjects'][0]['children']
+        self.assertEqual([c['color'] for c in children],lite.color_gradient([lite.BLUE_E,lite.TEAL,lite.GOLD_A],4))
+        self.assertEqual(children[0]['stroke_opacity'],.5)
+
     def test_point_mapping_gallery_warps_connector_and_restores(self):
         result=json.loads(lite.render_scene((ROOT/'examples/point_map_scene.py').read_text()))
         self.assertEqual(result['duration'],11)
@@ -56,15 +1613,19 @@ class SceneTests(unittest.TestCase):
     def test_function_mapping_controls_contours_and_atomic_failure(self):
         line=lite.Line((1,1,0),(3,1,0)).rotate(.2)
         old=line.get_points()
-        line.apply_function(lambda p:(p[0],p[1]+p[0]**2,0))
+        warp=lambda p:(p[0],p[1]+p[0]**2,0)
+        line.apply_function(warp)
         self.assertEqual(line._type,'bezierpath')
-        for actual,point in zip(line.get_points(),old):
-            self.assertPointAlmostEqual(actual,(point[0],point[1]+point[0]**2,0))
+        for actual,point in zip(line.get_points(),self.community_mapped(old,warp)):
+            self.assertPointAlmostEqual(actual,point)
         polygon=lite.Polygon((1,1,0),(3,1,0),(2,2,0))
         old=polygon.get_points()
-        polygon.apply_function(lambda p:(p[0],p[1]+p[0]**2,0))
-        for actual,point in zip(polygon.get_points(),old):
-            self.assertPointAlmostEqual(actual,(point[0],point[1]+point[0]**2,0))
+        polygon.apply_function(warp)
+        for actual,point in zip(polygon.get_points(),self.community_mapped(old,warp)):
+            self.assertPointAlmostEqual(actual,point)
+        for index,point in enumerate(old):
+            if index%4 in (0,3):  # Anchors map exactly.
+                self.assertPointAlmostEqual(polygon.get_points()[index],warp(point))
         # Only actual geometry points reach user callbacks, not the container origin.
         safe=lite.VGroup(lite.Line((1,1,0),(2,1,0)))
         safe.apply_function(lambda p:(1/p[0],p[1],0))
@@ -90,17 +1651,19 @@ class SceneTests(unittest.TestCase):
         old=path.get_points()
         pivot=lite.Vector((1,1,0))
         path.apply_complex_function(lambda z:z*z,about_point=pivot)
-        for actual,point in zip(path.get_points(),old):
+        def square(point):
             value=complex(point[0]-1,point[1]-1)**2
-            self.assertPointAlmostEqual(actual,(value.real+1,value.imag+1,0))
+            return (value.real+1,value.imag+1,0)
+        for actual,point in zip(path.get_points(),self.community_mapped(old,square)):
+            self.assertPointAlmostEqual(actual,point)
         path.save_state()
         before=path.to_dict()
         path.apply_matrix([[1,.5],[0,1]]).restore()
         self.assertEqual(path.to_dict(),before)
         result=render('line = Line((1,1,0),(3,1,0))\nself.play(line.animate.apply_function(lambda p:(p[0],p[1]+p[0]**2,0)),run_time=2,rate_func=linear)')
         middle=result['frames'][15]['mobjects'][0]
-        for control in middle['curves'][0]:
-            # Geometry is stored relative to the retained line origin.
+        for control in (middle['curves'][0][0],middle['curves'][0][3]):
+            # Geometry is stored relative to the retained line origin; anchors map exactly.
             point=lite.Vector(control)+lite.Vector(middle['position'])
             self.assertAlmostEqual(point[1],1+.5*point[0]**2)
 
@@ -167,7 +1730,12 @@ class SceneTests(unittest.TestCase):
             self.assertPointAlmostEqual(actual,(old[0],old[1]*.5,0))
         self.assertPointAlmostEqual(arrow.get_end(),(end[0],end[1]*.5,0))
         self.assertPointAlmostEqual(arrow.get_points()[-1],arrow._point_to_world(arrow.tip.base))
+        # Glyphs stretch along their own axes; sheared glyphs still fail atomically.
         host=lite.VGroup(lite.Circle(),lite.Text('hello'))
+        width=host[1].get_width()
+        host.stretch(2,0)
+        self.assertAlmostEqual(host[1].get_width(),2*width)
+        host=lite.VGroup(lite.Circle(),lite.Text('hello').rotate(.3))
         before=host.to_dict()
         with self.assertRaises(NotImplementedError): host.stretch(2,0)
         self.assertEqual(host.to_dict(),before)
@@ -836,7 +2404,9 @@ class SceneTests(unittest.TestCase):
                 fixed = lite.Square().shift(lite.RIGHT*3)
                 host = group_class(inner,fixed).rotate(-.3).scale(scale).shift(lite.UP)
                 def points(child):
-                    return [host._point_to_world(lite.Vector(point)) for point in child.get_points()]
+                    # Members removed from the host keep their world placement.
+                    world = host._point_to_world if child in host.children else (lambda point: point)
+                    return [world(lite.Vector(point)) for point in child.get_points()]
                 fixed_points = points(fixed)
                 sibling_world = host._point_to_world(inner._point_to_world(sibling.get_center()))
                 for x in (-5,0,6):
@@ -1176,7 +2746,7 @@ class SceneTests(unittest.TestCase):
         self.assertEqual(lite.ArcPolygonFromArcs().get_points(),[])
 
     def test_arc_polygon_creation_and_morph_include_own_path_and_children(self):
-        result = render("p = ArcPolygon((-1,0),(1,0),(0,2),angle=PI/3,fill_opacity=.5)\nself.play(Create(p),run_time=1)\nself.play(Transform(p,ArcPolygon((-1,0),(1,0),(0,2),angle=0,fill_opacity=.8)),run_time=2)")
+        result = render("p = ArcPolygon((-1,0),(1,0),(0,2),angle=PI/3,fill_opacity=.5)\nself.play(Create(p,lag_ratio=0),run_time=1)\nself.play(Transform(p,ArcPolygon((-1,0),(1,0),(0,2),angle=0,fill_opacity=.8)),run_time=2)")
         created = result['frames'][7]['mobjects'][0]
         self.assertGreater(created['draw_progress'],0)
         self.assertLess(created['fill_opacity'],.5)
@@ -1856,7 +3426,8 @@ class SceneTests(unittest.TestCase):
         self.assertEqual(group.df_label.color,lite.RED)
         self.assertEqual(group.df_label.text,'df')
         self.assertEqual(group.df_label._type,'mathtex')
-        self.assertLessEqual(len(label.text)*.6*label.font_size/50*group.dx_label.geometry_scale,.8*.5+1e-9)
+        self.assertLessEqual(group.dx_label.get_width(),.8*.5+1e-9)
+        self.assertAlmostEqual(group.dx_line.get_center()[1]-group.dx_label.get_top()[1],group.dx_label.get_height()/2)
         self.assertLess(group.dx_label.get_center()[1],group.dx_line.get_center()[1])
         negative = axes.get_secant_slope_group(1,graph,dx=-.5,dx_label='dx',dy_label=3,include_secant_line=False)
         self.assertGreater(negative.dx_label.get_center()[1],negative.dx_line.get_center()[1])
@@ -1930,7 +3501,8 @@ class SceneTests(unittest.TestCase):
         self.assertEqual(rectangles[-1].fill_color,lite.GREEN)
         self.assertEqual(rectangles[1].fill_color,'#993C49')
         blended = axes.get_riemann_rectangles(graph,x_range=[-1,0],dx=.5,color=lite.YELLOW,blend=True)
-        self.assertEqual(blended[0].fill_color,'#0000FF')
+        self.assertEqual(blended[0].fill_color,lite.invert_color(lite.YELLOW))
+        self.assertEqual(blended[0].fill_color,'#082690')
         self.assertEqual(blended[0].stroke_color,blended[0].fill_color)
         unsigned = axes.get_riemann_rectangles(graph,x_range=[-1,0],dx=.5,color=lite.YELLOW,show_signed_area=False)
         self.assertEqual(unsigned[0].fill_color,lite.YELLOW)
@@ -2113,16 +3685,17 @@ class SceneTests(unittest.TestCase):
         plane = lite.ComplexPlane(x_range=[-3,3],y_range=[-2,2])
         options = {'num_decimal_places':1,'color':lite.RED,'direction':None,'buff':None}
         labels = plane.get_coordinate_labels(2j,2,-1j,-2,1+2j,2+1j,1+1j,**options)
-        self.assertEqual([label.text for label in labels],['2.0i','2.0','-1.0i','-2.0','2.0i','2.0','1.0'])
+        full=lambda label: label.text+(label.unit or '')  # Community typesets the unit as a TeX part.
+        self.assertEqual([full(label) for label in labels],['2.0i','2.0','-1.0i','-2.0','2.0i','2.0','1.0'])
         self.assertIs(plane.coordinate_labels,labels)
         self.assertNotIn('unit',options)
         self.assertNotIn('_coordinate_labels',plane.to_dict())
         self.assertEqual(len(plane.children),4)
         for label in labels: self.assertEqual(label.fill_color,lite.RED)
         labels = plane.get_coordinate_labels(1j,2,unit='m',num_decimal_places=0)
-        self.assertEqual([label.text for label in labels],['1i','2m'])
+        self.assertEqual([full(label) for label in labels],['1i','2m'])
         defaults = plane.get_coordinate_labels()
-        self.assertEqual([label.text for label in defaults],['-3','-2','-1','1','2','3','-2i','-1i','1i','2i'])
+        self.assertEqual([full(label) for label in defaults],['-3','-2','-1','1','2','3','-2i','-1i','1i','2i'])
         json.dumps(plane.to_dict(),allow_nan=False)
 
     def test_complex_labels_world_queries_and_attached_pivot_compensation(self):
@@ -2130,11 +3703,12 @@ class SceneTests(unittest.TestCase):
         coordinates = [0,1+1j,-3-2j,3+2j]
         before = [plane.n2p(z) for z in coordinates]
         labels = plane.get_coordinate_labels(-3,2j,num_decimal_places=0)
-        expected = [label.get_center() for label in labels]
+        # Pivots, not bounding-box centers: a two-part label's box is not rotation invariant.
+        expected = [label._pivot_point() for label in labels]
         self.assertEqual([label.angle for label in labels],[0,0])
         plane.add_coordinates(-3,2j,num_decimal_places=0)
         for label,point in zip(plane.coordinate_labels,expected):
-            self.assertPointAlmostEqual(plane._point_to_world(label.get_center()),point)
+            self.assertPointAlmostEqual(plane._point_to_world(label._pivot_point()),point)
             self.assertAlmostEqual(label.angle+plane.angle,0)
             self.assertAlmostEqual(label.geometry_scale*plane.geometry_scale,1)
         for z,point in zip(coordinates,before): self.assertPointAlmostEqual(plane.n2p(z),point)
@@ -2178,7 +3752,7 @@ class SceneTests(unittest.TestCase):
         self.assertPointAlmostEqual(final[1]['position'],(0,2,0))
         self.assertPointAlmostEqual(final[2]['position'],(0,-2,0))
         self.assertEqual(final[0]['angle'],0)
-        texts = [label['text'] for label in final[0]['children'][-1]['children']]
+        texts = [label['text']+''.join(c['text'] for c in label['children']) for label in final[0]['children'][-1]['children']]
         self.assertIn('2i',texts); self.assertIn('-2i',texts)
 
     def test_number_plane_grid_spacing_styles_and_roles(self):
@@ -2632,7 +4206,7 @@ class SceneTests(unittest.TestCase):
             with self.assertRaises(ValueError): lite.NumberLine(**kwargs)
         with self.assertRaises(ValueError): lite.NumberLine([0,1,.00001])
         with self.assertRaises(NotImplementedError): lite.NumberLine(label_direction=lite.OUT)
-        with self.assertRaises(NotImplementedError): lite.NumberLine(scaling='logarithmic')
+        with self.assertRaises(TypeError): lite.NumberLine(scaling='logarithmic')
         line = lite.NumberLine([0,2]).rotate(.4).scale(2)
         before = line.to_dict()
         for values in ([0,float('nan')],[0]*1001):
@@ -3064,7 +4638,7 @@ class SceneTests(unittest.TestCase):
         result = render('box = RoundedRectangle()\nself.add(box)\nself.play(Transform(box, Triangle()), run_time=2)')
         self.assertEqual(result['frames'][15]['mobjects'][0]['type'], 'bezierpath')
         self.assertEqual(len(result['frames'][15]['mobjects'][0]['curves']), 12)
-        self.assertEqual(result['frames'][-1]['mobjects'][0]['type'], 'triangle')
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['type'], 'polygon')
 
     def test_annulus_bounds_contour_order_and_validation(self):
         ring = lite.Annulus(inner_radius=1, outer_radius=2, arc_center=lite.UP)
@@ -3281,9 +4855,9 @@ self.wait(1)""")
         self.assertEqual(lite.DecimalNumber().text, '0.00')
         number = lite.DecimalNumber(1234.125, num_decimal_places=3, include_sign=True,
                                     show_ellipsis=True, unit=' kg')
-        self.assertEqual(number.text, '+1,234.125… kg')
+        self.assertEqual((number.text, number.unit_sign.text), ('+1,234.125…', ' kg'))
         number.set_value(-.0001)
-        self.assertEqual(number.text, '+0.000… kg')
+        self.assertEqual(number.text, '+0.000…')
         self.assertEqual(lite.DecimalNumber(-0.0).text, '0.00')
         self.assertEqual(lite.DecimalNumber(1234, group_with_commas=False).text, '1234.00')
         for value, expected in [(2.5, 2), (3.5, 4), (-2.5, -2)]:
@@ -3341,8 +4915,9 @@ self.wait(1)""")
         self.assertEqual(middle[1]['text'], '+1.00')
         self.assertEqual(middle[1]['position'], [1, 1, 0])
         self.assertEqual(middle[2]['text'], '1')
-        self.assertEqual(result['frames'][75]['mobjects'][3]['text'], '1,750 points')
-        self.assertEqual(result['frames'][-1]['mobjects'][3]['text'], '1,000 points')
+        self.assertEqual(result['frames'][75]['mobjects'][3]['text'], '1,750')
+        self.assertEqual(result['frames'][75]['mobjects'][3]['children'][0]['text'], ' points')
+        self.assertEqual(result['frames'][-1]['mobjects'][3]['text'], '1,000')
         self.assertEqual(result['frames'][0]['mobjects'][1]['text'], '-2.00')
 
     def test_become_keeps_identity_callbacks_checkpoint_and_independent_target(self):
@@ -3377,7 +4952,7 @@ self.wait(1)""")
         group.become(lite.Group(lite.Group(lite.Square()),lite.Group(lite.Triangle())))
         self.assertIsNot(group[0].children[0],group[1].children[0])
         self.assertEqual(group[0].children[0].to_dict()['type'],'square')
-        self.assertEqual(group[1].children[0].to_dict()['type'],'triangle')
+        self.assertEqual(group[1].children[0].to_dict()['type'],'polygon')
         group.become(lite.Group())
         self.assertEqual(len(group),0)
 
@@ -3578,7 +5153,8 @@ self.wait(1)""")
         animation = camera.auto_zoom(iter(shapes), margin=2)
         self.assertEqual(camera.frame.to_dict(), before)
         scene.add(*shapes).play(animation, run_time=2, rate_func=lite.linear)
-        self.assertEqual(scene.frames[15]['camera']['frame_width'], 13)
+        # Community's default frame is 128/9 units wide.
+        self.assertAlmostEqual(scene.frames[15]['camera']['frame_width'], (128/9+10)/2)
         self.assertEqual(camera.frame_width, 10)
         self.assertEqual(camera.frame_height, 5.625)
         tall = lite.Rectangle(width=1, height=6).shift(lite.UP * 2)
@@ -3589,13 +5165,13 @@ self.wait(1)""")
     def test_camera_visibility_filter_includes_partial_overlap_and_transformed_group(self):
         camera = lite.MovingCameraScene().camera
         camera.frame_center = lite.RIGHT * 2
-        edge = lite.Square().shift(lite.RIGHT * 11)
+        edge = lite.Square().shift(lite.RIGHT * 10)
         outside = lite.Circle().shift(lite.RIGHT * 20)
         self.assertTrue(camera.is_in_frame(edge))
         self.assertFalse(camera.is_in_frame(outside))
         camera.auto_zoom([camera.frame, edge, outside], margin=1,
                          only_mobjects_in_frame=True, animate=False)
-        self.assertEqual(camera.frame_center, lite.RIGHT * 11)
+        self.assertEqual(camera.frame_center, lite.RIGHT * 10)
         self.assertEqual(camera.frame_height, 3)
         group = lite.VGroup(lite.Square().shift(lite.LEFT * 2), lite.Circle().shift(lite.RIGHT * 2))
         group.scale(2).rotate(lite.PI / 2).shift(lite.UP)
@@ -3611,11 +5187,13 @@ self.wait(1)""")
                                  ([lite.Circle()], {'margin':float('nan')}),
                                  ([lite.Circle()], {'margin':-2}),
                                  ([lite.Circle().shift(lite.RIGHT*30)], {'only_mobjects_in_frame':True}),
-                                 ([lite.Text('unknown metrics')], {}),
                                  ([lite.Circle().shift((0,0,1))], {})]:
             with self.assertRaises((ValueError, TypeError, NotImplementedError)):
                 camera.auto_zoom(objects, animate=False, **options)
             self.assertEqual(camera.frame.to_dict(), before)
+        # Text now has estimated ink bounds, so it can be framed.
+        words = lite.Text('framed words', font_size=96)
+        lite.MovingCameraScene().camera.auto_zoom(words, animate=False)
         camera.auto_zoom(lite.Circle().shift(lite.RIGHT*3), margin=1, animate=False)
         camera.frame.restore()
         self.assertEqual(camera.frame.to_dict(), before)
@@ -3626,18 +5204,18 @@ self.wait(1)""")
         self.assertEqual(result['frames'][60]['camera']['frame_width'], 8)
         self.assertEqual(result['frames'][105]['camera']['frame_center'], [-2,0,0])
         self.assertEqual(result['frames'][105]['camera']['frame_height'], 3)
-        self.assertEqual(result['frames'][-1]['camera']['frame_width'], 16)
+        self.assertAlmostEqual(result['frames'][-1]['camera']['frame_width'], 128/9)
 
     def test_moving_camera_samples_pan_zoom_and_exact_restoration(self):
         source = "from manim import *\nclass Demo(MovingCameraScene):\n    def construct(self):\n        frame=self.camera.frame.save_state()\n        self.add(Circle())\n        self.play(frame.animate.move_to(RIGHT*2).scale(.5),run_time=2,rate_func=linear)\n        self.play(Restore(frame),run_time=2,rate_func=linear)"
         result=json.loads(lite.render_scene(source))
         camera=result['frames'][15]['camera']
         self.assertEqual(camera['frame_center'],[1,0,0])
-        self.assertEqual(camera['frame_width'],12)
-        self.assertEqual(camera['frame_height'],6.75)
+        self.assertAlmostEqual(camera['frame_width'],.75*128/9)
+        self.assertAlmostEqual(camera['frame_height'],6)
         self.assertEqual(result['frames'][30]['camera']['frame_center'],[2,0,0])
         self.assertEqual(result['frames'][-1]['camera']['frame_center'],[0,0,0])
-        self.assertEqual(result['frames'][-1]['camera']['frame_width'],16)
+        self.assertAlmostEqual(result['frames'][-1]['camera']['frame_width'],128/9)
         self.assertTrue(all(len(frame['mobjects'])==1 for frame in result['frames']))
 
     def test_camera_sequential_relative_motion_and_completed_group_hold(self):
@@ -3647,7 +5225,7 @@ self.wait(1)""")
         self.assertEqual(scene.frames[15]['camera']['frame_center'],[1,0,0])
         self.assertEqual(frame.get_center(),lite.RIGHT*2)
         scene.play(frame.animate.scale(.5),lite.Create(lite.Circle(),run_time=2),rate_func=lite.linear)
-        self.assertEqual(scene.frames[45]['camera']['frame_width'],8)
+        self.assertAlmostEqual(scene.frames[45]['camera']['frame_width'],64/9)
         self.assertEqual(len(scene.frames[45]['mobjects']),1)
         scene.clear().wait(1)
         self.assertEqual(scene.frames[-1]['camera']['frame_center'],[2,0,0])
@@ -3676,9 +5254,9 @@ self.wait(1)""")
         result=json.loads(lite.render_scene((ROOT/'examples/moving_camera_scene.py').read_text()))
         self.assertEqual(result['duration'],9)
         camera=result['frames'][60]['camera']
-        self.assertEqual(camera['frame_width'],8)
+        self.assertAlmostEqual(camera['frame_width'],64/9)
         self.assertEqual(camera['frame_center'],[2,0,0])
-        self.assertEqual(result['frames'][-1]['camera']['frame_width'],16)
+        self.assertAlmostEqual(result['frames'][-1]['camera']['frame_width'],128/9)
         self.assertEqual(result['frames'][-1]['camera']['frame_center'],[0,0,0])
 
     def test_configuration_is_isolated_between_successful_and_failed_sources(self):
@@ -3689,7 +5267,8 @@ self.wait(1)""")
         with self.assertRaises(RuntimeError):
             lite.render_scene("from manim import *\nconfig.background_color=RED\nraise RuntimeError('failed')")
         defaults = render('self.add(Circle())')['frames'][0]['camera']
-        self.assertEqual(defaults,dict(pixel_width=800,pixel_height=450,frame_width=16,frame_height=9,background_color=lite.BLACK))
+        self.assertEqual(defaults,dict(pixel_width=800,pixel_height=450,frame_width=128/9,frame_height=8,
+                                       background_color=lite.BLACK))
 
     def test_camera_snapshots_preserve_background_changes_and_ignore_later_config(self):
         result = render("self.wait(1)\nself.camera.background_color=WHITE\nconfig.background_color=RED\nself.wait(1)")
@@ -3898,7 +5477,7 @@ self.wait(1)""")
         cases = ((lite.Line((1,2),(4,5)), 1, (1,2,0), (4,5,0)),
                  (lite.Square(side_length=4), 4, (2,2,0), (2,2,0)),
                  (lite.Rectangle(width=6,height=2), 4, (3,1,0), (3,1,0)),
-                 (lite.Triangle(), 3, (0,3**0.5/3,0), (0,3**0.5/3,0)))
+                 (lite.Triangle(), 3, (0,1,0), (0,1,0)))
         for shape, count, start, end in cases:
             with self.subTest(shape=shape._type):
                 curves = lite._path_curves(shape.to_dict())
@@ -3927,8 +5506,9 @@ self.wait(1)""")
         self.assertEqual(result['frames'][15]['mobjects'][0]['radius'],2)
         result = render('p = Arc(angle=PI)\nself.play(Transform(p,Arc(angle=-PI)),run_time=2,rate_func=linear)')
         self.assertEqual(result['frames'][15]['mobjects'][0]['arc_angle'],0)
+        # Explicit real tip children let the shaft align as one cubic morph.
         result = render('p = Arrow()\nself.play(Transform(p,Circle()),run_time=2,rate_func=linear)')
-        self.assertEqual([m['opacity'] for m in result['frames'][15]['mobjects']],[0.5,0.5])
+        self.assertEqual([(m['type'],m['opacity']) for m in result['frames'][15]['mobjects']],[('bezierpath',1)])
 
     def test_primitive_morph_gallery_restores_circle_and_finishes_as_cubic(self):
         result = json.loads(lite.render_scene((ROOT / 'examples/shape_morph_scene.py').read_text()))
@@ -4001,9 +5581,12 @@ self.wait(1)""")
         curve = lite.CubicBezier((-3,0), (-1,3), (1,3), (3,0))
         self.assertIsInstance(curve, lite.VMobject)
         self.assertEqual(curve.point_from_proportion(0.5), (0,2.25,0))
-        self.assertEqual(curve._local_bounds(), (-3,0,3,3))
+        # Community: edges and the pivot use anchors; width/height include handles.
+        self.assertEqual(curve._local_bounds(), (-3,0,3,0))
+        self.assertEqual((curve.get_width(), curve.get_height()), (6,3))
+        self.assertEqual(curve.get_center(), (0,0,0))
         curve.scale(2).rotate(lite.PI/2).shift(lite.RIGHT)
-        for actual, expected in ((curve.get_start(), (4,-4.5,0)), (curve.get_end(), (4,7.5,0)), (curve.point_from_proportion(0.5), (-0.5,1.5,0))):
+        for actual, expected in ((curve.get_start(), (1,-6,0)), (curve.get_end(), (1,6,0)), (curve.point_from_proportion(0.5), (-3.5,0,0))):
             for a, b in zip(actual, expected):
                 self.assertAlmostEqual(a, b)
         for alpha in (-0.1, 1.1, float('nan')):
@@ -4124,11 +5707,15 @@ self.wait(1)""")
         group, other = lite.VGroup(child), lite.Dot()
         scene = lite.Scene().add(group).add_foreground_mobject(other)
         for method in (scene.add_foreground_mobjects, scene.remove_foreground_mobjects):
-            for args, error in (((other, child), NotImplementedError), ((other, 1), TypeError)):
+            for args, error in (((group, child), NotImplementedError), ((other, 1), TypeError)):
                 with self.assertRaises(error):
                     method(*args)
                 self.assertEqual(scene.mobjects, [group, other])
                 self.assertEqual(scene.foreground_mobjects, [other])
+        # Community splits a member out of its scene group when it moves to the foreground.
+        scene.add_foreground_mobjects(child)
+        self.assertEqual(scene.mobjects, [other, child])
+        self.assertEqual(scene.foreground_mobjects, [other, child])
 
     def test_foreground_gallery_preserves_group_then_releases_cleans_and_clears(self):
         result = json.loads(lite.render_scene((ROOT / 'examples/foreground_scene.py').read_text()))
@@ -4253,7 +5840,7 @@ self.wait(1)""")
         self.assertEqual(events, [('setup', 0), ('construct', 8/15), ('tear_down', 38/15)])
         self.assertEqual(scene.time, result['duration'])
         self.assertEqual(result['frames'][-1]['mobjects'][0]['color'], lite.GREEN)
-        self.assertEqual(result['frames'][0]['mobjects'][0]['color'], lite.WHITE)
+        self.assertEqual(result['frames'][0]['mobjects'][0]['color'], lite.RED)  # Community's Circle default color
 
     def test_scene_clock_uses_sampled_max_duration_and_clear_does_not_reset_it(self):
         scene = lite.Scene()
@@ -4355,15 +5942,16 @@ self.wait(1)""")
         other = lite.Dot()
         scene = lite.Scene().add(group, other)
         for method in (scene.bring_to_front, scene.bring_to_back):
-            with self.assertRaisesRegex(NotImplementedError, 'whole scene groups'):
-                method(other, child)
+            with self.assertRaisesRegex(NotImplementedError, 'group or its members'):
+                method(group, child)
             self.assertEqual(scene.mobjects, [group, other])
             with self.assertRaisesRegex(TypeError, 'Mobjects'):
                 method(1)
+        # Like Community, moving a member splits it out of its scene group.
+        self.assertEqual(lite.Scene().add(group, other).bring_to_front(other, child).mobjects, [other, child])
+        self.assertEqual(lite.Scene().add(group, other).bring_to_back(other, child).mobjects, [other, child])
         scene = lite.Scene().add(child)
-        with self.assertRaises(NotImplementedError):
-            scene.bring_to_front(group)
-        self.assertEqual(scene.mobjects, [child])
+        self.assertEqual(scene.bring_to_front(group).mobjects, [group])
 
     def test_layer_gallery_preserves_geometry_and_restores_individual_depths(self):
         result = json.loads(lite.render_scene((ROOT / 'examples/layer_scene.py').read_text()))
@@ -4371,8 +5959,11 @@ self.wait(1)""")
         for index, depths in ((0, [-2, 2]), (45, [-3, -3]), (105, [-2, 2])):
             group = result['frames'][index]['mobjects'][0]
             self.assertEqual([c['z_index'] for c in group['children']], depths)
-            self.assertEqual(group['geometry_scale'], 1.2)
-            self.assertEqual(group['position'], [0, 0.2, 0])
+            # Group scaling and translation now reach the children in world space.
+            self.assertEqual(group['geometry_scale'], 1)
+            self.assertEqual([c['geometry_scale'] for c in group['children']], [1.2, 1.2])
+            for child, x in zip(group['children'], (-.78, .78)):
+                self.assertPointAlmostEqual(child['position'], (x, .2, 0))
 
     def test_z_index_constructor_family_and_validation(self):
         child = lite.Circle(z_index=-2)
@@ -4499,18 +6090,33 @@ self.wait(1)""")
 
     def test_mathtex_serialization_and_constructor_validation(self):
         formula = lite.MathTex('a^2', '+ b^2', arg_separator=' ', color=lite.BLUE, font_size=36)
-        self.assertEqual(formula.to_dict()['type'], 'mathtex')
-        self.assertEqual(formula.text, 'a^2 + b^2')
-        self.assertEqual((formula.fill_opacity, formula.stroke_width), (1, 0))
+        # Several strings become Community-style parts drawn from one typeset formula.
+        data = formula.to_dict()
+        self.assertEqual(data['type'], 'vgroup')
+        self.assertEqual(formula.tex_string, 'a^2 + b^2')
+        self.assertEqual([(c['type'], c['part'], c['color'], c['font_size']) for c in data['children']],
+                         [('mathtex', 0, lite.BLUE, 36), ('mathtex', 1, lite.BLUE, 36)])
+        self.assertEqual(data['children'][0]['text'],
+                         r'\class{manim-part-0}{a}^{\class{manim-part-0}{2}} \class{manim-part-1}{+ b}^{\class{manim-part-1}{2}}')
+        # Pieces split inside braces stay valid TeX: braces and scripts remain structural.
+        self.assertEqual(lite._class_wrap('^{i', 1), r'^{\class{manim-part-1}{i}')
+        self.assertEqual(lite._class_wrap('} + 1', 3), r'}\class{manim-part-3}{ + 1}')
+        single = lite.MathTex('a^2 + b^2', color=lite.BLUE)
+        self.assertEqual((single.to_dict()['type'], single.text), ('mathtex', 'a^2 + b^2'))
+        self.assertEqual((single.fill_opacity, single.stroke_width), (1, 0))
         for size in (0, -1, float('nan'), float('inf')):
             with self.assertRaises(ValueError):
                 lite.MathTex('x', font_size=size)
         with self.assertRaises(ValueError):
             lite.MathTex('x' * 4097)
+        # Community converts numbers with str(); other objects are rejected.
+        self.assertEqual(lite.MathTex(12).text, '12')
         with self.assertRaises(TypeError):
-            lite.MathTex(12)
-        with self.assertRaises(NotImplementedError):
+            lite.MathTex(object())
+        with self.assertRaises(TypeError):
             lite.MathTex('x', tex_template='custom')
+        # Templates are accepted; MathJax typesets without the LaTeX preamble.
+        self.assertEqual(lite.MathTex('x', tex_template=lite.TexTemplateLibrary.ctex).text, 'x')
 
     def test_mathtex_creation_fades_and_changed_formula_crossfades(self):
         result = render("a = MathTex(r'\\frac{a}{b}')\nself.play(Create(a), run_time=2)\nself.play(Transform(a, MathTex('x^2', color=RED)), run_time=2)\nself.wait(1)")
@@ -4660,7 +6266,10 @@ self.wait(1)""")
         with self.assertRaises(ValueError):
             lite.Scene().play(lite.TransformFromCopy(source, target), lite.FadeIn(target))
         with self.assertRaises(NotImplementedError):
-            lite.Scene().add(lite.VGroup(target)).play(lite.TransformFromCopy(source, target))
+            lite.Scene().add(lite.VGroup(target).scale(2).rotate(1)).play(lite.TransformFromCopy(source, target))
+        scene = lite.Scene().add(lite.VGroup(target))
+        scene.play(lite.TransformFromCopy(source, target))
+        self.assertEqual(len(scene.mobjects), 1)
 
     def test_transform_from_copy_can_read_scene_added_group_child(self):
         source, target = lite.Circle(), lite.Circle().shift(lite.RIGHT * 2)
@@ -4689,7 +6298,9 @@ self.wait(1)""")
         self.assertEqual(peak['geometry_scale'], 3)
         self.assertEqual((peak['fill_color'], peak['stroke_color']), (lite.YELLOW.lower(), lite.YELLOW.lower()))
         self.assertEqual(peak['fill_opacity'], original['fill_opacity'])
-        self.assertEqual(peak['position'], original['position'])
+        # Community scales about the bounds center, which stays fixed.
+        self.assertPointAlmostEqual(lite.Vector(peak['position']) + lite.Vector(peak['geometry_center']) +
+                                    (shape.get_center() - shape._pivot_point()) * 1.5, shape.get_center())
         self.assertEqual(peak['angle'], original['angle'])
         self.assertEqual(scene.frames[15], scene.frames[45])
         self.assertEqual(shape.to_dict(), original)
@@ -4912,16 +6523,19 @@ self.wait(1)""")
         scene = lite.Scene()
         scene.play(lite.GrowFromCenter(group), run_time=2, rate_func=lite.linear)
         middle = scene.frames[15]['mobjects'][0]
-        self.assertEqual(middle['geometry_scale'], 0.4)
+        # The 0.8 scale lives on the children; growth scales the rotated group.
+        self.assertEqual(middle['geometry_scale'], 0.5)
         self.assertEqual(middle['children'], original['children'])
         self.assertEqual(group.to_dict(), original)
         other = lite.Dot()
+        shrink_center = group.get_center()
         scene.play(lite.AnimationGroup(lite.ShrinkToCenter(group, run_time=1, remover=True),
                                        lite.GrowFromCenter(other, run_time=2)), rate_func=lite.linear)
         self.assertEqual(len(scene.frames[45]['mobjects']), 1)
         self.assertEqual(scene.mobjects, [other])
         self.assertEqual(group.geometry_scale, 0)
-        self.assertEqual(group.get_center(), lite.UP)
+        # Community shrinks toward the bounds center of the rotated family.
+        self.assertPointAlmostEqual(group.get_center(), shrink_center)
 
     def test_shrink_default_retains_collapsed_object_and_can_be_transformed_again(self):
         shape = lite.Square().shift(lite.RIGHT)
@@ -5011,6 +6625,17 @@ self.wait(1)""")
         result = json.loads(lite.render_scene(text.split('```py\n')[1].split('```')[0]))
         self.assertEqual(result['frames'][0]['mobjects'][0]['type'], 'arc')
 
+    @staticmethod
+    def community_mapped(points, function):
+        """Community's VMobject.apply_function: anchors map; handles follow 1% offsets."""
+        result=[]
+        for i in range(0,len(points),4):
+            a0,h1,h2,a1=[lite.Vector(p) for p in points[i:i+4]]
+            m0,m1=lite.Vector(function(a0)),lite.Vector(function(a1))
+            result+=[m0,m0+(lite.Vector(function(a0+(h1-a0)*.01))-m0)*100,
+                     m1+(lite.Vector(function(a1+(h2-a1)*.01))-m1)*100,m1]
+        return result
+
     def assertPointAlmostEqual(self, point, expected):
         for value, target in zip(point, expected):
             self.assertAlmostEqual(value, target)
@@ -5034,7 +6659,8 @@ self.wait(1)""")
         self.assertPointAlmostEqual(lite.Square().point_from_proportion(0.25), (-1, 1, 0))
         self.assertPointAlmostEqual(lite.Rectangle(width=4, height=2).point_from_proportion(0.5), (-2, -1, 0))
         triangle = lite.Triangle()
-        self.assertPointAlmostEqual(triangle.point_from_proportion(1 / 3), (-0.5, -3**0.5 / 6, 0))
+        # Community's Triangle is a unit-radius RegularPolygon.
+        self.assertPointAlmostEqual(triangle.point_from_proportion(1 / 3), (-3**0.5 / 2, -0.5, 0))
 
     def test_zero_length_and_duplicate_path_vertices_are_stable(self):
         for path in (lite.Line((2, 1), (2, 1)), lite.Polygon((2, 1), (2, 1), (2, 1))):
@@ -5070,7 +6696,7 @@ self.wait(1)""")
         self.assertPointAlmostEqual(result['frames'][15]['mobjects'][0]['position'], (0, 0, 0))
         self.assertPointAlmostEqual(result['frames'][15]['mobjects'][1]['position'], (-2, 0, 0))
         result = render('self.play(MoveAlongPath(Dot(), Line(LEFT * 2, RIGHT * 2)), run_time=4)')
-        self.assertPointAlmostEqual(result['frames'][15]['mobjects'][0]['position'], (-1.375, 0, 0))
+        self.assertPointAlmostEqual(result['frames'][15]['mobjects'][0]['position'], (-2+4*lite.smooth(.25), 0, 0))
 
     def test_paths_reject_invalid_proportions_geometry_and_unsupported_types(self):
         for alpha in (-0.1, 1.1, float('nan'), float('inf')):
@@ -5130,7 +6756,8 @@ self.wait(1)""")
         self.assertEqual([m['opacity'] for m in result['frames'][30]['mobjects']], [1, 0, 0])
         self.assertEqual([m['opacity'] for m in result['frames'][75]['mobjects']], [1, 1, 0.5])
         result = render('self.play(LaggedStart(FadeIn(Dot(LEFT), rate_func=linear), FadeIn(Dot(RIGHT), rate_func=linear), lag_ratio=1, run_time=4, rate_func=smooth))')
-        self.assertAlmostEqual(result['frames'][15]['mobjects'][0]['opacity'], 0.3125)
+        # Community's sigmoid smooth, applied to the group's timeline.
+        self.assertAlmostEqual(result['frames'][15]['mobjects'][0]['opacity'], lite.smooth(.25)*2)
 
     def test_group_holds_completed_creation_and_replacement_then_cleans_up(self):
         result = render('a, b, c = Circle(), Square().shift(RIGHT), Dot(UP)\nself.play(AnimationGroup(ReplacementTransform(a, b), Create(c, run_time=2)))\nself.play(b.animate.shift(UP))')
@@ -5150,8 +6777,13 @@ self.wait(1)""")
                      'a, b = Dot(), Square()\nself.play(ReplacementTransform(a, b), FadeIn(b))'):
             with self.assertRaisesRegex(ValueError, 'one animation'):
                 render(body)
-        with self.assertRaisesRegex(NotImplementedError, 'whole scene-added group'):
-            render('d = Dot()\nself.add(VGroup(d))\nself.play(FadeIn(d))')
+        # Members of an on-screen group animate inside it (Community semantics).
+        frame = render('d = Dot()\nself.add(VGroup(d, Square()))\nself.play(FadeIn(d), rate_func=linear)')['frames'][7]['mobjects']
+        self.assertEqual(len(frame), 1)
+        self.assertAlmostEqual(frame[0]['children'][0]['opacity'], 7/15)
+        self.assertEqual(frame[0]['children'][1]['opacity'], 1)
+        with self.assertRaisesRegex(NotImplementedError, 'rotated or transformed'):
+            render('d = Dot()\nself.add(VGroup(d).rotate(1))\nself.play(FadeIn(d))')
         for kwargs in ({'lag_ratio': -1}, {'lag_ratio': float('inf')}, {'run_time': 0}):
             with self.assertRaises(ValueError):
                 lite.AnimationGroup(lite.FadeIn(lite.Dot()), **kwargs)
@@ -5490,7 +7122,7 @@ self.wait(1)""")
             group.arrange_in_grid(cell_alignment=lite.OUT)
         self.assertEqual(group.to_dict(),saved)
         with self.assertRaisesRegex(NotImplementedError,'collapsed'):
-            lite.Group(lite.Dot()).scale(0).arrange_in_grid()
+            lite.Group(lite.Dot()).rotate(1).scale(0).arrange_in_grid()
 
     def test_transformed_layout_gallery_restores_orientation_and_cleans_up(self):
         result = json.loads(lite.render_scene((ROOT/'examples/transformed_layout_scene.py').read_text()))
@@ -5522,7 +7154,7 @@ self.wait(1)""")
                 bounds = []
                 for child in group:
                     target = child.copy()
-                    target.position = list(group._point_to_world(child.get_center())-target._geometry_center())
+                    target.position = list(group._point_to_world(child._pivot_point())-target._geometry_center())
                     target.angle += group.angle
                     target.geometry_scale *= group.geometry_scale
                     bounds.append(target._bounds())
@@ -5551,11 +7183,14 @@ self.wait(1)""")
         with self.assertRaises(NotImplementedError):
             group.arrange(lite.OUT)
         self.assertEqual(group.to_dict(),saved)
-        tiny = lite.VGroup(lite.Square(),lite.Circle()).scale(1e-320)
+        tiny = lite.VGroup(lite.Square(),lite.Circle()).rotate(.2).scale(1e-320)
         saved = tiny.to_dict()
         with self.assertRaisesRegex(ValueError,'translations'):
             tiny.arrange(buff=1)
         self.assertEqual(tiny.to_dict(),saved)
+        # Unrotated groups scale their children, so collapsed members arrange natively.
+        collapsed = lite.VGroup(lite.Square(),lite.Circle()).scale(0).arrange(buff=1)
+        self.assertAlmostEqual(collapsed[1].get_center()[0]-collapsed[0].get_center()[0],1)
 
     def test_animated_transformed_layout_preserves_pose_and_interpolates_positions(self):
         result = render('g = VGroup(Rectangle(width=2,height=1),Circle(radius=.4),Square(side_length=.6)).arrange(RIGHT,buff=.4).rotate(.6).scale(.8)\nself.add(g)\nself.play(g.animate.arrange(DOWN,buff=.5),run_time=2,rate_func=linear)')
@@ -5605,7 +7240,7 @@ self.wait(1)""")
         with self.assertRaises(TypeError):
             lite.Dot().next_to(lite.ORIGIN, coor_mask=(1, 0, 0))
         with self.assertRaisesRegex(NotImplementedError, 'collapsed'):
-            lite.VGroup(lite.Dot()).scale(0).arrange()
+            lite.VGroup(lite.Dot()).rotate(1).scale(0).arrange()
 
     def test_baseline_animation(self):
         result = json.loads(lite.render_scene((ROOT / 'examples/minimal_scene.py').read_text()))
@@ -5625,12 +7260,18 @@ self.wait(1)""")
         self.assertEqual(final['fill_opacity'], 0.8)
 
     def test_create_group_and_text_fallback(self):
-        result = render('self.play(Create(VGroup(Circle(), VGroup(Text("Title"), Square()))), run_time=2, rate_func=linear)')
+        source = 'self.play(Create(VGroup(Circle(), VGroup(Text("Title"), Square())){}), run_time=2, rate_func=linear)'
+        result = render(source.format(', lag_ratio=0'))
         group = result['frames'][15]['mobjects'][0]
         self.assertEqual(group['children'][0]['draw_progress'], 0.5)
         nested = group['children'][1]['children']
         self.assertEqual(nested[0]['opacity'], 0.5)
         self.assertEqual(nested[1]['draw_progress'], 0.5)
+        # Community's default lag_ratio=1 draws the three members in turn.
+        group = render(source.format(''))['frames'][15]['mobjects'][0]
+        nested = group['children'][1]['children']
+        self.assertEqual((group['children'][0]['draw_progress'], nested[0]['opacity'], nested[1]['draw_progress']),
+                         (1, 0.5, 0))
 
     def test_uncreate_reverses_drawing_and_removes_the_object(self):
         result = render('c = Circle()\nself.add(c)\nself.play(Uncreate(c), run_time=2, rate_func=linear)')

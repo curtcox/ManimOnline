@@ -1,12 +1,64 @@
 /** Compile formulas once per render; playback/export use self-contained SVG paths. */
 const ManimMath = {
   loading: null,
+  cache: new Map(),
+
+  /** Tight ink box of typeset output in MathJax units, or null without a layout engine. */
+  measure(svg) {
+    if (typeof document === 'undefined' || !document.body || typeof svg.cloneNode !== 'function') return null;
+    const host = document.createElement('div');
+    host.style.cssText = 'position:absolute;left:-10000px;top:0;visibility:hidden';
+    const probe = svg.cloneNode(true);
+    host.appendChild(probe);
+    document.body.appendChild(host);
+    try {
+      const box = probe.getBBox ? probe.getBBox() : null;
+      const values = box && [box.x, box.y, box.width, box.height];
+      return values && values.every(Number.isFinite) && box.width > 0 && box.height > 0 ? values : null;
+    } finally {
+      host.remove();
+    }
+  },
+
+  /** Ink sizes in em for Python layout (MathJax uses 1000 units per em). */
+  metrics(glyphs) {
+    const result = {};
+    for (const [expression, asset] of glyphs || []) {
+      if (!asset.bbox) continue;
+      const [x, y, width, height] = asset.bbox;
+      const size = [width / 1000, height / 1000];
+      if (asset.parts && asset.parts.every(part => part.bbox)) {
+        // Part centers relative to the whole ink center, with y up as in Python.
+        size.push(asset.parts.map(({ bbox: [px, py, pw, ph] }) => [
+          (px + pw / 2 - x - width / 2) / 1000, -(py + ph / 2 - y - height / 2) / 1000, pw / 1000, ph / 1000]));
+      }
+      result[expression] = size;
+    }
+    return result;
+  },
+
+  /** One SVG per \class{manim-part-i} group, each keeping only its own glyphs. */
+  splitParts(svg) {
+    const tagged = node => [...node.querySelectorAll('*')].filter(n => /^manim-part-\d+$/.test(n.getAttribute('class') || ''));
+    const count = tagged(svg).length;
+    const parts = [];
+    for (let index = 0; index < count; index++) {
+      const clone = svg.cloneNode(true);
+      for (const node of tagged(clone)) {
+        if (node.getAttribute('class') !== `manim-part-${index}`) node.remove();
+      }
+      parts.push({ svg: clone.outerHTML, bbox: this.measure(clone) });
+    }
+    return parts;
+  },
   load() {
     if (!this.loading) {
       this.loading = new Promise((resolve, reject) => {
         window.MathJax = {
           startup: { typeset: false },
-          tex: { packages: ['base', 'ams'], maxMacros: 1000, maxBuffer: 4096,
+          // html provides \class, which tags multi-part MathTex strings.
+          loader: { load: ['[tex]/html'] },
+          tex: { packages: ['base', 'ams', 'html'], maxMacros: 1000, maxBuffer: 4096,
             formatError: (_jax, error) => { throw error; } },
           svg: { fontCache: 'none' }
         };
@@ -61,6 +113,12 @@ const ManimMath = {
     let size = 0;
     for (const expression of expressions) {
       if (!isCurrent()) return null;
+      if (this.cache.has(expression)) {
+        const asset = this.cache.get(expression);
+        size += asset.svg.length;
+        glyphs.set(expression, asset);
+        continue;
+      }
       try {
         const container = await math.tex2svgPromise(expression, { display: true });
         if (!isCurrent()) return null;
@@ -80,7 +138,14 @@ const ManimMath = {
         }
         size += svg.outerHTML.length;
         if (size > 2 * 1024 * 1024) throw new Error('Math output is too large. Simplify the formulas.');
-        glyphs.set(expression, { svg: svg.outerHTML, viewBox });
+        const asset = { svg: svg.outerHTML, viewBox, bbox: this.measure(svg) };
+        if (expression.includes('\\class{manim-part-') && typeof svg.cloneNode === 'function') {
+          asset.parts = this.splitParts(svg);
+          size += asset.parts.reduce((total, part) => total + part.svg.length, 0);
+        }
+        glyphs.set(expression, asset);
+        this.cache.set(expression, asset);
+        if (this.cache.size > 256) this.cache.delete(this.cache.keys().next().value);
       } catch (error) {
         throw new Error('MathTex: ' + error.message);
       }

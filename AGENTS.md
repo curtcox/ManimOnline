@@ -463,3 +463,152 @@ ORIGIN; stretch defaults to the family center. Explicit real arrow children allo
 Arrow-to-cubic alignment; legacy snapshots without explicit_tips retain their
 prior morph behavior. Post-warp endpoint/tip edits and analytical centers remain
 implementation work; native NumPy and 3D are not supplied by these APIs.
+
+
+Read `examples/positioning_scene.py` for frame-edge placement, alignment, flips,
+gradients and fades. align_on_border reads the module `config` at call time (it is
+reset per render). Coordinate helpers use critical points and reject nonzero z.
+rotate(angle, axis): OUT/IN only, except a half turn about an in-plane axis, which
+delegates to apply_matrix as a reflection. Palette values come from Community's
+manim_colors; colors are plain hex strings, not ManimColor. Gradient helpers treat
+Text/MathTex leaves as painted members even though they have no path points.
+
+
+Read `examples/polygram_scene.py` for polygrams, stars, round_corners and shape
+matchers. One vertex group stays type `polygon`; several use bezierpath with
+subpath_lengths. Rectangle/Square subclass Polygon but keep analytical types;
+VMobject._materialize_path converts analytical outlines before raw path edits.
+Mobject._world_container: identity-pose Group/VGroup/Mobject containers pass
+shift and scale to children (world coordinates). Do not propagate rotation there
+without solving rigid Transform interpolation; rotated groups keep local children.
+Mobject._to_local_pose converts world-placed matchers before attaching to a
+transformed parent.
+
+
+Read `examples/text_layout_scene.py` for measured text, numbers and formulas.
+Text em = font_size/72 (Pango at 96 dpi), TeX em = font_size/96 — both measured
+with Manim Community 0.22; do not reintroduce the old font_size/50 scale.
+_text_layout builds ink-centered lines from _SANS_GLYPHS (Liberation Sans) or
+_CM_GLYPHS (DecimalNumber); Scene.render attaches it as `layout` after capture and
+the renderer pins tspans with textLength. MathTex sizes come from per-render
+math_metrics (browser getBBox); unknown formulas are estimated and reported in
+math_estimated, and index.html re-renders once with measurements.
+
+
+Read `examples/animation_tour_scene.py` for rate functions, lagged animations,
+emphasis effects, arc swaps and targets. Animation._member_states implements
+Community's lag sub-alphas over _painted_paths; fades use nested=False to avoid
+compounding SVG opacity. Use Animation._complete (finish + remover) wherever an
+animation is completed. Scene.add/remove use Community restructuring and
+Scene._introduce only adds absent mobjects; capture() draws animated members
+inside their on-screen group, so Scene.validate rejects members of non-identity
+pose groups. play(rate_func=...) assigns animation.rate_func before prepare.
+
+
+NumPy: validations use _REAL (numbers.Real) / numbers.Integral, never (int, float),
+so NumPy scalars work; Vector normalizes scalars and render_scene's JSON default
+handles leftovers. The worker loads NumPy only for sources mentioning np/numpy;
+OfflineAssets.optional caches the wheel without making it a readiness requirement.
+
+
+Read `examples/annotation_scene.py` for braces, Title, Tex, bullets and Variable.
+Default frame height is 8 (Community). Renderer strokes are local-unit widths
+in scene units (they thicken under camera zoom, as in Cairo); keep inheritedScale threading in renderMobject.
+_BOUNDS_WITH_HANDLES is only set by get_width/get_height; pivots always use
+anchors. get_center may differ from _pivot_point for rotated outlines; use
+_pivot_point in transform math. Scenes see the arrow as `Vector`; internally
+`Vector` is the coordinate tuple — never shadow it. A Manim 0.22 reference venv
+can be built with pango/TeX packages to check geometry numerically.
+
+
+Fidelity guard: tests/fixtures/community_reference.json holds Manim 0.22 bounds
+for 27 snippets; add a case (and regenerate with the fixture's generator script)
+when changing geometry, layout or bounds behavior.
+
+
+Read `examples/formula_parts_scene.py` for multi-part MathTex. Parts are
+_MathTexPart children (type mathtex, `part` index) of a vgroup-typed MathTex; all
+share one \class-tagged expression string. Keep _class_wrap producing valid TeX.
+Metrics may be [w, h] or [w, h, parts]; interpolate keeps `part` discrete.
+
+
+Read `examples/text_effects_scene.py` for glyph-level Text. Text._explode turns a
+text leaf into a vgroup of single-glyph Text children (pose moved onto glyphs,
+_char_index kept) only when indexed/iterated or styled per glyph; keep leaves
+unexploded otherwise to limit frame size.
+
+Read `examples/chart_scene.py` for BarChart value changes and PolarPlane azimuth
+labels. PolarPlane.get_vector takes plane coordinates (as in Community), not world
+points; use pr2pt with an Arrow from get_origin for polar vectors. Keep radius
+numbers attached once: get_coordinate_labels returns the axis like Community, but
+add_coordinates only adds the azimuth group, avoiding duplicate family members.
+
+Read `examples/vector_field_scene.py` for arrow fields, nudged particles and
+stream flow. Preserve `_PCG64` parity with NumPy's default_rng; Community's
+StreamLines noise depends on it. Add the StreamLines object to the scene before
+start_animation (its updater drives flow). Keep `_flow_points` out of frames and
+add lines with one `add(*lines)` call; per-line adds recompute family bounds
+quadratically. Use `_snapshot_copy` instead of copy.deepcopy for snapshot dicts.
+
+The worker transfers pooled frames (`render_scene(..., compact=True)`, expanded by
+`expandPooledScene`); repeated snapshots and large arrays become shared objects.
+Never mutate frame data in the page, renderer, player, math or export code.
+`tests/unified-worker.test.js` covers the decoder; a Python test checks that the
+expanded pooled output equals plain render_scene output.
+
+Read `examples/effects_scene.py` for hulls, cutouts, tangent arcs, arc braces and
+attention effects. Nonlinear maps must keep Community's 1%-handle derivative rule;
+tests compare against `community_mapped`. VDict keeps `submob_dict` (excluded from
+frames) and still accepts plain Mobjects in add/remove for group internals.
+UpdateFromFunc animations complete last in play(); Succession stages built from
+them carry a starting-state copy for sampling.
+
+Read `examples/graph_scene.py` for graph layouts, attached edges and animated graph
+editing. Keep `_MT19937`/`_PCG64` exact; layout tests compare against networkx via
+Community. Bookkeeping that holds tuples or non-JSON keys goes in `_frame_excluded`.
+`become` deep-copies target attributes with a memo mapping replaced descendants to
+live members; don't reintroduce stale child references. play() ends with a dt=0
+update pass after completion, matching Community.
+
+Read `examples/boolean_scene.py` for boolean outline operations. The engine lives in
+`_boolean`/`_BOOLEAN_RULES`; outputs must stay closed cubic contours with explicit
+subpath_lengths. Tests compare areas/bounds with skia-pathops results, not point order.
+
+Read `examples/code_scene.py` for Code listings. The worker loads Pygments only for
+sources matching `Code(`; keep `_code_tokens` working without it (plain colors).
+Monospace layout depends on `_is_mono(font)` being part of the text-layout cache key.
+Pointless members (`_is_pointless`) are excluded from family bounds.
+
+Read `examples/svg_image_scene.py` for inline SVG and pixel images. Keep the renderer's
+image href whitelist (inline base64 raster only) and SVGMobject's DTD rejection; both
+are security boundaries for shared links. Circle's default color is RED (Community).
+
+Read `examples/typing_scene.py` for typing cursors, animated boundaries, ChangeSpeed and
+implicit curves. Use `_points_to_world` for batches of points; per-point
+`_point_to_world` recomputes the pivot and is quadratic on long paths.
+
+Read `examples/log_axes_scene.py` for log axes and colors. Colors are ManimColor (a
+str subclass); keep `_paint` in color setters. NumberLine.scaling is excluded from
+frames; Axes coordinate code must go through `_axis_shift` and the scaling functions.
+DecimalNumber units are a `unit_sign` child in local coordinates.
+
+Read `examples/point_cloud_scene.py` for point clouds, Add and sections. Only
+`_instant` animations may have zero run_time; capture() drops frames while a section
+skips animations. TexTemplate objects are accepted and ignored by MathJax.
+
+Read `examples/zoomed_scene.py` for ZoomedScene. The display is a pure container
+(`camera_view`) with a `camera_screen` rectangle child and the display frame; capture
+syncs the zoomed frame to the display's whole-pixel aspect and writes `camera.views`.
+The renderer draws views as clipped, transformed re-renders (no pixels). Assigning
+`width`/`height` rescales (Community); write analytical dimensions via `__dict__`.
+
+Read `examples/linear_transformation_scene.py` for LinearTransformationScene. path_arc
+is per point in `_arc_geometry` (parent frame, then inverse sampled pose). Scene
+updaters run after mobject updaters inside the exposed sample pass. Keep transport
+encodings (`$pool`, `$xy`) confined to `_pooled_json`/`expandPooledScene`.
+
+Read `examples/banner_scene.py` for ManimBanner, SampleSpace and utilities. Mobject.add
+adopts world-placed members into posed parents and remove releases them (see `_adopt`,
+`_release`); internal code that builds parent-local children must not call add on an
+already-posed parent with local coordinates. restore() is become(saved_state).
+

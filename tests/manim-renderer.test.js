@@ -55,14 +55,46 @@ test('math glyphs render with transforms, styles, and no external SVG content', 
     { type: 'mathtex', text: 'x', font_size: 48, fill_color: '#FF0000', position: [2, 1, 0] }
   ] }, glyphs);
   const shape = group.children[0];
-  assert.match(shape.getAttribute('transform'), /translate\(100, 50\).*scale\(1, -1\) scale\(0.048\)/);
+  // TeX em = font_size / 96 scene units, at 50 px per unit and 1000 MathJax units per em.
+  assert.match(shape.getAttribute('transform'), /translate\(100, 50\).*scale\(1, -1\) scale\(0.025\) translate\(-500, 250\)/);
+  glyphs.set('x', { svg: '<svg/>', viewBox: [0, -700, 1000, 900], bbox: [100, -600, 400, 600] });
+  const inked = renderer.renderMobject({ type: 'mathtex', text: 'x', font_size: 96 }, glyphs);
+  assert.match(inked.getAttribute('transform'), /scale\(0.05\) translate\(-300, 300\)/);
   assert.equal(shape.getAttribute('fill'), '#FF0000');
   assert.equal(shape.children[0].getAttribute('d'), 'M 0 0 L 1000 0');
   assert.equal(shape.children[0].getAttribute('onclick'), null);
+  glyphs.set('ab', { svg: '<svg/>', viewBox: [0, -700, 2000, 900], parts: [{ svg: '<svg/>', bbox: [0, -700, 900, 900] }, { svg: '<svg/>', bbox: [1000, -500, 1000, 500] }] });
+  const second = renderer.renderMobject({ type: 'mathtex', text: 'ab', part: 1, font_size: 96 }, glyphs);
+  assert.match(second.getAttribute('transform'), /translate\(-1500, 250\)/);
+  assert.throws(() => renderer.renderMobject({ type: 'mathtex', text: 'ab', part: 5 }, glyphs), /part glyphs/);
   path.localName = 'script';
   assert.throws(() => renderer.renderMobject({ type: 'mathtex', text: 'x' }, glyphs), /Unsupported math SVG/);
   assert.throws(() => renderer.renderMobject({ type: 'mathtex', text: 'y' }, glyphs), /not been prepared/);
   delete global.DOMParser;
+});
+
+test('laid-out text pins each line to the Python ink layout', () => {
+  const text = renderer.renderMobject({ type: 'text', text: 'Hi\nthere', weight: 'BOLD', slant: 'ITALIC',
+    font: 'Inter', layout: { em: 0.5, family: 'sans', lines: [
+      { text: 'Hi', x: -1, y: 0.25, length: 0.6 }, { text: '', x: -1, y: -0.4, length: 0 }] } });
+  assert.equal(text.getAttribute('font-size'), '25');
+  assert.match(text.getAttribute('font-family'), /^'Inter', 'Liberation Sans'/);
+  assert.equal(text.getAttribute('font-weight'), '700');
+  assert.equal(text.getAttribute('font-style'), 'italic');
+  const [first, second] = text.children;
+  assert.equal(first.tag, 'tspan');
+  assert.equal(first.getAttribute('x'), '-50');
+  assert.equal(first.getAttribute('y'), '-12.5');
+  assert.equal(first.getAttribute('textLength'), '30');
+  assert.equal(first.getAttribute('lengthAdjust'), 'spacingAndGlyphs');
+  assert.equal(first.textContent, 'Hi');
+  assert.equal(second.getAttribute('textLength'), null);
+  const unsafe = renderer.renderMobject({ type: 'text', text: 'x', font: "x'; }", layout: { em: 1, lines: [] } });
+  assert.doesNotMatch(unsafe.getAttribute('font-family'), /x';/);
+  const serif = renderer.renderMobject({ type: 'text', text: '-1', layout: { em: 1, family: 'serif',
+    lines: [{ text: '-1', x: 0, y: 0, length: 1 }] } });
+  assert.match(serif.getAttribute('font-family'), /Latin Modern Roman/);
+  assert.equal(serif.children[0].textContent, '\u22121');
 });
 
 test('primitive fill and stroke channels render independently, including zero opacity', () => {
@@ -259,8 +291,9 @@ test('camera dimensions, frame extent and explicit background survive SVG render
   assert.equal(svg.children[0].getAttribute('data-manim-background'),'true');
   assert.equal(svg.children[1].getAttribute('transform'),'translate(300, 300) scale(1.5, -1.5)');
   assert.equal(svg.children[1].children[0].getAttribute('r'),'50');
+  // Community's default frame is 8 units tall.
   const defaultSVG = renderer.render({mobjects:[]});
-  assert.equal(defaultSVG.children[1].getAttribute('transform'),'translate(400, 225) scale(1, -1)');
+  assert.equal(defaultSVG.children[1].getAttribute('transform'),'translate(400, 225) scale(1.125, -1.125)');
   for(const camera of [{pixel_width:Infinity},{pixel_height:4097},{frame_height:0},{background_color:'url(bad)'}])
     assert.throws(()=>renderer.render({camera}),/Invalid preview camera/);
 });
@@ -329,6 +362,49 @@ test('area gradient fills and borders use self-contained unique SVG paint server
   assert.deepEqual(data.fill_color,['#FF0000','#00FF00','#0000FF']);
 });
 
+test('stream line gradients follow local chord endpoints in user space', () => {
+  const data = {type:'bezierpath', curves:[[[0,0],[1,0],[2,1],[3,1]]], fill_opacity:0,
+    stroke_color:['#236B8E','#FC6255'], stroke_width:1, gradient_points:[[0,0],[3,1]], position:[1,0,0]};
+  const element = renderer.renderMobject(data);
+  const gradient = element.querySelectorAll().find(e => e.tag === 'linearGradient');
+  assert.equal(gradient.getAttribute('gradientUnits'),'userSpaceOnUse');
+  assert.deepEqual(['x1','y1','x2','y2'].map(k=>Number(gradient.getAttribute(k))),
+                   [0,0,3*renderer.UNIT_SCALE,renderer.UNIT_SCALE]);
+  for (const ends of [[[0,0],[0,0]],[[0,0]],[[0,NaN],[1,1]]]) {
+    const fallback = renderer.renderMobject({...data, gradient_points:ends})
+      .querySelectorAll().find(e => e.tag === 'linearGradient');
+    assert.equal(fallback.getAttribute('gradientUnits'),null);
+    assert.equal(fallback.getAttribute('x2'),'100%');
+  }
+});
+
+test('images render inline data upright and reject external references', () => {
+  const data = {type:'image', href:'data:image/png;base64,iVBORw0KGgo=', width:2, height:1, position:[1,0,0],
+    resampling_algorithm:'nearest', opacity:.5};
+  const element = renderer.renderMobject(data);
+  const image = element.tag === 'image' ? element : element.querySelectorAll().find(e => e.tag === 'image');
+  assert.equal(image.getAttribute('href'), data.href);
+  assert.equal(Number(image.getAttribute('width')), 2 * renderer.UNIT_SCALE);
+  assert.equal(Number(image.getAttribute('x')), -renderer.UNIT_SCALE);
+  assert.match(image.getAttribute('transform'), /scale\(1, -1\)$/);
+  assert.match(image.getAttribute('style'), /pixelated/);
+  for (const href of ['https://example.com/a.png', 'javascript:alert(1)', 'data:image/svg+xml;base64,PHN2Zz4=']) {
+    assert.throws(() => renderer.renderMobject({...data, href}), /inline base64/);
+  }
+});
+
+test('point clouds batch fixed-size squares by color', () => {
+  const data = {type:'pointcloud', cloud:[[0,0],[1,0],[2,1]], cloud_colors:['#FF0000','#FF0000','#00FF00'],
+    cloud_opacities:[1,1,.5], point_size:.02, geometry_scale:2, position:[0,0,0]};
+  const element = renderer.renderMobject(data);
+  const paths = element.querySelectorAll().filter(e => e.tag === 'path');
+  assert.equal(paths.length, 2);
+  assert.equal(paths[0].getAttribute('d').match(/M/g).length, 2);
+  assert.match(paths[1].getAttribute('style'), /fill:#00FF00;fill-opacity:0.5/);
+  // Squares keep their on-screen size when the cloud is scaled by 2.
+  assert.match(paths[0].getAttribute('d'), new RegExp(`h${.02 * renderer.UNIT_SCALE / 2}v`));
+});
+
 test('gradient validation rejects unsafe colors and a single stop keeps a solid paint', () => {
   for (const color of [[],['url(https://example.com/paint)'],['red'],Array(65).fill('#FFFFFF')]) {
     assert.throws(()=>renderer.renderMobject({type:'polygon',fill_color:color}),/Gradient colors/);
@@ -390,4 +466,63 @@ test('curved arrow rendering uses sampled fitted shaft curves', () => {
   const path=renderer.renderMobject({type:'bezierpath',curves:[[[0,0],[1,1],[2,1],[3,0]]],
     shaft_curves:[[[.5,0],[1,2],[2,2],[2.5,0]]]});
   assert.equal(path.getAttribute('d'),'M 25,0 C 50,100 100,100 125,0');
+});
+
+test('scene strokes use Community frame units, undo object scale and zoom with the camera', () => {
+  const scene = { camera: { pixel_width: 800, pixel_height: 450, frame_width: 16, frame_height: 9 },
+    mobjects: [{ type: 'circle', radius: 1, stroke_width: 4 },
+      { type: 'vgroup', geometry_scale: 2, children: [{ type: 'circle', radius: 1, stroke_width: 4, geometry_scale: 0.5 }] }] };
+  const svg = renderer.render(scene);
+  const [plain, group] = svg.children[1].children;
+  // 4 * 0.01 scene units at 50 local units per scene unit.
+  assert.equal(plain.getAttribute('stroke-width'), '2');
+  assert.equal(plain.getAttribute('vector-effect'), null);
+  assert.equal(group.children[0].getAttribute('stroke-width'), '2');
+  const zoomed = renderer.render({ ...scene, camera: { ...scene.camera, frame_width: 8, frame_height: 4.5 } });
+  assert.equal(zoomed.children[1].children[0].getAttribute('stroke-width'), '2');
+  assert.equal(renderer.renderMobject({ type: 'circle', stroke_width: 4 }).getAttribute('vector-effect'), 'non-scaling-stroke');
+});
+
+test('camera views draw the scene through the zoomed frame inside the display box', () => {
+  const scene = {
+    camera: { pixel_width: 800, pixel_height: 450, frame_width: 16, frame_height: 9,
+      views: [{ id: 1, source: [-1, -1, 1, 1], display: [4, 2, 7, 4], background: '#112233', background_opacity: 1 }] },
+    mobjects: [
+      { type: 'circle', radius: 0.5, stroke_width: 4 },
+      { type: 'mobject', camera_view: 1, children: [
+        { type: 'rectangle', width: 3, height: 2, position: [5.5, 3, 0], camera_screen: 1, stroke_width: 0 },
+        { type: 'rectangle', width: 3, height: 2, position: [5.5, 3, 0], stroke_width: 3 }] }] };
+  const svg = renderer.render(scene);
+  const main = svg.children[1];
+  const [circle, view, border] = main.children;
+  assert.equal(main.children.length, 3);
+  assert.equal(view.getAttribute('data-camera-view'), '1');
+  const [defs, body] = view.children;
+  const clip = defs.children[0];
+  assert.equal(clip.tag, 'clipPath');
+  assert.equal(clip.children[0].getAttribute('x'), '200');
+  assert.equal(clip.children[0].getAttribute('width'), '150');
+  assert.equal(body.getAttribute('clip-path'), `url(#${clip.getAttribute('id')})`);
+  assert.equal(body.children[0].getAttribute('fill'), '#112233');
+  const content = body.children[1];
+  assert.equal(content.getAttribute('transform'), 'translate(275, 150) scale(1.5, 1) translate(0, 0)');
+  // Only the circle is seen through the camera; the display family stays out.
+  assert.equal(content.children.length, 1);
+  assert.equal(content.children[0].tag, circle.tag);
+  // The display border is drawn after the view.
+  assert.equal(border.getAttribute('data-camera-view'), null);
+  assert.throws(() => renderer.render({ ...scene, camera: { ...scene.camera,
+    views: [{ id: 1, source: [0, 0, 0, 1], display: [0, 0, 1, 1], background: '#000000', background_opacity: 1 }] } }));
+});
+
+test('children added to the back of text paint behind its glyphs', () => {
+  const svg = renderer.render({ camera: { pixel_width: 800, pixel_height: 450, frame_width: 16, frame_height: 9 },
+    mobjects: [{ type: 'rectangle', width: 2, height: 1, children: [
+      { type: 'circle', radius: 0.2, behind_parent: true }, { type: 'square', side_length: 0.3 }] }] });
+  const layers = svg.children[1].children;
+  const has = (element, tag) => [element, ...element.querySelectorAll()].some(node => node.tag === tag);
+  assert.equal(layers.length, 3);
+  assert.ok(has(layers[0], 'circle'));
+  assert.ok(!has(layers[1], 'circle'));
+  assert.ok(has(layers[2], 'rect') || has(layers[2], 'path'));
 });

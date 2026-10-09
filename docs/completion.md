@@ -210,3 +210,102 @@ coverage verifies exact transformed controls, pivots, nested identities, callbac
 domain/validation, animated interpolation, restoration and tip-bearing connectors.
 Adaptive nonlinear preparation/inversion, glyph/camera/shared-family mapping,
 native NumPy, 3D and post-warp analytical/mutation APIs remain open.
+
+
+Common positioning (frame edges/corners, alignment, coordinate setters/matching,
+edge pivots, flips) and Community's color palette/utilities, gradients, fading and
+style matching now have Python tests and a gallery scene. ManimColor objects,
+named-color parsing, 3D axes/coordinates and text glyph flipping remain open.
+
+
+Polygram/RegularPolygram/RegularPolygon/Star/round_corners and the shape matchers
+(SurroundingRectangle, BackgroundRectangle, Cross, Underline) now have Python
+tests and browser playback. Polygon/Triangle/Rectangle/Square use Community
+classes and defaults. Group translation and scaling now keep children in world
+space; rotated-group children, Cutout/ConvexHull/boolean operations and
+Rectangle grid lines remain open.
+
+
+Text, DecimalNumber/Integer and MathTex now have Community-calibrated ink bounds
+and sizes (Text from Liberation Sans metrics, numbers from TeX glyph layout,
+formulas measured by MathJax with a second render pass). Glyph-level text
+submobjects, t2c, MarkupText and Paragraph remain open.
+
+
+Community rate functions, lagged/remover/reversed animations, shifted fades,
+Write/DrawBorderThenFill phases, emphasis animations (Circumscribe, Flash,
+Wiggle, FocusOn), arc transforms and swaps, targets/ApplyMethod, function
+updates, subsets and letter-by-letter text now have tests and browser playback.
+Scene add/remove restructuring and in-place member animation follow Community
+for identity-pose groups. TransformMatching*, ApplyWave and Homotopy remain open.
+
+
+NumPy is available as `np` (lazy Pyodide package) and preview APIs accept NumPy
+arrays/scalars. In-place mutation of NumPy point arrays remains unsupported.
+
+
+Brace family, Tex (text mode via MathJax), Title, BulletedList, Vector,
+LabeledDot, Variable and always_* helpers are implemented with Manim 0.22
+reference checks. The default frame (14.22 × 8), stroke widths and anchor/handle
+bounds rules now follow Community. ArcBrace, Tex environments and full LaTeX
+text macros remain open.
+
+
+Multi-part MathTex (indexing, tex-based coloring/opacity, isolated substrings),
+TransformMatchingTex and TransformMatchingShapes are implemented with browser
+part measurement. Glyph-level submobjects inside parts remain open.
+
+
+Functional/pointwise animations (ApplyMatrix, Homotopy, ApplyWave, PhaseFlow,
+ChangeDecimalToValue, …) and labeled connectors are implemented with tests.
+
+
+Matrix family, get_det_text, Table family and Paragraph are implemented with
+Community reference checks; glyph stretching is axis-aligned only.
+
+
+Glyph-level Text (indexing, t2c/t2w/t2s/t2f/t2g, gradient), MarkupText basics
+and per-glyph Write/AddTextLetterByLetter are implemented with Community glyph
+position checks.
+
+BarChart and PolarPlane are implemented with Community reference checks;
+nonlinear polar warping (`apply_complex_function` on planes) remains open.
+
+VectorField, ArrowVectorField and StreamLines are implemented with Community
+reference checks for positions, colors and traced lines. Raster background
+images, 3D fields and per-pixel stream coloring remain open; frame size limits
+dense stream fields.
+
+ConvexHull, Cutout, TangentialArc, ArcBrace, VDict, ScreenRectangle family,
+VectorizedPoint, ComplexValueTracker, UnitInterval, CurvesAsSubmobjects,
+LaggedStartMap, MaintainPositionRelativeTo, Blink, Broadcast, SpiralIn and
+AddTextWordByWord are implemented with Community reference checks where the
+output is deterministic.
+
+Graph and DiGraph are implemented with networkx/Community layout parity for the
+deterministic layouts; SciPy-based layouts and networkx graph objects are unavailable.
+
+Union, Intersection, Difference and Exclusion are implemented with Community area and
+bounds checks; coincident curved (non-straight) boundaries are approximate.
+
+Code is implemented with Community geometry checks (0.001 units) and Pygments colors;
+code_file and custom Pygments Style classes from user code remain unsupported.
+
+SVGMobject/VMobjectFromSVGPath (markup strings) and ImageMobject (arrays/data URIs) are
+implemented with Community geometry/style checks; file paths, gradients/patterns,
+clip paths and image pixel interpolation in Transform remain open.
+
+TypeWithCursor/UntypeWithCursor, AnimatedBoundary, ChangeSpeed, ImplicitFunction,
+LabeledPolygram, ShowPassingFlashWithThinningStrokeWidth and FadeTransformPieces are
+implemented with Community checks for timing, cursor placement and pole positions.
+
+ManimColor/HSV/RandomColorGenerator, LogBase/LinearBase axes and TeX numeric units are
+implemented with Community checks.
+
+Point clouds, Add, ShowPartial, sections/skip_animations, scene updaters, wait_until,
+replace, TexTemplate stubs and CoordinateSystem are implemented; audio and
+subcaptions are recorded only.
+
+- ZoomedScene (vector inset views, Community frame/display geometry and per-frame aspect sync) is implemented; pixel-level camera images (`get_pixel_array`) are not.
+- VectorScene and LinearTransformationScene are implemented (matrix, inverse and nonlinear plane transformations, ghost vectors, labels); Community's mid-animation arc positions are matched numerically.
+- ManimBanner, SampleSpace, TransformAnimations and Community's utility functions are implemented; queries on children of posed shapes still return parent-local coordinates.
