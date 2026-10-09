@@ -1747,7 +1747,7 @@ assert isinstance(t.get_value(), (int, float))""")
         before=host.to_dict()
         with self.assertRaises(NotImplementedError): host.stretch(2,0)
         self.assertEqual(host.to_dict(),before)
-        for kwargs in ({'factor':float('inf'),'dim':0},{'factor':2,'dim':2},
+        for kwargs in ({'factor':float('inf'),'dim':0},
                        {'factor':2,'dim':0,'about_point':lite.OUT}):
             with self.assertRaises(ValueError): arrow.stretch(**kwargs)
         line=lite.Line(lite.LEFT,lite.RIGHT+lite.UP).rotate(.2)
@@ -1777,7 +1777,8 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertEqual(target.to_dict(),target_before)
         self.assertEqual(shape.length_over_dim(0),shape.get_width())
         before=shape.to_dict()
-        for kwargs in ({'length':-1,'dim':0},{'length':2,'dim':2},
+        # dim=2 is supported (Community 0.22 accepts it; a flat shape is a no-op).
+        for kwargs in ({'length':-1,'dim':0},
                        {'length':2,'dim':True},{'length':float('inf'),'dim':0}):
             with self.assertRaises(ValueError): shape.rescale_to_fit(**kwargs)
             self.assertEqual(shape.to_dict(),before)
@@ -7647,6 +7648,145 @@ self.wait(0.1)""")
                          list(range(len(frame['mobjects']))))
         self.assertEqual(set(frame['camera']), {'pixel_width', 'pixel_height', 'frame_width',
                                                 'frame_height', 'background_color'})
+
+
+class ThreeDPrimitiveTests(unittest.TestCase):
+    def assertPointAlmostEqual(self, actual, expected, places=6):
+        self.assertEqual(len(actual), len(expected))
+        for a, e in zip(actual, expected):
+            self.assertAlmostEqual(a, e, places=places)
+
+    def test_sphere_faces_and_extents(self):
+        sphere = lite.Sphere(radius=2, resolution=(8, 4))
+        # Manim 0.22: 8*4 faces, centered at ORIGIN, 4x4x4 extents.
+        self.assertEqual(len(sphere.list_of_faces), 32)
+        self.assertPointAlmostEqual(sphere.get_center(), lite.ORIGIN)
+        self.assertAlmostEqual(sphere.get_width(), 4)
+        self.assertAlmostEqual(sphere.get_height(), 4)
+        self.assertAlmostEqual(sphere.get_depth(), 4)
+        # Manim 0.22: first face start anchors.
+        expected = [[0, 0, -2], [0, 0, -2], [1, 1, -1.4142135623730951],
+                    [1.4142135623730951, 0, -1.4142135623730951]]
+        for actual, point in zip(sphere.list_of_faces[0].get_start_anchors(), expected):
+            self.assertPointAlmostEqual(actual, point)
+
+    def test_dot3d(self):
+        dot = lite.Dot3D(point=[1, 2, 3], radius=0.1, color=lite.RED)
+        self.assertPointAlmostEqual(dot.get_center(), (1, 2, 3))
+        self.assertAlmostEqual(dot.get_width(), 0.2)
+
+    def test_cube_faces(self):
+        cube = lite.Cube(side_length=1.5)
+        self.assertEqual(len(cube.children), 6)
+        # Manim 0.22: face centers in IN, OUT, LEFT, RIGHT, UP, DOWN order.
+        expected = [(0, 0, -0.75), (0, 0, 0.75), (-0.75, 0, 0),
+                    (0.75, 0, 0), (0, 0.75, 0), (0, -0.75, 0)]
+        for face, center in zip(cube.children, expected):
+            self.assertPointAlmostEqual(face.get_center(), center)
+            self.assertTrue(face.shade_in_3d)
+        self.assertAlmostEqual(cube.get_width(), 1.5)
+        self.assertAlmostEqual(cube.get_height(), 1.5)
+        self.assertAlmostEqual(cube.get_depth(), 1.5)
+
+    def test_prism_dimensions(self):
+        prism = lite.Prism(dimensions=[3, 2, 1])
+        # Manim 0.22: width/height/depth match the requested dimensions.
+        self.assertAlmostEqual(prism.get_width(), 3)
+        self.assertAlmostEqual(prism.get_height(), 2)
+        self.assertAlmostEqual(prism.get_depth(), 1)
+        self.assertPointAlmostEqual(prism.get_center(), lite.ORIGIN)
+
+    def test_cone_direction_and_base(self):
+        cone = lite.Cone(base_radius=1, height=2, direction=lite.RIGHT, show_base=True)
+        # Manim 0.22: start/end and centers after the theta/phi direction turn.
+        self.assertPointAlmostEqual(cone.get_start(), (-2, 0, 0))
+        self.assertPointAlmostEqual(cone.get_end(), (-2, 0, -2))
+        self.assertPointAlmostEqual(cone.get_center(), (-1, 0, -0.5))
+        self.assertPointAlmostEqual(cone.base_circle.get_center(), (-2, 0, 0))
+
+    def test_cylinder_dimensions_and_bases(self):
+        cylinder = lite.Cylinder(radius=0.5, height=3, direction=lite.UP)
+        # Manim 0.22: upright cylinder is 1 x 3 x 1 centered at ORIGIN.
+        self.assertAlmostEqual(cylinder.get_width(), 1)
+        self.assertAlmostEqual(cylinder.get_height(), 3)
+        self.assertAlmostEqual(cylinder.get_depth(), 1)
+        self.assertPointAlmostEqual(cylinder.get_center(), lite.ORIGIN)
+        # Manim 0.22: base cap centers after rotation.
+        self.assertPointAlmostEqual(cylinder.base_top.get_center(), (0, -1.5, 0))
+        self.assertPointAlmostEqual(cylinder.base_bottom.get_center(), (0, 1.5, 0))
+
+    def test_line3d_endpoints_and_classmethods(self):
+        line = lite.Line3D(start=[-1, 0, 1], end=[2, 1, 0], thickness=0.05)
+        self.assertPointAlmostEqual(line.get_start(), (-1, 0, 1))
+        self.assertPointAlmostEqual(line.get_end(), (2, 1, 0))
+        # Manim 0.22: bounds include the shaft thickness.
+        self.assertPointAlmostEqual(line.get_center(), (0.5, 0.5, 0.5))
+        parallel = lite.Line3D.parallel_to(line, point=[0, 0, 2], length=2)
+        # Manim 0.22: parallel endpoints about (0,0,2).
+        self.assertPointAlmostEqual(parallel.get_start(),
+                                    (0.9045340337332909, 0.30151134457776363, 1.6984886554222363))
+        self.assertPointAlmostEqual(parallel.get_end(),
+                                    (-0.9045340337332909, -0.30151134457776363, 2.3015113445777637))
+        perpendicular = lite.Line3D.perpendicular_to(line, point=[0, 0, 2], length=2)
+        # Manim 0.22: perpendicular endpoints about (0,0,2).
+        self.assertPointAlmostEqual(perpendicular.get_start(),
+                                    (-0.3553345272593507, 0.1421338109037403, 1.0761302291256882))
+        self.assertPointAlmostEqual(perpendicular.get_end(),
+                                    (0.3553345272593507, -0.1421338109037403, 2.9238697708743118))
+
+    def test_arrow3d_tip_and_family(self):
+        arrow = lite.Arrow3D(start=lite.ORIGIN, end=[1, 1, 1])
+        self.assertPointAlmostEqual(arrow.get_start(), lite.ORIGIN)
+        self.assertPointAlmostEqual(arrow.get_end(), (1, 1, 1))
+        # Manim 0.22: the cone tip's center and the 1077-member point family.
+        self.assertPointAlmostEqual(arrow.cone.get_center(),
+                                    (0.8808075236586544, 0.9407975659091175, 0.8807375963844472))
+        self.assertEqual(len(arrow.family_members_with_points()), 1077)
+
+    def test_torus_dimensions(self):
+        torus = lite.Torus(major_radius=2, minor_radius=0.5, resolution=(8, 8))
+        # Manim 0.22: 5 x 5 x 1 torus; first face anchor on the inner ring.
+        self.assertAlmostEqual(torus.get_width(), 5)
+        self.assertAlmostEqual(torus.get_depth(), 1)
+        self.assertPointAlmostEqual(torus.list_of_faces[0].get_start_anchors()[0], (1.5, 0, 0))
+
+    def test_surface_checkerboard_and_face_anchors(self):
+        surface = lite.Surface(lambda u, v: [u, v, u * v], u_range=(0, 1),
+                               v_range=(0, 2), resolution=(2, 3))
+        self.assertEqual(len(surface.list_of_faces), 6)
+        # Manim 0.22: faces alternate BLUE_D/BLUE_E on (u_index + v_index) % 2.
+        self.assertEqual([face.fill_color for face in surface.list_of_faces],
+                         ['#29ABCA', '#236B8E'] * 3)
+        face = surface.list_of_faces[1 * 3 + 2]
+        self.assertEqual((face.u_index, face.v_index), (1, 2))
+        # Manim 0.22: face (1,2) anchors of the u*v surface.
+        expected = [[0.5, 4 / 3, 2 / 3], [1, 4 / 3, 4 / 3], [1, 2, 2], [0.5, 2, 1]]
+        for actual, point in zip(face.get_start_anchors(), expected):
+            self.assertPointAlmostEqual(actual, point)
+
+    def test_cube_frame_order_and_shading(self):
+        class Demo(lite.ThreeDScene):
+            def construct(self):
+                self.set_camera_orientation(phi=75 * lite.DEGREES, theta=-30 * lite.DEGREES)
+                self.add(lite.Cube())
+                self.wait(0.1)
+        scene = Demo()
+        scene.render()
+        leaves = scene.frames[0]['mobjects']
+        self.assertEqual(len(leaves), 6)
+        # Manim 0.22: get_mobjects_to_display order is LEFT, UP, IN, OUT, DOWN,
+        # RIGHT, and camera.get_fill_rgbas(face)[0] gives these shaded hexes.
+        self.assertEqual([leaf['fill_color'] for leaf in leaves],
+                         ['#54C0D9', '#76E2FB', '#8BF7FF', '#49B5CE', '#4AB6CF', '#69D5EE'])
+        self.assertEqual([leaf['z_index'] for leaf in leaves], list(range(6)))
+
+    def test_sphere_frame_render(self):
+        result = render_3d("""self.set_camera_orientation(phi=75 * DEGREES, theta=-30 * DEGREES)
+self.add(Sphere(resolution=(8, 8)))
+self.wait(0.1)""")
+        leaves = result['frames'][0]['mobjects']
+        self.assertEqual(len(leaves), 64)
+        self.assertTrue(all(node['type'] == 'bezierpath' for node in leaves))
 
 
 if __name__ == '__main__':

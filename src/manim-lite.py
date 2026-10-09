@@ -524,9 +524,11 @@ class Mobject:
 
     def __init__(self, color=WHITE, fill_opacity=0, stroke_width=2,
                  fill_color=None, stroke_color=None, stroke_opacity=1, z_index=0,
-                 shade_in_3d=False, **kwargs):
+                 shade_in_3d=False, joint_type=None, **kwargs):
         if kwargs:
             raise NotImplementedError('Unsupported options: ' + ', '.join(kwargs))
+        # joint_type controls Community's stroked joins; the preview renderer
+        # draws its own joins, so it is accepted and ignored.
         self.position = list(ORIGIN)
         self.shade_in_3d = bool(shade_in_3d)
         color, fill_color, stroke_color = _paint(color), _paint(fill_color), _paint(stroke_color)
@@ -909,17 +911,17 @@ class Mobject:
         extents, expressed in this node's frame, are mapped through this pose
         again. A point-free leaf yields only its position's z, and a pure
         container contributes nothing of its own."""
-        pivot_z = self.position[2] + self._geometry_center()[2]
+        center_z = self._geometry_center()[2]
+        pivot_z = self.position[2] + center_z
         scale = self.geometry_scale
         zs = []
         own = self._own_bound_points()
         if own:
-            center_z = self._geometry_center()[2]
             zs.extend(pivot_z + ((point[2] if len(point) > 2 else 0) - center_z) * scale
                       for point in own)
         for child in self.children:
             low, high = child._z_extent()
-            zs.extend(pivot_z + (z - self._geometry_center()[2]) * scale for z in (low, high))
+            zs.extend(pivot_z + (z - center_z) * scale for z in (low, high))
         if not zs:
             return self.position[2], self.position[2]
         return min(zs), max(zs)
@@ -985,13 +987,13 @@ class Mobject:
 
     @staticmethod
     def _fit_dimension(dim):
-        if isinstance(dim,bool) or not isinstance(dim, numbers.Integral) or dim not in (0,1):
-            raise ValueError('Size fitting dimension must be 0 (width) or 1 (height)')
+        if isinstance(dim,bool) or not isinstance(dim, numbers.Integral) or dim not in (0,1,2):
+            raise ValueError('Size fitting dimension must be 0 (width), 1 (height) or 2 (depth)')
         return dim
 
     def length_over_dim(self, dim):
         self._fit_dimension(dim)
-        return self.get_width() if dim == 0 else self.get_height()
+        return self.get_width() if dim == 0 else self.get_height() if dim == 1 else self.get_depth()
 
     def stretch(self, factor, dim, *, about_point=None, about_edge=None):
         NumberLine._real(factor,'Stretch factor')
@@ -1000,6 +1002,9 @@ class Mobject:
             values = list(point)
             values[dim] *= factor
             return values
+        if dim == 2 or self._is_3d():
+            # Scaling z (or stretching a 3D family at all) bakes the points.
+            return self._map_points_3d(function, about_point, about_edge)
         return self._apply_xy_map(function,about_point,about_edge,linear=True)
 
     def apply_matrix(self, matrix, *, about_point=None, about_edge=None):
@@ -1612,6 +1617,10 @@ class Mobject:
         if not points:
             return self.get_center()
         return max(points, key=lambda p: p[0] * direction[0] + p[1] * direction[1] + p[2] * direction[2])
+
+    def get_midpoint(self):
+        """Community's midpoint of the first start and last end anchor."""
+        return midpoint(self.get_start(), self.get_end()) if self.has_points() else self.get_center()
 
     def get_center_of_mass(self):
         points = [Vector(p) for member in self.get_family() for p in member.get_points()]
@@ -10478,6 +10487,434 @@ class ThreeDScene(Scene):
         return [dict(entry['node'], z_index=rank) for rank, entry in enumerate(leaves)]
 
 
+def _linspace(start, stop, count):
+    """np.linspace equivalent: count samples inclusive of both endpoints."""
+    if count == 1:
+        return [float(start)]
+    step = (stop - start) / (count - 1)
+    return [start + i * step for i in range(count)]
+
+
+class ThreeDVMobject(VMobject):
+    """Community's ThreeDVMobject: a VMobject shaded by the 3D camera."""
+    def __init__(self, shade_in_3d=True, **kwargs):
+        super().__init__(shade_in_3d=shade_in_3d, **kwargs)
+
+
+class Surface(VGroup):
+    """Community's parametric Surface: a checkerboard grid of face cells.
+
+    Faces are built flat in (u, v) space then mapped through ``func`` with
+    apply_function, exactly like Community; ``func`` returns a 3-vector and is
+    excluded from frame serialization."""
+    _frame_excluded = ('_func',)
+
+    MAX_SURFACE_FACES = 10000
+
+    def __init__(self, func, u_range=(0, 1), v_range=(0, 1), resolution=32,
+                 surface_piece_config=None, fill_color=BLUE_D, fill_opacity=1.0,
+                 checkerboard_colors=(BLUE_D, BLUE_E), stroke_color=LIGHT_GREY,
+                 stroke_width=0.5, should_make_jagged=False,
+                 pre_function_handle_to_anchor_scale_factor=0.00001, **kwargs):
+        if not callable(func):
+            raise TypeError('Surface func must be callable')
+        for name, values in (('u_range', u_range), ('v_range', v_range)):
+            if (len(values) != 2 or
+                    not all(isinstance(v, _REAL) and not isinstance(v, bool) and math.isfinite(v)
+                            for v in values)):
+                raise ValueError(name + ' must be two finite numbers')
+        self.u_range, self.v_range = list(u_range), list(v_range)
+        super().__init__(fill_color=fill_color, fill_opacity=fill_opacity,
+                         stroke_color=stroke_color, stroke_width=stroke_width, **kwargs)
+        if isinstance(resolution, bool):
+            raise ValueError('Surface resolution must be positive integers')
+        if isinstance(resolution, numbers.Integral):
+            u_res = v_res = int(resolution)
+        else:
+            try:
+                u_res, v_res = resolution
+            except (TypeError, ValueError):
+                raise ValueError('Surface resolution must be an integer or a pair') from None
+        if (u_res < 1 or v_res < 1 or not isinstance(u_res, numbers.Integral)
+                or not isinstance(v_res, numbers.Integral)):
+            raise ValueError('Surface resolution must be positive integers')
+        if u_res * v_res > self.MAX_SURFACE_FACES:
+            raise ValueError('Surface resolution exceeds 10000 faces')
+        self.resolution = resolution
+        self.surface_piece_config = dict(surface_piece_config or {})
+        self.checkerboard_colors = (checkerboard_colors if checkerboard_colors is False
+                                    else [_paint(color) for color in checkerboard_colors])
+        self.should_make_jagged = bool(should_make_jagged)
+        self.pre_function_handle_to_anchor_scale_factor = pre_function_handle_to_anchor_scale_factor
+        self.list_of_faces = []
+        self._func = func
+        self._setup_in_uv_space()
+        self.apply_function(lambda p: func(p[0], p[1]))
+        if self.should_make_jagged:
+            self.make_jagged()
+
+    def func(self, u, v):
+        return self._func(u, v)
+
+    def _get_u_values_and_v_values(self):
+        if isinstance(self.resolution, numbers.Integral) and not isinstance(self.resolution, bool):
+            u_res = v_res = int(self.resolution)
+        else:
+            u_res, v_res = self.resolution
+        return (_linspace(self.u_range[0], self.u_range[1], int(u_res) + 1),
+                _linspace(self.v_range[0], self.v_range[1], int(v_res) + 1))
+
+    def _setup_in_uv_space(self):
+        u_values, v_values = self._get_u_values_and_v_values()
+        faces = VGroup()
+        self.list_of_faces = []
+        for i in range(len(u_values) - 1):
+            for j in range(len(v_values) - 1):
+                u1, u2 = u_values[i:i + 2]
+                v1, v2 = v_values[j:j + 2]
+                face = ThreeDVMobject(**self.surface_piece_config)
+                face.set_points_as_corners(
+                    [[u1, v1, 0], [u2, v1, 0], [u2, v2, 0], [u1, v2, 0], [u1, v1, 0]])
+                face.u_index, face.v_index = i, j
+                face.u1, face.u2, face.v1, face.v2 = u1, u2, v1, v2
+                self.list_of_faces.append(face)
+        # One bulk add: per-face adds recompute family bounds quadratically.
+        faces.add(*self.list_of_faces)
+        faces.set_fill(color=self.fill_color, opacity=self.fill_opacity)
+        faces.set_stroke(color=self.stroke_color, width=self.stroke_width,
+                         opacity=self.stroke_opacity)
+        self.add(*faces)
+        if self.checkerboard_colors:
+            self.set_fill_by_checkerboard(*self.checkerboard_colors)
+
+    def set_fill_by_checkerboard(self, *colors, opacity=None):
+        """Alternate face fills by (u_index + v_index) % len(colors)."""
+        n_colors = len(colors)
+        if n_colors == 0:
+            raise ValueError('set_fill_by_checkerboard needs at least one color')
+        for face in self.list_of_faces:
+            face.set_fill(colors[(face.u_index + face.v_index) % n_colors], opacity=opacity)
+        return self
+
+    def set_fill_by_value(self, axes=None, colorscale=None, axis=2, **kwargs):
+        """Community's value-gradient fill: pivot interpolation along an axis.
+
+        Without an axes (or one without point_to_coords) the raw coordinate of
+        each face's midpoint is used and the pivots span the surface's own
+        extent along ``axis``."""
+        if 'colors' in kwargs and colorscale is None:
+            colorscale = kwargs.pop('colors')
+            if kwargs:
+                raise ValueError('Unsupported keyword argument(s): ' + ', '.join(map(str, kwargs)))
+        if kwargs:
+            raise ValueError('Unsupported keyword argument(s): ' + ', '.join(map(str, kwargs)))
+        if colorscale is None:
+            return self
+        colorscale_list = list(colorscale)
+        if not colorscale_list:
+            raise ValueError('colorscale needs at least one color')
+        if isinstance(colorscale_list[0], tuple) and len(colorscale_list[0]) == 2:
+            new_colors = [_paint(color) for color, _ in colorscale_list]
+            pivots = [float(pivot) for _, pivot in colorscale_list]
+        else:
+            new_colors = [_paint(color) for color in colorscale_list]
+            ranges = [getattr(axes, name, None) for name in ('x_range', 'y_range', 'z_range')]
+            current_range = ranges[axis]
+            if current_range is not None:
+                pivot_min, pivot_max = current_range[0], current_range[1]
+            else:
+                points = [mob.get_midpoint()[axis]
+                          for mob in self.family_members_with_points()]
+                pivot_min, pivot_max = (min(points), max(points)) if points else (0, 0)
+            pivots = _linspace(pivot_min, pivot_max, len(new_colors))
+        for mob in self.family_members_with_points():
+            point = mob.get_midpoint()
+            axis_value = (axes.point_to_coords(point)[axis]
+                          if axes is not None and hasattr(axes, 'point_to_coords')
+                          else point[axis])
+            if axis_value <= pivots[0]:
+                mob.set_color(new_colors[0], family=False)
+            elif axis_value >= pivots[-1]:
+                mob.set_color(new_colors[-1], family=False)
+            else:
+                for i, pivot in enumerate(pivots):
+                    if pivot > axis_value:
+                        alpha = min((axis_value - pivots[i - 1]) / (pivots[i] - pivots[i - 1]), 1)
+                        mob.set_color(interpolate_color(new_colors[i - 1], new_colors[i], alpha),
+                                      family=False)
+                        break
+        return self
+
+
+class Sphere(Surface):
+    """Community's parametric sphere (u: azimuth, v: polar angle)."""
+    def __init__(self, center=ORIGIN, radius=1, resolution=None,
+                 u_range=(0, TAU), v_range=(0, PI), **kwargs):
+        NumberLine._real(radius, 'Sphere radius', positive=True)
+        self.radius = radius
+        super().__init__(self.func, resolution=(24, 12) if resolution is None else resolution,
+                         u_range=u_range, v_range=v_range, **kwargs)
+        self.shift(center)
+
+    def func(self, u, v):
+        return [self.radius * math.cos(u) * math.sin(v),
+                self.radius * math.sin(u) * math.sin(v),
+                -self.radius * math.cos(v)]
+
+
+class Dot3D(Sphere):
+    """A small sphere used as a 3D marker, like Community's Dot3D."""
+    def __init__(self, point=ORIGIN, radius=DEFAULT_DOT_RADIUS, color=WHITE,
+                 resolution=(8, 8), **kwargs):
+        super().__init__(center=point, radius=radius, resolution=resolution, **kwargs)
+        self.set_color(color)
+
+
+class Cube(VGroup):
+    """Community's cube: six flipped/shifted/reoriented Square faces."""
+    def __init__(self, side_length=2, fill_opacity=0.75, fill_color=BLUE,
+                 stroke_width=0, **kwargs):
+        NumberLine._real(side_length, 'Cube side length', positive=True)
+        self.side_length = side_length
+        super().__init__(fill_color=fill_color, fill_opacity=fill_opacity,
+                         stroke_width=stroke_width, **kwargs)
+        self.generate_points()
+
+    def generate_points(self):
+        # Community's init_colors applies the cube's fill/stroke to the faces.
+        for vect in IN, OUT, LEFT, RIGHT, UP, DOWN:
+            face = Square(side_length=self.side_length, fill_color=self.fill_color,
+                          fill_opacity=self.fill_opacity, stroke_color=self.stroke_color,
+                          stroke_width=self.stroke_width, shade_in_3d=True)
+            face.flip()
+            face.shift(self.side_length * OUT / 2.0)
+            face.apply_matrix(z_to_vector(vect))
+            self.add(face)
+        return self
+
+
+class Prism(Cube):
+    """A rectangular cuboid: a cube rescaled per axis, like Community."""
+    def __init__(self, dimensions=(3, 2, 1), **kwargs):
+        dims = list(dimensions)
+        if len(dims) != 3 or not all(isinstance(v, _REAL) and not isinstance(v, bool)
+                                     and math.isfinite(v) and v > 0 for v in dims):
+            raise ValueError('Prism dimensions must be three positive finite numbers')
+        self.dimensions = dims
+        super().__init__(**kwargs)
+        for dim, value in enumerate(dims):
+            self.rescale_to_fit(value, dim, stretch=True)
+
+
+class Cone(Surface):
+    """Community's cone; direction rotates via theta about Y then phi about Z."""
+    def __init__(self, base_radius=1, height=1, direction=OUT, show_base=False,
+                 v_range=(0, TAU), u_min=0, checkerboard_colors=False, **kwargs):
+        NumberLine._real(base_radius, 'Cone base radius', positive=True)
+        NumberLine._real(height, 'Cone height', positive=True)
+        self.direction = Vector(direction)
+        if not all(math.isfinite(v) for v in self.direction) or _norm(self.direction) == 0:
+            raise ValueError('Cone direction must be finite and nonzero')
+        self.theta = PI - math.atan(base_radius / height)
+        super().__init__(self.func, v_range=v_range,
+                         u_range=(u_min, math.hypot(base_radius, height)),
+                         checkerboard_colors=checkerboard_colors, **kwargs)
+        self.new_height = height
+        self._current_theta = 0
+        self._current_phi = 0
+        self.base_circle = Circle(radius=base_radius, color=self.fill_color,
+                                  fill_opacity=self.fill_opacity, stroke_width=0)
+        self.base_circle.shift(height * IN)
+        self._set_start_and_end_attributes(self.direction)
+        if show_base:
+            self.add(self.base_circle)
+        self._rotate_to_direction()
+
+    def func(self, u, v):
+        r, phi = u, v
+        return [r * math.sin(self.theta) * math.cos(phi),
+                r * math.sin(self.theta) * math.sin(phi),
+                r * math.cos(self.theta)]
+
+    def get_start(self):
+        return self.start_point.get_center()
+
+    def get_end(self):
+        return self.end_point.get_center()
+
+    def _rotate_to_direction(self):
+        x, y, z = self.direction
+        r = math.sqrt(x * x + y * y + z * z)
+        theta = math.acos(z / r) if r > 0 else 0
+        if x == 0:
+            if y == 0:
+                phi = 0
+            else:
+                phi = math.atan(math.inf)
+                if y < 0:
+                    phi += PI
+        else:
+            phi = math.atan(y / x)
+        if x < 0:
+            phi += PI
+        self.rotate(-self._current_phi, Z_AXIS, about_point=ORIGIN)
+        self.rotate(-self._current_theta, Y_AXIS, about_point=ORIGIN)
+        self.rotate(theta, Y_AXIS, about_point=ORIGIN)
+        self.rotate(phi, Z_AXIS, about_point=ORIGIN)
+        self._current_theta = theta
+        self._current_phi = phi
+
+    def set_direction(self, direction):
+        self.direction = Vector(direction)
+        self._rotate_to_direction()
+        return self
+
+    def get_direction(self):
+        return self.direction
+
+    def _set_start_and_end_attributes(self, direction):
+        # Community multiplies the direction by its own norm here (sic).
+        normalized_direction = Vector(direction) * _norm(direction)
+        start = self.base_circle.get_center()
+        end = start + normalized_direction * self.new_height
+        self.start_point = VectorizedPoint(start)
+        self.end_point = VectorizedPoint(end)
+        self.add(self.start_point, self.end_point)
+
+
+class Cylinder(Surface):
+    """Community's cylinder with optional end-cap circles."""
+    def __init__(self, radius=1, height=2, direction=OUT, v_range=(0, TAU),
+                 show_ends=True, resolution=(24, 24), **kwargs):
+        NumberLine._real(radius, 'Cylinder radius', positive=True)
+        NumberLine._real(height, 'Cylinder height', positive=True)
+        self._height = height
+        self.radius = radius
+        super().__init__(self.func, resolution=resolution,
+                         u_range=(-self._height / 2, self._height / 2),
+                         v_range=v_range, **kwargs)
+        if show_ends:
+            self.add_bases()
+        self._current_phi = 0
+        self._current_theta = 0
+        self.set_direction(direction)
+
+    def func(self, u, v):
+        return [self.radius * math.cos(v), self.radius * math.sin(v), u]
+
+    def add_bases(self):
+        color, opacity = self.fill_color, self.fill_opacity
+        self.base_top = Circle(radius=self.radius, color=color, fill_opacity=opacity,
+                               shade_in_3d=True, stroke_width=0)
+        self.base_top.shift(self.u_range[1] * IN)
+        self.base_bottom = Circle(radius=self.radius, color=color, fill_opacity=opacity,
+                                  shade_in_3d=True, stroke_width=0)
+        self.base_bottom.shift(self.u_range[0] * IN)
+        self.add(self.base_top, self.base_bottom)
+        return self
+
+    _rotate_to_direction = Cone._rotate_to_direction
+
+    def set_direction(self, direction):
+        self.direction = Vector(direction)
+        self._rotate_to_direction()
+        return self
+
+    def get_direction(self):
+        return self.direction
+
+
+class Line3D(Cylinder):
+    """A cylindrical line segment, like Community's Line3D."""
+    def __init__(self, start=LEFT, end=RIGHT, thickness=0.02, color=None,
+                 resolution=24, **kwargs):
+        NumberLine._real(thickness, 'Line3D thickness', positive=True)
+        self.thickness = thickness
+        self.resolution = ((2, resolution) if isinstance(resolution, numbers.Integral)
+                           and not isinstance(resolution, bool) else resolution)
+        self.set_start_and_end_attrs(start, end, **kwargs)
+        if color is not None:
+            self.set_color(color)
+
+    def set_start_and_end_attrs(self, start, end, **kwargs):
+        rough_start = self.pointify(start)
+        rough_end = self.pointify(end)
+        self.vect = rough_end - rough_start
+        self.length = _norm(self.vect)
+        if self.length == 0:
+            raise ValueError('Line3D start and end must differ')
+        self.direction = normalize(self.vect)
+        self.start = self.pointify(start, self.direction)
+        self.end = self.pointify(end, -self.direction)
+        super().__init__(height=_norm(self.vect), radius=self.thickness,
+                         direction=self.direction, resolution=self.resolution, **kwargs)
+        self.shift((self.start + self.end) / 2)
+        return self
+
+    def pointify(self, mob_or_point, direction=None):
+        if isinstance(mob_or_point, Mobject):
+            return (mob_or_point.get_center() if direction is None
+                    else mob_or_point.get_boundary_point(direction))
+        return Vector(mob_or_point)
+
+    def get_start(self):
+        return self.start
+
+    def get_end(self):
+        return self.end
+
+    @classmethod
+    def parallel_to(cls, line, point=ORIGIN, length=5, **kwargs):
+        point = Vector(point)
+        vect = normalize(line.vect)
+        return cls(point + vect * length / 2, point - vect * length / 2, **kwargs)
+
+    @classmethod
+    def perpendicular_to(cls, line, point=ORIGIN, length=5, **kwargs):
+        point = Vector(point)
+        norm = _cross(line.vect, point - Vector(line.start))
+        if _norm(norm) == 0:
+            raise ValueError('Could not find the perpendicular.')
+        start, end = perpendicular_bisector([line.start, line.end], norm)
+        vect = normalize(Vector(end) - Vector(start))
+        return cls(point + vect * length / 2, point - vect * length / 2, **kwargs)
+
+
+class Arrow3D(Line3D):
+    """A Line3D shaft shortened for a conical tip, like Community's Arrow3D."""
+    def __init__(self, start=LEFT, end=RIGHT, thickness=0.02, height=0.3,
+                 base_radius=0.08, color=WHITE, resolution=24, **kwargs):
+        super().__init__(start=start, end=end, thickness=thickness, color=color,
+                         resolution=resolution, **kwargs)
+        self.length = _norm(self.vect)
+        # Community re-runs the cylinder build with the shaft end pulled back.
+        self.set_start_and_end_attrs(self.start, self.end - height * self.direction, **kwargs)
+        self.cone = Cone(direction=self.direction, base_radius=base_radius,
+                         height=height, **kwargs)
+        self.cone.shift(Vector(end))
+        self.end_point = VectorizedPoint(end)
+        self.add(self.end_point, self.cone)
+        self.set_color(color)
+
+    def get_end(self):
+        return self.end_point.get_center()
+
+
+class Torus(Surface):
+    """Community's torus: (R - r cos v)[cos u, sin u, 0] - r sin v OUT."""
+    def __init__(self, major_radius=3, minor_radius=1, u_range=(0, TAU),
+                 v_range=(0, TAU), resolution=None, **kwargs):
+        NumberLine._real(major_radius, 'Torus major radius', positive=True)
+        NumberLine._real(minor_radius, 'Torus minor radius', positive=True)
+        self.R, self.r = major_radius, minor_radius
+        super().__init__(self.func, u_range=u_range, v_range=v_range,
+                         resolution=(24, 24) if resolution is None else resolution, **kwargs)
+
+    def func(self, u, v):
+        scale = self.R - self.r * math.cos(v)
+        return [scale * math.cos(u), scale * math.sin(u), -self.r * math.sin(v)]
+
+
 class UnitInterval(NumberLine):
     def __init__(self, unit_size=10, numbers_with_elongated_ticks=None, decimal_number_config=None, **kwargs):
         super().__init__(x_range=(0, 1, 0.1), unit_size=unit_size,
@@ -14324,7 +14761,7 @@ class ManimBanner(VGroup):
                           UpdateFromAlphaFunc(self, slide_back, run_time=run_time / 3, rate_func=smooth))
 
 
-EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'ZoomedScene', 'VectorScene', 'LinearTransformationScene', 'ThreeDCamera', 'ThreeDScene', 'angle_of_vector', 'ImageMobjectFromCamera', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
+EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'ZoomedScene', 'VectorScene', 'LinearTransformationScene', 'ThreeDCamera', 'ThreeDScene', 'ThreeDVMobject', 'Surface', 'Sphere', 'Dot3D', 'Cube', 'Prism', 'Cone', 'Cylinder', 'Line3D', 'Arrow3D', 'Torus', 'angle_of_vector', 'ImageMobjectFromCamera', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
            'Triangle', 'Polygon', 'Polygram', 'RegularPolygram', 'RegularPolygon', 'Star', 'Brace', 'BraceBetweenPoints', 'BraceLabel', 'BraceText',
            'Title', 'BulletedList', 'Tex', 'SingleStringMathTex', 'MarkupText', 'LabeledDot', 'Variable', 'always', 'f_always', 'always_shift', 'always_rotate',
            'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'BarChart', 'PolarPlane', 'NumberPlane', 'ComplexPlane', 'VectorField', 'ArrowVectorField', 'StreamLines', 'sigmoid', 'ScreenRectangle', 'FullScreenRectangle', 'VectorizedPoint', 'ComplexValueTracker', 'UnitInterval', 'TangentialArc', 'CurvesAsSubmobjects', 'VDict', 'Cutout', 'ConvexHull', 'ArcBrace', 'LaggedStartMap', 'MaintainPositionRelativeTo', 'Blink', 'Broadcast', 'SpiralIn', 'AddTextWordByWord', 'Animation', 'line_intersection', 'angle_between_vectors', 'DEFAULT_LAGGED_START_LAG_RATIO', 'Graph', 'DiGraph', 'Union', 'Intersection', 'Difference', 'Exclusion', 'Code', 'SVGMobject', 'VMobjectFromSVGPath', 'ImageMobject', 'RESAMPLING_ALGORITHMS', 'ManimColor', 'HSV', 'RGBA', 'LinearBase', 'LogBase', 'DefaultSectionType', 'Add', 'ShowPartial', 'TexTemplate', 'TexTemplateLibrary', 'TexFontTemplates', 'CoordinateSystem', 'PMobject', 'Mobject1D', 'Mobject2D', 'PGroup', 'PointCloudDot', 'Point', 'DEFAULT_POINT_DENSITY_1D', 'DEFAULT_POINT_DENSITY_2D', 'RandomColorGenerator', 'random_color', 'random_bright_color', 'TypeWithCursor', 'UntypeWithCursor', 'AnimatedBoundary', 'ShowPassingFlashWithThinningStrokeWidth', 'FadeTransformPieces', 'ImplicitFunction', 'LabeledPolygram', 'ChangeSpeed', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
