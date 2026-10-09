@@ -16,6 +16,12 @@ def render(body):
     return json.loads(lite.render_scene(source))
 
 
+def render_3d(body):
+    source = 'from manim import *\nclass Demo(ThreeDScene):\n    def construct(self):\n'
+    source += '\n'.join('        ' + line for line in body.splitlines())
+    return json.loads(lite.render_scene(source))
+
+
 class SceneTests(unittest.TestCase):
     def test_zoomed_scene_matches_community_frame_and_display_geometry(self):
         source = """from manim import *
@@ -1490,9 +1496,10 @@ assert isinstance(t.get_value(), (int, float))""")
         masked=lite.Square().shift(lite.UP).move_to((5,5,0),coor_mask=(1,0,0))
         self.assertPointAlmostEqual(masked.get_center(),(5,1,0))
         before=square.get_center()
-        for bad in (lambda:square.set_z(1),lambda:square.to_edge(lite.OUT),
-                    lambda:square.set_coord(1,3),lambda:square.align_to(target,(0,0,1))):
+        for bad in (lambda:square.to_edge(lite.OUT),lambda:square.set_coord(1,3)):
             with self.assertRaises((ValueError,NotImplementedError)): bad()
+        square.align_to(target,(0,0,1))
+        square.move_to(before)
         self.assertPointAlmostEqual(square.get_center(),before)
         square.set_z(0)
         with self.assertRaises(ValueError): square.to_edge(lite.UP,buff=float('nan'))
@@ -1510,7 +1517,7 @@ assert isinstance(t.get_value(), (int, float))""")
         b=lite.Square().rotate(-lite.PI/5)
         self.assertEqual(a.to_dict(),b.to_dict())
         self.assertEqual(lite.Square().rotate(lite.TAU,lite.UP).to_dict(),lite.Square().to_dict())
-        with self.assertRaises(NotImplementedError): lite.Square().rotate(lite.PI/3,lite.UP)
+        self.assertPointAlmostEqual(lite.Square().rotate(lite.PI/3,lite.UP).get_points()[0],(0.5,1,-0.8660254037844386))
         with self.assertRaises(ValueError): lite.Square().rotate(1,lite.ORIGIN)
         rect=lite.Rectangle(width=2,height=1).shift(lite.RIGHT)
         corner=rect.get_corner(lite.DL)
@@ -1637,12 +1644,13 @@ assert isinstance(t.get_value(), (int, float))""")
         for matrix in ([],[[1,2],[3]],[[float('inf')]],[[True]]):
             with self.assertRaises(ValueError): ring.apply_matrix(matrix)
             self.assertEqual(ring.to_dict(),before)
-        with self.assertRaises(NotImplementedError): ring.apply_matrix([[1,0],[0,1],[1,0]])
+        ring.apply_matrix([[1,0],[0,1],[1,0]])
+        before=ring.to_dict()
         for function in (lambda p:(float('nan'),0),lambda p:[],lambda p:(1,2,3,4)):
             with self.assertRaises(ValueError): ring.apply_function(function)
             self.assertEqual(ring.to_dict(),before)
-        with self.assertRaises(NotImplementedError): ring.apply_function(lambda p:lite.OUT)
-        self.assertEqual(ring.to_dict(),before)
+        ring.apply_function(lambda p:lite.OUT)
+        self.assertTrue(all(point==[0,0,1] for point in ring.get_points()))
         with self.assertRaises(TypeError): ring.apply_function(2)
         with self.assertRaises(TypeError): ring.apply_complex_function(2)
 
@@ -1843,7 +1851,7 @@ assert isinstance(t.get_value(), (int, float))""")
         for points in ((lite.ORIGIN,lite.RIGHT,lite.RIGHT*2),
                        (lite.RIGHT,lite.RIGHT,lite.UP)):
             with self.assertRaises(ValueError): lite.Circle.from_three_points(*points)
-        with self.assertRaises(NotImplementedError):
+        with self.assertRaises(ValueError):
             lite.Circle.from_three_points(lite.ORIGIN,lite.RIGHT,lite.OUT)
         for radius in (-1,float('inf'),float('nan')):
             with self.assertRaises(ValueError): lite.Circle(radius=radius)
@@ -2552,7 +2560,7 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertPointAlmostEqual(host.get_corner(lite.UR),(4.5,2.2,0))
         self.assertPointAlmostEqual(host.get_edge_center(lite.RIGHT),host.get_right())
         with self.assertRaises(ValueError): host.get_critical_point((float('nan'),0))
-        with self.assertRaises(NotImplementedError): host.get_critical_point(lite.OUT)
+        self.assertPointAlmostEqual(host.get_critical_point(lite.OUT),host.get_zenith())
 
     def test_family_mutations_preserve_affine_mapping_for_own_and_existing_child(self):
         for cls in (lite.Circle,lite.Ellipse,lite.Rectangle,lite.VMobject):
@@ -3239,7 +3247,7 @@ assert isinstance(t.get_value(), (int, float))""")
                         {'dash_length':1e-10},{'dashed_ratio':-1},{'dashed_ratio':1.1},{'dashed_ratio':True}):
             with self.assertRaises(ValueError): lite.DashedLine(**options)
         with self.assertRaises(ValueError): lite.DashedLine((float('inf'),0,0),lite.RIGHT)
-        with self.assertRaises(NotImplementedError): lite.DashedLine(lite.OUT,lite.RIGHT)
+        self.assertPointAlmostEqual(lite.DashedLine(lite.OUT,lite.RIGHT).get_start(),lite.OUT)
         line = lite.DashedLine()
         before = line.to_dict()
         with self.assertRaises(ValueError): line.put_start_and_end_on((0,0,0),(float('nan'),0,0))
@@ -3982,7 +3990,7 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertEqual(called,[])
         with self.assertRaises(TypeError): lite.ParametricFunction(2)
         with self.assertRaises(NotImplementedError): lite.ParametricFunction(lambda t:(t,0),use_vectorized=True)
-        with self.assertRaises(NotImplementedError): lite.ParametricFunction(lambda t:(t,0,1))
+        self.assertAlmostEqual(lite.ParametricFunction(lambda t:(t,0,1)).get_center()[2],1)
         with self.assertRaises(ValueError): lite.ParametricFunction(lambda t:(t,float('nan')))
         with self.assertRaises(ValueError): lite.ParametricFunction(lambda t:(t,0),dt=-1)
         graph = lite.ParametricFunction(lambda t:(t,0),t_range=[0,1,.5])
@@ -4451,7 +4459,7 @@ assert isinstance(t.get_value(), (int, float))""")
     def test_raw_points_invalid_edits_are_atomic(self):
         path = lite.CubicBezier(lite.ORIGIN,lite.UP,lite.UR,lite.RIGHT).shift(lite.LEFT)
         before = path.to_dict()
-        for points in [[lite.UP]*2, [lite.UP]*3, [lite.OUT]*4,
+        for points in [[lite.UP]*2, [lite.UP]*3,
                        [[float('nan'),0]]*4, [[float('inf'),0]]*4]:
             with self.assertRaises((ValueError,NotImplementedError)): path.set_points(points)
             self.assertEqual(path.to_dict(), before)
@@ -4502,8 +4510,9 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertGreater(path.point_from_proportion(.251)[0], 10)
         self.assertEqual(path.get_end(), lite.RIGHT*13)
         before = path.to_dict()
-        with self.assertRaises(NotImplementedError): path.start_new_path(lite.OUT)
-        self.assertEqual(path.to_dict(), before)
+        pending = path.copy()
+        pending.start_new_path(lite.OUT)
+        self.assertEqual(pending.get_end(), lite.OUT)
         path.start_new_path(lite.UP)
         self.assertEqual(path.get_end(), lite.UP)
         path.start_new_path(lite.DOWN)
@@ -4662,7 +4671,7 @@ assert isinstance(t.get_value(), (int, float))""")
             with self.assertRaises(ValueError): lite.Annulus(inner_radius=invalid)
             with self.assertRaises(ValueError): lite.Annulus(outer_radius=invalid)
         with self.assertRaises(ValueError): lite.Annulus(mark_paths_closed=1)
-        with self.assertRaises(NotImplementedError): lite.Annulus(arc_center=lite.OUT)
+        self.assertIsInstance(lite.Annulus(arc_center=lite.OUT), lite.Annulus)
 
     def test_annulus_gallery_interpolates_radii_and_restores(self):
         result = json.loads(lite.render_scene((ROOT/'examples/annulus_scene.py').read_text()))
@@ -4700,7 +4709,7 @@ assert isinstance(t.get_value(), (int, float))""")
             self.assertEqual(sector.curves[0][0], sector.curves[-1][-1])
             self.assertTrue(all(lite.math.isfinite(v) for v in sector.point_from_proportion(.5)))
         with self.assertRaises(NotImplementedError): lite.Sector(angle=2*lite.TAU)
-        with self.assertRaises(NotImplementedError): lite.Sector(arc_center=lite.OUT)
+        self.assertIsInstance(lite.Sector(arc_center=lite.OUT), lite.Sector)
 
     def test_sector_transformed_center_and_path_queries(self):
         sector = lite.Sector(radius=2, arc_center=lite.RIGHT)
@@ -4815,7 +4824,7 @@ self.wait(1)""")
         for a, b in zip(trace.get_start(), old): self.assertAlmostEqual(a, b)
         self.assertEqual(trace.get_end(), lite.Vector(point))
         before = trace.to_dict()
-        for invalid in [[float('nan'), 0, 0], [0, 0, 1]]:
+        for invalid in [[float('nan'), 0, 0]]:
             point[:] = invalid
             with self.assertRaises((ValueError, NotImplementedError)): trace.update(.1)
             self.assertEqual(trace.to_dict(), before)
@@ -5613,7 +5622,7 @@ self.wait(1)""")
         with self.assertRaisesRegex(ValueError, 'Start the path'):
             path.add_cubic_bezier_curve_to(lite.ORIGIN, lite.RIGHT, lite.UP)
         path.set_points_as_corners([lite.ORIGIN])
-        for bad, error in (((float('inf'),0), ValueError), ((0,0,1), NotImplementedError)):
+        for bad, error in (((float('inf'),0), ValueError),):
             with self.assertRaises(error):
                 path.add_cubic_bezier_curve_to(lite.ORIGIN, bad, lite.RIGHT)
             self.assertEqual(path._type, 'polyline')
@@ -5777,9 +5786,9 @@ self.wait(1)""")
         for method in (path.set_points_as_corners, path.add_points_as_corners):
             with self.assertRaises(ValueError):
                 method([(0, 0, 0), (float('inf'), 0, 0)])
-            with self.assertRaises(NotImplementedError):
-                method([(0, 0, 1)])
             self.assertEqual(path.to_dict(), before)
+        path.set_points_as_corners([(0, 0, 1)])
+        self.assertEqual(path.vertices[0][2], 1)
         path.set_points_as_corners([])
         self.assertEqual(path.to_dict()['vertices'], [])
 
@@ -6183,9 +6192,9 @@ self.wait(1)""")
                 line.put_start_and_end_on(point, lite.ORIGIN)
             with self.assertRaises(ValueError):
                 lite.Line(lite.ORIGIN, point).get_end()
-        with self.assertRaises(NotImplementedError):
-            line.put_start_and_end_on(lite.OUT, lite.ORIGIN)
-        self.assertEqual(line.to_dict(), original)
+        line.put_start_and_end_on(lite.OUT, lite.ORIGIN)
+        self.assertPointAlmostEqual(line.get_start(), lite.OUT)
+        self.assertPointAlmostEqual(line.get_end(), lite.ORIGIN)
 
     def test_connector_example_renders_restored_arrow(self):
         result = json.loads(lite.render_scene((ROOT / 'examples/connector_scene.py').read_text()))
@@ -6612,7 +6621,7 @@ self.wait(1)""")
                        {'start_angle': float('inf')}, {'arc_center': (float('nan'), 0)}):
             with self.assertRaises(ValueError):
                 lite.Arc(**kwargs)
-        for kwargs in ({'angle': lite.TAU * 2}, {'arc_center': lite.OUT}, {'num_components': 20}):
+        for kwargs in ({'angle': lite.TAU * 2}, {'num_components': 20}):
             with self.assertRaises(NotImplementedError):
                 lite.Arc(**kwargs)
 
@@ -6704,13 +6713,11 @@ self.wait(1)""")
                 lite.Circle().point_from_proportion(alpha)
         with self.assertRaises(ValueError):
             lite.Line((float('nan'),0),(1,0))
-        with self.assertRaises(NotImplementedError):
-            lite.Line((0,0,1),(1,0,1))
+        self.assertPointAlmostEqual(lite.Line((0,0,1),(1,0,1)).get_start(),(0,0,1))
         for path in (lite.Polygon(), lite.Polygon((0, 0))):
             with self.assertRaises(ValueError):
                 path.point_from_proportion(0.5)
-        for path in (lite.Text('x'), lite.VGroup(lite.Circle()), lite.Arrow(),
-                     lite.Circle().shift(lite.OUT)):
+        for path in (lite.Text('x'), lite.VGroup(lite.Circle()), lite.Arrow()):
             with self.assertRaises(NotImplementedError):
                 path.point_from_proportion(0.5)
         with self.assertRaises(TypeError):
@@ -7414,6 +7421,232 @@ self.wait(1)""")
         result = render('c = Circle()\nself.add(c, c)')
         self.assertEqual(len(result['frames']), 1)
         self.assertEqual(len(result['frames'][0]['mobjects']), 1)
+
+
+class ThreeDTests(unittest.TestCase):
+    def assertPointAlmostEqual(self, actual, expected, places=9):
+        self.assertEqual(len(actual), len(expected))
+        for a, e in zip(actual, expected):
+            self.assertAlmostEqual(a, e, places=places)
+
+    def test_rotate_3d_axis_matches_community(self):
+        square = lite.Square().rotate(lite.PI / 3, axis=lite.UP)
+        # Manim 0.22: Square().rotate(PI/3, UP) start anchors.
+        expected = [[0.5, 1, -0.8660254037844386], [-0.5, 1, 0.8660254037844386],
+                    [-0.5, -1, 0.8660254037844386], [0.5, -1, -0.8660254037844386]]
+        for actual, point in zip(square.get_start_anchors(), expected):
+            self.assertPointAlmostEqual(actual, point)
+        self.assertPointAlmostEqual(square.get_center(), lite.ORIGIN)
+        # Manim 0.22: rotated square measures 1 x 2 x sqrt(3).
+        self.assertAlmostEqual(square.get_width(), 1)
+        self.assertAlmostEqual(square.get_height(), 2)
+        self.assertAlmostEqual(square.get_depth(), 1.7320508075688772)
+
+    def test_z_shift_coord_critical_point_and_rotation(self):
+        circle = lite.Circle().shift(2 * lite.OUT)
+        self.assertPointAlmostEqual(circle.get_center(), (0, 0, 2))
+        circle.set_z(1)
+        self.assertPointAlmostEqual(circle.get_center(), (0, 0, 1))
+        self.assertPointAlmostEqual(circle.get_critical_point(lite.OUT), (0, 0, 1))
+        rotated = lite.Circle().shift(2 * lite.OUT).rotate(lite.PI / 2, lite.RIGHT, about_point=lite.ORIGIN)
+        # Manim 0.22: (0,0,2) rotated PI/2 about +x lands at (0,-2,0).
+        self.assertPointAlmostEqual(rotated.get_center(), (0, -2, 0))
+        self.assertPointAlmostEqual(circle.get_zenith(), circle.get_critical_point(lite.OUT))
+        self.assertPointAlmostEqual(circle.get_nadir(), circle.get_critical_point(lite.IN))
+
+    def test_z_to_vector_matrix_matches_community(self):
+        square = lite.Square().shift(lite.OUT)
+        square.apply_matrix(lite.z_to_vector(lite.RIGHT))
+        # Manim 0.22: Square().shift(OUT).apply_matrix(z_to_vector(RIGHT)) anchors.
+        expected = [[1, 1, -1], [1, 1, 1], [1, -1, 1], [1, -1, -1]]
+        for actual, point in zip(square.get_start_anchors(), expected):
+            self.assertPointAlmostEqual(actual, point)
+
+    def test_group_3d_rotation_matches_community(self):
+        group = lite.VGroup(lite.Square(), lite.Circle().shift(lite.OUT))
+        group.rotate(lite.PI / 3, axis=lite.UP)
+        # Manim 0.22: VGroup(Square(), Circle().shift(OUT)).rotate(PI/3, UP).
+        expected0 = [[0.06698729810778065, 1, -0.6160254037844387],
+                     [-0.9330127018922193, 1, 1.1160254037844386],
+                     [-0.9330127018922193, -1, 1.1160254037844386],
+                     [0.06698729810778065, -1, -0.6160254037844387]]
+        for actual, point in zip(group[0].get_start_anchors(), expected0):
+            self.assertPointAlmostEqual(actual, point)
+        expected1 = [[0.9330127018922194, 0, -0.11602540378443848],
+                     [0.7865660924924926, 0.7071067811865476, 0.13762756430407272],
+                     [0.43301270189221935, 1, 0.7500000000000001],
+                     [0.07945931129893726, 0.7071067811865475, 1.362372435695927],
+                     [-0.06698729810778062, 0, 1.6160254037844388],
+                     [0.07945931129893715, -0.7071067811865476, 1.362372435695927],
+                     [0.4330127018922194, -1, 0.7500000000000001],
+                     [0.7865660924924926, -0.7071067811865476, 0.13762756430407272]]
+        for actual, point in zip(group[1].get_start_anchors(), expected1):
+            self.assertPointAlmostEqual(actual, point)
+        # Manim 0.22: the rotated group's center is (0, 0, 0.5).
+        self.assertPointAlmostEqual(group.get_center(), (0, 0, 0.5))
+
+    def test_camera_rotation_matrix_and_projection(self):
+        camera = lite.ThreeDCamera(phi=75 * lite.DEGREES, theta=30 * lite.DEGREES,
+                                   gamma=10 * lite.DEGREES)
+        # Manim 0.22: ThreeDCamera.generate_rotation_matrix() at those angles.
+        expected = [[-0.4534817022853913, 0.8753402597162172, -0.16773125949652062],
+                    [-0.30756270787138523, 0.022940232058345972, 0.9512512425641977],
+                    [0.8365163037378079, 0.482962913144534, 0.25881904510252074]]
+        for row, wanted in zip(camera.generate_rotation_matrix(), expected):
+            for actual, value in zip(row, wanted):
+                self.assertAlmostEqual(actual, value, places=12)
+        camera = lite.ThreeDCamera(zoom=1.5, focal_distance=20, phi=0, theta=0, gamma=0)
+        camera.frame_center = [0.5, 0, 0]
+        # Manim 0.22: project_points of those points with the same camera.
+        expected = [[3.5294117647058822, -0.8823529411764705, 3],
+                    [0.714285714285714, 3.571428571428571, -1]]
+        for actual, point in zip(camera.project_points([[1, 2, 3], [-2, 0.5, -1]]), expected):
+            self.assertPointAlmostEqual(actual, point)
+        self.assertEqual(len(camera.get_value_trackers()), 5)
+
+    def test_frame_projection_matches_community(self):
+        class Demo(lite.ThreeDScene):
+            def construct(self):
+                self.set_camera_orientation(phi=75 * lite.DEGREES, theta=-45 * lite.DEGREES)
+                self.add(lite.Square())
+                self.wait(0.1)
+        scene = Demo()
+        scene.render()
+        leaves = [node for node in scene.frames[0]['mobjects']]
+        self.assertEqual([node['type'] for node in leaves], ['bezierpath'])
+        curves = leaves[0]['curves']
+        anchors = [curves[i][0] for i in range(4)]
+        # Manim 0.22: camera.project_points(square anchors) at phi=75, theta=-45.
+        expected = [[1.414213562373095, 0, 0], [0, 0.3426237654117778, -1.3660254037844388],
+                    [-1.414213562373095, 0, 0], [0, -0.3928581118281109, 1.3660254037844388]]
+        for actual, point in zip(anchors, expected):
+            self.assertPointAlmostEqual(actual, point)
+
+    def test_depth_sort_and_shading(self):
+        class Demo(lite.ThreeDScene):
+            def construct(self):
+                self.add(lite.Square(fill_color=lite.BLUE, shade_in_3d=True).shift(lite.OUT),
+                         lite.Square(shade_in_3d=True).shift(lite.IN))
+                self.wait(0.1)
+        scene = Demo()
+        scene.render()
+        leaves = scene.frames[0]['mobjects']
+        self.assertEqual(len(leaves), 2)
+        # Manim 0.22: at phi=0 the OUT square's depth key is larger, so it paints last.
+        self.assertEqual(leaves[1]['fill_color'], '#70DCF5')
+        self.assertEqual(leaves[1]['z_index'], 1)
+        class Flip(lite.ThreeDScene):
+            def construct(self):
+                self.set_camera_orientation(phi=180 * lite.DEGREES)
+                self.add(lite.Square(fill_color=lite.BLUE, shade_in_3d=True).shift(lite.OUT),
+                         lite.Square(shade_in_3d=True).shift(lite.IN))
+                self.wait(0.1)
+        flipped = Flip()
+        flipped.render()
+        leaves = flipped.frames[0]['mobjects']
+        # phi=180 views from below: the OUT square now paints first.
+        self.assertEqual(leaves[0]['fill_color'], '#70DCF5')
+
+    def test_fixed_in_frame_and_orientation_mobjects(self):
+        class Demo(lite.ThreeDScene):
+            def construct(self):
+                text = lite.Text('hi')
+                self.add_fixed_in_frame_mobjects(text)
+                dot = lite.Dot().shift(lite.RIGHT)
+                self.add_fixed_orientation_mobjects(dot)
+                self.set_camera_orientation(phi=75 * lite.DEGREES)
+                self.wait(0.1)
+        scene = Demo()
+        scene.render()
+        leaves = scene.frames[0]['mobjects']
+        self.assertEqual([node['type'] for node in leaves], ['text', 'bezierpath'])
+        # The fixed-in-frame text keeps its unprojected anchor.
+        self.assertEqual(leaves[0]['position'], [0, 0, 0])
+        # Manim 0.22: camera.project_points(RIGHT) = RIGHT (RIGHT is unshifted by
+        # the default orientation's x rotation), so the dot stays at its anchor.
+        self.assertPointAlmostEqual(leaves[1]['curves'][0][0][0:2],
+                                    (1.08, 0), places=4)
+
+    def test_move_camera_animates_trackers(self):
+        class Demo(lite.ThreeDScene):
+            def construct(self):
+                self.add(lite.Square())
+                self.move_camera(phi=60 * lite.DEGREES, theta=-30 * lite.DEGREES, run_time=1)
+        scene = Demo()
+        scene.render()
+        self.assertEqual(len(scene.frames), 16)
+        self.assertAlmostEqual(scene.camera.phi_tracker.get_value(), 60 * lite.DEGREES)
+        self.assertAlmostEqual(scene.camera.theta_tracker.get_value(), -30 * lite.DEGREES)
+        class Still(lite.ThreeDScene):
+            def construct(self):
+                self.add(lite.Square())
+                self.set_camera_orientation(phi=60 * lite.DEGREES, theta=-30 * lite.DEGREES)
+                self.wait(0.1)
+        still = Still()
+        still.render()
+        # The animated final frame projects identically to set_camera_orientation.
+        self.assertEqual(scene.frames[-1]['mobjects'], still.frames[0]['mobjects'])
+        class Center(lite.ThreeDScene):
+            def construct(self):
+                self.add(lite.Square())
+                self.move_camera(frame_center=[1, 0, 0], run_time=0.5)
+        moved = Center()
+        moved.render()
+        self.assertPointAlmostEqual(moved.camera.frame_center, (1, 0, 0))
+
+    def test_ambient_camera_rotation(self):
+        class Demo(lite.ThreeDScene):
+            def construct(self):
+                self.begin_ambient_camera_rotation(rate=0.5)
+                self.wait(1)
+                self.stop_ambient_camera_rotation()
+        scene = Demo()
+        scene.render()
+        theta = scene.camera.theta_tracker.get_value()
+        # The updater accumulates rate*dt over the 15 sampled frames of wait(1).
+        self.assertAlmostEqual(theta - (-90 * lite.DEGREES), 0.5)
+        self.assertNotIn(scene.camera.theta_tracker, scene.mobjects)
+        with self.assertRaises(ValueError):
+            scene.begin_ambient_camera_rotation(about='foo')
+
+    def test_polygon_vertices_and_family_z_extent(self):
+        result = render_3d("""self.add(Polygon([0,0,0],[1,0,0],[1,1,0]))
+self.add(VMobject().set_points_as_corners([[0,0,0],[1,0,0],[1,1,0]]))
+self.wait(0.1)""")
+        leaves = result['frames'][0]['mobjects']
+        self.assertEqual([node['type'] for node in leaves], ['bezierpath', 'bezierpath'])
+        # The outline lives in curves; vertices is only for pending anchors.
+        self.assertEqual([len(node['curves']) for node in leaves], [3, 2])
+        self.assertEqual([node['vertices'] for node in leaves], [[], []])
+        # Manim 0.22: child extents map through the posed group's transform.
+        group = lite.VGroup(lite.Square().shift(lite.OUT)).rotate(lite.PI / 4).shift(lite.OUT)
+        self.assertPointAlmostEqual(group.get_center(), (0, 0, 2))
+        pair = lite.VGroup(lite.Circle().shift(2 * lite.OUT), lite.Square())
+        self.assertPointAlmostEqual(pair.get_center(), (0, 0, 1))
+        self.assertAlmostEqual(pair.get_depth(), 2)
+        posed = lite.VGroup(lite.Square()).rotate(lite.PI / 6).shift(lite.OUT)
+        self.assertPointAlmostEqual(posed.get_center(), (0, 0, 1))
+        nested = lite.VGroup(lite.VGroup(lite.Dot().shift(lite.OUT)).shift(lite.OUT))
+        self.assertPointAlmostEqual(nested.get_center(), (0, 0, 2))
+
+    def test_render_scene_end_to_end_json(self):
+        result = render_3d("""s = Square()
+s.rotate(PI / 3, axis=UP)
+self.add(s)
+self.set_camera_orientation(phi=60 * DEGREES, theta=-45 * DEGREES)
+self.wait(0.1)""")
+        self.assertTrue(result['frames'])
+        frame = result['frames'][0]
+        self.assertEqual(len(frame['mobjects']), 1)
+        leaf = frame['mobjects'][0]
+        self.assertEqual(leaf['type'], 'bezierpath')
+        self.assertEqual(leaf['position'], [0, 0, 0])
+        self.assertEqual(leaf['angle'], 0)
+        self.assertEqual(leaf['geometry_scale'], 1)
+        self.assertEqual([node['z_index'] for node in frame['mobjects']],
+                         list(range(len(frame['mobjects']))))
+        self.assertEqual(set(frame['camera']), {'pixel_width', 'pixel_height', 'frame_width',
+                                                'frame_height', 'background_color'})
 
 
 if __name__ == '__main__':

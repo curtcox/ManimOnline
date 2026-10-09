@@ -523,10 +523,12 @@ class Mobject:
     _frame_excluded = ()
 
     def __init__(self, color=WHITE, fill_opacity=0, stroke_width=2,
-                 fill_color=None, stroke_color=None, stroke_opacity=1, z_index=0, **kwargs):
+                 fill_color=None, stroke_color=None, stroke_opacity=1, z_index=0,
+                 shade_in_3d=False, **kwargs):
         if kwargs:
             raise NotImplementedError('Unsupported options: ' + ', '.join(kwargs))
         self.position = list(ORIGIN)
+        self.shade_in_3d = bool(shade_in_3d)
         color, fill_color, stroke_color = _paint(color), _paint(fill_color), _paint(stroke_color)
         self.color = color
         self.fill_color = color if fill_color is None else fill_color
@@ -888,8 +890,6 @@ class Mobject:
         aligned_edge, mask = Vector(aligned_edge), Vector(coor_mask)
         if not all(math.isfinite(v) for v in (*aligned_edge, *mask)):
             raise ValueError('Alignment edge and coordinate mask must be finite')
-        if aligned_edge[2]:
-            raise NotImplementedError('Alignment supports only XY directions')
         if any(aligned_edge):
             target = (point.get_critical_point(aligned_edge) if isinstance(point, Mobject)
                       else Vector(point))
@@ -901,19 +901,41 @@ class Mobject:
             raise ValueError('Position must be finite')
         return self.shift(Vector(a * m for a, m in zip(target - current, mask)))
 
+    def _z_extent(self):
+        """(min, max) of this mobject's z coordinates in its parent frame.
+
+        Own geometry contributes the pose-mapped z of its bound points (the
+        same pz + cz + (z - cz) * scale formula as _points_to_world). Child
+        extents, expressed in this node's frame, are mapped through this pose
+        again. A point-free leaf yields only its position's z, and a pure
+        container contributes nothing of its own."""
+        pivot_z = self.position[2] + self._geometry_center()[2]
+        scale = self.geometry_scale
+        zs = []
+        own = self._own_bound_points()
+        if own:
+            center_z = self._geometry_center()[2]
+            zs.extend(pivot_z + ((point[2] if len(point) > 2 else 0) - center_z) * scale
+                      for point in own)
+        for child in self.children:
+            low, high = child._z_extent()
+            zs.extend(pivot_z + (z - self._geometry_center()[2]) * scale for z in (low, high))
+        if not zs:
+            return self.position[2], self.position[2]
+        return min(zs), max(zs)
+
     def _critical_point(self, direction):
         left, bottom, right, top = self._bounds()
-        x, y, _ = direction
+        low, high = self._z_extent()
+        x, y, z = direction
         return Vector((right if x > 0 else left if x < 0 else (left + right) / 2,
                        top if y > 0 else bottom if y < 0 else (bottom + top) / 2,
-                       self.position[2]))
+                       high if z > 0 else low if z < 0 else (low + high) / 2))
 
     def get_critical_point(self, direction):
         direction = Vector(direction)
         if not all(math.isfinite(value) for value in direction):
             raise ValueError('Boundary direction must be finite')
-        if direction[2]:
-            raise NotImplementedError('Boundary queries support only the XY plane')
         return self._critical_point(direction)
 
     get_edge_center = get_critical_point
@@ -930,6 +952,18 @@ class Mobject:
 
     def get_bottom(self):
         return self.get_critical_point(DOWN)
+
+    def get_zenith(self):
+        """Community's name for the critical point along OUT."""
+        return self.get_critical_point(OUT)
+
+    def get_nadir(self):
+        """Community's name for the critical point along IN."""
+        return self.get_critical_point(IN)
+
+    def get_depth(self):
+        low, high = self._z_extent()
+        return high - low
 
     def _handle_bounds(self):
         # Community measures width/height over all points (handles included),
@@ -977,10 +1011,11 @@ class Mobject:
             for j,value in enumerate(row):
                 NumberLine._real(value,'Matrix entry')
                 full[i][j] = value
-        if full[2][0] or full[2][1]:
-            raise NotImplementedError('Matrices must preserve the XY plane')
         if about_point is None and about_edge is None:
             about_point = ORIGIN
+        if full[2] != [0, 0, 1] or self._is_3d():
+            pivot = self._pivot_3d(about_point, about_edge)
+            return self._map_points_3d(lambda point: _apply_rows(full, point), pivot)
         return self._apply_xy_map(lambda point:[sum(a*b for a,b in zip(row,point)) for row in full],
                                   about_point,about_edge,linear=True)
 
@@ -989,7 +1024,17 @@ class Mobject:
             raise TypeError('apply_function expects a callable point map')
         if about_point is None and about_edge is None:
             about_point = ORIGIN
-        return self._apply_xy_map(function,about_point,about_edge)
+        if self._is_3d():
+            return self._map_points_3d(function, about_point, about_edge)
+        try:
+            return self._apply_xy_map(function,about_point,about_edge)
+        except NotImplementedError as error:
+            if 'preserve the XY plane' not in str(error):
+                raise
+            return self._map_points_3d(function, about_point, about_edge)
+
+    def apply_points_function(self, func, about_point=None, about_edge=None, works_on_bounding_box=False):
+        return self.apply_function(func, about_point=about_point, about_edge=about_edge)
 
     def apply_complex_function(self, function, *, about_point=None, about_edge=None):
         if not callable(function):
@@ -1101,6 +1146,100 @@ class Mobject:
         visit(source,target,lambda point:point,ORIGIN)
         return self.become(target)
 
+    def _is_3d(self):
+        """True when any family member holds geometry outside the XY plane."""
+        for member in self.get_family():
+            if member.position[2]:
+                return True
+            state = member.__dict__
+            points = list(state.get('vertices') or [])
+            for key in ('start', 'end', 'shaft_start', 'shaft_end'):
+                if state.get(key) is not None:
+                    points.append(state[key])
+            for curve in state.get('curves') or ():
+                points.extend(curve)
+            if any(len(point) > 2 and point[2] for point in points):
+                return True
+        return False
+
+    def _map_points_3d(self, function, about_point=None, about_edge=None):
+        """Apply an arbitrary 3D point map, baking geometry into world points.
+
+        Path leaves become 'bezierpath' curves with an identity pose; other
+        leaves move their anchor. All results are validated before the family
+        is mutated (the work happens on a copy committed through become)."""
+        if isinstance(self, CameraFrame):
+            raise NotImplementedError('Camera point mapping is not implemented')
+        pivot = self._pivot_3d(about_point, about_edge)
+        if pivot is None:
+            pivot = Vector(ORIGIN)
+        def mapped(point):
+            values = list(function(Vector(point) - pivot))
+            if len(values) not in (2, 3):
+                raise ValueError('Point maps must return two or three coordinates')
+            for value in values:
+                NumberLine._real(value, 'Mapped coordinate')
+            result = Vector(values) + pivot
+            if not all(math.isfinite(value) for value in result):
+                raise ValueError('Mapped geometry must be finite')
+            return list(result)
+        target = self.copy()
+        target._bake_3d_map(mapped)
+        return self.become(target)
+
+    def _bake_3d_map(self, mapped):
+        # Children of a posed parent are stored parent-locally; release them into
+        # world coordinates first, so each member's own pose spans its geometry.
+        if self.children and (self.angle or self.geometry_scale != 1 or any(self.position)):
+            for child in list(self.children):
+                self._place_in_world(child)
+            if self._type in ('vgroup', 'mobject', 'valuetracker'):
+                self.position, self.angle, self.geometry_scale = [0, 0, 0], 0, 1
+        for child in list(self.children):
+            child._bake_3d_map(mapped)
+        kind = self._type
+        if kind in _PATH_TYPES:
+            snapshot = _snapshot_copy(self.__dict__)
+            snapshot['type'] = kind
+            paths = _path_subpaths(snapshot, include_pending=False)
+            # Community's apply_function pulls handles to a small fraction of
+            # their anchor distance, maps, then scales back up.
+            eps = getattr(self, 'pre_function_handle_to_anchor_scale_factor', 0.01)
+            def mapped_curve(curve):
+                a0, h1, h2, a1 = (Vector(p) for p in curve)
+                m0 = mapped(self._point_to_world(a0))
+                m1 = mapped(self._point_to_world(a1))
+                near1 = mapped(self._point_to_world(a0 + (h1 - a0) * eps))
+                near2 = mapped(self._point_to_world(a1 + (h2 - a1) * eps))
+                return [m0, [m0[i] + (near1[i] - m0[i]) / eps for i in range(3)],
+                        [m1[i] + (near2[i] - m1[i]) / eps for i in range(3)], m1]
+            self.curves = [mapped_curve(curve) for path in paths for curve in path]
+            pending = (self.vertices if kind == 'bezierpath' else
+                       self.vertices if kind == 'polyline' and len(self.vertices) == 1 else [])
+            self.vertices = [mapped(self._point_to_world(Vector(p))) for p in pending]
+            if kind in ('line', 'arrow'):
+                self.start = mapped(self._point_to_world(Vector(self.start)))
+                self.end = mapped(self._point_to_world(Vector(self.end)))
+            self._type = 'bezierpath'
+            self.position, self.angle, self.geometry_scale = [0, 0, 0], 0, 1
+            self.__dict__.pop('subpath_lengths', None)
+            if len(paths) > 1:
+                self.subpath_lengths = [len(path) for path in paths]
+            # The displayed shaft is baked before the tip family is deformed,
+            # exactly as _apply_xy_map handles curved-arrow shafts.
+            for key in ('_curved_tip_path', '_curve_arc_center', '_family_pivot_cache',
+                        '_sampled_geometry_center', 'shaft_curves', 'shaft_start', 'shaft_end'):
+                self.__dict__.pop(key, None)
+            if '_curve_arc_center' in snapshot:
+                self._curve_arc_center = mapped(self._point_to_world(Vector(snapshot['_curve_arc_center'])))
+        elif kind not in ('vgroup', 'mobject', 'valuetracker'):
+            # Text, formulas, images and other non-path leaves: only the anchor
+            # is mapped. Community rotates the glyph outlines themselves; this
+            # preview keeps text upright facing the camera instead.
+            center = self._geometry_center()
+            anchor = self._point_to_world(center)
+            self.position = list(Vector(mapped(anchor)) - (anchor - Vector(self.position)))
+
     def stretch_to_fit_width(self, width, **kwargs):
         return self.rescale_to_fit(width,0,stretch=True,**kwargs)
 
@@ -1204,7 +1343,9 @@ class Mobject:
 
     def get_coord(self, dim, direction=ORIGIN):
         self._coordinate_dim(dim)
-        direction = self._xy_vector(direction, 'Coordinate direction')
+        direction = Vector(direction)
+        if not all(math.isfinite(v) for v in direction):
+            raise ValueError('Coordinate direction must be finite')
         return self.get_critical_point(direction)[dim]
 
     def get_x(self, direction=ORIGIN):
@@ -1218,10 +1359,7 @@ class Mobject:
 
     def set_coord(self, value, dim, direction=ORIGIN):
         NumberLine._real(value, 'Coordinate')
-        if self._coordinate_dim(dim) == 2:
-            if value != self.get_coord(2, direction):
-                raise NotImplementedError('Preview objects stay in the XY plane')
-            return self
+        self._coordinate_dim(dim)
         offset = [0, 0, 0]
         offset[dim] = value - self.get_coord(dim, direction)
         return self.shift(Vector(offset))
@@ -1236,10 +1374,13 @@ class Mobject:
         return self.set_coord(z, 2, direction)
 
     def align_to(self, mobject_or_point, direction=ORIGIN):
-        direction = self._xy_vector(direction, 'Alignment direction')
+        direction = Vector(direction)
+        if not all(math.isfinite(v) for v in direction):
+            raise ValueError('Alignment direction must be finite')
         point = (mobject_or_point.get_critical_point(direction) if isinstance(mobject_or_point, Mobject)
                  else self._xy_vector(mobject_or_point, 'Alignment point'))
-        offset = [point[dim] - self.get_coord(dim, direction) if direction[dim] else 0 for dim in (0, 1)]
+        offset = [point[dim] - self.get_coord(dim, direction) if direction[dim] else 0
+                  for dim in (0, 1, 2)]
         return self.shift(Vector(offset))
 
     def match_dim_size(self, mobject, dim, **kwargs):
@@ -1276,6 +1417,22 @@ class Mobject:
         if about_edge is not None:
             return self.get_critical_point(self._xy_vector(about_edge, 'Pivot edge'))
         return None if about_point is None else self._xy_vector(about_point, 'Pivot point')
+
+    def _pivot_3d(self, about_point, about_edge):
+        """Like _pivot, but allows a pivot outside the XY plane."""
+        if about_point is not None and about_edge is not None:
+            raise ValueError('Pass about_point or about_edge, not both')
+        if about_edge is not None:
+            edge = Vector(about_edge)
+            if not all(math.isfinite(v) for v in edge):
+                raise ValueError('Pivot edge must be finite')
+            return self.get_critical_point(edge)
+        if about_point is None:
+            return None
+        point = Vector(about_point)
+        if not all(math.isfinite(v) for v in point):
+            raise ValueError('Pivot point must be finite')
+        return point
 
     def _own_local_bounds(self):
         if self._type == 'annulus':
@@ -1400,11 +1557,13 @@ class Mobject:
     def get_center(self):
         # Community's center is the bounds center; it differs from the pivot only
         # for rotated point-based outlines, whose bounds use rotated points.
+        z = sum(self._z_extent()) / 2
         if (math.sin(2 * self.angle) and not self.children and
                 (self._own_bound_points() or self._type in ('arc', 'ellipse'))) or (self.children and self._rotated_family()):
             left, bottom, right, top = self._bounds()
-            return Vector(((left + right) / 2, (bottom + top) / 2, self.position[2]))
-        return self._pivot_point()
+            return Vector(((left + right) / 2, (bottom + top) / 2, z))
+        pivot = self._pivot_point()
+        return Vector((pivot[0], pivot[1], z))
 
     def get_points(self):
         """Independent world-space anchors/handles for supported XY outlines."""
@@ -1636,8 +1795,6 @@ class Mobject:
             vertices = [Vector(v) for v in vertices]
             if any(not all(math.isfinite(c) for c in v) for v in vertices):
                 raise ValueError('Path coordinates must be finite')
-            if any(v[2] for v in vertices):
-                raise NotImplementedError('Paths support only the XY plane')
             points = vertices + [vertices[0]] if closed else vertices
             segments = [(a, b, math.dist(a, b)) for a, b in zip(points, points[1:])]
             total = sum(length for _, _, length in segments)
@@ -1655,8 +1812,6 @@ class Mobject:
         return self._point_to_world(point)
 
     def _point_to_world(self, point):
-        if self.position[2]:
-            raise NotImplementedError('Paths support only the XY plane')
         if self.angle == 0 and self.geometry_scale == 1:
             point = Vector(self.position) + point
         else:
@@ -1664,25 +1819,24 @@ class Mobject:
             offset = (point - center) * self.geometry_scale
             point = Vector(self.position) + center + Vector((
                 offset[0] * math.cos(self.angle) - offset[1] * math.sin(self.angle),
-                offset[0] * math.sin(self.angle) + offset[1] * math.cos(self.angle), 0))
+                offset[0] * math.sin(self.angle) + offset[1] * math.cos(self.angle),
+                offset[2]))
         if not all(math.isfinite(v) for v in point):
             raise ValueError('Path coordinates must be finite')
         return point
 
     def _points_to_world(self, points):
         """_point_to_world for many points, computing the pivot once."""
-        if self.position[2]:
-            raise NotImplementedError('Paths support only the XY plane')
         px, py, pz = self.position
         if self.angle == 0 and self.geometry_scale == 1:
             result = [[px + p[0], py + p[1], pz + (p[2] if len(p) > 2 else 0)] for p in points]
         else:
-            cx, cy, _ = self._geometry_center()
+            cx, cy, cz = self._geometry_center()
             scale, cos, sin = self.geometry_scale, math.cos(self.angle), math.sin(self.angle)
             result = []
             for p in points:
-                ox, oy = (p[0] - cx) * scale, (p[1] - cy) * scale
-                result.append([px + cx + ox * cos - oy * sin, py + cy + ox * sin + oy * cos, pz])
+                ox, oy, oz = (p[0] - cx) * scale, (p[1] - cy) * scale, ((p[2] if len(p) > 2 else 0) - cz) * scale
+                result.append([px + cx + ox * cos - oy * sin, py + cy + ox * sin + oy * cos, pz + cz + oz])
         if not all(math.isfinite(v) for point in result for v in point):
             raise ValueError('Path coordinates must be finite')
         return result
@@ -1777,12 +1931,20 @@ class Mobject:
             for value in factors:
                 NumberLine._real(value, 'Scale factor')
             fx, fy = (factors * 2)[:2] if len(factors) == 1 else factors[:2]
-            pivot = self._pivot(about_point, about_edge)
+            fz = factors[2] if len(factors) == 3 else 1
+            pivot = self._pivot_3d(about_point, about_edge)
+            if fz != 1 or self._is_3d():
+                pivot = self.get_center() if pivot is None else pivot
+                return self._map_points_3d(lambda p: [p[0] * fx, p[1] * fy, p[2] * fz], pivot)
             return self.apply_matrix([[fx, 0], [0, fy]],
                                      about_point=self.get_center() if pivot is None else pivot)
         if not math.isfinite(scale_factor):
             raise ValueError('Scale factor must be finite')
-        about_point = self._pivot(about_point, about_edge)
+        about_point = self._pivot_3d(about_point, about_edge)
+        if self._is_3d():
+            # Baked 3D points cannot use the XY pose path; scale about the 3D pivot.
+            pivot = self.get_center() if about_point is None else about_point
+            return self._map_points_3d(lambda p: Vector(p) * scale_factor, pivot)
         if self._world_container():
             pivot = self.get_center() if about_point is None else Vector(about_point)
             for child in self.children:
@@ -1799,25 +1961,42 @@ class Mobject:
         self.geometry_scale *= scale_factor
         return self
 
+    def rotate_about_origin(self, angle, axis=OUT, **kwargs):
+        return self.rotate(angle, axis=axis, about_point=ORIGIN, **kwargs)
+
     def rotate(self, angle, axis=OUT, *, about_point=None, about_edge=None):
         if not math.isfinite(angle):
             raise ValueError('Rotation angle must be finite')
         axis = Vector(axis)
         if not all(math.isfinite(v) for v in axis) or not any(axis):
             raise ValueError('Rotation axis must be finite and nonzero')
+        if axis[0] or axis[1]:
+            if (not axis[2] and abs(math.sin(angle)) < 1e-12 and math.cos(angle) < 0
+                    and not self._is_3d()):
+                # A half turn about an in-plane axis is the XY reflection across it.
+                about_point = self._pivot(about_point, about_edge)
+                length = math.hypot(axis[0], axis[1])
+                ux, uy = axis[0] / length, axis[1] / length
+                return self.apply_matrix([[2*ux*ux-1, 2*ux*uy], [2*ux*uy, 2*uy*uy-1]],
+                                         about_point=self.get_center() if about_point is None else about_point)
+            # A general 3D rotation: bake Rodrigues' formula into the points.
+            if not angle % TAU:
+                return self
+            pivot = self._pivot_3d(about_point, about_edge)
+            pivot = self.get_center() if pivot is None else pivot
+            matrix = rotation_matrix(angle, axis)
+            return self._map_points_3d(lambda p: _apply_rows(matrix, p), pivot)
+        angle = angle if axis[2] > 0 else -angle
+        if self._is_3d():
+            # Pose rotation ignores z of children and cannot mix with baked 3D
+            # points, so bake the rotation about z into the geometry.
+            if not angle % TAU:
+                return self
+            pivot = self._pivot_3d(about_point, about_edge)
+            pivot = self.get_center() if pivot is None else pivot
+            matrix = rotation_about_z(angle)
+            return self._map_points_3d(lambda p: _apply_rows(matrix, p), pivot)
         about_point = self._pivot(about_point, about_edge)
-        if not axis[0] and not axis[1]:
-            angle = angle if axis[2] > 0 else -angle
-        elif not axis[2] and abs(math.sin(angle)) < 1e-12 and math.cos(angle) < 0:
-            # A half turn about an in-plane axis is the XY reflection across it.
-            length = math.hypot(axis[0], axis[1])
-            ux, uy = axis[0] / length, axis[1] / length
-            return self.apply_matrix([[2*ux*ux-1, 2*ux*uy], [2*ux*uy, 2*uy*uy-1]],
-                                     about_point=self.get_center() if about_point is None else about_point)
-        elif angle % TAU:
-            raise NotImplementedError('Only rotations about OUT/IN or in-plane half turns are supported')
-        else:
-            return self
         self._geometry_center()
         if about_point is None and self.get_center() != self._pivot_point():
             about_point = self.get_center()  # Community rotates about the bounds center.
@@ -1893,6 +2072,14 @@ class Mobject:
         if family:
             for child in self.children:
                 child.set_z_index(z_index_value, family=True)
+        return self
+
+    def set_shade_in_3d(self, value=True, z_index_as_group=False):
+        for member in self.get_family():
+            member.shade_in_3d = value
+            # Community stores the family root as z_index_group; the preview
+            # records a flag and uses the root snapshot's center at capture.
+            member._z_index_as_group = bool(z_index_as_group)
         return self
 
     def set_style(self, fill_color=None, fill_opacity=None, stroke_color=None, stroke_width=None,
@@ -2226,8 +2413,6 @@ class VMobject(Mobject):
         vertices = [list(Vector(point)) for point in points]
         if any(not all(math.isfinite(v) for v in point) for point in vertices):
             raise ValueError('Path coordinates must be finite')
-        if any(point[2] for point in vertices):
-            raise NotImplementedError('Paths support only the XY plane')
         return vertices
 
     def set_points(self, points):
@@ -2862,8 +3047,6 @@ class Arc(TipableVMobject):
         center = Vector(arc_center)
         if not all(math.isfinite(v) for v in (radius, start_angle, angle, *center)) or radius < 0:
             raise ValueError('Arc geometry must be finite with a nonnegative radius')
-        if center[2]:
-            raise NotImplementedError('Arcs support only the XY plane')
         if abs(angle) > TAU:
             raise NotImplementedError('Arcs support at most one full turn')
         kwargs.setdefault('stroke_width',2)
@@ -2879,8 +3062,6 @@ class Arc(TipableVMobject):
         point = Vector(point)
         if not all(math.isfinite(v) for v in point):
             raise ValueError('Arc center must be finite')
-        if point[2]:
-            raise NotImplementedError('Arcs support only the XY plane')
         return self.shift(point - self.get_arc_center())
 
 
@@ -2949,6 +3130,8 @@ class ArcBetweenPoints(Arc):
     def __init__(self, start, end, angle=PI/2, radius=None, **kwargs):
         kwargs.setdefault('stroke_width',4)
         start,end = Line._endpoints(start,end)
+        if start[2] or end[2]:
+            raise NotImplementedError('Endpoint arcs support only the XY plane')
         if isinstance(angle,bool) or not isinstance(angle,_REAL) or not math.isfinite(angle):
             raise ValueError('Arc angle must be finite')
         if radius is not None and (isinstance(radius,bool) or not isinstance(radius,_REAL)
@@ -3021,8 +3204,6 @@ class Annulus(Circle):
         center = Vector(arc_center)
         if not all(math.isfinite(v) for v in center):
             raise ValueError('Annulus center must be finite')
-        if center[2]:
-            raise NotImplementedError('Annuli support only the XY plane')
         if not isinstance(mark_paths_closed, bool):
             raise ValueError('mark_paths_closed must be a boolean')
         super().__init__(radius=outer_radius, fill_opacity=fill_opacity,
@@ -3393,8 +3574,6 @@ class Line(TipableVMobject):
         start, end = Vector(start), Vector(end)
         if not all(math.isfinite(v) for v in (*start, *end)):
             raise ValueError('Line endpoints must be finite')
-        if start[2] or end[2]:
-            raise NotImplementedError('Line endpoints support only the XY plane')
         return start, end
 
     def get_start(self):
@@ -3467,9 +3646,9 @@ class Line(TipableVMobject):
         scale = self.geometry_scale or 1
         center = (start + end) * 0.5
         def local(point):
-            dx, dy, _ = point - center
+            dx, dy, dz = point - center
             return [(dx * math.cos(self.angle) + dy * math.sin(self.angle)) / scale,
-                    (-dx * math.sin(self.angle) + dy * math.cos(self.angle)) / scale, 0]
+                    (-dx * math.sin(self.angle) + dy * math.cos(self.angle)) / scale, dz / scale]
         local_start, local_end = self._endpoints(local(start), local(end))
         self.start, self.end = list(local_start), list(local_end)
         self.geometry_scale = scale
@@ -7323,17 +7502,19 @@ STRAIGHT_PATH_THRESHOLD = 0.01
 
 def _snapshot_pose(node):
     """Local-to-parent map of a snapshot's pose and, when invertible, its inverse."""
-    px, py = node['position'][:2]
-    gx, gy = node.get('geometry_center', ORIGIN)[:2]
+    px, py, pz = node['position']
+    gx, gy, gz = node.get('geometry_center', ORIGIN)
     scale, angle = node['geometry_scale'], node['angle']
     c, s = scale * math.cos(angle), scale * math.sin(angle)
     forward = lambda p: [px + gx + c * (p[0] - gx) - s * (p[1] - gy),
-                         py + gy + s * (p[0] - gx) + c * (p[1] - gy), 0]
+                         py + gy + s * (p[0] - gx) + c * (p[1] - gy),
+                         pz + gz + (p[2] - gz) * scale]
     if not scale:
         return forward, None
     d = scale * scale
     inverse = lambda p: [gx + (c * (p[0] - px - gx) + s * (p[1] - py - gy)) / d,
-                         gy + (-s * (p[0] - px - gx) + c * (p[1] - py - gy)) / d, 0]
+                         gy + (-s * (p[0] - px - gx) + c * (p[1] - py - gy)) / d,
+                         gz + (p[2] - pz - gz) / scale]
     return forward, inverse
 
 
@@ -7357,7 +7538,10 @@ def _arc_geometry(result, start, target, alpha, path_arc):
     def arc(a, b):
         p, q = first(a), last(b)
         dx, dy = q[0] - p[0], q[1] - p[1]
-        return inverse([p[0] + factor.real * dx - factor.imag * dy, p[1] + factor.imag * dx + factor.real * dy])
+        dz = (q[2] - p[2]) if len(p) > 2 and len(q) > 2 else 0
+        return inverse([p[0] + factor.real * dx - factor.imag * dy,
+                        p[1] + factor.imag * dx + factor.real * dy,
+                        p[2] + alpha * dz if len(p) > 2 else 0])
     for field in fields:
         a, b = start.get(field), target.get(field)
         if a is None or b is None:
@@ -7370,6 +7554,18 @@ def _arc_geometry(result, start, target, alpha, path_arc):
                 result[field] = [arc(p, q) for p, q in zip(a, b)]
         else:
             result[field] = arc(a, b)
+
+
+_PATH_TYPES = ('polyline', 'polygon', 'bezierpath', 'circle', 'arc', 'ellipse',
+               'square', 'rectangle', 'triangle', 'line', 'arrow', 'annulus')
+
+
+def _bbox_center(points):
+    """Center of the 3D bounding box of a point list (ORIGIN when empty)."""
+    if not points:
+        return Vector(ORIGIN)
+    return Vector((min(p[i] for p in points) + max(p[i] for p in points)) / 2
+                  for i in range(3))
 
 
 def _painted_paths(data, path=(), nested=True):
@@ -8938,6 +9134,13 @@ class Scene:
             camera['views'] = self._camera_view_data(overrides, camera)
         # VectorScene.lock_in_faded_grid bakes a background into later frames.
         objects = list(getattr(self, '_background_snapshots', ()))
+        objects.extend(self._frame_objects(overrides))
+        self.frames.append({'mobjects': objects, 'camera': camera})
+        if advance_time:
+            self._elapsed_frames += 1
+
+    def _frame_objects(self, overrides):
+        """The scene's roots as snapshot dicts; ThreeDScene projects this output."""
         def states(mobject):
             if overrides and mobject in overrides:
                 return [_refresh_tip_shafts(state) for state in overrides[mobject]]
@@ -8947,13 +9150,13 @@ class Scene:
             data = mobject.to_dict()
             data['children'] = [state for child in mobject.children for state in states(child)]
             return [_refresh_tip_shafts(data)]
+        frame_center = getattr(self.camera, '_frame_center', None)
+        objects = []
         for mobject in self.mobjects:
-            if isinstance(mobject, (CameraFrame, ValueTracker)):
+            if isinstance(mobject, (CameraFrame, ValueTracker)) or mobject is frame_center:
                 continue
             objects.extend(states(mobject))
-        self.frames.append({'mobjects': objects, 'camera': camera})
-        if advance_time:
-            self._elapsed_frames += 1
+        return objects
 
     _PLAY_OPTIONS = ('path_arc', 'lag_ratio', 'remover', 'introducer', 'name',
                      'suspend_mobject_updating', 'reverse_rate_function')
@@ -9794,6 +9997,485 @@ class ComplexValueTracker(ValueTracker):
 
     def increment_value(self, d_value):
         return self.set_value(self.get_value() + complex(d_value))
+
+
+def _mat_mul3(a, b):
+    return [[sum(a[i][k] * b[k][j] for k in range(3)) for j in range(3)] for i in range(3)]
+
+
+def _camera_rotation_matrix(phi, theta, gamma):
+    """Community's ThreeDCamera.generate_rotation_matrix for sampled values."""
+    result = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    for matrix in (rotation_about_z(-theta - 90 * DEGREES),
+                   rotation_matrix(-phi, RIGHT),
+                   rotation_about_z(gamma)):
+        result = _mat_mul3(matrix, result)
+    return result
+
+
+class ThreeDCamera(PreviewConfig):
+    """Community's ThreeDCamera: orientation trackers and perspective projection.
+
+    The frame dict stays the plain PreviewConfig shape; phi/theta/gamma/zoom/
+    focal_distance live in ValueTrackers so move_camera animates them."""
+
+    _EXTRA_ATTRS = {'phi', 'theta', 'gamma', 'zoom', 'focal_distance', 'shading_factor',
+                    'default_distance', 'light_source_start_point', 'light_source',
+                    'should_apply_shading', 'exponential_projection', 'max_allowable_norm',
+                    'phi_tracker', 'theta_tracker', 'gamma_tracker', 'zoom_tracker',
+                    'focal_distance_tracker', 'rotation_matrix', 'fixed_orientation_mobjects',
+                    'fixed_in_frame_mobjects', '_frame_center', '_orientation_key_count'}
+
+    def __init__(self, focal_distance=20.0, shading_factor=0.2, default_distance=5.0,
+                 light_source_start_point=9 * DOWN + 7 * LEFT + 10 * OUT,
+                 should_apply_shading=True, exponential_projection=False,
+                 phi=0, theta=-90 * DEGREES, gamma=0, zoom=1, frame_center=ORIGIN, **kwargs):
+        super().__init__(**kwargs)
+        for name, value in dict(focal_distance=focal_distance, shading_factor=shading_factor,
+                                default_distance=default_distance, phi=phi, theta=theta,
+                                gamma=gamma, zoom=zoom).items():
+            NumberLine._real(value, 'Camera ' + name)
+            object.__setattr__(self, name, float(value))
+        light = Vector(light_source_start_point)
+        if not all(math.isfinite(v) for v in light):
+            raise ValueError('Camera light source must be finite')
+        object.__setattr__(self, 'light_source_start_point', list(light))
+        object.__setattr__(self, 'light_source', VectorizedPoint(light))
+        object.__setattr__(self, '_frame_center', VectorizedPoint(frame_center))
+        object.__setattr__(self, 'should_apply_shading', bool(should_apply_shading))
+        object.__setattr__(self, 'exponential_projection', bool(exponential_projection))
+        object.__setattr__(self, 'max_allowable_norm', 3 * self.frame_width)
+        for name, value in dict(phi_tracker=self.phi, theta_tracker=self.theta,
+                                focal_distance_tracker=self.focal_distance,
+                                gamma_tracker=self.gamma, zoom_tracker=self.zoom).items():
+            object.__setattr__(self, name, ValueTracker(value))
+        # id(member) -> callable returning the orientation reference center.
+        object.__setattr__(self, 'fixed_orientation_mobjects', {})
+        object.__setattr__(self, 'fixed_in_frame_mobjects', set())
+        self.reset_rotation_matrix()
+
+    def __setattr__(self, name, value):
+        if name == 'frame_center':
+            self._frame_center.move_to(value)
+            return
+        if name in self._EXTRA_ATTRS:
+            object.__setattr__(self, name, value)
+            return
+        super().__setattr__(name, value)
+
+    @property
+    def frame_center(self):
+        return self._frame_center.get_center()
+
+    @frame_center.setter
+    def frame_center(self, point):
+        self._frame_center.move_to(point)
+
+    def get_value_trackers(self):
+        return [self.phi_tracker, self.theta_tracker, self.focal_distance_tracker,
+                self.gamma_tracker, self.zoom_tracker]
+
+    def get_phi(self):
+        return self.phi_tracker.get_value()
+
+    def get_theta(self):
+        return self.theta_tracker.get_value()
+
+    def get_focal_distance(self):
+        return self.focal_distance_tracker.get_value()
+
+    def get_gamma(self):
+        return self.gamma_tracker.get_value()
+
+    def get_zoom(self):
+        return self.zoom_tracker.get_value()
+
+    def set_phi(self, value):
+        self.phi_tracker.set_value(value)
+
+    def set_theta(self, value):
+        self.theta_tracker.set_value(value)
+
+    def set_focal_distance(self, value):
+        self.focal_distance_tracker.set_value(value)
+
+    def set_gamma(self, value):
+        self.gamma_tracker.set_value(value)
+
+    def set_zoom(self, value):
+        self.zoom_tracker.set_value(value)
+
+    def reset_rotation_matrix(self):
+        self.rotation_matrix = self.generate_rotation_matrix()
+
+    def get_rotation_matrix(self):
+        return self.rotation_matrix
+
+    def generate_rotation_matrix(self):
+        return _camera_rotation_matrix(self.get_phi(), self.get_theta(), self.get_gamma())
+
+    def project_points(self, points):
+        """Community's rotate-then-perspective project; returns plain lists."""
+        frame_center = Vector(self.frame_center)
+        focal_distance, zoom = self.get_focal_distance(), self.get_zoom()
+        rot = self.get_rotation_matrix()
+        result = []
+        for point in points:
+            rotated = _apply_rows(rot, Vector(point) - frame_center)
+            if self.exponential_projection:
+                factor = (math.exp(rotated[2] / focal_distance) if rotated[2] >= 0
+                          else focal_distance / (focal_distance - rotated[2]))
+            else:
+                factor = (1e6 if focal_distance - rotated[2] < 0
+                          else focal_distance / (focal_distance - rotated[2]))
+            result.append([rotated[0] * factor * zoom, rotated[1] * factor * zoom, rotated[2]])
+        return result
+
+    def project_point(self, point):
+        return self.project_points([point])[0]
+
+    def add_fixed_orientation_mobjects(self, *mobjects, use_static_center_func=False, center_func=None):
+        if center_func is not None and not callable(center_func):
+            raise TypeError('center_func must be callable')
+        for mobject in mobjects:
+            if not isinstance(mobject, Mobject):
+                raise TypeError('Fixed-orientation registration expects Mobjects')
+            if center_func is not None:
+                func = center_func
+            elif use_static_center_func:
+                point = list(mobject.get_center())
+                func = lambda point=point: point
+            else:
+                func = mobject.get_center
+            for member in mobject.get_family():
+                self.fixed_orientation_mobjects[id(member)] = func
+                member._fixed_orientation = True
+                member._fixed_orientation_key = id(member)
+
+    def remove_fixed_orientation_mobjects(self, *mobjects):
+        for mobject in mobjects:
+            for member in mobject.get_family():
+                self.fixed_orientation_mobjects.pop(id(member), None)
+                member.__dict__.pop('_fixed_orientation', None)
+                member.__dict__.pop('_fixed_orientation_key', None)
+
+    def add_fixed_in_frame_mobjects(self, *mobjects):
+        for mobject in mobjects:
+            if not isinstance(mobject, Mobject):
+                raise TypeError('Fixed-in-frame registration expects Mobjects')
+            for member in mobject.get_family():
+                self.fixed_in_frame_mobjects.add(id(member))
+                member._fixed_in_frame = True
+
+    def remove_fixed_in_frame_mobjects(self, *mobjects):
+        for mobject in mobjects:
+            for member in mobject.get_family():
+                self.fixed_in_frame_mobjects.discard(id(member))
+                member.__dict__.pop('_fixed_in_frame', None)
+
+
+class ThreeDScene(Scene):
+    """Community's ThreeDScene: roots are projected to 2D bezier snapshots."""
+    camera_class = ThreeDCamera
+
+    def __init__(self, camera_class=None, ambient_camera_rotation=None,
+                 default_angled_camera_orientation_kwargs=None, **kwargs):
+        self.ambient_camera_rotation = ambient_camera_rotation
+        self.default_angled_camera_orientation_kwargs = (
+            {'phi': 70 * DEGREES, 'theta': -135 * DEGREES}
+            if default_angled_camera_orientation_kwargs is None
+            else dict(default_angled_camera_orientation_kwargs))
+        if camera_class is not None:
+            self.camera_class = camera_class
+        super().__init__(**kwargs)
+
+    def set_camera_orientation(self, phi=None, theta=None, gamma=None, zoom=None,
+                               focal_distance=None, frame_center=None, **kwargs):
+        if phi is not None:
+            self.camera.set_phi(phi)
+        if theta is not None:
+            self.camera.set_theta(theta)
+        if focal_distance is not None:
+            self.camera.set_focal_distance(focal_distance)
+        if gamma is not None:
+            self.camera.set_gamma(gamma)
+        if zoom is not None:
+            self.camera.set_zoom(zoom)
+        if frame_center is not None:
+            self.camera.frame_center = frame_center
+
+    def move_camera(self, phi=None, theta=None, gamma=None, zoom=None, focal_distance=None,
+                    frame_center=None, added_anims=(), **kwargs):
+        anims = []
+        for value, tracker in ((phi, self.camera.phi_tracker), (theta, self.camera.theta_tracker),
+                               (focal_distance, self.camera.focal_distance_tracker),
+                               (gamma, self.camera.gamma_tracker), (zoom, self.camera.zoom_tracker)):
+            if value is not None:
+                anims.append(tracker.animate.set_value(value))
+        if frame_center is not None:
+            anims.append(self.camera._frame_center.animate.move_to(frame_center))
+        if anims or added_anims:
+            self.play(*anims, *added_anims, **kwargs)
+        # Community drops the frame center afterwards; it is never drawn.
+        if frame_center is not None:
+            self.remove(self.camera._frame_center)
+
+    def _camera_tracker(self, about):
+        trackers = {'theta': self.camera.theta_tracker, 'phi': self.camera.phi_tracker,
+                    'gamma': self.camera.gamma_tracker}
+        tracker = trackers.get(str(about).lower())
+        if tracker is None:
+            raise ValueError('Invalid ambient rotation angle.')
+        return tracker
+
+    def begin_ambient_camera_rotation(self, rate=0.02, about='theta'):
+        NumberLine._real(rate, 'Camera rotation rate')
+        tracker = self._camera_tracker(about)
+        tracker.add_updater(lambda m, dt: tracker.increment_value(rate * dt))
+        self.add(tracker)
+
+    def stop_ambient_camera_rotation(self, about='theta'):
+        tracker = self._camera_tracker(about)
+        tracker.clear_updaters()
+        self.remove(tracker)
+
+    def begin_3dillusion_camera_rotation(self, rate=1, origin_phi=None, origin_theta=None):
+        NumberLine._real(rate, 'Camera rotation rate')
+        if origin_theta is None:
+            origin_theta = self.camera.theta_tracker.get_value()
+        if origin_phi is None:
+            origin_phi = self.camera.phi_tracker.get_value()
+        theta_progress = ValueTracker(0)
+
+        def update_theta(m, dt):
+            theta_progress.increment_value(dt * rate)
+            return m.set_value(origin_theta + 0.2 * math.sin(theta_progress.get_value()))
+
+        self.camera.theta_tracker.add_updater(update_theta)
+        self.add(self.camera.theta_tracker)
+        phi_progress = ValueTracker(0)
+
+        def update_phi(m, dt):
+            phi_progress.increment_value(dt * rate)
+            return m.set_value(origin_phi + 0.1 * math.cos(phi_progress.get_value()) - 0.1)
+
+        self.camera.phi_tracker.add_updater(update_phi)
+        self.add(self.camera.phi_tracker)
+
+    def stop_3dillusion_camera_rotation(self):
+        self.camera.theta_tracker.clear_updaters()
+        self.remove(self.camera.theta_tracker)
+        self.camera.phi_tracker.clear_updaters()
+        self.remove(self.camera.phi_tracker)
+
+    def add_fixed_orientation_mobjects(self, *mobjects, **kwargs):
+        self.add(*mobjects)
+        self.camera.add_fixed_orientation_mobjects(*mobjects, **kwargs)
+
+    def remove_fixed_orientation_mobjects(self, *mobjects):
+        self.camera.remove_fixed_orientation_mobjects(*mobjects)
+
+    def add_fixed_in_frame_mobjects(self, *mobjects):
+        self.add(*mobjects)
+        self.camera.add_fixed_in_frame_mobjects(*mobjects)
+
+    def remove_fixed_in_frame_mobjects(self, *mobjects):
+        self.camera.remove_fixed_in_frame_mobjects(*mobjects)
+
+    def set_to_default_angled_camera_orientation(self, **kwargs):
+        config_ = dict(self.default_angled_camera_orientation_kwargs)
+        config_.update(kwargs)
+        self.set_camera_orientation(**config_)
+
+    def get_moving_mobjects(self, *animations):
+        moving = super().get_moving_mobjects(*animations)
+        camera_mobjects = self.camera.get_value_trackers() + [self.camera._frame_center]
+        if any(member in moving for member in camera_mobjects):
+            return self.mobjects
+        return moving
+
+    def _frame_objects(self, overrides):
+        roots = super()._frame_objects(overrides)
+        camera = self.camera
+        def tracked(tracker):
+            states = overrides.get(tracker) if overrides else None
+            return states[0]['position'][0] if states else tracker.get_value()
+        phi, theta = tracked(camera.phi_tracker), tracked(camera.theta_tracker)
+        gamma, zoom = tracked(camera.gamma_tracker), tracked(camera.zoom_tracker)
+        focal_distance = tracked(camera.focal_distance_tracker)
+        states = overrides.get(camera._frame_center) if overrides else None
+        if states:
+            frame_center = Vector(states[0]['position']) + Vector(states[0]['geometry_center'])
+        else:
+            frame_center = Vector(camera.frame_center)
+        rot = _camera_rotation_matrix(phi, theta, gamma)
+        light_source = camera.light_source.get_center()
+
+        def project(point):
+            rotated = _apply_rows(rot, Vector(point) - frame_center)
+            if camera.exponential_projection:
+                factor = (math.exp(rotated[2] / focal_distance) if rotated[2] >= 0
+                          else focal_distance / (focal_distance - rotated[2]))
+            else:
+                factor = (1e6 if focal_distance - rotated[2] < 0
+                          else focal_distance / (focal_distance - rotated[2]))
+            return [rotated[0] * factor * zoom, rotated[1] * factor * zoom, rotated[2]]
+
+        # Each entry carries the emitted leaf dict plus its world points for
+        # shading and the depth sort.
+        leaves = []
+
+        def shaded(color, world_points):
+            if not isinstance(color, str):
+                return [shaded(item, world_points) for item in color]
+            count = len(world_points)
+            # Community uses the start corner and the start-corner normal:
+            # anchors are the curve endpoints, so 2 * curve count.
+            if 2 * (count // 4) <= 2 or count < 4:
+                normal = UP
+            else:
+                normal = get_unit_normal(Vector(world_points[3]) - Vector(world_points[0]),
+                                         Vector(world_points[count - 4]) - Vector(world_points[0]))
+                if _norm(normal) == 0:
+                    normal = UP
+            # Community builds a two-stop gradient toward the end corner; this
+            # preview shades uniformly with the start-corner value instead.
+            rgb = get_shaded_rgb(_color_rgb(color), world_points[0], normal, light_source)
+            return _rgb_color([min(1, max(0, v)) for v in rgb])
+
+        def orientation_center(node, world_points):
+            if node.get('_fixed_center') is not None:
+                return Vector(node['_fixed_center'])
+            func = camera.fixed_orientation_mobjects.get(node.get('_fixed_orientation_key'))
+            if func is not None:
+                return Vector(func())
+            return _bbox_center(world_points) if world_points else ORIGIN
+
+        def emit_path(node, world_map, opacity, root_points):
+            kind = node['type']
+            out = _snapshot_copy(node)
+            out['children'] = []
+            out['opacity'] = opacity
+            paths = _path_subpaths(node, include_pending=False)
+            world_paths = [[[world_map(point) for point in curve] for curve in path]
+                           for path in paths]
+            # vertices are pending anchors only on bezierpaths (or a lone
+            # polyline vertex); on polygon/polyline they ARE the outline and
+            # are already covered by paths above.
+            pending = (node.get('vertices') or []) if (kind == 'bezierpath' or
+                       (kind == 'polyline' and len(node.get('vertices') or []) == 1)) else []
+            world_pending = [world_map(point) for point in pending]
+            world_points = [point for path in world_paths for curve in path for point in curve]
+            all_world = world_points + world_pending
+            root_points.extend(all_world)
+            fixed_frame = bool(node.get('_fixed_in_frame'))
+            delta = None
+            if fixed_frame:
+                # Unprojected: emit the world-space geometry unchanged.
+                out_paths, out_pending = world_paths, world_pending
+            else:
+                if node.get('_fixed_orientation'):
+                    delta = Vector(project(orientation_center(node, all_world))) - \
+                            Vector(orientation_center(node, all_world))
+                    out_paths = [[[list(Vector(point) + delta) for point in curve]
+                                  for curve in path] for path in world_paths]
+                    out_pending = [list(Vector(point) + delta) for point in world_pending]
+                else:
+                    out_paths = [[[project(point) for point in curve] for curve in path]
+                                 for path in world_paths]
+                    out_pending = [project(point) for point in world_pending]
+                if (camera.should_apply_shading and node.get('shade_in_3d') and world_points):
+                    out['fill_color'] = shaded(node.get('fill_color'), world_points)
+                    out['stroke_color'] = shaded(node.get('stroke_color'), world_points)
+            if kind in ('line', 'arrow'):
+                # Keep the type so the renderer still draws legacy arrow heads;
+                # baked world points get an identity pose.
+                out['type'] = kind
+                for key in ('start', 'end', 'shaft_start', 'shaft_end'):
+                    if node.get(key) is not None:
+                        world = world_map(node[key])
+                        out[key] = (list(world) if fixed_frame else
+                                    list(project(world)) if delta is None else
+                                    list(Vector(world) + delta))
+            else:
+                out['type'] = 'bezierpath'
+                out['curves'] = [curve for path in out_paths for curve in path]
+                out['vertices'] = out_pending
+                out.pop('subpath_lengths', None)
+                if len(paths) > 1:
+                    out['subpath_lengths'] = [len(path) for path in paths]
+            out['position'], out['angle'], out['geometry_scale'] = [0, 0, 0], 0, 1
+            out['geometry_center'] = [0, 0, 0]
+            leaves.append({'node': out, 'world': all_world, 'fixed_frame': fixed_frame,
+                           'shade': bool(node.get('shade_in_3d')),
+                           'group': bool(node.get('_z_index_as_group'))})
+
+        def emit_leaf(node, world_map, opacity, root_points):
+            # Text, formulas, images and other non-path units keep their glyph
+            # children; only the anchor projects (an upright-billboard
+            # approximation of Community's per-glyph projection).
+            out = _snapshot_copy(node)
+            out['opacity'] = opacity
+            anchor = world_map(node.get('geometry_center', ORIGIN))
+            root_points.append(anchor)
+            fixed_frame = bool(node.get('_fixed_in_frame'))
+            gc = node.get('geometry_center', ORIGIN)
+            if fixed_frame:
+                # Keep the node unprojected; place it at its world anchor.
+                out['position'] = list(Vector(anchor) - Vector(gc))
+            elif node.get('_fixed_orientation'):
+                center = orientation_center(node, [anchor])
+                target = Vector(anchor) + (Vector(project(center)) - center)
+                out['position'] = list(Vector(target) - Vector(gc))
+            else:
+                projected = project(anchor)
+                rotated = _apply_rows(rot, Vector(anchor) - frame_center)
+                factor = ((math.exp(rotated[2] / focal_distance) if rotated[2] >= 0
+                           else focal_distance / (focal_distance - rotated[2]))
+                          if camera.exponential_projection else
+                          (1e6 if focal_distance - rotated[2] < 0
+                           else focal_distance / (focal_distance - rotated[2])))
+                out['position'] = [projected[0] - gc[0], projected[1] - gc[1], 0]
+                out['geometry_scale'] = node.get('geometry_scale', 1) * factor * zoom
+            leaves.append({'node': out, 'world': [anchor], 'fixed_frame': fixed_frame,
+                           'shade': False, 'group': False})
+
+        def walk(node, parent_map, opacity, root_points):
+            pose, _ = _snapshot_pose(node)
+            world_map = lambda point: parent_map(pose(point))
+            node_opacity = opacity * node.get('opacity', 1)
+            kind = node['type']
+            if kind in _PATH_TYPES:
+                emit_path(node, world_map, node_opacity, root_points)
+                for child in node.get('children', []):
+                    walk(child, world_map, node_opacity, root_points)
+            elif kind in ('vgroup', 'mobject', 'valuetracker'):
+                for child in node.get('children', []):
+                    walk(child, world_map, node_opacity, root_points)
+            else:
+                emit_leaf(node, world_map, node_opacity, root_points)
+
+        identity = lambda point: list(point)
+        for root in roots:
+            root_points = []
+            start = len(leaves)
+            walk(root, identity, 1, root_points)
+            # The z_index_as_group reference is the root's world bounds center.
+            root_center = _bbox_center(root_points) if root_points else ORIGIN
+            for entry in leaves[start:]:
+                entry['root_center'] = root_center
+
+        # Depth sort: Community sorts by z_key (rotated z of the reference
+        # center) over the z_index-ordered list; non-shaded and fixed-in-frame
+        # leaves keep their order at +inf.
+        leaves.sort(key=lambda entry: entry['node'].get('z_index', 0))
+        def depth_key(entry):
+            if entry['fixed_frame'] or not entry['shade']:
+                return float('inf')
+            center = entry['root_center'] if entry['group'] else _bbox_center(entry['world'])
+            return _apply_rows(rot, Vector(center) - frame_center)[2]
+        leaves.sort(key=depth_key)
+        return [dict(entry['node'], z_index=rank) for rank, entry in enumerate(leaves)]
 
 
 class UnitInterval(NumberLine):
@@ -12906,6 +13588,18 @@ def get_unit_normal(v1, v2, tol=1e-6):
     return cp / _norm(cp)
 
 
+def get_shaded_rgb(rgb, point, unit_normal_vect, light_source):
+    """Community's shading: 0.5*cos^3 toward the light, halved when facing away.
+
+    The result is deliberately unclipped, matching Community; callers that
+    serialize colors must clamp to [0, 1] themselves."""
+    to_sun = normalize(Vector(light_source) - Vector(point))
+    light = 0.5 * sum(a * b for a, b in zip(normalize(unit_normal_vect), to_sun)) ** 3
+    if light < 0:
+        light *= 0.5
+    return [value + light for value in rgb]
+
+
 def compass_directions(n=4, start_vect=RIGHT):
     return [rotate_vector(_point(start_vect), k * TAU / n) for k in range(n)]
 
@@ -13630,7 +14324,7 @@ class ManimBanner(VGroup):
                           UpdateFromAlphaFunc(self, slide_back, run_time=run_time / 3, rate_func=smooth))
 
 
-EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'ZoomedScene', 'VectorScene', 'LinearTransformationScene', 'angle_of_vector', 'ImageMobjectFromCamera', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
+EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'ZoomedScene', 'VectorScene', 'LinearTransformationScene', 'ThreeDCamera', 'ThreeDScene', 'angle_of_vector', 'ImageMobjectFromCamera', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
            'Triangle', 'Polygon', 'Polygram', 'RegularPolygram', 'RegularPolygon', 'Star', 'Brace', 'BraceBetweenPoints', 'BraceLabel', 'BraceText',
            'Title', 'BulletedList', 'Tex', 'SingleStringMathTex', 'MarkupText', 'LabeledDot', 'Variable', 'always', 'f_always', 'always_shift', 'always_rotate',
            'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'BarChart', 'PolarPlane', 'NumberPlane', 'ComplexPlane', 'VectorField', 'ArrowVectorField', 'StreamLines', 'sigmoid', 'ScreenRectangle', 'FullScreenRectangle', 'VectorizedPoint', 'ComplexValueTracker', 'UnitInterval', 'TangentialArc', 'CurvesAsSubmobjects', 'VDict', 'Cutout', 'ConvexHull', 'ArcBrace', 'LaggedStartMap', 'MaintainPositionRelativeTo', 'Blink', 'Broadcast', 'SpiralIn', 'AddTextWordByWord', 'Animation', 'line_intersection', 'angle_between_vectors', 'DEFAULT_LAGGED_START_LAG_RATIO', 'Graph', 'DiGraph', 'Union', 'Intersection', 'Difference', 'Exclusion', 'Code', 'SVGMobject', 'VMobjectFromSVGPath', 'ImageMobject', 'RESAMPLING_ALGORITHMS', 'ManimColor', 'HSV', 'RGBA', 'LinearBase', 'LogBase', 'DefaultSectionType', 'Add', 'ShowPartial', 'TexTemplate', 'TexTemplateLibrary', 'TexFontTemplates', 'CoordinateSystem', 'PMobject', 'Mobject1D', 'Mobject2D', 'PGroup', 'PointCloudDot', 'Point', 'DEFAULT_POINT_DENSITY_1D', 'DEFAULT_POINT_DENSITY_2D', 'RandomColorGenerator', 'random_color', 'random_bright_color', 'TypeWithCursor', 'UntypeWithCursor', 'AnimatedBoundary', 'ShowPassingFlashWithThinningStrokeWidth', 'FadeTransformPieces', 'ImplicitFunction', 'LabeledPolygram', 'ChangeSpeed', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
@@ -13661,7 +14355,7 @@ EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'ZoomedScene', 'VectorScene',
            'SEMILIGHT', 'BOOK', 'MEDIUM', 'SEMIBOLD', 'ULTRABOLD', 'HEAVY', 'ULTRAHEAVY']
 EXPORTS += [name for name in _PALETTE if name not in EXPORTS]
 # Community utilities (manim.utils.*).
-EXPORTS += ['ManimBanner', 'MANIM_SVG_PATHS', 'SampleSpace', 'TransformAnimations', 'X_AXIS', 'Y_AXIS', 'Z_AXIS', 'DEFAULT_DASH_LENGTH', 'DEFAULT_POINTWISE_FUNCTION_RUN_TIME', 'DEFAULT_WAIT_TIME', 'SCALE_FACTOR_PER_FONT_POINT', 'START_X', 'START_Y', 'integer_interpolate', 'mid', 'inverse_interpolate', 'match_interpolate', 'midpoint', 'normalize', 'rotation_about_z', 'rotation_matrix', 'rotate_vector', 'z_to_vector', 'get_unit_normal', 'compass_directions', 'regular_vertices', 'complex_to_R3', 'R3_to_complex', 'complex_func_to_R3_func', 'center_of_mass', 'cross2d', 'shoelace', 'shoelace_direction', 'perpendicular_bisector', 'cartesian_to_spherical', 'spherical_to_cartesian', 'find_intersection', 'get_winding_number', 'thick_diagonal', 'bezier', 'split_bezier', 'partial_bezier_points', 'subdivide_bezier', 'bezier_remap', 'point_lies_on_bezier', 'proportions_along_bezier_curve_for_point', 'get_smooth_cubic_bezier_handle_points', 'is_closed', 'straight_path', 'path_along_arc', 'clockwise_path', 'counterclockwise_path', 'adjacent_n_tuples', 'adjacent_pairs', 'all_elements_are_instances', 'concatenate_lists', 'list_update', 'list_difference_update', 'listify', 'make_even', 'make_even_by_cycling', 'remove_list_redundancies', 'remove_nones', 'stretch_array_to_length', 'tuplify', 'choose', 'clip', 'binary_search', 'color_to_rgba', 'rgba_to_color', 'color_to_int_rgb', 'color_to_int_rgba', 'merge_dicts_recursively', 'update_dict_recursively', 'tempconfig', 'override_animate', 'override_animation', 'index_labels', 'print_family', 'assert_is_mobject_method', 'turn_animation_into_updater', 'cycle_animation']
+EXPORTS += ['ManimBanner', 'MANIM_SVG_PATHS', 'SampleSpace', 'TransformAnimations', 'X_AXIS', 'Y_AXIS', 'Z_AXIS', 'DEFAULT_DASH_LENGTH', 'DEFAULT_POINTWISE_FUNCTION_RUN_TIME', 'DEFAULT_WAIT_TIME', 'SCALE_FACTOR_PER_FONT_POINT', 'START_X', 'START_Y', 'integer_interpolate', 'mid', 'inverse_interpolate', 'match_interpolate', 'midpoint', 'normalize', 'rotation_about_z', 'rotation_matrix', 'rotate_vector', 'z_to_vector', 'get_unit_normal', 'get_shaded_rgb', 'compass_directions', 'regular_vertices', 'complex_to_R3', 'R3_to_complex', 'complex_func_to_R3_func', 'center_of_mass', 'cross2d', 'shoelace', 'shoelace_direction', 'perpendicular_bisector', 'cartesian_to_spherical', 'spherical_to_cartesian', 'find_intersection', 'get_winding_number', 'thick_diagonal', 'bezier', 'split_bezier', 'partial_bezier_points', 'subdivide_bezier', 'bezier_remap', 'point_lies_on_bezier', 'proportions_along_bezier_curve_for_point', 'get_smooth_cubic_bezier_handle_points', 'is_closed', 'straight_path', 'path_along_arc', 'clockwise_path', 'counterclockwise_path', 'adjacent_n_tuples', 'adjacent_pairs', 'all_elements_are_instances', 'concatenate_lists', 'list_update', 'list_difference_update', 'listify', 'make_even', 'make_even_by_cycling', 'remove_list_redundancies', 'remove_nones', 'stretch_array_to_length', 'tuplify', 'choose', 'clip', 'binary_search', 'color_to_rgba', 'rgba_to_color', 'color_to_int_rgb', 'color_to_int_rgba', 'merge_dicts_recursively', 'update_dict_recursively', 'tempconfig', 'override_animate', 'override_animation', 'index_labels', 'print_family', 'assert_is_mobject_method', 'turn_animation_into_updater', 'cycle_animation']
 
 
 def _rounded_array(value):
