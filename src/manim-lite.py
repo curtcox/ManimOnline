@@ -3937,6 +3937,44 @@ class VectorArrow(Arrow):
         super().__init__(ORIGIN, direction, buff=buff, **kwargs)
 
 
+class AnnotationDot(Dot):
+    def __init__(self, radius=DEFAULT_DOT_RADIUS * 1.3, stroke_width=5, stroke_color=WHITE, fill_color=BLUE, **kwargs):
+        super().__init__(radius=radius, stroke_width=stroke_width, stroke_color=stroke_color,
+                         fill_color=fill_color, **kwargs)
+
+
+class Label(VGroup):
+    """A label with a background box and a thin frame."""
+    def __init__(self, label, label_config=None, box_config=None, frame_config=None, **kwargs):
+        super().__init__(**kwargs)
+        label_config = {'color': WHITE, 'font_size': DEFAULT_FONT_SIZE} | dict(label_config or {})
+        box_config = {'color': None, 'buff': 0.05, 'fill_opacity': 1, 'stroke_width': 0.5} | dict(box_config or {})
+        frame_config = {'color': WHITE, 'buff': 0.05, 'stroke_width': 0.5} | dict(frame_config or {})
+        if isinstance(label, str):
+            self.rendered_label = MathTex(label, **label_config)
+        elif isinstance(label, Text):
+            self.rendered_label = label
+        else:
+            raise TypeError('Unsupported label type. Must be MathTex, Tex or Text.')
+        self.background_rect = BackgroundRectangle(self.rendered_label, **box_config)
+        self.frame = SurroundingRectangle(self.rendered_label, **frame_config)
+        self.add(self.background_rect, self.rendered_label, self.frame)
+
+
+class LabeledLine(Line):
+    def __init__(self, label, label_position=0.5, label_config=None, box_config=None, frame_config=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        NumberLine._real(label_position, 'label_position')
+        self.label = Label(label, label_config, box_config, frame_config)
+        start, end = self.get_start_and_end()
+        self.label.move_to(start + (end - start) * label_position)
+        self.add(self._to_local_pose(self.label))
+
+
+class LabeledArrow(LabeledLine, Arrow):
+    pass
+
+
 class LabeledDot(Dot):
     """A dot sized to hold a MathTex (or given) label at its center."""
     def __init__(self, label, radius=None, **kwargs):
@@ -6555,6 +6593,187 @@ class FadeToColor(ApplyMethod):
         super().__init__(mobject.set_color, color, **kwargs)
 
 
+class ApplyPointwiseFunction(ApplyMethod):
+    def __init__(self, function, mobject, run_time=3.0, **kwargs):
+        if not callable(function):
+            raise TypeError('ApplyPointwiseFunction expects a point function')
+        super().__init__(mobject.apply_function, function, run_time=run_time, **kwargs)
+
+
+class ApplyPointwiseFunctionToCenter(Animate):
+    def __init__(self, function, mobject, run_time=3.0, **kwargs):
+        if not callable(function):
+            raise TypeError('ApplyPointwiseFunctionToCenter expects a point function')
+        super().__init__(mobject)
+        self.function, self.run_time = function, run_time
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+    def begin(self, scene):
+        self.operations = [('move_to', (Vector(self.function(self.mobject.get_center())),), {})]
+        super().begin(scene)
+
+
+class ApplyMatrix(ApplyPointwiseFunction):
+    def __init__(self, matrix, mobject, about_point=ORIGIN, **kwargs):
+        rows = [list(row) for row in matrix]
+        if [len(row) for row in rows] not in ([2, 2], [3, 3, 3]):
+            raise ValueError('Matrix has bad dimensions')
+        if len(rows) == 2:
+            rows = [rows[0] + [0], rows[1] + [0], [0, 0, 1]]
+        pivot = Vector(about_point)
+        def function(point):
+            p = Vector(point) - pivot
+            return Vector(sum(a * b for a, b in zip(row, p)) for row in rows) + pivot
+        super().__init__(function, mobject, **kwargs)
+
+
+class ApplyComplexFunction(ApplyMethod):
+    def __init__(self, function, mobject, **kwargs):
+        if not callable(function):
+            raise TypeError('ApplyComplexFunction expects a complex function')
+        value = complex(function(complex(1)))
+        kwargs.setdefault('path_arc', math.atan2(value.imag, value.real) if value else 0)
+        super().__init__(mobject.apply_complex_function, function, **kwargs)
+
+
+class ApplyFunction(Transform):
+    def __init__(self, function, mobject, **kwargs):
+        if not callable(function):
+            raise TypeError('ApplyFunction expects a function returning a Mobject')
+        super().__init__(mobject, mobject, **kwargs)
+        self.function = function
+
+    def begin(self, scene):
+        target = self.function(self.mobject.copy())
+        if not isinstance(target, Mobject):
+            raise TypeError('Functions passed to ApplyFunction must return object of type Mobject')
+        self.target = target
+        super().begin(scene)
+
+
+class Homotopy(Animation):
+    """Apply homotopy(x, y, z, t) to the starting points at each sampled time."""
+    def __init__(self, homotopy, mobject, run_time=3, apply_function_kwargs=None, **kwargs):
+        if not callable(homotopy):
+            raise TypeError('Homotopy expects a function of (x, y, z, t)')
+        super().__init__(mobject, run_time=run_time, **kwargs)
+        self.homotopy, self.apply_function_kwargs = homotopy, dict(apply_function_kwargs or {})
+
+    def begin(self, scene):
+        super().begin(scene)
+        self.original = self.mobject.copy()
+
+    def _at(self, t):
+        current = self.original.copy()
+        current.apply_function(lambda p: Vector(self.homotopy(p[0], p[1], p[2], t)), **self.apply_function_kwargs)
+        return current
+
+    def sample(self, alpha):
+        return [self._at(alpha).to_dict()]
+
+    def finish(self, scene):
+        rate = self.rate_func(1 if not self.reverse_rate_function else 0)
+        self.mobject.become(self._at(rate))
+
+
+class SmoothedVectorizedHomotopy(Homotopy):
+    def _at(self, t):
+        return super()._at(t).make_smooth()
+
+
+class ComplexHomotopy(Homotopy):
+    def __init__(self, complex_homotopy, mobject, **kwargs):
+        if not callable(complex_homotopy):
+            raise TypeError('ComplexHomotopy expects a function of (z, t)')
+        def homotopy(x, y, z, t):
+            value = complex(complex_homotopy(complex(x, y), t))
+            return (value.real, value.imag, z)
+        super().__init__(homotopy, mobject, **kwargs)
+
+
+class ApplyWave(Homotopy):
+    """Community's travelling wave nudge along a direction."""
+    def __init__(self, mobject, direction=UP, amplitude=0.2, wave_func=smooth, time_width=1, ripples=1,
+                 run_time=2, **kwargs):
+        x_min, x_max = mobject.get_left()[0], mobject.get_right()[0]
+        direction = Mobject._xy_vector(direction, 'Wave direction')
+        length = math.hypot(direction[0], direction[1])
+        vect = direction * (amplitude / length) if length else Vector(ORIGIN)
+        def wave(t):
+            t = 1 - t
+            if t >= 1 or t <= 0:
+                return 0
+            phases = ripples * 2
+            phase = int(t * phases)
+            if phase == 0:
+                return wave_func(t * phases)
+            if phase == phases - 1:
+                t -= phase / phases
+                return (1 - wave_func(t * phases)) * (2 * (ripples % 2) - 1)
+            phase = int((phase - 1) / 2)
+            t -= (2 * phase + 1) / phases
+            return (1 - 2 * wave_func(t * ripples)) * (1 - 2 * (phase % 2))
+        def homotopy(x, y, z, t):
+            upper = t * (1 + time_width)
+            lower = upper - time_width
+            relative = (x - x_min) / (x_max - x_min) if x_max != x_min else 0
+            phase = (relative - lower) / (upper - lower) if upper != lower else 0
+            nudge = vect * wave(phase)
+            return (x + nudge[0], y + nudge[1], z)
+        super().__init__(homotopy, mobject, run_time=run_time, **kwargs)
+
+
+class PhaseFlow(Animation):
+    """Euler-integrate points along a vector field over virtual time."""
+    def __init__(self, function, mobject, virtual_time=1, suspend_mobject_updating=False, rate_func=linear, **kwargs):
+        if not callable(function):
+            raise TypeError('PhaseFlow expects a vector field function')
+        super().__init__(mobject, rate_func=rate_func, **kwargs)
+        self.function, self.virtual_time = function, virtual_time
+
+    def begin(self, scene):
+        super().begin(scene)
+        self.current, self.last = self.mobject.copy(), 0
+
+    def _advance(self, alpha):
+        if alpha < self.last:
+            self.current, self.last = Mobject.copy(self.mobject), 0  # restart for out-of-order samples
+        dt = self.virtual_time * (alpha - self.last)
+        if dt:
+            self.current.apply_function(lambda p: Vector(p) + Vector(self.function(p)) * dt)
+        self.last = alpha
+        return self.current
+
+    def sample(self, alpha):
+        return [self._advance(alpha).to_dict()]
+
+    def finish(self, scene):
+        self.mobject.become(self._advance(1))
+
+
+class ChangingDecimal(Animation):
+    def __init__(self, decimal_mob, number_update_func, suspend_mobject_updating=False, **kwargs):
+        if not isinstance(decimal_mob, DecimalNumber):
+            raise TypeError('ChangingDecimal can only take in a DecimalNumber')
+        if not callable(number_update_func):
+            raise TypeError('number_update_func must be callable')
+        super().__init__(decimal_mob, **kwargs)
+        self.number_update_func = number_update_func
+
+    def sample(self, alpha):
+        return [self.mobject.copy().set_value(self.number_update_func(alpha)).to_dict()]
+
+    def finish(self, scene):
+        self.mobject.set_value(self.number_update_func(self.rate_func(1)))
+
+
+class ChangeDecimalToValue(ChangingDecimal):
+    def __init__(self, decimal_mob, target_number, **kwargs):
+        start = decimal_mob.number if isinstance(decimal_mob, DecimalNumber) else 0
+        super().__init__(decimal_mob, lambda a: start + (target_number - start) * a, **kwargs)
+
+
 class Wait(Animation):
     """A pause inside play(), AnimationGroup or Succession."""
     def __init__(self, run_time=1, stop_condition=None, frozen_frame=None, rate_func=linear, **kwargs):
@@ -7076,7 +7295,10 @@ EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'a
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform',
            'ClockwiseTransform', 'CounterclockwiseTransform', 'MoveToTarget', 'CyclicReplace', 'Swap',
-           'FadeTransform', 'TransformMatchingTex', 'TransformMatchingShapes', 'ApplyMethod', 'ScaleInPlace', 'FadeToColor', 'Wait', 'GrowFromEdge', 'GrowArrow',
+           'FadeTransform', 'ApplyPointwiseFunction', 'ApplyPointwiseFunctionToCenter', 'ApplyMatrix',
+           'ApplyComplexFunction', 'ApplyFunction', 'Homotopy', 'SmoothedVectorizedHomotopy', 'ComplexHomotopy',
+           'ApplyWave', 'PhaseFlow', 'ChangingDecimal', 'ChangeDecimalToValue', 'AnnotationDot', 'Label',
+           'LabeledLine', 'LabeledArrow', 'TransformMatchingTex', 'TransformMatchingShapes', 'ApplyMethod', 'ScaleInPlace', 'FadeToColor', 'Wait', 'GrowFromEdge', 'GrowArrow',
            'SpinInFromNothing', 'Wiggle', 'FocusOn', 'UpdateFromFunc', 'UpdateFromAlphaFunc',
            'ShowIncreasingSubsets', 'ShowSubmobjectsOneByOne', 'AddTextLetterByLetter',
            'RemoveTextLetterByLetter', 'Circumscribe', 'Flash', 'UP', 'DOWN', 'LEFT',

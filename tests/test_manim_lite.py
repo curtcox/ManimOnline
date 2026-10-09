@@ -16,6 +16,47 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_functional_transform_animations_and_labeled_connectors(self):
+        result=render('s = Square()\nself.add(s)\nself.play(ApplyMatrix([[1,1],[0,1]], s), rate_func=linear, run_time=2)')
+        self.assertPointAlmostEqual(result['frames'][-1]['mobjects'][0]['curves'][0][0],(2,1,0))
+        scene=lite.Scene()
+        square=lite.Square()
+        scene.play(lite.ApplyPointwiseFunction(lambda p:(p[0]*2,p[1],0),square))
+        self.assertAlmostEqual(square.get_width(),4)
+        scene.play(lite.ApplyPointwiseFunctionToCenter(lambda p:lite.Vector(p)+lite.UP,square))
+        self.assertPointAlmostEqual(square.get_center(),(0,1,0))
+        scene.play(lite.ApplyFunction(lambda m:m.scale(.5).set_color(lite.RED),square))
+        self.assertEqual((round(square.get_width(),6),square.color),(2,lite.RED))
+        with self.assertRaises(TypeError): lite.Scene().play(lite.ApplyFunction(lambda m:3,lite.Dot()))
+        complex_=lite.ApplyComplexFunction(lambda z:z*1j,lite.Dot(lite.RIGHT))
+        self.assertAlmostEqual(complex_.path_arc,lite.PI/2)
+        homotopy=render('d = Dot()\nself.play(Homotopy(lambda x, y, z, t: (x + 2*t, y, z), d), rate_func=linear, run_time=2)')
+        self.assertAlmostEqual(lite.Vector(homotopy['frames'][15]['mobjects'][0]['position'])[0]+homotopy['frames'][15]['mobjects'][0]['geometry_center'][0],1,places=5)
+        wave=render('l = Line(LEFT*3, RIGHT*3)\nself.add(l)\nself.play(ApplyWave(l, amplitude=.5), rate_func=linear)')
+        middle=wave['frames'][15]['mobjects'][0]
+        self.assertEqual(middle['type'],'bezierpath')
+        self.assertGreater(max(p[1] for c in middle['curves'] for p in c),.1)
+        self.assertEqual(wave['frames'][-1]['mobjects'][0]['type'],'bezierpath')
+        flow=lite.Scene()
+        dot=lite.Dot(lite.RIGHT)
+        flow.play(lite.PhaseFlow(lambda p:(-p[1],p[0],0),dot,virtual_time=lite.PI/2),run_time=2)
+        # Euler steps per frame, like Community's PhaseFlow, approach a quarter turn.
+        self.assertGreater(dot.get_center()[1],.9)
+        self.assertLess(abs(dot.get_center()[0]),.1)
+        number=lite.DecimalNumber(0)
+        changed=lite.Scene()
+        changed.play(lite.ChangeDecimalToValue(number,10),rate_func=lite.linear,run_time=2)
+        self.assertEqual(number.get_value(),10)
+        self.assertAlmostEqual(changed.frames[15]['mobjects'][0]['number'],5)
+        with self.assertRaises(TypeError): lite.ChangingDecimal(lite.Dot(),lambda a:a)
+        arrow=lite.LabeledArrow('x',start=lite.LEFT*2,end=lite.RIGHT*2)
+        self.assertIsInstance(arrow,lite.Arrow)
+        self.assertPointAlmostEqual(arrow.label.get_center(),lite.ORIGIN)
+        self.assertEqual([type(m).__name__ for m in arrow.label],['BackgroundRectangle','MathTex','SurroundingRectangle'])
+        line=lite.LabeledLine('y',label_position=.25,start=lite.LEFT*2,end=lite.RIGHT*2)
+        self.assertPointAlmostEqual(line.label.get_center(),(-1,0,0))
+        self.assertEqual((lite.AnnotationDot().stroke_width,lite.AnnotationDot().fill_color),(5,lite.BLUE))
+
     def test_multipart_mathtex_parts_colors_metrics_and_matching(self):
         eq=lite.MathTex('x^2','+','y^2',color=lite.BLUE)
         self.assertEqual((len(eq),eq.tex_strings,eq[2].tex_string),(3,['x^2','+','y^2'],'y^2'))

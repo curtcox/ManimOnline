@@ -1422,3 +1422,12 @@ matches drawable members by normalized outline. Parts are typeset together with
 MathJax `\class`, so TeX spacing is unchanged; each part's position comes from
 the browser's measurement on the second render pass. Glyph-level indexing inside
 a part (`eq[0][1]`) is not implemented.
+
+
+Functional animations now follow Community: `ApplyPointwiseFunction`,
+`ApplyPointwiseFunctionToCenter`, `ApplyMatrix`, `ApplyComplexFunction` (with its
+arc path), `ApplyFunction`, `Homotopy`, `SmoothedVectorizedHomotopy`,
+`ComplexHomotopy`, `ApplyWave`, `PhaseFlow`, `ChangingDecimal` and
+`ChangeDecimalToValue`. `Label`, `LabeledLine`, `LabeledArrow` and
+`AnnotationDot` are available. Nonlinear maps bend cubic control points, so a
+waved or flowed outline becomes an editable cubic path.

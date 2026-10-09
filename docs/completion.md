@@ -254,3 +254,7 @@ text macros remain open.
 Multi-part MathTex (indexing, tex-based coloring/opacity, isolated substrings),
 TransformMatchingTex and TransformMatchingShapes are implemented with browser
 part measurement. Glyph-level submobjects inside parts remain open.
+
+
+Functional/pointwise animations (ApplyMatrix, Homotopy, ApplyWave, PhaseFlow,
+ChangeDecimalToValue, …) and labeled connectors are implemented with tests.
