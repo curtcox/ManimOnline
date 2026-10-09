@@ -16,6 +16,35 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_scene_bounds_match_community_reference_fixture(self):
+        # tests/fixtures/community_reference.json holds bounds measured with Manim 0.22.
+        data=json.loads((ROOT/'tests/fixtures/community_reference.json').read_text())
+        tolerance=data['tolerance']
+        for name,case in data['cases'].items():
+            with self.subTest(case=name):
+                source='from manim import *\nclass S(Scene):\n    def construct(self):\n'
+                source+='\n'.join('        '+line for line in case['body'].splitlines())
+                captured={}
+                original=lite.Scene.render
+                def grab(scene):
+                    captured['scene']=scene
+                    return original(scene)
+                lite.Scene.render=grab
+                try:
+                    lite.render_scene(source)
+                finally:
+                    lite.Scene.render=original
+                mobjects=captured['scene'].mobjects
+                self.assertEqual(len(mobjects),len(case['mobjects']))
+                for mobject,expected in zip(mobjects,case['mobjects']):
+                    for key,direction in (('dl',lite.DL),('ur',lite.UR)):
+                        for a,b in zip(mobject.get_critical_point(direction)[:2],expected[key]):
+                            self.assertAlmostEqual(a,b,delta=tolerance)
+                    for a,b in zip(mobject.get_center()[:2],expected['c']):
+                        self.assertAlmostEqual(a,b,delta=tolerance)
+                    self.assertAlmostEqual(mobject.get_width(),expected['w'],delta=tolerance)
+                    self.assertAlmostEqual(mobject.get_height(),expected['h'],delta=tolerance)
+
     def test_annotation_gallery_and_animate_accepts_any_method(self):
         result=json.loads(lite.render_scene((ROOT/'examples/annotation_scene.py').read_text()))
         self.assertEqual(result['duration'],9)
@@ -5258,7 +5287,9 @@ self.wait(1)""")
         self.assertEqual(peak['geometry_scale'], 3)
         self.assertEqual((peak['fill_color'], peak['stroke_color']), (lite.YELLOW.lower(), lite.YELLOW.lower()))
         self.assertEqual(peak['fill_opacity'], original['fill_opacity'])
-        self.assertEqual(peak['position'], original['position'])
+        # Community scales about the bounds center, which stays fixed.
+        self.assertPointAlmostEqual(lite.Vector(peak['position']) + lite.Vector(peak['geometry_center']) +
+                                    (shape.get_center() - shape._pivot_point()) * 1.5, shape.get_center())
         self.assertEqual(peak['angle'], original['angle'])
         self.assertEqual(scene.frames[15], scene.frames[45])
         self.assertEqual(shape.to_dict(), original)
@@ -5486,12 +5517,14 @@ self.wait(1)""")
         self.assertEqual(middle['children'], original['children'])
         self.assertEqual(group.to_dict(), original)
         other = lite.Dot()
+        shrink_center = group.get_center()
         scene.play(lite.AnimationGroup(lite.ShrinkToCenter(group, run_time=1, remover=True),
                                        lite.GrowFromCenter(other, run_time=2)), rate_func=lite.linear)
         self.assertEqual(len(scene.frames[45]['mobjects']), 1)
         self.assertEqual(scene.mobjects, [other])
         self.assertEqual(group.geometry_scale, 0)
-        self.assertEqual(group.get_center(), lite.UP)
+        # Community shrinks toward the bounds center of the rotated family.
+        self.assertPointAlmostEqual(group.get_center(), shrink_center)
 
     def test_shrink_default_retains_collapsed_object_and_can_be_transformed_again(self):
         shape = lite.Square().shift(lite.RIGHT)
@@ -6099,7 +6132,7 @@ self.wait(1)""")
                 bounds = []
                 for child in group:
                     target = child.copy()
-                    target.position = list(group._point_to_world(child.get_center())-target._geometry_center())
+                    target.position = list(group._point_to_world(child._pivot_point())-target._geometry_center())
                     target.angle += group.angle
                     target.geometry_scale *= group.geometry_scale
                     bounds.append(target._bounds())

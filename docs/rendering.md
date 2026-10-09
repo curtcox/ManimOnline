@@ -2162,3 +2162,18 @@ bounds (Community measures their anchors, slightly smaller).
 Verification: all 386 Python and 82 Node tests passed. Local Pyodide playback in
 Chromium showed the title and rule, Community-shaped braces with tip labels, the
 bullet list, the animated `A = 8.0` variable and the diagonal vector.
+
+
+Reference fixture: `tests/fixtures/community_reference.json` stores 27 scene
+snippets (layout, edges, numbers, polygons, arcs, axes, braces, transforms,
+rotated/scaled groups, stretch, rounding, dashes) with bounds measured in Manim
+Community 0.22 (`dry_run`). `test_scene_bounds_match_community_reference_fixture`
+requires every top-level mobject's corners, center, width and height to agree
+within 0.005 units. Regenerate with `tests/fixtures/generate_community_reference.py`
+in an environment with Manim installed. Text snippets are excluded because
+Community's width depends on the machine's default font.
+
+Rotated families (any member with a non-axis-aligned angle) now bound their
+transformed points, like Community, instead of rotating child boxes; arcs and
+ellipses use their cubic anchors (or all points for width/height). Text layouts
+are cached by content and size.

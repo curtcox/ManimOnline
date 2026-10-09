@@ -519,3 +519,8 @@ anchors. get_center may differ from _pivot_point for rotated outlines; use
 _pivot_point in transform math. Scenes see the arrow as `Vector`; internally
 `Vector` is the coordinate tuple — never shadow it. A Manim 0.22 reference venv
 can be built with pango/TeX packages to check geometry numerically.
+
+
+Fidelity guard: tests/fixtures/community_reference.json holds Manim 0.22 bounds
+for 27 snippets; add a case (and regenerate with the fixture's generator script)
+when changing geometry, layout or bounds behavior.

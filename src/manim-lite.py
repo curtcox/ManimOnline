@@ -26,8 +26,17 @@ def _plain_number(value):
 
 class Vector(tuple):
     def __new__(cls, values):
-        values = [_plain_number(v) for v in values]
-        return super().__new__(cls, values[:3] + [0] * max(0, 3 - len(values)))
+        if type(values) is cls:
+            return values  # Immutable, so the same coordinates can be shared.
+        values = list(values)
+        for index, value in enumerate(values):
+            kind = type(value)
+            if kind is not float and kind is not int:
+                values[index] = _plain_number(value)
+        count = len(values)
+        if count != 3:
+            values = values[:3] if count > 3 else values + [0] * (3 - count)
+        return tuple.__new__(cls, values)
 
     def __mul__(self, value):
         return Vector(x * value for x in self)
@@ -890,7 +899,7 @@ class Mobject:
         elif self._type in ('text', 'mathtex'):
             # Text is centered on its estimated (Text) or measured (MathTex) ink box.
             width, height = (_math_box(self.text, self.font_size) if self._type == 'mathtex' else
-                             (lambda layout: (layout['width'], layout['height']))(_text_layout(self.__dict__)))
+                             _text_extent(self.__dict__))
             return (-width / 2, -height / 2, width / 2, height / 2)
         else:
             return (0, 0, 0, 0)
@@ -948,7 +957,8 @@ class Mobject:
     def get_center(self):
         # Community's center is the bounds center; it differs from the pivot only
         # for rotated point-based outlines, whose bounds use rotated points.
-        if math.sin(2 * self.angle) and not self.children and self._own_bound_points():
+        if (math.sin(2 * self.angle) and not self.children and
+                (self._own_bound_points() or self._type in ('arc', 'ellipse'))) or (self.children and self._rotated_family()):
             left, bottom, right, top = self._bounds()
             return Vector(((left + right) / 2, (bottom + top) / 2, self.position[2]))
         return self._pivot_point()
@@ -1173,12 +1183,45 @@ class Mobject:
                      'width': getattr(self, 'width', 0), 'height': getattr(self, 'height', 0)})]
         return None
 
+    def _rotated_family(self):
+        return any(math.sin(2 * member.angle) for member in self.get_family())
+
+    def _family_bound_points(self):
+        """Bounds-defining points of this family in its parent's coordinates."""
+        own = self._own_bound_points()
+        if own is None:
+            if self._type in ('circle', 'arc', 'ellipse', 'annulus'):
+                curves = _path_curves({key: value for key, value in self.__dict__.items()
+                                       if key in ('radius', 'start_angle', 'arc_angle', 'width', 'height',
+                                                  'inner_radius', 'outer_radius')} | {'type': self._type})
+                own = ([p for c in curves for p in c] if _BOUNDS_WITH_HANDLES else
+                       [p for c in curves for p in (c[0], c[-1])])
+            elif self._type in ('text', 'mathtex'):
+                l, b, r, t = self._own_local_bounds()
+                own = [(l, b), (l, t), (r, b), (r, t)]
+            else:
+                own = []
+        local = [Vector(p) for p in own]
+        for child in self.children:
+            local.extend(child._family_bound_points())
+        return [self._point_to_world(p) for p in local]
+
     def _bounds(self):
+        if self.children and self._rotated_family():
+            # Rotated families: bound their transformed points, as Community does.
+            points = self._family_bound_points()
+            if points:
+                return (min(p[0] for p in points), min(p[1] for p in points),
+                        max(p[0] for p in points), max(p[1] for p in points))
         left, bottom, right, top = self._local_bounds()
         center = self._geometry_center()
         own = None
         if math.sin(2 * self.angle) and not self.children:
             own = self._own_bound_points()
+            if own is None and self._type in ('arc', 'ellipse'):
+                own = self._family_bound_points()
+                return (min(p[0] for p in own), min(p[1] for p in own),
+                        max(p[0] for p in own), max(p[1] for p in own))
         if own:
             # Rotated outlines: bound the rotated points, as Community does.
             c, s_ = math.cos(self.angle), math.sin(self.angle)
@@ -3146,10 +3189,29 @@ def _glyph_box(char, table):
     return (556, 50, 506, 0, 716)
 
 
+_TEXT_LAYOUTS = {}
+
+
 def _text_layout(snapshot):
     """Ink-centered line layout for a Text/DecimalNumber snapshot, in scene units."""
-    font_size = snapshot['font_size']
-    numeric = '_number_format' in snapshot
+    key = (snapshot['text'], snapshot['font_size'], snapshot.get('line_spacing', .3), '_number_format' in snapshot)
+    if key not in _TEXT_LAYOUTS:
+        if len(_TEXT_LAYOUTS) > 4096:
+            _TEXT_LAYOUTS.clear()
+        _TEXT_LAYOUTS[key] = _compute_text_layout(*key)
+    return copy.deepcopy(_TEXT_LAYOUTS[key])
+
+
+def _text_extent(snapshot):
+    layout = _TEXT_LAYOUTS.get((snapshot['text'], snapshot['font_size'], snapshot.get('line_spacing', .3),
+                                '_number_format' in snapshot))
+    if layout is None:
+        layout = _text_layout(snapshot)
+    return layout['width'], layout['height']
+
+
+def _compute_text_layout(text, font_size, line_spacing, numeric):
+    snapshot = {'text': text, 'font_size': font_size, 'line_spacing': line_spacing}
     em = font_size * (TEX_EM_PER_POINT if numeric else TEXT_EM_PER_POINT) / 1000
     lines, ink = [], None
     def merge(box):
