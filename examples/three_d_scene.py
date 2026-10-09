@@ -54,5 +54,4 @@ class PolyhedraScene(ThreeDScene):
         self.play(Create(tetra), Create(hull))
         # Moving a vertex dot drags its faces along (Polyhedron's face updater).
         self.play(tetra.graph[0].animate.shift(OUT + RIGHT * 0.5))
-        self.play(Rotate(hull, PI / 2, axis=RIGHT))
         self.wait(0.5)
