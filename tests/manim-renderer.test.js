@@ -378,6 +378,16 @@ test('stream line gradients follow local chord endpoints in user space', () => {
   }
 });
 
+test('stroke caps and joins follow Community cap_style and joint_type', () => {
+  const data = {type:'polyline', vertices:[[0,0],[1,0],[0,1]], stroke_width:20, color:'#00FF00', position:[0,0,0]};
+  const plain = renderer.renderMobject(data);
+  const leaf = node => [node, ...node.querySelectorAll()].find(e => e.getAttribute('stroke'));
+  assert.equal(leaf(plain).getAttribute('stroke-linecap'), null);
+  const styled = leaf(renderer.renderMobject({...data, cap_style:1, joint_type:2}));
+  assert.equal(styled.getAttribute('stroke-linecap'), 'round');
+  assert.equal(styled.getAttribute('stroke-linejoin'), 'bevel');
+});
+
 test('images render inline data upright and reject external references', () => {
   const data = {type:'image', href:'data:image/png;base64,iVBORw0KGgo=', width:2, height:1, position:[1,0,0],
     resampling_algorithm:'nearest', opacity:.5};

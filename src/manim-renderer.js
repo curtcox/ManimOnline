@@ -385,6 +385,11 @@ const ManimRenderer = {
           if (leaf.getAttribute('stroke')) {
             leaf.setAttribute('stroke', stroke);
             leaf.setAttribute('stroke-opacity', mobject.stroke_opacity ?? 1);
+            // Community's CapStyleType/LineJointType; AUTO (0) keeps the butt/miter defaults.
+            const cap = { 1: 'round', 2: 'butt', 3: 'square' }[mobject.cap_style];
+            const join = { 1: 'round', 2: 'bevel', 3: 'miter' }[mobject.joint_type];
+            if (cap) leaf.setAttribute('stroke-linecap', cap);
+            if (join) leaf.setAttribute('stroke-linejoin', join);
           }
         }
       }

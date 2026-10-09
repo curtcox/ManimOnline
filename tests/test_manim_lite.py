@@ -7875,5 +7875,111 @@ self.wait(0.1)""")
         self.assertTrue(all(node['type'] == 'bezierpath' for node in leaves))
 
 
+class CommunityDocExampleTests(unittest.TestCase):
+    """APIs used by Manim Community's own docstring examples (values from Manim 0.22)."""
+
+    def assertPointAlmostEqual(self, a, b, places=6):
+        for x, y in zip(a, b):
+            self.assertAlmostEqual(x, y, places)
+
+    def test_animate_accepts_animation_arguments_and_lags_members(self):
+        result = render("""group = VGroup(*[Dot() for _ in range(4)]).arrange(buff=1)
+self.add(group)
+self.play(group.animate(lag_ratio=1, run_time=2, rate_func=linear).shift(DOWN * 2))""")
+        self.assertAlmostEqual(result['duration'], 2)
+        # Halfway: with four members and lag 1, the first two have arrived, the rest wait.
+        frame = result['frames'][len(result['frames']) // 2]['mobjects'][0]
+        ys = [child['position'][1] for child in frame['children']]
+        self.assertAlmostEqual(ys[0], -2, 6)
+        self.assertAlmostEqual(ys[1], -2, 6)
+        self.assertAlmostEqual(ys[3], 0, 6)
+        with self.assertRaises(NotImplementedError):
+            lite.Square().animate(colour=1)
+
+    def test_set_default_changes_and_resets_constructor_defaults(self):
+        result = render("""Text.set_default(color=GREEN, font_size=24)
+t = Text('hi')
+assert t.color == GREEN and t.font_size == 24
+Rotate.set_default(run_time=2)
+self.play(Rotate(Square(), PI))
+Rotate.set_default()
+Text.set_default()
+assert Text('x').color == WHITE""")
+        self.assertAlmostEqual(result['duration'], 2)
+        render("""Square.set_default(color=GREEN)""")
+        # Defaults never leak into the next render.
+        self.assertEqual(lite.Square().color, lite.WHITE)
+
+    def test_always_builder_and_group_operators(self):
+        source = """sq = Square().to_edge(LEFT)
+t = Square(0.5)
+t.always.next_to(sq, UP)
+self.add(sq, t)
+self.play(sq.animate.to_edge(RIGHT))
+assert abs(t.get_center()[0] - sq.get_center()[0]) < 1e-9
+a, b, c = Circle(), Square(), Dot()
+gr = VGroup(a)
+gr += VGroup(b)
+assert len(gr) == 2 and len(gr + c) == 3 and len(gr) == 2
+gr -= gr[1]
+assert len(gr) == 1 and len(VGroup(a, b) - a) == 1
+v = VGroup(Square(), [Circle(), Triangle()], (Dot() for _ in range(2)))
+assert len(v) == 5
+v[0] = Dot()
+assert isinstance(v[0], Dot)"""
+        render(source)
+        with self.assertRaises(TypeError):
+            lite.VGroup([lite.Square(), 3])
+
+    def test_shuffle_interpolate_and_align_points_match_community(self):
+        g = {name: getattr(lite, name) for name in lite.EXPORTS}
+        exec("""dotL = Dot(color=DARK_GREY).to_edge(LEFT)
+dotR = Dot(color=YELLOW).scale(10).to_edge(RIGHT)
+m = VMobject().interpolate(dotL, dotR, alpha=0.25)
+line = Line(ORIGIN, UP).to_edge(LEFT)
+sq = Square(color=RED, fill_opacity=1, stroke_color=BLUE).to_edge(RIGHT)
+line.align_points(sq)
+mid = VMobject().interpolate(line, sq, alpha=0.5)
+s = VGroup(*[Dot() for i in range(10)])
+members = list(s)
+s.shuffle_submobjects()""", g)
+        self.assertPointAlmostEqual(g['m'].get_center(), (-3.44555556, 0, 0))
+        self.assertAlmostEqual(g['m'].get_width(), 0.52)
+        self.assertEqual(g['m'].fill_color, '#70694E')
+        self.assertEqual((len(g['line'].get_points()), len(g['sq'].get_points())), (16, 16))
+        self.assertPointAlmostEqual(g['mid'].get_center(), (-0.5, 0.375, 0))
+        self.assertAlmostEqual(g['mid'].get_height(), 1.25)
+        self.assertEqual((g['mid'].fill_color, g['mid'].stroke_color, g['mid'].fill_opacity), ('#FDB0AA', '#ABE1EE', 0.5))
+        self.assertCountEqual(list(g['s']), g['members'])
+
+    def test_sheen_caps_joints_and_stroke_scaling_reach_frames(self):
+        circle = lite.Circle(fill_opacity=1).set_sheen(-0.3, lite.DR)
+        data = circle.to_dict()
+        # Community: ['#FC6255', '#AF1508'] from the UL corner towards DR.
+        self.assertEqual(data['fill_color'], ['#FC6255', '#AF1508'])
+        self.assertEqual(data['gradient_points'], [[-1.0, 1.0], [1.0, -1.0]])
+        gradient = lite.Square().set_fill([lite.RED, lite.BLUE], 1).to_dict()
+        # Community's default sheen direction UL: the first color starts at DR.
+        self.assertEqual(gradient['gradient_points'], [[1.0, -1.0], [-1.0, 1.0]])
+        line = lite.Line(stroke_width=20).set_cap_style(lite.CapStyleType.ROUND)
+        line.joint_type = lite.LineJointType.BEVEL
+        frame = json.loads(json.dumps(line.to_dict()))
+        self.assertEqual((frame['cap_style'], frame['joint_type']), (1, 2))
+        self.assertEqual(lite.Arc(cap_style=lite.CapStyleType.SQUARE).cap_style.name, 'SQUARE')
+        circle = lite.Circle(1, lite.GREEN).set_stroke(width=50).scale(0.25, scale_stroke=True)
+        self.assertEqual((circle.color, circle.stroke_width), (lite.GREEN, 12.5))
+
+    def test_config_edges_version_and_submodule_imports(self):
+        result = render("""import manim
+import manim.utils.color.manim_colors as Colors
+from manim.mobject.geometry.tips import ArrowSquareTip
+assert manim.__version__ and Colors.BLUE_A == BLUE_A
+line = DashedLine(config.left_side, config.right_side)
+assert abs(line.get_width() - config.frame_width) < 1e-9
+assert config.top[1] == 4 and config.bottom[1] == -4
+self.add(Arrow(LEFT, RIGHT, tip_shape=ArrowSquareTip))""")
+        self.assertEqual(len(result['frames']), 1)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -2,6 +2,8 @@
 import bisect
 import cmath
 import copy
+import enum
+import functools
 import inspect
 import itertools
 import json
@@ -149,6 +151,26 @@ LEFT, RIGHT = Vector((-1, 0, 0)), Vector((1, 0, 0))
 ORIGIN = Vector((0, 0, 0))
 OUT, IN = Vector((0, 0, 1)), Vector((0, 0, -1))
 UL, UR, DL, DR = UP + LEFT, UP + RIGHT, DOWN + LEFT, DOWN + RIGHT
+
+
+_GRADIENT_TYPES = frozenset(('circle', 'arc', 'ellipse', 'square', 'rectangle', 'triangle', 'polygon',
+                             'polyline', 'bezierpath', 'annulus', 'line', 'arrow'))
+
+
+class LineJointType(enum.IntEnum):
+    """Stroke joins; AUTO is Cairo's (and SVG's) default miter join."""
+    AUTO = 0
+    ROUND = 1
+    BEVEL = 2
+    MITER = 3
+
+
+class CapStyleType(enum.IntEnum):
+    """Stroke end caps; AUTO is Cairo's (and SVG's) default butt cap."""
+    AUTO = 0
+    ROUND = 1
+    BUTT = 2
+    SQUARE = 3
 class ManimColor(str):
     """Community's ManimColor as a hex string ('#RRGGBB') that also carries RGBA floats.
 
@@ -508,6 +530,34 @@ class PreviewConfig:
     def frame_y_radius(self):
         return self.frame_height / 2
 
+    @property
+    def top(self):
+        return Vector((0, self.frame_height / 2, 0))
+
+    @property
+    def bottom(self):
+        return Vector((0, -self.frame_height / 2, 0))
+
+    @property
+    def left_side(self):
+        return Vector((-self.frame_width / 2, 0, 0))
+
+    @property
+    def right_side(self):
+        return Vector((self.frame_width / 2, 0, 0))
+
+    @property
+    def aspect_ratio(self):
+        return self.pixel_width / self.pixel_height
+
+    @property
+    def frame_size(self):
+        return (self.pixel_width, self.pixel_height)
+
+    @property
+    def frame_rate(self):
+        return FPS
+
     @frame_y_radius.setter
     def frame_y_radius(self, value):
         self.frame_height = 2 * value
@@ -540,17 +590,67 @@ class PreviewConfig:
 config = PreviewConfig()
 
 
+# Classes whose __init__ defaults were changed by set_default, with their own original
+# __init__ (None when inherited); render_scene restores them after every render.
+_DEFAULT_OVERRIDES = {}
+_NO_INIT = object()
+
+
+def _set_default(cls, **kwargs):
+    """Community's set_default: change (or, without arguments, reset) constructor defaults."""
+    if cls not in _DEFAULT_OVERRIDES:
+        _DEFAULT_OVERRIDES[cls] = cls.__dict__.get('__init__', _NO_INIT)
+    original = _DEFAULT_OVERRIDES[cls]
+    if kwargs:
+        init = original if original is not _NO_INIT else super(cls, cls).__init__
+        cls.__init__ = functools.partialmethod(init, **kwargs)
+    else:
+        _restore_default(cls)
+
+
+def _restore_default(cls):
+    original = _DEFAULT_OVERRIDES.pop(cls, None)
+    if original is _NO_INIT:
+        cls.__dict__.get('__init__') is not None and delattr(cls, '__init__')
+    elif original is not None:
+        cls.__init__ = original
+
+
+class _UpdaterBuilder:
+    """mobject.always.method(...) adds an updater calling that method every frame."""
+    def __init__(self, mobject):
+        self._mobject = mobject
+
+    def __getattr__(self, name):
+        if name.startswith('_'):
+            raise AttributeError(name)
+        def add_updater(*args, **kwargs):
+            self._mobject.add_updater(lambda m: getattr(m, name)(*args, **kwargs), call_updater=True)
+            return self
+        return add_updater
+
+
 class Mobject:
     # Subclass bookkeeping (e.g. Graph adjacency) that frames never store.
     _frame_excluded = ()
+    # Stroke caps/joins and sheen are stored per instance only when changed.
+    joint_type = LineJointType.AUTO
+    cap_style = CapStyleType.AUTO
+    sheen_factor = 0
+    sheen_direction = UL
 
     def __init__(self, color=WHITE, fill_opacity=0, stroke_width=2,
                  fill_color=None, stroke_color=None, stroke_opacity=1, z_index=0,
-                 shade_in_3d=False, joint_type=None, **kwargs):
+                 shade_in_3d=False, joint_type=None, cap_style=None, sheen_factor=0,
+                 sheen_direction=None, **kwargs):
         if kwargs:
             raise NotImplementedError('Unsupported options: ' + ', '.join(kwargs))
-        # joint_type controls Community's stroked joins; the preview renderer
-        # draws its own joins, so it is accepted and ignored.
+        if joint_type is not None:
+            self.joint_type = LineJointType(joint_type)
+        if cap_style is not None:
+            self.cap_style = CapStyleType(cap_style)
+        if sheen_factor or sheen_direction is not None:
+            self.set_sheen(sheen_factor, sheen_direction, family=False)
         self.position = list(ORIGIN)
         self.shade_in_3d = bool(shade_in_3d)
         color, fill_color, stroke_color = _paint(color), _paint(fill_color), _paint(stroke_color)
@@ -2023,7 +2123,15 @@ class Mobject:
         return (min(p[0] for p in points), min(p[1] for p in points),
                 max(p[0] for p in points), max(p[1] for p in points))
 
-    def scale(self, scale_factor, *, about_point=None, about_edge=None):
+    def scale(self, scale_factor, *, about_point=None, about_edge=None, scale_stroke=False):
+        self._scale(scale_factor, about_point=about_point, about_edge=about_edge)
+        if scale_stroke:
+            # Community multiplies each member's stroke width by the scale factor.
+            for member in self.get_family():
+                member.stroke_width = abs(scale_factor) * member.stroke_width
+        return self
+
+    def _scale(self, scale_factor, *, about_point=None, about_edge=None):
         if not isinstance(scale_factor, _REAL) and (isinstance(scale_factor, (list, tuple)) or
                                                    hasattr(scale_factor, 'tolist')):
             # Community multiplies points by a per-axis vector (NumPy broadcasting).
@@ -2167,6 +2275,55 @@ class Mobject:
         self.set_stroke(opacity=opacity, family=family)
         return self
 
+    def set_cap_style(self, cap_style):
+        for member in self.get_family():
+            member.cap_style = CapStyleType(cap_style)
+        return self
+
+    def set_joint_type(self, joint_type, family=True):
+        for member in (self.get_family() if family else [self]):
+            member.joint_type = LineJointType(joint_type)
+        return self
+
+    def get_cap_style(self):
+        return self.cap_style
+
+    def get_joint_type(self):
+        return self.joint_type
+
+    def set_sheen(self, factor, direction=None, family=True):
+        """Community's sheen: each color gains a copy lightened by factor, as a gradient."""
+        NumberLine._real(factor, 'Sheen factor')
+        if direction is not None:
+            direction = self._xy_vector(direction, 'Sheen direction')
+        for member in (self.get_family() if family else [self]):
+            member.sheen_factor = factor
+            if direction is not None:
+                member.sheen_direction = direction
+        return self
+
+    def get_sheen_factor(self):
+        return self.sheen_factor
+
+    def get_sheen_direction(self):
+        return Vector(self.sheen_direction)
+
+    def set_sheen_direction(self, direction, family=True):
+        direction = self._xy_vector(direction, 'Sheen direction')
+        for member in (self.get_family() if family else [self]):
+            member.sheen_direction = direction
+        return self
+
+    def rotate_sheen_direction(self, angle, axis=OUT, family=True):
+        if Vector(axis) not in (OUT, IN):
+            raise NotImplementedError('Sheen directions rotate about OUT/IN only')
+        angle = angle if Vector(axis) == OUT else -angle
+        for member in (self.get_family() if family else [self]):
+            x, y = member.sheen_direction[0], member.sheen_direction[1]
+            member.sheen_direction = Vector((x * math.cos(angle) - y * math.sin(angle),
+                                             x * math.sin(angle) + y * math.cos(angle), 0))
+        return self
+
     def set_z_index(self, z_index_value, family=True):
         if not isinstance(z_index_value, _REAL) or not math.isfinite(z_index_value):
             raise ValueError('z_index must be a finite number')
@@ -2189,6 +2346,9 @@ class Mobject:
         unsupported = [key for key in kwargs if not key.startswith('background_stroke') and key not in ('sheen_factor', 'sheen_direction')]
         if unsupported:
             raise NotImplementedError('Unsupported style options: ' + ', '.join(unsupported))
+        if kwargs.get('sheen_factor') is not None or kwargs.get('sheen_direction') is not None:
+            self.set_sheen(self.sheen_factor if kwargs.get('sheen_factor') is None else kwargs['sheen_factor'],
+                           kwargs.get('sheen_direction'), family=family)
         self.set_fill(fill_color, fill_opacity, family=family)
         return self.set_stroke(stroke_color, stroke_width, stroke_opacity, family=family)
 
@@ -2381,6 +2541,24 @@ class Mobject:
     def animate(self):
         return Animate(self)
 
+    @property
+    def always(self):
+        return _UpdaterBuilder(self)
+
+    set_default = classmethod(_set_default)
+
+    def shuffle(self, recursive=False):
+        if recursive:
+            for child in self.children:
+                child.shuffle(recursive=True)
+        children = list(self.children)
+        random.shuffle(children)
+        self._replace_children(children)
+        return self
+
+    def shuffle_submobjects(self, *args, **kwargs):
+        return self.shuffle(*args, **kwargs)
+
     def to_dict(self):
         global _BOUNDS_MEMO
         if _BOUNDS_MEMO is not None:
@@ -2401,7 +2579,33 @@ class Mobject:
         result['type'] = result.pop('_type')
         result['geometry_center'] = list(center)
         result['children'] = [child.to_dict() for child in self.children]
+        if result['type'] in _GRADIENT_TYPES and (self.sheen_factor or isinstance(self.fill_color, list) or
+                                                  isinstance(self.stroke_color, list)):
+            self._gradient_paint(result)
         return _refresh_tip_shafts(result)
+
+    def _gradient_paint(self, result):
+        """Community's Cairo gradients: colors (plus their sheen-lightened copies) run
+        from center - offset to center + offset, offset = half extents times the sheen direction."""
+        if self.sheen_factor:
+            def sheen(colors):
+                colors = colors if isinstance(colors, list) else [colors]
+                lit = [_rgb_color([min(1, max(0, v + self.sheen_factor)) for v in _color_rgb(c)]) for c in colors]
+                return list(colors) + lit
+            result['fill_color'], result['stroke_color'] = sheen(self.fill_color), sheen(self.stroke_color)
+        if 'gradient_points' in result:
+            return
+        left, bottom, right, top = self._own_local_bounds()
+        dx, dy = self.sheen_direction[0], self.sheen_direction[1]
+        # The direction is a world direction; the gradient lives in the local frame.
+        cos, sin = math.cos(-self.angle), math.sin(-self.angle)
+        dx, dy = dx * cos - dy * sin, dx * sin + dy * cos
+        if self.geometry_scale < 0:
+            dx, dy = -dx, -dy
+        ox, oy = (right - left) / 2 * dx, (top - bottom) / 2 * dy
+        if ox or oy:
+            cx, cy = (left + right) / 2, (bottom + top) / 2
+            result['gradient_points'] = [[cx - ox, cy - oy], [cx + ox, cy + oy]]
 
 
 class ValueTracker(Mobject):
@@ -2529,6 +2733,64 @@ class VMobject(Mobject):
         self.position, self.angle, self.geometry_scale = list(ORIGIN), 0, 1
         self.__dict__.pop('_sampled_geometry_center', None)
         self.__dict__.pop('subpath_lengths', None)
+        return self
+
+    @staticmethod
+    def _aligned_point_lists(first, second):
+        """World cubic points of two paths, the shorter subdivided to the longer's curve count."""
+        a, b = [Vector(p) for p in first.get_points()], [Vector(p) for p in second.get_points()]
+        if not a or not b:
+            # Community grows an empty path from the other path's center.
+            if not a and not b:
+                return [], []
+            if not a:
+                a = [Vector(first.get_center())] * len(b)
+            else:
+                b = [Vector(second.get_center())] * len(a)
+            return a, b
+        def curves(points):
+            whole = len(points) - len(points) % 4
+            return [points[i:i + 4] for i in range(0, whole, 4)] or [[points[0]] * 4]
+        ca, cb = curves(a), curves(b)
+        if len(ca) < len(cb):
+            ca = _subdivide_curves(ca, len(cb))
+        elif len(cb) < len(ca):
+            cb = _subdivide_curves(cb, len(ca))
+        return [p for c in ca for p in c], [p for c in cb for p in c]
+
+    def align_points(self, mobject):
+        """Give both paths the same number of cubic curves (Community's align_points)."""
+        if not isinstance(mobject, VMobject):
+            raise TypeError('align_points expects a VMobject')
+        a, b = self._aligned_point_lists(self, mobject)
+        if a and len(a) != len(self.get_points()):
+            self.set_points(a)
+        if b and len(b) != len(mobject.get_points()):
+            mobject.set_points(b)
+        return self
+
+    def interpolate(self, mobject1, mobject2, alpha, path_func=None):
+        """Become the alpha-interpolation of two paths' points and styles."""
+        if not isinstance(mobject1, Mobject) or not isinstance(mobject2, Mobject):
+            raise TypeError('interpolate expects two mobjects')
+        NumberLine._real(alpha, 'Interpolation alpha')
+        a, b = self._aligned_point_lists(mobject1, mobject2)
+        if path_func is None:
+            points = [p + (q - p) * alpha for p, q in zip(a, b)]
+        else:
+            points = [Vector(p) for p in path_func(a, b, alpha)]
+        self.set_points(points)
+        self.interpolate_color(mobject1, mobject2, alpha)
+        return self
+
+    def interpolate_color(self, mobject1, mobject2, alpha):
+        def first(color):
+            return color[0] if isinstance(color, list) else color
+        def mix(name):
+            return interpolate_color(first(getattr(mobject1, name)), first(getattr(mobject2, name)), alpha)
+        self.color, self.fill_color, self.stroke_color = mix('color'), mix('fill_color'), mix('stroke_color')
+        for name in ('fill_opacity', 'stroke_opacity', 'stroke_width'):
+            setattr(self, name, getattr(mobject1, name) * (1 - alpha) + getattr(mobject2, name) * alpha)
         return self
 
     def append_points(self, new_points):
@@ -3168,9 +3430,9 @@ class Arc(TipableVMobject):
 
 
 class Circle(Arc):
-    def __init__(self, radius=1, **kwargs):
-        kwargs.setdefault('color', RED)  # Community's Circle (and Ellipse) default to RED.
-        super().__init__(radius=1 if radius is None else radius, start_angle=0, angle=TAU, **kwargs)
+    def __init__(self, radius=1, color=RED, **kwargs):
+        # Community's Circle (and Ellipse) default to RED.
+        super().__init__(radius=1 if radius is None else radius, start_angle=0, angle=TAU, color=color, **kwargs)
         self._type = 'circle'
 
     def surround(self, mobject, dim_to_match=0, stretch=False, buffer_factor=1.2):
@@ -4782,7 +5044,41 @@ class Group(Mobject):
 
 class VGroup(Group):
     """Container for the supported vector/text geometry in this runtime."""
-    pass
+    def add(self, *mobjects):
+        # Community unpacks non-Mobject iterables (lists, generators) of members.
+        members = []
+        for index, item in enumerate(mobjects):
+            if isinstance(item, Mobject):
+                members.append(item)
+            elif isinstance(item, (str, bytes)) or not hasattr(item, '__iter__'):
+                raise TypeError(f'Only Mobjects can be added to a VGroup, but the value {item!r} '
+                                f'(at index {index}) is of type {type(item).__name__}.')
+            else:
+                for inner, member in enumerate(item):
+                    if not isinstance(member, Mobject):
+                        raise TypeError(f'Only Mobjects can be added to a VGroup, but the value {member!r} '
+                                        f'(at index {inner} of parameter {index}) is of type {type(member).__name__}.')
+                    members.append(member)
+        return super().add(*members)
+
+    def __add__(self, mobject):
+        return VGroup(*self.children, mobject)
+
+    def __iadd__(self, mobject):
+        return self.add(mobject)
+
+    def __sub__(self, mobject):
+        result = VGroup(*self.children)
+        result.remove(mobject)
+        return result
+
+    def __isub__(self, mobject):
+        return self.remove(mobject)
+
+    def __setitem__(self, key, value):
+        children = list(self.children)
+        children[key] = value
+        self.submobjects = children
 
 
 def _union_bounds(mobjects):
@@ -7629,13 +7925,26 @@ def _transform_plan(start, target):
     return ('interpolate' if matching else 'fade', start, target, [])
 
 
-def _sample_transform(plan, alpha, path_arc=0):
+def _plan_members(plan):
+    """Painted members of an aligned plan, in Community's family order."""
+    kind, _, _, children = plan
+    if kind == 'family':
+        return _plan_members(children[0]) + _plan_members(children[1])
+    if kind == 'group':
+        return sum((_plan_members(child) for child in children), 0)
+    return 1
+
+
+def _sample_transform(plan, alpha, path_arc=0, member_alpha=None):
+    """Sample a plan; member_alpha() supplies successive lagged member alphas."""
     kind, start, target, children = plan
     if kind == 'family':
-        own = _sample_transform(children[0],alpha,path_arc)
-        members = _sample_transform(children[1],alpha,path_arc)[0]['children']
+        own = _sample_transform(children[0],alpha,path_arc,member_alpha)
+        members = _sample_transform(children[1],alpha,path_arc,member_alpha)[0]['children']
         own[0]['children'] = members
         return own
+    if member_alpha is not None and kind != 'group':
+        alpha = member_alpha()
     if kind == 'fade':
         first, last = _snapshot_copy(start), _snapshot_copy(target)
         first['opacity'] *= 1 - alpha
@@ -7644,7 +7953,7 @@ def _sample_transform(plan, alpha, path_arc=0):
     result = interpolate(start, target, alpha)
     if kind == 'group':
         result['children'] = [snapshot for child in children
-                              for snapshot in _sample_transform(child, alpha, path_arc)]
+                              for snapshot in _sample_transform(child, alpha, path_arc, member_alpha)]
     elif abs(path_arc) >= STRAIGHT_PATH_THRESHOLD and 0 < alpha < 1:
         _arc_geometry(result, start, target, alpha, path_arc)
     return [result]
@@ -7733,6 +8042,7 @@ def _painted_paths(data, path=(), nested=True):
 
 class Animation:
     _instant = False  # Only Add may have a zero run_time.
+    set_default = classmethod(_set_default)
 
     def __new__(cls, *args, use_override=True, **kwargs):
         mobject = args[0] if args else kwargs.get('mobject')
@@ -8119,6 +8429,22 @@ class Transform(Animation):
             self._transform_plan = _transform_plan(self.start, end)
         return _sample_transform(self._transform_plan, alpha, self.path_arc)
 
+    @property
+    def _lagged(self):
+        # Subclasses with their own sampling keep it; lag applies to the aligned plan.
+        return self.lag_ratio > 0 and type(self).sample is Transform.sample
+
+    def sample_members(self, alpha, rate_func):
+        """Community's get_sub_alpha: each painted member runs its own lagged sub-alpha."""
+        self.sample(0)
+        plan = self._transform_plan
+        count = _plan_members(plan)
+        full = (count - 1) * self.lag_ratio + 1
+        index = itertools.count()
+        def member_alpha():
+            return rate_func(max(0, min(1, alpha * full - next(index) * self.lag_ratio)))
+        return _sample_transform(plan, rate_func(alpha), self.path_arc, member_alpha)
+
     def finish(self, scene):
         if abs(self.rate_func(1)) < 1e-9 and not self.reverse_rate_function:
             # Like Community's final interpolate(rate_func(1)): a there-and-back
@@ -8453,9 +8779,27 @@ class ReplacementTransform(Transform):
 
 
 class Animate(Transform):
+    _ANIMATION_OPTIONS = ('run_time', 'rate_func', 'lag_ratio', 'remover', 'introducer', 'name', 'path_arc',
+                          'reverse_rate_function', 'suspend_mobject_updating')
+
     def __init__(self, mobject):
         super().__init__(mobject, mobject)
         self.operations = []
+
+    def __call__(self, **kwargs):
+        """mobject.animate(run_time=..., lag_ratio=...): Community's animation arguments."""
+        unsupported = [key for key in kwargs if key not in self._ANIMATION_OPTIONS]
+        if unsupported:
+            raise NotImplementedError('Unsupported animate options: ' + ', '.join(unsupported))
+        if 'lag_ratio' in kwargs:
+            NumberLine._real(kwargs['lag_ratio'], 'lag_ratio', nonnegative=True)
+        if 'path_arc' in kwargs:
+            NumberLine._real(kwargs['path_arc'], 'path_arc')
+        if 'rate_func' in kwargs and not callable(kwargs['rate_func']):
+            raise TypeError('rate_func must be callable')
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+        return self
 
     def begin(self, scene):
         # Relative method chains resolve against the state at this stage's start.
@@ -15252,6 +15596,7 @@ EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'ZoomedScene', 'VectorScene',
 EXPORTS += [name for name in _PALETTE if name not in EXPORTS]
 # Community utilities (manim.utils.*).
 EXPORTS += ['ManimBanner', 'MANIM_SVG_PATHS', 'SampleSpace', 'TransformAnimations', 'X_AXIS', 'Y_AXIS', 'Z_AXIS', 'DEFAULT_DASH_LENGTH', 'DEFAULT_POINTWISE_FUNCTION_RUN_TIME', 'DEFAULT_WAIT_TIME', 'SCALE_FACTOR_PER_FONT_POINT', 'START_X', 'START_Y', 'integer_interpolate', 'mid', 'inverse_interpolate', 'match_interpolate', 'midpoint', 'normalize', 'rotation_about_z', 'rotation_matrix', 'rotate_vector', 'z_to_vector', 'get_unit_normal', 'get_shaded_rgb', 'compass_directions', 'regular_vertices', 'complex_to_R3', 'R3_to_complex', 'complex_func_to_R3_func', 'center_of_mass', 'cross2d', 'shoelace', 'shoelace_direction', 'perpendicular_bisector', 'cartesian_to_spherical', 'spherical_to_cartesian', 'find_intersection', 'get_winding_number', 'thick_diagonal', 'bezier', 'split_bezier', 'partial_bezier_points', 'subdivide_bezier', 'bezier_remap', 'point_lies_on_bezier', 'proportions_along_bezier_curve_for_point', 'get_smooth_cubic_bezier_handle_points', 'is_closed', 'straight_path', 'path_along_arc', 'clockwise_path', 'counterclockwise_path', 'adjacent_n_tuples', 'adjacent_pairs', 'all_elements_are_instances', 'concatenate_lists', 'list_update', 'list_difference_update', 'listify', 'make_even', 'make_even_by_cycling', 'remove_list_redundancies', 'remove_nones', 'stretch_array_to_length', 'tuplify', 'choose', 'clip', 'binary_search', 'color_to_rgba', 'rgba_to_color', 'color_to_int_rgb', 'color_to_int_rgba', 'merge_dicts_recursively', 'update_dict_recursively', 'tempconfig', 'override_animate', 'override_animation', 'index_labels', 'print_family', 'assert_is_mobject_method', 'turn_animation_into_updater', 'cycle_animation']
+EXPORTS += ['LineJointType', 'CapStyleType']
 
 
 def _rounded_array(value):
@@ -15324,6 +15669,26 @@ def _pooled_json(result, default):
     return head[:-1] + ', "pool": [' + ', '.join(pool) + '], "frames": [' + ', '.join(frames) + ']}'
 
 
+class _SubmoduleFinder:
+    """Serve any manim.* submodule as a package sharing the preview namespace."""
+    def find_spec(self, fullname, path=None, target=None):
+        if not fullname.startswith('manim.') or 'manim' not in sys.modules:
+            return None
+        import importlib.machinery
+        return importlib.machinery.ModuleSpec(fullname, self, is_package=True)
+
+    def create_module(self, spec):
+        module = types.ModuleType(spec.name)
+        root = sys.modules['manim']
+        module.__dict__.update({name: getattr(root, name) for name in root.__all__})
+        module.__all__ = list(root.__all__)
+        module.__path__ = []
+        return module
+
+    def exec_module(self, module):
+        pass
+
+
 def _render_scene(source, scene_name=None, compact=False):
     module = types.ModuleType('manim')
     module.__all__ = list(EXPORTS)
@@ -15342,7 +15707,15 @@ def _render_scene(source, scene_name=None, compact=False):
     else:
         module.np = numpy
         module.__all__.append('np')
+    module.__version__ = '0.22.0'
+    # Submodule imports (manim.utils.color.manim_colors, manim.mobject.geometry.tips, ...)
+    # resolve to the same flat namespace.
+    module.__path__ = []
     sys.modules['manim'] = module
+    for name in [name for name in sys.modules if name.startswith('manim.')]:
+        del sys.modules[name]
+    if not any(isinstance(finder, _SubmoduleFinder) for finder in sys.meta_path):
+        sys.meta_path.insert(0, _SubmoduleFinder())
     namespace = {'__name__': '__scene__'}
     exec(compile(source, '<scene>', 'exec'), namespace)
     scenes = {name: cls for name, cls in namespace.items()
@@ -15404,3 +15777,7 @@ def render_scene(source, scene_name=None, math_metrics=None, compact=False):
         return _render_scene(source, scene_name, compact)
     finally:
         config = previous
+        for cls in list(_DEFAULT_OVERRIDES):
+            _restore_default(cls)
+        for name in [name for name in sys.modules if name.startswith('manim.')]:
+            del sys.modules[name]
