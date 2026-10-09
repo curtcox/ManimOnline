@@ -159,6 +159,15 @@ _GRADIENT_TYPES = frozenset(('circle', 'arc', 'ellipse', 'square', 'rectangle', 
                              'polyline', 'bezierpath', 'annulus', 'line', 'arrow'))
 
 
+def _glyph_matrix(state):
+    """A text/formula leaf's local linear glyph map [[a, b], [c, d]] (y up)."""
+    matrix = state.get('glyph_matrix')
+    if matrix is not None:
+        return [[matrix[0], matrix[1]], [matrix[2], matrix[3]]]
+    sx, sy = state.get('glyph_stretch', (1, 1))
+    return [[sx, 0], [0, sy]]
+
+
 class LineJointType(enum.IntEnum):
     """Stroke joins; AUTO is Cairo's (and SVG's) default miter join."""
     AUTO = 0
@@ -1212,6 +1221,12 @@ class Mobject:
             if id(old) in seen:
                 raise NotImplementedError('Mapping shared nested children is not implemented')
             seen.add(id(old))
+            if (not linear and old._type == 'text' and not old.children and isinstance(old, Text)
+                    and not isinstance(old, MathTex) and '_number_format' not in old.__dict__
+                    and sum(not ch.isspace() for ch in old.text) > 1):
+                # Nonlinear maps move each glyph with its own local linear map.
+                old._explode()
+                new._explode()
             old._geometry_center()
             def world(point):
                 return parent_world(old._point_to_world(Vector(point)))
@@ -1255,23 +1270,39 @@ class Mobject:
                 # Bake the displayed shaft before deforming its tip family. A
                 # similarity refit after a nonuniform map would change the curve.
                 new.__dict__.pop('_curved_tip_path',None)
-            elif kind in ('text','mathtex') and linear:
-                # Glyphs keep a pose plus an axis-aligned stretch in their own frame.
-                axis = world(RIGHT)-world(ORIGIN)
-                angle, size = math.atan2(axis[1],axis[0]), math.hypot(axis[0],axis[1])
-                quarter = round(angle/(PI/2))
-                columns = [mapped(pivot+direction)-mapped(pivot) for direction in (RIGHT,UP)]
-                if abs(angle-quarter*PI/2) > 1e-9 or abs(columns[0][1]) > 1e-12 or abs(columns[1][0]) > 1e-12:
-                    raise NotImplementedError('Text and formulas support axis-aligned stretching only')
-                sx, sy = old.__dict__.get('glyph_stretch', (1, 1))
-                mx, my = (columns[0][0], columns[1][1]) if quarter % 2 == 0 else (columns[1][1], columns[0][0])
-                new.glyph_stretch = [sx*mx, sy*my]
-                new.position,new.angle,new.geometry_scale = list(origin-parent_origin),quarter*PI/2,size
+            elif kind in ('text','mathtex'):
+                # Glyphs have no outline points here: the leaf keeps its center's image and
+                # a local linear glyph map (the map's derivative there; exact for linear maps).
+                center = world(ORIGIN)
+                image = mapped(center)
+                if linear:
+                    jacobian = [mapped(pivot+direction)-mapped(pivot) for direction in (RIGHT,UP)]
+                else:
+                    step = 1e-4
+                    jacobian = [(mapped(center+direction*step)-mapped(center-direction*step))*(1/(2*step))
+                                for direction in (RIGHT,UP)]
+                frame = [world(RIGHT)-center, world(UP)-center]
+                (ga,gb),(gc,gd) = _glyph_matrix(old.__dict__)
+                # total = J . L . G, with L the leaf's current local-to-world linear part.
+                la,lb,lc,ld = frame[0][0],frame[1][0],frame[0][1],frame[1][1]
+                ja,jb,jc,jd = jacobian[0][0],jacobian[1][0],jacobian[0][1],jacobian[1][1]
+                ma,mb,mc,md = ja*la+jb*lc, ja*lb+jb*ld, jc*la+jd*lc, jc*lb+jd*ld
+                matrix = [ma*ga+mb*gc, ma*gb+mb*gd, mc*ga+md*gc, mc*gb+md*gd]
+                new.__dict__.pop('glyph_stretch',None)
+                new.__dict__.pop('glyph_matrix',None)
+                if abs(matrix[1]) <= 1e-12 and abs(matrix[2]) <= 1e-12:
+                    new.glyph_stretch = [matrix[0], matrix[3]]  # Axis-aligned stretching.
+                else:
+                    new.glyph_matrix = matrix
+                new.position,new.angle,new.geometry_scale = list(image-parent_origin),0,1
                 for key in ('_family_pivot_cache','_sampled_geometry_center'):
                     new.__dict__.pop(key,None)
                 for old_child,new_child in zip(old.children,new.children):
-                    visit(old_child,new_child,world,origin)
+                    visit(old_child,new_child,world,image)
                 return
+            elif kind == 'pointcloud':
+                # Point clouds map point by point (stored in the local frame).
+                new.cloud = [list(mapped(world((p[0],p[1],0))) - origin)[:2] for p in old.cloud]
             elif kind not in ('vgroup','mobject','valuetracker'):
                 raise NotImplementedError('Point mapping requires editable vector geometry')
             if '_curve_arc_center' in old.__dict__:
@@ -1635,9 +1666,10 @@ class Mobject:
             else:
                 width, height = (_math_box(self.text, self.font_size) if self._type == 'mathtex' else
                                  _text_extent(self.__dict__))
-            sx, sy = self.__dict__.get('glyph_stretch', (1, 1))
-            width, height = width * abs(sx), height * abs(sy)
-            return (-width / 2, -height / 2, width / 2, height / 2)
+            (a, b), (c, d) = _glyph_matrix(self.__dict__)
+            # The glyph map's image of the centered ink box.
+            half_w, half_h = (abs(a) * width + abs(b) * height) / 2, (abs(c) * width + abs(d) * height) / 2
+            return (-half_w, -half_h, half_w, half_h)
         else:
             return (0, 0, 0, 0)
         if not points:
@@ -4681,11 +4713,14 @@ class Text(Mobject):
                 advance, x0, x1, y0, y1 = _glyph_box(char, _glyph_table(self.__dict__.get('font')))
                 if not char.isspace() and (x1 > x0 or y1 > y0):
                     glyph = Text(char, font_size=self.font_size, **options, **style)
-                    center = Vector((x + (x0 + x1) / 2 * em, line['y'] + (y0 + y1) / 2 * em, 0))
+                    (a, b), (c, d) = _glyph_matrix(self.__dict__)
+                    cx, cy = x + (x0 + x1) / 2 * em, line['y'] + (y0 + y1) / 2 * em
+                    center = Vector((a * cx + b * cy, c * cx + d * cy, 0))
                     glyph.position = list(self._point_to_world(center))
                     glyph.angle, glyph.geometry_scale, glyph.opacity = self.angle, self.geometry_scale, self.opacity
-                    if 'glyph_stretch' in self.__dict__:
-                        glyph.glyph_stretch = list(self.glyph_stretch)
+                    for key in ('glyph_stretch', 'glyph_matrix'):
+                        if key in self.__dict__:
+                            glyph.__dict__[key] = list(self.__dict__[key])
                     glyph._char_index = index
                     glyphs.append(glyph)
                 x += advance * em
@@ -4693,6 +4728,7 @@ class Text(Mobject):
             index += 1  # the newline
         self.position, self.angle, self.geometry_scale, self.opacity = [0, 0, 0], 0, 1, 1
         self.__dict__.pop('glyph_stretch', None)
+        self.__dict__.pop('glyph_matrix', None)
         self.__dict__.pop('_family_pivot_cache', None)
         self.children, self._type = glyphs, 'vgroup'
 
@@ -9380,6 +9416,9 @@ class ApplyMatrix(ApplyPointwiseFunction):
             p = Vector(point) - pivot
             return Vector(sum(a * b for a, b in zip(row, p)) for row in rows) + pivot
         super().__init__(function, mobject, **kwargs)
+        if rows[2] == [0, 0, 1] and rows[0][2] == rows[1][2] == 0:
+            # An XY matrix: the linear map keeps text and formulas whole (same geometry).
+            self.operations[-1] = ('apply_matrix', ([rows[0][:2], rows[1][:2]],), {'about_point': pivot})
 
 
 class ApplyComplexFunction(ApplyMethod):

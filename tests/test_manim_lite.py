@@ -1743,15 +1743,20 @@ assert isinstance(t.get_value(), (int, float))""")
             self.assertPointAlmostEqual(actual,(old[0],old[1]*.5,0))
         self.assertPointAlmostEqual(arrow.get_end(),(end[0],end[1]*.5,0))
         self.assertPointAlmostEqual(arrow.get_points()[-1],arrow._point_to_world(arrow.tip.base))
-        # Glyphs stretch along their own axes; sheared glyphs still fail atomically.
+        # Glyphs stretch along their own axes; rotated glyphs shear with a general glyph matrix.
         host=lite.VGroup(lite.Circle(),lite.Text('hello'))
         width=host[1].get_width()
         host.stretch(2,0)
         self.assertAlmostEqual(host[1].get_width(),2*width)
-        host=lite.VGroup(lite.Circle(),lite.Text('hello').rotate(.3))
-        before=host.to_dict()
-        with self.assertRaises(NotImplementedError): host.stretch(2,0)
-        self.assertEqual(host.to_dict(),before)
+        text=lite.Text('hello').rotate(.3).shift(lite.RIGHT)
+        host=lite.VGroup(lite.Circle(),text)
+        host.stretch(2,0,about_point=lite.ORIGIN)
+        # diag(2, 1) . R(0.3), applied to the upright glyphs.
+        c,s=math.cos(.3),math.sin(.3)
+        self.assertEqual(len(host[1].glyph_matrix),4)
+        for value,expected in zip(host[1].glyph_matrix,(2*c,-2*s,s,c)):
+            self.assertAlmostEqual(value,expected)
+        self.assertPointAlmostEqual(host[1].get_center(),(2,0,0))
         for kwargs in ({'factor':float('inf'),'dim':0},
                        {'factor':2,'dim':0,'about_point':lite.OUT}):
             with self.assertRaises(ValueError): arrow.stretch(**kwargs)
@@ -8082,6 +8087,25 @@ class Demo(Scene):
         self.assertAlmostEqual(arc.get_bottom()[1], -(2 * 2 ** 0.5) * (1 - 2 ** -0.5), 2)
         grid = lite.Rectangle(width=4.0, height=2.0, grid_xstep=1.0, grid_ystep=0.5)
         self.assertEqual([len(g) for g in grid.grid_lines], [3, 3])
+
+    def test_point_maps_reach_text_formulas_and_point_clouds(self):
+        text = lite.Text('Hello World!')
+        width = text.get_width()
+        text.apply_matrix([[1, 1], [0, 2 / 3]])
+        self.assertEqual(text.glyph_matrix, [1, 1, 0, 2 / 3])
+        # Nonlinear maps move each glyph with its own derivative.
+        wave = lite.Text('wave')
+        wave.apply_function(lambda p: (p[0], p[1] + 0.5 * math.sin(p[0]), 0))
+        self.assertEqual(len(wave.children), 4)
+        for glyph in wave:
+            self.assertIn('glyph_matrix', glyph.__dict__)
+        formula = lite.MathTex('x^2').apply_matrix([[2, 0], [0, 1]])
+        self.assertEqual(formula.glyph_stretch, [2, 1])
+        cloud = lite.PointCloudDot(radius=1)
+        cloud.apply_complex_function(lambda z: z * 1j)
+        self.assertPointAlmostEqual(cloud.get_center(), (0, 0, 0), 2)
+        result = render("self.play(ApplyMatrix([[1, 1], [0, 2/3]], Text('Hello World!')), ApplyWave(MathTex('x^2')))")
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['glyph_matrix'], [1, 1, 0, 2 / 3])
 
 
 if __name__ == '__main__':

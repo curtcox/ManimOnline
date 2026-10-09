@@ -388,6 +388,13 @@ test('stroke caps and joins follow Community cap_style and joint_type', () => {
   assert.equal(styled.getAttribute('stroke-linejoin'), 'bevel');
 });
 
+test('text glyph matrices apply a general linear map in the y-up frame', () => {
+  const element = renderer.renderMobject({type:'text', text:'Hi', font_size:48, glyph_matrix:[1, 0.5, 0, 2],
+    position:[0,0,0], color:'#FFFFFF', fill_opacity:1});
+  const node = [element, ...element.querySelectorAll()].find(e => /matrix\(/.test(e.getAttribute('transform') || ''));
+  assert.match(node.getAttribute('transform'), /matrix\(1, 0, 0\.5, 2, 0, 0\)/);
+});
+
 test('images render inline data upright and reject external references', () => {
   const data = {type:'image', href:'data:image/png;base64,iVBORw0KGgo=', width:2, height:1, position:[1,0,0],
     resampling_algorithm:'nearest', opacity:.5};

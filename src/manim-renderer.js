@@ -418,7 +418,12 @@ const ManimRenderer = {
       }
     }
 
-    if (element && (type === 'text' || type === 'mathtex') && Array.isArray(mobject.glyph_stretch)) {
+    if (element && (type === 'text' || type === 'mathtex') && Array.isArray(mobject.glyph_matrix) &&
+        mobject.glyph_matrix.length === 4 && mobject.glyph_matrix.every(Number.isFinite)) {
+      // A general local glyph map [[a, b], [c, d]] in the y-up scene frame (e.g. ApplyMatrix).
+      const [a, b, c, d] = mobject.glyph_matrix;
+      element.setAttribute('transform', `matrix(${a}, ${c}, ${b}, ${d}, 0, 0) ${element.getAttribute('transform') || ''}`.trim());
+    } else if (element && (type === 'text' || type === 'mathtex') && Array.isArray(mobject.glyph_stretch)) {
       // Axis-aligned glyph stretching happens in the glyph's own frame.
       const [sx, sy] = mobject.glyph_stretch;
       if (Number.isFinite(sx) && Number.isFinite(sy)) {
