@@ -3765,15 +3765,31 @@ class Polygon(Polygram):
 
 class Rectangle(Polygon):
     """Community Rectangle (a Polygon); keeps analytical width/height geometry."""
-    def __init__(self, width=4, height=2, color=WHITE, **kwargs):
+    def __init__(self, color=WHITE, height=2, width=4, grid_xstep=None, grid_ystep=None,
+                 mark_paths_closed=True, close_new_points=True, **kwargs):
         super().__init__(color=color, **kwargs)
         self._type = 'rectangle'
         self.__dict__.update(width=width, height=height)
+        # Community's optional internal grid: lines from the upper-left corner.
+        self.grid_lines = VGroup()
+        corner = Vector((-width / 2, height / 2, 0))
+        for step, along, across, extent, span in ((grid_xstep, RIGHT, DOWN, width, height),
+                                                  (grid_ystep, DOWN, RIGHT, height, width)):
+            if step:
+                NumberLine._real(step, 'Grid step')
+                step = abs(step)
+                count = int(extent / step)
+                if count > 1001:
+                    raise ValueError('A rectangle grid is limited to 1000 lines per direction')
+                self.grid_lines.add(VGroup(*(Line(corner + along * (i * step), corner + along * (i * step) + across * span,
+                                                  color=color) for i in range(1, count))))
+        if self.grid_lines.children:
+            self.add(self.grid_lines)
 
 
 class Square(Rectangle):
     def __init__(self, side_length=2, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(width=side_length, height=side_length, **kwargs)
         del self.width, self.height
         self._type, self.side_length = 'square', side_length
 
@@ -3930,8 +3946,20 @@ class MovingCamera(PreviewConfig):
 
 
 class Line(TipableVMobject):
-    def __init__(self, start=LEFT, end=RIGHT, buff=0, tip_length=.35, tip_style=None, **kwargs):
+    def __init__(self, start=LEFT, end=RIGHT, buff=0, path_arc=0, tip_length=.35, tip_style=None, **kwargs):
+        NumberLine._real(path_arc, 'path_arc')
         start,end = self._endpoints(*self._resolve_ends(start,end))
+        if path_arc:
+            # Community: the points of ArcBetweenPoints, trimmed by buff along the arc.
+            kwargs.setdefault('stroke_width',2)
+            super().__init__(tip_length=tip_length,tip_style=tip_style,**kwargs)
+            self._type = 'line'
+            self.start, self.end, self.buff, self.path_arc = list(start), list(end), buff, path_arc
+            self.set_points(ArcBetweenPoints(start, end, angle=path_arc).get_points())
+            length = self.get_arc_length()
+            if buff > 0 and length >= 2 * buff:
+                self.pointwise_become_partial(self, buff / length, 1 - buff / length)
+            return
         ArrowTip._tip_dimension(tip_length,'length')
         if tip_style is not None and not isinstance(tip_style,dict):
             raise TypeError('tip_style must be a dictionary')
@@ -8120,6 +8148,85 @@ class Animation:
         self.reverse_rate_function = bool(reverse_rate_function)
         self.mobject, self.run_time, self.rate_func = mobject, run_time, rate_func
         self.lag_ratio, self.remover, self.introducer, self.name = lag_ratio, bool(remover), introducer, name
+        self.suspend_mobject_updating = suspend_mobject_updating
+
+    # Community's custom-animation protocol. A subclass overriding one of these hooks
+    # runs live like Community: begin(), interpolate(alpha) on each frame, finish(),
+    # then clean_up_from_scene(scene).
+    _COMMUNITY_HOOKS = ('interpolate', 'interpolate_mobject', 'interpolate_submobject')
+
+    @property
+    def _community_style(self):
+        cls = type(self)
+        return any(getattr(cls, name) is not getattr(Animation, name) for name in self._COMMUNITY_HOOKS)
+
+    def interpolate(self, alpha):
+        self.interpolate_mobject(alpha)
+
+    def interpolate_mobject(self, alpha):
+        families = list(self.get_all_families_zipped())
+        for index, mobjects in enumerate(families):
+            self.interpolate_submobject(*mobjects, self.get_sub_alpha(alpha, index, len(families)))
+
+    def interpolate_submobject(self, submobject, starting_submobject, alpha):
+        pass  # Implemented by subclasses.
+
+    def get_sub_alpha(self, alpha, index, num_submobjects):
+        full = (num_submobjects - 1) * self.lag_ratio + 1
+        return self.rate_func(max(0, min(1, alpha * full - index * self.lag_ratio)))
+
+    def create_starting_mobject(self):
+        return self.mobject.copy()
+
+    def get_all_mobjects(self):
+        return [self.mobject, self.starting_mobject]
+
+    def get_all_families_zipped(self):
+        return zip(*(mobject.family_members_with_points() for mobject in self.get_all_mobjects()))
+
+    def get_all_mobjects_to_update(self):
+        return [m for m in self.get_all_mobjects() if m is not self.mobject]
+
+    def update_mobjects(self, dt):
+        for mobject in self.get_all_mobjects_to_update():
+            mobject.update(dt)
+
+    def clean_up_from_scene(self, scene):
+        if self.is_remover():
+            scene.remove(self.mobject)
+
+    def get_run_time(self):
+        return self.run_time
+
+    def set_run_time(self, run_time):
+        self.run_time = run_time
+        return self
+
+    def get_rate_func(self):
+        return self.rate_func
+
+    def set_rate_func(self, rate_func):
+        self.rate_func = rate_func
+        return self
+
+    def set_name(self, name):
+        self.name = name
+        return self
+
+    def is_remover(self):
+        return self.remover
+
+    def is_introducer(self):
+        return self.introducer
+
+    def copy(self):
+        return copy.deepcopy(self)
+
+    def _community_begin(self):
+        self.starting_mobject = self.create_starting_mobject()
+        if self.suspend_mobject_updating:
+            self.mobject.suspend_updating()
+        self.interpolate(0)
 
     def _member_states(self, data, alpha, rate_func, member, nested=True):
         """Apply member(node, sub_alpha) to drawable members with Community's lag timing."""
@@ -8138,27 +8245,44 @@ class Animation:
         return data
 
     def _complete(self, scene):
+        if self._community_style:
+            self.finish()
+            self.clean_up_from_scene(scene)
+            return
         self.finish(scene)
         if self.remover:
             scene.remove(self.mobject)
 
     def _advance_copies(self, dt):
         """Community's Animation.update_mobjects: run updaters on internal copies."""
+        if self._community_style:
+            self.update_mobjects(dt)
 
-    def begin(self, scene):
+    def begin(self, scene=None):
+        if scene is None:
+            return self._community_begin()
         scene._introduce(self.mobject)
         self.start = self.mobject.to_dict()
 
     def sample(self, alpha):
         return [self.start]
 
-    def finish(self, scene):
-        pass
+    def finish(self, scene=None):
+        if scene is None:
+            # Community's finish: the final frame, then resume the mobject's updaters.
+            self.interpolate(1)
+            if self.suspend_mobject_updating and self.mobject is not None:
+                self.mobject.resume_updating()
 
     def objects(self):
         return [self.mobject]
 
     def prepare(self, scene):
+        if self._community_style:
+            if self.mobject is not None:
+                scene._introduce(self.mobject)
+            self.begin()
+            return
         self.begin(scene)
         # Compute the held terminal frame without changing the live scene early.
         terminal = copy.deepcopy(self)
@@ -8167,6 +8291,10 @@ class Animation:
         self._terminal = [m.to_dict() for m in staging.mobjects]
 
     def states(self, alpha, rate_func=None):
+        if self._community_style:
+            # Live like Community: the mobject is drawn as interpolate() leaves it.
+            self.interpolate(max(0, min(1, alpha)))
+            return {}
         rate = rate_func or self.rate_func
         if self.reverse_rate_function:
             # Like Community, reversal also applies to a play() rate override.
@@ -9663,12 +9791,12 @@ class Scene:
         self.foreground_mobjects = []
         return self
 
-    def _update_mobjects(self, dt, overrides=None):
+    def _update_mobjects(self, dt, overrides=None, scene_updaters=True):
         """Expose sampled geometry to dependent callbacks without committing animations."""
         roots = list(self.mobjects)
         if isinstance(self.camera, MovingCamera) and self.camera.frame not in roots:
             roots.append(self.camera.frame)
-        scene_updaters = list(getattr(self, 'updaters', []))
+        scene_updaters = list(getattr(self, 'updaters', [])) if scene_updaters else []
         if not scene_updaters and not any(m.get_family_updaters() for m in roots):
             return
         saved, blocked = {}, set()
@@ -9748,7 +9876,7 @@ class Scene:
         pending = list(animations)
         while pending:
             animation = pending.pop()
-            if isinstance(animation, UpdateFromFunc):
+            if isinstance(animation, UpdateFromFunc) or getattr(animation, '_community_style', False):
                 return False
             if isinstance(animation, AnimationGroup):
                 pending.extend(animation.animations)
@@ -9848,10 +9976,9 @@ class Scene:
         # Community's last frame does (e.g. MaintainPositionRelativeTo a moving object).
         for animation in sorted(animations, key=lambda a: isinstance(a, UpdateFromFunc)):
             animation._complete(self)
-        self._update_mobjects(0, {m: [m.to_dict()] for a in animations for m in a.objects()})
-        # Community resumes the animated objects' updaters and runs update_mobjects(0),
-        # so dependents such as Graph edges catch up with the committed state.
-        self._update_mobjects(0)
+        # Community resumes the animated objects' updaters and runs update_mobjects(0)
+        # (not scene updaters), so dependents such as Graph edges catch up.
+        self._update_mobjects(0, scene_updaters=False)
 
     def validate(self, *animations):
         objects = [m for a in animations for m in a.objects()]
@@ -9905,7 +10032,7 @@ class Scene:
             return
         safe = stop_condition is None and self._static_frames_safe()
         self._static_frames = {} if safe else None
-        self._update_mobjects(0)
+        self._update_mobjects(0, scene_updaters=False)  # Community's compile_animation_data.
         try:
             for frame in range(count):
                 self._update_mobjects(0 if frame == 0 else 1 / FPS)
@@ -9918,7 +10045,7 @@ class Scene:
             self._static_frames = None
         if count:
             # Like Community's play_internal: no time passes after the last frame.
-            self._update_mobjects(0)
+            self._update_mobjects(0, scene_updaters=False)
 
     always_update_mobjects = False
 
@@ -10024,7 +10151,7 @@ class Scene:
         self.setup()
         self.construct()
         self.tear_down()
-        self._update_mobjects(0)
+        self._update_mobjects(0, scene_updaters=False)
         # A final state is seekable without advancing the scene clock.
         self.capture(advance_time=False)
         def lay_out(node):

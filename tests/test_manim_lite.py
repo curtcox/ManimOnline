@@ -7999,6 +7999,46 @@ assert config.top[1] == 4 and config.bottom[1] == -4
 self.add(Arrow(LEFT, RIGHT, tip_shape=ArrowSquareTip))""")
         self.assertEqual(len(result['frames']), 1)
 
+    def test_custom_animation_protocol_runs_live_like_community(self):
+        # Manim 0.22 values: frames 7/15 of a linear 2 s play, and the last frame.
+        source = """from manim import *
+class Count(Animation):
+    def __init__(self, tracker, start, end, **kwargs):
+        super().__init__(tracker, **kwargs)
+        self.start = start
+        self.end = end
+    def interpolate_mobject(self, alpha):
+        self.mobject.set_value(self.start + alpha * (self.end - self.start))
+class Spin(Animation):
+    def interpolate_submobject(self, submobject, starting_submobject, alpha):
+        submobject.become(starting_submobject).rotate(alpha * PI)
+class Demo(Scene):
+    def construct(self):
+        t = ValueTracker(0)
+        sq = VGroup(Square(), Square().shift(RIGHT*3))
+        self.add(t, sq)
+        self.rec = []
+        self.add_updater(lambda dt: self.rec.append((t.get_value(), sq[1].get_points()[0][0])))
+        self.play(Count(t, 0, 100), Spin(sq, lag_ratio=0.5), run_time=2, rate_func=linear)
+        assert t.get_value() == 100
+        assert Count(t, 0, 1).set_run_time(3).get_run_time() == 3
+"""
+        captured = {}
+        original = lite.Scene.render
+        def grab(scene):
+            captured['scene'] = scene
+            return original(scene)
+        lite.Scene.render = grab
+        try:
+            lite.render_scene(source)
+        finally:
+            lite.Scene.render = original
+        rec = captured['scene'].rec
+        self.assertAlmostEqual(rec[7][0], 23.333, 3)
+        self.assertAlmostEqual(rec[15][1], 3.0, 3)
+        self.assertAlmostEqual(rec[-1][0], 96.667, 3)
+        self.assertAlmostEqual(rec[-1][1], 1.856, 3)
+
 
 if __name__ == '__main__':
     unittest.main()
