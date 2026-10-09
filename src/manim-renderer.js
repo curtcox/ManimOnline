@@ -130,6 +130,9 @@ const ManimRenderer = {
       case 'text':
         element = this.renderText(mobject);
         break;
+      case 'image':
+        element = this.renderImage(mobject);
+        break;
       case 'mathtex':
         element = this.renderMathTex(mobject, mathGlyphs);
         break;
@@ -248,6 +251,27 @@ const ManimRenderer = {
     }
 
     return element;
+  },
+
+  /** Raster images: only inline base64 image data, drawn upright in local units. */
+  renderImage(mobject) {
+    const href = typeof mobject.href === 'string' ? mobject.href : '';
+    if (!/^data:image\/(png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=]+$/.test(href)) {
+      throw new Error('Images must be inline base64 PNG, JPEG, GIF or WebP data.');
+    }
+    const width = (mobject.width ?? 0) * this.UNIT_SCALE;
+    const height = (mobject.height ?? 0) * this.UNIT_SCALE;
+    const image = document.createElementNS(this.SVG_NS, 'image');
+    image.setAttribute('href', href);
+    image.setAttribute('x', -width / 2);
+    image.setAttribute('y', -height / 2);
+    image.setAttribute('width', width);
+    image.setAttribute('height', height);
+    image.setAttribute('preserveAspectRatio', 'none');
+    // The scene is drawn y-up; flip the bitmap back upright like text.
+    image.setAttribute('transform', 'scale(1, -1)');
+    if (mobject.resampling_algorithm === 'nearest') image.setAttribute('style', 'image-rendering: pixelated');
+    return image;
   },
 
   /**

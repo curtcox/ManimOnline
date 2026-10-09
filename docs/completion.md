@@ -290,3 +290,7 @@ bounds checks; coincident curved (non-straight) boundaries are approximate.
 
 Code is implemented with Community geometry checks (0.001 units) and Pygments colors;
 code_file and custom Pygments Style classes from user code remain unsupported.
+
+SVGMobject/VMobjectFromSVGPath (markup strings) and ImageMobject (arrays/data URIs) are
+implemented with Community geometry/style checks; file paths, gradients/patterns,
+clip paths and image pixel interpolation in Transform remain open.

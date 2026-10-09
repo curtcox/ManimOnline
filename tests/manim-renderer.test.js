@@ -378,6 +378,21 @@ test('stream line gradients follow local chord endpoints in user space', () => {
   }
 });
 
+test('images render inline data upright and reject external references', () => {
+  const data = {type:'image', href:'data:image/png;base64,iVBORw0KGgo=', width:2, height:1, position:[1,0,0],
+    resampling_algorithm:'nearest', opacity:.5};
+  const element = renderer.renderMobject(data);
+  const image = element.tag === 'image' ? element : element.querySelectorAll().find(e => e.tag === 'image');
+  assert.equal(image.getAttribute('href'), data.href);
+  assert.equal(Number(image.getAttribute('width')), 2 * renderer.UNIT_SCALE);
+  assert.equal(Number(image.getAttribute('x')), -renderer.UNIT_SCALE);
+  assert.match(image.getAttribute('transform'), /scale\(1, -1\)$/);
+  assert.match(image.getAttribute('style'), /pixelated/);
+  for (const href of ['https://example.com/a.png', 'javascript:alert(1)', 'data:image/svg+xml;base64,PHN2Zz4=']) {
+    assert.throws(() => renderer.renderMobject({...data, href}), /inline base64/);
+  }
+});
+
 test('gradient validation rejects unsafe colors and a single stop keeps a solid paint', () => {
   for (const color of [[],['url(https://example.com/paint)'],['red'],Array(65).fill('#FFFFFF')]) {
     assert.throws(()=>renderer.renderMobject({type:'polygon',fill_color:color}),/Gradient colors/);

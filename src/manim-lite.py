@@ -977,7 +977,7 @@ class Mobject:
         if self._type == 'square':
             half = self.side_length / 2
             return (-half, -half, half, half)
-        if self._type in ('rectangle', 'ellipse'):
+        if self._type in ('rectangle', 'ellipse', 'image'):
             return (-self.width / 2, -self.height / 2, self.width / 2, self.height / 2)
         if self._type in ('line', 'arrow'):
             points = [self.start, self.end]
@@ -2467,6 +2467,7 @@ class Arc(TipableVMobject):
 
 class Circle(Arc):
     def __init__(self, radius=1, **kwargs):
+        kwargs.setdefault('color', RED)  # Community's Circle (and Ellipse) default to RED.
         super().__init__(radius=1 if radius is None else radius, start_angle=0, angle=TAU, **kwargs)
         self._type = 'circle'
 
@@ -2625,6 +2626,7 @@ class Annulus(Circle):
 
 class Dot(Circle):
     def __init__(self, point=ORIGIN, radius=0.08, **kwargs):
+        kwargs.setdefault('color', WHITE)
         kwargs.setdefault('fill_opacity', 1)
         kwargs.setdefault('stroke_width', 0)
         super().__init__(radius=radius, **kwargs)
@@ -9698,6 +9700,572 @@ class Code(VGroup):
         return list(get_all_styles())
 
 
+_SVG_NAMED_COLORS = {
+    'black': '#000000', 'white': '#FFFFFF', 'red': '#FF0000', 'green': '#008000', 'lime': '#00FF00',
+    'blue': '#0000FF', 'yellow': '#FFFF00', 'cyan': '#00FFFF', 'aqua': '#00FFFF', 'magenta': '#FF00FF',
+    'fuchsia': '#FF00FF', 'gray': '#808080', 'grey': '#808080', 'silver': '#C0C0C0', 'maroon': '#800000',
+    'olive': '#808000', 'purple': '#800080', 'teal': '#008080', 'navy': '#000080', 'orange': '#FFA500',
+    'pink': '#FFC0CB', 'brown': '#A52A2A', 'gold': '#FFD700', 'indigo': '#4B0082', 'violet': '#EE82EE',
+    'darkgray': '#A9A9A9', 'darkgrey': '#A9A9A9', 'lightgray': '#D3D3D3', 'lightgrey': '#D3D3D3',
+    'darkblue': '#00008B', 'darkred': '#8B0000', 'darkgreen': '#006400', 'lightblue': '#ADD8E6',
+    'lightgreen': '#90EE90', 'skyblue': '#87CEEB', 'steelblue': '#4682B4', 'tomato': '#FF6347',
+    'coral': '#FF7F50', 'salmon': '#FA8072', 'crimson': '#DC143C', 'turquoise': '#40E0D0',
+    'tan': '#D2B48C', 'beige': '#F5F5DC', 'khaki': '#F0E68C', 'orchid': '#DA70D6', 'plum': '#DDA0DD',
+    'chocolate': '#D2691E', 'firebrick': '#B22222', 'forestgreen': '#228B22', 'seagreen': '#2E8B57',
+    'royalblue': '#4169E1', 'slategray': '#708090', 'dimgray': '#696969', 'whitesmoke': '#F5F5F5',
+}
+_SVG_STYLE_KEYS = ('fill', 'fill-opacity', 'stroke', 'stroke-opacity', 'stroke-width', 'opacity', 'color')
+
+
+def _svg_color(value, current='#000000'):
+    """(hex, alpha) for an SVG paint, or (None, 0) for none."""
+    import re
+    value = (value or '').strip()
+    lower = value.lower()
+    if lower in ('', 'none', 'transparent'):
+        return None, 0.0
+    if lower == 'currentcolor':
+        return _svg_color(current)
+    if lower in _SVG_NAMED_COLORS:
+        return _SVG_NAMED_COLORS[lower], 1.0
+    if re.fullmatch(r'#[0-9a-fA-F]{3,4}', value):
+        value = '#' + ''.join(c * 2 for c in value[1:])
+    if re.fullmatch(r'#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?', value):
+        return value[:7].upper(), int(value[7:9], 16) / 255 if len(value) == 9 else 1.0
+    match = re.fullmatch(r'rgba?\(([^)]*)\)', lower)
+    if match:
+        parts = [p.strip() for p in re.split(r'[,\s/]+', match.group(1)) if p.strip()]
+        if len(parts) in (3, 4):
+            channels = [round(float(p[:-1]) * 2.55) if p.endswith('%') else round(float(p)) for p in parts[:3]]
+            alpha = 1.0
+            if len(parts) == 4:
+                alpha = float(parts[3][:-1]) / 100 if parts[3].endswith('%') else float(parts[3])
+            return '#' + ''.join('%02X' % max(0, min(255, c)) for c in channels), max(0.0, min(1.0, alpha))
+    raise ValueError(f'Unsupported SVG color: {value[:40]}')
+
+
+def _svg_number(value, default=0.0):
+    import re
+    if value is None:
+        return default
+    match = re.match(r'\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)', str(value))
+    if not match:
+        raise ValueError(f'Invalid SVG number: {str(value)[:40]}')
+    number = float(match.group(1))
+    if not math.isfinite(number):
+        raise ValueError('SVG numbers must be finite')
+    return number
+
+
+def _svg_numbers(text):
+    import re
+    return [float(n) for n in re.findall(r'[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?', text or '')]
+
+
+def _svg_transform(text):
+    """Affine (a, b, c, d, e, f) for an SVG transform list (x' = a x + c y + e)."""
+    import re
+    result = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+    for name, args in re.findall(r'(matrix|translate|scale|rotate|skewX|skewY)\s*\(([^)]*)\)', text or ''):
+        v = _svg_numbers(args)
+        if name == 'matrix' and len(v) == 6:
+            m = tuple(v)
+        elif name == 'translate' and v:
+            m = (1, 0, 0, 1, v[0], v[1] if len(v) > 1 else 0)
+        elif name == 'scale' and v:
+            m = (v[0], 0, 0, v[1] if len(v) > 1 else v[0], 0, 0)
+        elif name == 'rotate' and v:
+            a = math.radians(v[0])
+            cx, cy = (v[1], v[2]) if len(v) == 3 else (0, 0)
+            cos, sin = math.cos(a), math.sin(a)
+            m = (cos, sin, -sin, cos, cx - cos * cx + sin * cy, cy - sin * cx - cos * cy)
+        elif name == 'skewX' and v:
+            m = (1, 0, math.tan(math.radians(v[0])), 1, 0, 0)
+        elif name == 'skewY' and v:
+            m = (1, math.tan(math.radians(v[0])), 0, 1, 0, 0)
+        else:
+            raise ValueError(f'Invalid SVG transform: {name}({args[:40]})')
+        result = _svg_compose(result, m)
+    return result
+
+
+def _svg_compose(m, n):
+    """m applied after n."""
+    a, b, c, d, e, f = m
+    a2, b2, c2, d2, e2, f2 = n
+    return (a * a2 + c * b2, b * a2 + d * b2, a * c2 + c * d2, b * c2 + d * d2,
+            a * e2 + c * f2 + e, b * e2 + d * f2 + f)
+
+
+def _svg_arc_cubics(start, rx, ry, phi, large, sweep, end):
+    """Cubic approximations (at most 90 degrees each) of an SVG elliptical arc."""
+    (x1, y1), (x2, y2) = start, end
+    if (x1, y1) == (x2, y2):
+        return []
+    rx, ry = abs(rx), abs(ry)
+    if not rx or not ry:
+        return [((x1, y1), (x1 + (x2 - x1) / 3, y1 + (y2 - y1) / 3), (x1 + 2 * (x2 - x1) / 3, y1 + 2 * (y2 - y1) / 3), (x2, y2))]
+    phi = math.radians(phi)
+    cos, sin = math.cos(phi), math.sin(phi)
+    dx, dy = (x1 - x2) / 2, (y1 - y2) / 2
+    xp, yp = cos * dx + sin * dy, -sin * dx + cos * dy
+    scale = xp * xp / (rx * rx) + yp * yp / (ry * ry)
+    if scale > 1:
+        rx, ry = rx * math.sqrt(scale), ry * math.sqrt(scale)
+    numerator = rx * rx * ry * ry - rx * rx * yp * yp - ry * ry * xp * xp
+    factor = math.sqrt(max(0, numerator / (rx * rx * yp * yp + ry * ry * xp * xp)))
+    if large == sweep:
+        factor = -factor
+    cxp, cyp = factor * rx * yp / ry, -factor * ry * xp / rx
+    cx, cy = cos * cxp - sin * cyp + (x1 + x2) / 2, sin * cxp + cos * cyp + (y1 + y2) / 2
+    angle = lambda ux, uy: math.atan2(uy, ux)
+    theta = angle((xp - cxp) / rx, (yp - cyp) / ry)
+    delta = angle((-xp - cxp) / rx, (-yp - cyp) / ry) - theta
+    if sweep and delta < 0:
+        delta += TAU
+    elif not sweep and delta > 0:
+        delta -= TAU
+    count = max(1, math.ceil(abs(delta) / (PI / 2) - 1e-9))
+    step = delta / count
+    k = 4 / 3 * math.tan(step / 4)
+    point = lambda t: (cx + rx * math.cos(t) * cos - ry * math.sin(t) * sin, cy + rx * math.cos(t) * sin + ry * math.sin(t) * cos)
+    deriv = lambda t: (-rx * math.sin(t) * cos - ry * math.cos(t) * sin, -rx * math.sin(t) * sin + ry * math.cos(t) * cos)
+    curves = []
+    for i in range(count):
+        t0, t1 = theta + i * step, theta + (i + 1) * step
+        p0, p3 = point(t0), point(t1)
+        d0, d1 = deriv(t0), deriv(t1)
+        curves.append((p0, (p0[0] + k * d0[0], p0[1] + k * d0[1]), (p3[0] - k * d1[0], p3[1] - k * d1[1]), p3))
+    curves[-1] = curves[-1][:3] + ((x2, y2),)
+    return curves
+
+
+def _svg_path_points(data):
+    """Community's VMobjectFromSVGPath point list (cubics, lines/quads raised) for path data."""
+    import re
+    tokens = re.findall(r'[MmLlHhVvCcSsQqTtAaZz]|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?', data or '')
+    if len(tokens) > 200000:
+        raise ValueError('SVG path data is too long')
+    points, index = [], 0
+    current = start = None
+    last_control, last_command = None, ''
+    def number():
+        nonlocal index
+        if index >= len(tokens) or tokens[index].isalpha():
+            raise ValueError('Malformed SVG path data')
+        index += 1
+        return float(tokens[index - 1])
+    def cubic(p1, p2, p3):
+        nonlocal current
+        points.extend([current, p1, p2, p3])
+        current = p3
+    def line(end):
+        cubic(((2 * current[0] + end[0]) / 3, (2 * current[1] + end[1]) / 3),
+              ((current[0] + 2 * end[0]) / 3, (current[1] + 2 * end[1]) / 3), end)
+    command = None
+    while index < len(tokens):
+        if tokens[index].isalpha():
+            command = tokens[index]
+            index += 1
+        elif command is None:
+            raise ValueError('SVG path data must start with a command')
+        relative = command.islower()
+        kind = command.upper()
+        base = current if relative and current is not None else (0.0, 0.0)
+        offset = lambda x, y: (base[0] + x, base[1] + y)
+        if kind == 'Z':
+            if current is not None and start is not None and math.dist(current, start) > 0.0001:
+                line(start)
+            current, last_control, last_command = start, None, 'Z'
+            continue
+        if kind == 'M':
+            current = start = offset(number(), number())
+            command = 'l' if relative else 'L'  # Further pairs are implicit lines.
+            last_control = None
+            continue
+        if current is None:
+            raise ValueError('SVG path data must start with a move command')
+        if kind == 'L':
+            line(offset(number(), number()))
+            last_control = None
+        elif kind == 'H':
+            x = number()
+            line((current[0] + x if relative else x, current[1]))
+            last_control = None
+        elif kind == 'V':
+            y = number()
+            line((current[0], current[1] + y if relative else y))
+            last_control = None
+        elif kind == 'C':
+            p1, p2, p3 = offset(number(), number()), offset(number(), number()), offset(number(), number())
+            cubic(p1, p2, p3)
+            last_control = p2
+        elif kind == 'S':
+            reflected = (2 * current[0] - last_control[0], 2 * current[1] - last_control[1]) \
+                if last_control is not None and last_command in 'CS' else current
+            p2, p3 = offset(number(), number()), offset(number(), number())
+            cubic(reflected, p2, p3)
+            last_control = p2
+        elif kind in ('Q', 'T'):
+            if kind == 'Q':
+                control = offset(number(), number())
+            else:
+                control = (2 * current[0] - last_control[0], 2 * current[1] - last_control[1]) \
+                    if last_control is not None and last_command in 'QT' else current
+            end = offset(number(), number())
+            cubic(((current[0] + 2 * control[0]) / 3, (current[1] + 2 * control[1]) / 3),
+                  ((2 * control[0] + end[0]) / 3, (2 * control[1] + end[1]) / 3), end)
+            last_control = control
+        elif kind == 'A':
+            rx, ry, phi = number(), number(), number()
+            large, sweep = number() != 0, number() != 0
+            end = offset(number(), number())
+            for curve in _svg_arc_cubics(current, rx, ry, phi, large, sweep, end):
+                cubic(*curve[1:])
+            current = end
+            last_control = None
+        else:
+            raise ValueError(f'Unsupported SVG path command: {command}')
+        last_command = kind
+    return [(p[0], p[1], 0.0) for p in points]
+
+
+class VMobjectFromSVGPath(VMobject):
+    """A VMobject from SVG path data (a string here; Community takes an svgelements Path)."""
+    def __init__(self, path_obj, long_lines=False, should_subdivide_sharp_curves=False,
+                 should_remove_null_curves=False, **kwargs):
+        super().__init__(**kwargs)
+        data = path_obj if isinstance(path_obj, str) else getattr(path_obj, 'd', lambda: None)()
+        if not isinstance(data, str):
+            raise TypeError('VMobjectFromSVGPath expects SVG path data')
+        self.path_string = data
+        points = _svg_path_points(data)
+        if points:
+            self.set_points(points)
+
+
+class SVGMobject(VGroup):
+    """Community's SVGMobject: one VMobject per SVG shape, y flipped, centered and fit
+    to height 2. The browser has no file system, so pass SVG markup as file_name."""
+    def __init__(self, file_name=None, should_center=True, height=2, width=None, color=None, opacity=None,
+                 fill_color=None, fill_opacity=None, stroke_color=None, stroke_opacity=None, stroke_width=None,
+                 svg_default=None, path_string_config=None, use_svg_cache=True, **kwargs):
+        super().__init__(**kwargs)
+        if not isinstance(file_name, str):
+            raise ValueError('Must specify file for SVGMobject')
+        markup = file_name.strip()
+        if not markup.startswith('<'):
+            raise NotImplementedError('The browser preview has no file system; pass SVG markup '
+                                      '(a string starting with "<svg") instead of a file name.')
+        if len(markup) > 2000000:
+            raise ValueError('SVG markup is limited to 2 MB')
+        self.should_center, self.svg_height, self.svg_width = should_center, height, width
+        self.svg_default = dict({'color': None, 'opacity': None, 'fill_color': None, 'fill_opacity': None,
+                                 'stroke_width': 0, 'stroke_color': None, 'stroke_opacity': None}, **(svg_default or {}))
+        self.path_string_config = dict(path_string_config or {})
+        self.id_to_vgroup_dict = {}
+        self._svg_shapes = 0
+        shapes = self._parse(markup)
+        if shapes:
+            # SVG y points down: mirror each shape about the drawing's center (Community's flip).
+            left, bottom, right, top = _union_bounds(shapes)
+            center = Vector(((left + right) / 2, (bottom + top) / 2, 0))
+            for shape in shapes:
+                shape.apply_matrix([[1, 0], [0, -1]], about_point=center)
+        self.add(*shapes)
+        self.set_style(fill_color=fill_color, fill_opacity=fill_opacity, stroke_color=stroke_color,
+                       stroke_opacity=stroke_opacity, stroke_width=stroke_width)
+        self.move_into_position()
+
+    def move_into_position(self):
+        if self.should_center:
+            self.center()
+        if self.svg_height is not None:
+            self.set(height=self.svg_height)
+        if self.svg_width is not None:
+            self.set(width=self.svg_width)
+        return self
+
+    def _parse(self, markup):
+        from xml.etree import ElementTree
+        if '<!ENTITY' in markup or '<!DOCTYPE' in markup:
+            raise ValueError('SVG markup with DTDs or entities is not supported')
+        try:
+            root = ElementTree.fromstring(markup)
+        except ElementTree.ParseError as error:
+            raise ValueError(f'Invalid SVG markup: {error}') from None
+        local = lambda tag: tag.rsplit('}', 1)[-1]
+        if local(root.tag) != 'svg':
+            raise ValueError('SVG markup must have an <svg> root element')
+        ids = {element.get('id'): element for element in root.iter() if element.get('id')}
+        defaults = {key: self.svg_default[name] for key, name in
+                    (('fill', 'fill_color'), ('fill-opacity', 'fill_opacity'), ('stroke', 'stroke_color'),
+                     ('stroke-opacity', 'stroke_opacity'), ('stroke-width', 'stroke_width')) if self.svg_default.get(name) is not None}
+        if self.svg_default.get('color') is not None:
+            defaults.setdefault('fill', self.svg_default['color'])
+            defaults.setdefault('stroke', self.svg_default['color'])
+        style = {'fill': '#000000', 'stroke': 'none', 'stroke-width': '1', 'color': '#000000'}
+        style.update({k: str(v) for k, v in defaults.items()})
+        matrix = self._viewbox(root)
+        result, groups = [], {}
+        def styles(element, inherited):
+            current = dict(inherited)
+            current.pop('opacity', None)
+            for key in _SVG_STYLE_KEYS:
+                if element.get(key) is not None:
+                    current[key] = element.get(key)
+            for declaration in (element.get('style') or '').split(';'):
+                if ':' in declaration:
+                    key, value = (part.strip() for part in declaration.split(':', 1))
+                    if key in _SVG_STYLE_KEYS:
+                        current[key] = value
+            opacity = _svg_number(current.get('opacity'), 1.0)
+            current['_opacity'] = inherited.get('_opacity', 1.0) * opacity
+            return current
+        def visit(element, inherited, transform, group_names, depth):
+            if depth > 64:
+                raise ValueError('SVG nesting is too deep')
+            tag = local(element.tag)
+            if tag in ('defs', 'clipPath', 'mask', 'style', 'title', 'desc', 'metadata', 'symbol', 'linearGradient', 'radialGradient', 'pattern', 'marker'):
+                return
+            current = styles(element, inherited)
+            transform = _svg_compose(transform, _svg_transform(element.get('transform')))
+            name = element.get('id')
+            names = group_names + [name] if name else group_names
+            if tag in ('svg', 'g', 'a', 'switch') or (tag == 'svg' and element is root):
+                for child in element:
+                    visit(child, current, transform, names, depth + 1)
+                return
+            if tag == 'use':
+                href = element.get('href') or element.get('{http://www.w3.org/1999/xlink}href') or ''
+                target = ids.get(href[1:]) if href.startswith('#') else None
+                if target is not None and depth < 32:
+                    shifted = _svg_compose(transform, (1, 0, 0, 1, _svg_number(element.get('x')), _svg_number(element.get('y'))))
+                    if local(target.tag) == 'symbol':
+                        for child in target:
+                            visit(child, current, shifted, names, depth + 1)
+                    else:
+                        visit(target, current, shifted, names, depth + 1)
+                return
+            mobject = self._shape(tag, element)
+            if mobject is None or mobject.has_no_points():
+                return
+            self._svg_shapes += 1
+            if self._svg_shapes > 5000:
+                raise ValueError('SVGMobject is limited to 5000 shapes')
+            self._apply_style(mobject, current)
+            a, b, c, d, e, f = transform
+            if (a, b, c, d) != (1, 0, 0, 1):
+                mobject.apply_matrix([[a, c], [b, d]], about_point=ORIGIN)
+            mobject.shift(Vector((e, f, 0)))
+            result.append(mobject)
+            for group_name in ['root'] + names:
+                groups.setdefault(group_name, []).append(mobject)
+        visit(root, style, matrix, [], 0)
+        self.id_to_vgroup_dict = {name: VGroup(*members) for name, members in groups.items()}
+        return result
+
+    @staticmethod
+    def _viewbox(root):
+        box = _svg_numbers(root.get('viewBox'))
+        if len(box) != 4 or box[2] <= 0 or box[3] <= 0:
+            return (1, 0, 0, 1, 0, 0)
+        width, height = _svg_number(root.get('width'), box[2]), _svg_number(root.get('height'), box[3])
+        scale = min(width / box[2], height / box[3])
+        return (scale, 0, 0, scale, (width - box[2] * scale) / 2 - box[0] * scale, (height - box[3] * scale) / 2 - box[1] * scale)
+
+    def _shape(self, tag, element):
+        number = lambda key, default=0.0: _svg_number(element.get(key), default)
+        point = lambda x, y: Vector((x, y, 0))
+        if tag == 'path':
+            return VMobjectFromSVGPath(element.get('d') or '', **self.path_string_config)
+        if tag == 'line':
+            return Line(point(number('x1'), number('y1')), point(number('x2'), number('y2')))
+        if tag == 'rect':
+            width, height = number('width'), number('height')
+            if width <= 0 or height <= 0:
+                return None
+            rx, ry = element.get('rx'), element.get('ry')
+            rx = _svg_number(rx if rx is not None else ry)
+            ry = _svg_number(ry if ry is not None else rx)
+            rx, ry = min(rx, width / 2), min(ry, height / 2)
+            if rx == 0 or ry == 0:
+                mobject = Rectangle(width=width, height=height)
+            else:
+                mobject = RoundedRectangle(width=width, height=height * rx / ry, corner_radius=rx)
+                mobject.stretch_to_fit_height(height)
+            return mobject.shift(point(number('x') + width / 2, number('y') + height / 2))
+        if tag in ('circle', 'ellipse'):
+            rx = number('r') if tag == 'circle' else number('rx')
+            ry = rx if tag == 'circle' else number('ry')
+            if rx <= 0 or ry <= 0:
+                return None
+            mobject = Circle(radius=rx)
+            if rx != ry:
+                mobject.stretch_to_fit_height(2 * ry)
+            return mobject.shift(point(number('cx'), number('cy')))
+        if tag in ('polygon', 'polyline'):
+            values = _svg_numbers(element.get('points'))
+            points = [point(x, y) for x, y in zip(values[::2], values[1::2])]
+            if len(points) < 2:
+                return None
+            return Polygon(*points) if tag == 'polygon' else VMobject().set_points_as_corners(points)
+        return None  # Text and other elements are unsupported, as in Community.
+
+    @staticmethod
+    def _apply_style(mobject, style):
+        fill, fill_alpha = _svg_color(style.get('fill'), style.get('color'))
+        stroke, stroke_alpha = _svg_color(style.get('stroke'), style.get('color'))
+        opacity = style.get('_opacity', 1.0)
+        # svgelements folds fill-opacity into the paint's alpha byte.
+        alpha = lambda paint, key: round(255 * paint * max(0, min(1, _svg_number(style.get(key), 1.0)))) / 255
+        mobject.set_style(stroke_width=_svg_number(style.get('stroke-width'), 1.0) if stroke else 0,
+                          stroke_color=stroke, stroke_opacity=alpha(stroke_alpha, 'stroke-opacity') * opacity if stroke else None,
+                          fill_color=fill, fill_opacity=alpha(fill_alpha, 'fill-opacity') * opacity if fill else 0)
+
+
+_IMAGE_PIXEL_LIMIT = 4000000
+# Community maps these names to Pillow's resampling filters (NEAREST=0 ... HAMMING=5).
+RESAMPLING_ALGORITHMS = {'nearest': 0, 'none': 0, 'lanczos': 1, 'antialias': 1, 'bilinear': 2, 'linear': 2,
+                         'bicubic': 3, 'cubic': 3, 'box': 4, 'hamming': 5}
+
+
+def _rgba_rows(pixels):
+    """Rows of RGBA byte tuples from a NumPy array or nested lists (2D gray, RGB or RGBA)."""
+    if hasattr(pixels, 'tolist'):
+        pixels = pixels.tolist()
+    rows = [list(row) for row in pixels]
+    if not rows or not rows[0]:
+        raise ValueError('ImageMobject arrays need at least one pixel')
+    width = len(rows[0])
+    if any(len(row) != width for row in rows):
+        raise ValueError('ImageMobject arrays must be rectangular')
+    if len(rows) * width > _IMAGE_PIXEL_LIMIT:
+        raise ValueError('ImageMobject is limited to 4 million pixels')
+    def channel(value):
+        if isinstance(value, bool) or not isinstance(value, _REAL) or not math.isfinite(value):
+            raise ValueError('Image pixel values must be finite numbers')
+        return max(0, min(255, int(value)))
+    result = []
+    for row in rows:
+        out = []
+        for pixel in row:
+            if isinstance(pixel, _REAL):
+                gray = channel(pixel)
+                out.append((gray, gray, gray, 255))
+            else:
+                values = [channel(v) for v in pixel]
+                if len(values) == 1:
+                    values = values * 3 + [255]
+                elif len(values) == 3:
+                    values.append(255)
+                elif len(values) != 4:
+                    raise ValueError('Image pixels need 1, 3 or 4 channels')
+                out.append(tuple(values))
+        result.append(out)
+    return result
+
+
+def _png_data_uri(rows):
+    import base64, zlib
+    height, width = len(rows), len(rows[0])
+    raw = b''.join(b'\x00' + bytes(v for pixel in row for v in pixel) for row in rows)
+    def chunk(kind, data):
+        return (struct.pack('>I', len(data)) + kind + data +
+                struct.pack('>I', zlib.crc32(kind + data) & 0xFFFFFFFF))
+    png = (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 6, 0, 0, 0)) +
+           chunk(b'IDAT', zlib.compress(raw, 6)) + chunk(b'IEND', b''))
+    return 'data:image/png;base64,' + base64.b64encode(png).decode('ascii')
+
+
+def _data_uri_size(uri):
+    """Pixel (width, height) of a base64 PNG, GIF or JPEG data URI."""
+    import base64, re
+    match = re.fullmatch(r'data:image/(png|gif|jpeg|jpg|webp);base64,([A-Za-z0-9+/=\s]+)', uri)
+    if not match:
+        raise NotImplementedError('The browser preview has no file system; pass a pixel array or a '
+                                  'base64 PNG/JPEG/GIF data URI to ImageMobject.')
+    if len(uri) > 8000000:
+        raise ValueError('Image data URIs are limited to 8 MB')
+    data = base64.b64decode(re.sub(r'\s', '', match.group(2)))
+    kind = match.group(1)
+    if kind == 'png' and data[:8] == b'\x89PNG\r\n\x1a\n':
+        return struct.unpack('>II', data[16:24])
+    if kind == 'gif' and data[:3] == b'GIF':
+        return struct.unpack('<HH', data[6:10])
+    if kind in ('jpeg', 'jpg') and data[:2] == b'\xff\xd8':
+        index = 2
+        while index + 9 < len(data):
+            if data[index] != 0xFF:
+                break
+            marker, length = data[index + 1], struct.unpack('>H', data[index + 2:index + 4])[0]
+            if marker in (0xC0, 0xC1, 0xC2):
+                height, width = struct.unpack('>HH', data[index + 5:index + 9])
+                return width, height
+            index += 2 + length
+    raise ValueError('Could not read the image size from the data URI')
+
+
+class ImageMobject(Mobject):
+    """Community's raster image: height = rows / scale_to_resolution * frame height.
+    Arrays are encoded as PNG; files are unavailable, but image data URIs work."""
+    def __init__(self, filename_or_array, scale_to_resolution=1080, invert=False, image_mode='RGBA', **kwargs):
+        kwargs.setdefault('fill_opacity', 1)
+        kwargs.setdefault('stroke_width', 0)
+        super().__init__(**kwargs)
+        self._type = 'image'
+        if isinstance(filename_or_array, str):
+            if invert:
+                raise NotImplementedError('invert needs a pixel array in the browser preview')
+            self.pixel_width, self.pixel_height = _data_uri_size(filename_or_array.strip())
+            self.href = filename_or_array.strip()
+            self._pixels = None
+        else:
+            rows = _rgba_rows(filename_or_array)
+            if invert:
+                rows = [[(255 - r, 255 - g, 255 - b, a) for r, g, b, a in row] for row in rows]
+            self._pixels = rows
+            self.pixel_height, self.pixel_width = len(rows), len(rows[0])
+            self.href = _png_data_uri(rows)
+        if not self.pixel_width or not self.pixel_height:
+            raise ValueError('ImageMobject needs a nonempty image')
+        NumberLine._real(scale_to_resolution, 'scale_to_resolution', positive=True)
+        self.scale_to_resolution, self.invert, self.image_mode = scale_to_resolution, invert, image_mode
+        self.height = self.pixel_height / scale_to_resolution * config.frame_height
+        self.width = self.height * self.pixel_width / self.pixel_height
+        self.resampling_algorithm = 'bicubic'
+
+    def get_pixel_array(self):
+        if self._pixels is None:
+            raise NotImplementedError('Pixel arrays of data URI images are not decoded in the browser preview')
+        try:
+            import numpy
+        except ImportError:
+            return [[list(pixel) for pixel in row] for row in self._pixels]
+        return numpy.array(self._pixels, dtype=numpy.uint8)
+
+    def set_resampling_algorithm(self, resampling_algorithm):
+        names = {0: 'nearest', 1: 'lanczos', 2: 'bilinear', 3: 'bicubic', 4: 'box', 5: 'hamming'}
+        value = names.get(resampling_algorithm, resampling_algorithm)
+        if value not in ('nearest', 'lanczos', 'bilinear', 'bicubic', 'box', 'hamming'):
+            raise ValueError('Unknown resampling algorithm')
+        self.resampling_algorithm = value
+        return self
+
+    def set_opacity(self, alpha, family=True):
+        self._validate_opacity(alpha)
+        self.opacity = alpha
+        return self
+
+    def fade(self, darkness=0.5, family=True):
+        return self.set_opacity(1 - darkness)
+
+    def get_points(self):
+        # Community stores the four corners: UL, UR, DL, DR.
+        w, h = self.width / 2, self.height / 2
+        return [list(self._point_to_world(Vector(p))) for p in ((-w, h, 0), (w, h, 0), (-w, -h, 0), (w, -h, 0))]
+
+
 class _PCG64:
     """NumPy's default_rng(seed) stream (SeedSequence + PCG64), for exact Community noise."""
     _MULT = 0x2360ED051FC65DA44385DF649FCCF645
@@ -10127,7 +10695,7 @@ class _StreamLinesEnd(Animation):
 EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
            'Triangle', 'Polygon', 'Polygram', 'RegularPolygram', 'RegularPolygon', 'Star', 'Brace', 'BraceBetweenPoints', 'BraceLabel', 'BraceText',
            'Title', 'BulletedList', 'Tex', 'SingleStringMathTex', 'MarkupText', 'LabeledDot', 'Variable', 'always', 'f_always', 'always_shift', 'always_rotate',
-           'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'BarChart', 'PolarPlane', 'NumberPlane', 'ComplexPlane', 'VectorField', 'ArrowVectorField', 'StreamLines', 'sigmoid', 'ScreenRectangle', 'FullScreenRectangle', 'VectorizedPoint', 'ComplexValueTracker', 'UnitInterval', 'TangentialArc', 'CurvesAsSubmobjects', 'VDict', 'Cutout', 'ConvexHull', 'ArcBrace', 'LaggedStartMap', 'MaintainPositionRelativeTo', 'Blink', 'Broadcast', 'SpiralIn', 'AddTextWordByWord', 'Animation', 'line_intersection', 'angle_between_vectors', 'DEFAULT_LAGGED_START_LAG_RATIO', 'Graph', 'DiGraph', 'Union', 'Intersection', 'Difference', 'Exclusion', 'Code', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
+           'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'BarChart', 'PolarPlane', 'NumberPlane', 'ComplexPlane', 'VectorField', 'ArrowVectorField', 'StreamLines', 'sigmoid', 'ScreenRectangle', 'FullScreenRectangle', 'VectorizedPoint', 'ComplexValueTracker', 'UnitInterval', 'TangentialArc', 'CurvesAsSubmobjects', 'VDict', 'Cutout', 'ConvexHull', 'ArcBrace', 'LaggedStartMap', 'MaintainPositionRelativeTo', 'Blink', 'Broadcast', 'SpiralIn', 'AddTextWordByWord', 'Animation', 'line_intersection', 'angle_between_vectors', 'DEFAULT_LAGGED_START_LAG_RATIO', 'Graph', 'DiGraph', 'Union', 'Intersection', 'Difference', 'Exclusion', 'Code', 'SVGMobject', 'VMobjectFromSVGPath', 'ImageMobject', 'RESAMPLING_ALGORITHMS', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform',

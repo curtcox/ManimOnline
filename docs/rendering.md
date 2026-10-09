@@ -2286,3 +2286,13 @@ Pygments colors each character, a ` pA<n>` suffix on the first/last lines fixes 
 vertical bounds before being hidden (kept as zero-width vertical lines for the
 background), and line numbers align to the suffix's digits. Members without points
 (empty Text lines, empty groups) no longer contribute to family bounds, as in Community.
+
+SVGMobject parses markup with ElementTree (DTDs/entities rejected), inherits SVG
+styles through groups, folds fill/stroke opacity into the paint alpha as svgelements
+does, applies element transforms with `apply_matrix` plus a shift, mirrors each shape
+about the drawing's center (lite children are not transformed by posed parents), and
+then centers and fits height/width. Arcs become cubic segments of at most 90 degrees
+(Community approximates with quadratics, so arc paths differ by about 0.005 units).
+ImageMobject encodes arrays as PNG data URIs in Python; the renderer draws only inline
+base64 raster data, upright, with `image-rendering: pixelated` for nearest resampling.
+`set_opacity` uses whole-image opacity rather than Community's per-pixel alpha.

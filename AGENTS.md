@@ -578,3 +578,7 @@ Read `examples/code_scene.py` for Code listings. The worker loads Pygments only 
 sources matching `Code(`; keep `_code_tokens` working without it (plain colors).
 Monospace layout depends on `_is_mono(font)` being part of the text-layout cache key.
 Pointless members (`_is_pointless`) are excluded from family bounds.
+
+Read `examples/svg_image_scene.py` for inline SVG and pixel images. Keep the renderer's
+image href whitelist (inline base64 raster only) and SVGMobject's DTD rejection; both
+are security boundaries for shared links. Circle's default color is RED (Community).

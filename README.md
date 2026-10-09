@@ -1499,3 +1499,10 @@ numbers and `rectangle`/`window` backgrounds. The worker loads Pyodide's Pygment
 package for sources that call `Code(...)`; listings use DejaVu Sans Mono metrics
 (Community's usual "Monospace" match) and `code_string` (there is no file system for
 `code_file`). Text with a monospace `font` now uses those metrics everywhere.
+
+The **Inline SVG and pixel images** example covers `SVGMobject`, `VMobjectFromSVGPath`
+and `ImageMobject`. With no file system in the browser, `SVGMobject` takes SVG markup
+(a string starting with `<svg`) and `ImageMobject` takes a pixel array (lists or
+NumPy, gray/RGB/RGBA) or a base64 PNG/JPEG/GIF data URI. Shapes, styles, transforms,
+`use`, viewBox, sizing and centering follow Community; `<text>` is skipped as there.
+`Circle`/`Ellipse` now default to RED like Community (Dot stays WHITE).

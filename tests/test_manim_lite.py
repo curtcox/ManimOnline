@@ -367,6 +367,62 @@ self.play(d[2].animate.shift(UP*2))""")
         self.assertEqual([g.color for g in monokai.code_lines[0]][:4],['#66D9EF']*3+['#A6E22E'])
         with self.assertRaises(ValueError): lite.Code(code_string='x',language='no-such-language')
 
+    def test_svg_mobject_shapes_styles_and_transforms(self):
+        svg="""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <rect x="10" y="10" width="30" height="20" fill="#ff0000"/>
+  <circle cx="70" cy="30" r="15" fill="none" stroke="#00ff00" stroke-width="3"/>
+  <g transform="translate(10 50) rotate(20)">
+    <path d="M 0 0 L 40 0 Q 50 20 40 40 C 30 50 10 50 0 40 Z" fill="#0000ff" fill-opacity="0.5"/>
+    <ellipse cx="60" cy="20" rx="15" ry="8"/>
+  </g>
+  <polygon points="60,60 90,70 75,95" style="fill:#ffff00;stroke:#ff00ff;stroke-width:2"/>
+  <line x1="5" y1="95" x2="50" y2="98" stroke="white"/>
+  <rect x="80" y="5" width="15" height="10" rx="3" fill="#123456"/>
+</svg>"""
+        mobject=lite.SVGMobject(svg)
+        self.assertEqual((len(mobject),round(mobject.get_width(),3),round(mobject.get_height(),3)),(7,1.93,2))
+        # Centers, sizes and styles measured with Manim Community 0.22 (svgelements).
+        expected=[((-.404,.648),.587,'#FF0000',1),((.476,.453),.587,'#FC6255',0),((-.464,-.44),1.036,'#0000FF',.502),
+                  ((.272,-.708),.58,'#000000',1),((.574,-.477),.587,'#FFFF00',1),((-.355,-.848),.88,'#000000',1),
+                  ((.818,.844),.293,'#123456',1)]
+        for shape,(center,width,fill,opacity) in zip(mobject,expected):
+            self.assertEqual([round(v+0.0,3) for v in shape.get_center()[:2]],list(center))
+            self.assertAlmostEqual(shape.get_width(),width,places=3)
+            self.assertEqual((shape.fill_color,round(shape.fill_opacity,3)),(fill,opacity))
+        self.assertEqual((mobject[1].stroke_color,mobject[1].stroke_width,mobject[4].stroke_width),('#00FF00',3,2))
+        fitted=lite.SVGMobject(svg,fill_color=lite.WHITE,stroke_width=1,width=4)
+        self.assertAlmostEqual(fitted.get_width(),4)
+        self.assertEqual({s.fill_color for s in fitted},{lite.WHITE})
+        raw=lite.SVGMobject(svg,height=3,should_center=False)
+        self.assertEqual([round(v,2) for v in raw.get_center()[:2]],[45.66,53.13])
+        arc=lite.VMobjectFromSVGPath('M 0 0 A 1 1 0 0 1 2 0 l 0 1 h -2 z')
+        self.assertAlmostEqual(arc.get_top()[1],1)
+        self.assertAlmostEqual(arc.get_bottom()[1],-1)
+        for bad in ('<svg><rect width="x"/></svg>','<html/>','<svg><path d="L 1 1"/></svg>'):
+            with self.assertRaises(ValueError): lite.SVGMobject(bad)
+        with self.assertRaises(NotImplementedError): lite.SVGMobject('logo.svg')
+        with self.assertRaises(ValueError): lite.SVGMobject('<!DOCTYPE svg [<!ENTITY a "b">]><svg/>')
+
+    def test_image_mobject_sizes_encoding_and_rendering(self):
+        image=lite.ImageMobject([[0,100,30,200],[255,0,5,33]])
+        # Community: height = rows / scale_to_resolution * frame_height.
+        self.assertEqual((round(image.get_width(),4),round(image.get_height(),4)),(.0296,.0148))
+        self.assertEqual(len(image.get_points()),4)
+        self.assertTrue(image.href.startswith('data:image/png;base64,'))
+        self.assertEqual(lite._data_uri_size(image.href),(4,2))
+        wide=lite.ImageMobject([[[0,0,0]]*960]*540)
+        self.assertEqual((round(wide.get_width(),4),round(wide.get_height(),4)),(7.1111,4))
+        small=lite.ImageMobject([[[0,0,0,0]]*20]*10,scale_to_resolution=100)
+        self.assertEqual((round(small.get_width(),4),round(small.get_height(),4)),(1.6,.8))
+        inverted=lite.ImageMobject([[[255,0,0],[0,255,0]]],invert=True)
+        self.assertEqual(lite.ImageMobject(inverted.href).pixel_width,2)
+        self.assertEqual([list(p) for p in inverted._pixels[0]],[[0,255,255,255],[255,0,255,255]])
+        with self.assertRaises(NotImplementedError): lite.ImageMobject('photo.png')
+        with self.assertRaises(ValueError): lite.ImageMobject([[1,2],[3]])
+        frame=render('img = ImageMobject([[0,255],[255,0]]).scale(200)\nself.play(FadeIn(img))')['frames'][-1]
+        self.assertEqual(frame['mobjects'][0]['type'],'image')
+        self.assertAlmostEqual(frame['mobjects'][0]['opacity'],1)
+
     def test_set_style_routes_fill_and_stroke(self):
         square=lite.Square().set_style(fill_color=lite.RED,fill_opacity=.5,stroke_color=lite.BLUE,
                                        stroke_width=6,stroke_opacity=.25,background_stroke_width=0)
@@ -5381,7 +5437,7 @@ self.wait(1)""")
         self.assertEqual(events, [('setup', 0), ('construct', 8/15), ('tear_down', 38/15)])
         self.assertEqual(scene.time, result['duration'])
         self.assertEqual(result['frames'][-1]['mobjects'][0]['color'], lite.GREEN)
-        self.assertEqual(result['frames'][0]['mobjects'][0]['color'], lite.WHITE)
+        self.assertEqual(result['frames'][0]['mobjects'][0]['color'], lite.RED)  # Community's Circle default color
 
     def test_scene_clock_uses_sampled_max_duration_and_clear_does_not_reset_it(self):
         scene = lite.Scene()
