@@ -1506,3 +1506,9 @@ and `ImageMobject`. With no file system in the browser, `SVGMobject` takes SVG m
 NumPy, gray/RGB/RGBA) or a base64 PNG/JPEG/GIF data URI. Shapes, styles, transforms,
 `use`, viewBox, sizing and centering follow Community; `<text>` is skipped as there.
 `Circle`/`Ellipse` now default to RED like Community (Dot stays WHITE).
+
+The **Typing, boundaries and implicit curves** example covers `TypeWithCursor`,
+`UntypeWithCursor`, `AnimatedBoundary`, `ChangeSpeed` (Community's speed curves,
+including `ChangeSpeed.add_updater`), `ImplicitFunction`, `LabeledPolygram` (Community's
+polylabel) and `ShowPassingFlashWithThinningStrokeWidth`; `FadeTransformPieces` is
+also available.

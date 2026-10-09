@@ -2296,3 +2296,12 @@ then centers and fits height/width. Arcs become cubic segments of at most 90 deg
 ImageMobject encodes arrays as PNG data URIs in Python; the renderer draws only inline
 base64 raster data, upright, with `image-rendering: pixelated` for nearest resampling.
 `set_opacity` uses whole-image opacity rather than Community's per-pixel alpha.
+
+ChangeSpeed wraps any animation, remapping progress through Community's piecewise
+parabolic speed curves (exact frame positions) and publishing `ChangeSpeed.dt` for
+updaters registered with `ChangeSpeed.add_updater`. ImplicitFunction traces
+`f(x, y) = 0` with uniform marching squares (Community uses an adaptive quadtree), then
+smooths. LabeledPolygram ports Community's polylabel, including its min-distance
+priority queue, so poles match. TypeWithCursor adds the cursor as the text's last
+member like Community and samples glyph visibility from copies. `get_points` now
+transforms all points with one pivot computation (previously quadratic).

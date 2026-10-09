@@ -582,3 +582,7 @@ Pointless members (`_is_pointless`) are excluded from family bounds.
 Read `examples/svg_image_scene.py` for inline SVG and pixel images. Keep the renderer's
 image href whitelist (inline base64 raster only) and SVGMobject's DTD rejection; both
 are security boundaries for shared links. Circle's default color is RED (Community).
+
+Read `examples/typing_scene.py` for typing cursors, animated boundaries, ChangeSpeed and
+implicit curves. Use `_points_to_world` for batches of points; per-point
+`_point_to_world` recomputes the pivot and is quadratic on long paths.

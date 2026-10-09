@@ -423,6 +423,43 @@ self.play(d[2].animate.shift(UP*2))""")
         self.assertEqual(frame['mobjects'][0]['type'],'image')
         self.assertAlmostEqual(frame['mobjects'][0]['opacity'],1)
 
+    def test_change_speed_polylabel_and_implicit_curves(self):
+        frames=render("d = Dot(LEFT*3)\nself.play(ChangeSpeed(d.animate.shift(RIGHT*6), {0.3: .2, 0.7: 3}, rate_func=linear))")['frames']
+        # Dot positions sampled from Manim Community 0.22's ChangeSpeed.
+        self.assertEqual([round(f['mobjects'][0]['position'][0]+f['mobjects'][0]['geometry_center'][0],2) for f in frames],
+                         [-3.0,-2.62,-2.29,-1.99,-1.74,-1.53,-1.37,-1.25,-1.12,-.74,-.07,.91,2.1,3.0])
+        self.assertAlmostEqual(lite.ChangeSpeed(lite.FadeIn(lite.Square()),{.3:.5,.7:2}).run_time,.87,places=4)
+        self.assertFalse(lite.ChangeSpeed.is_changing_dt)
+        with self.assertRaises(ValueError): lite.ChangeSpeed(lite.FadeIn(lite.Square()),{.5:0})
+        holed=lite.LabeledPolygram([(0,0,0),(4,0,0),(4,3,0),(0,3,0)],[(1,1,0),(2,1,0),(2,2,0),(1,2,0)],label='A')
+        self.assertEqual([round(v,3) for v in holed.pole[:2]]+[round(holed.radius,3)],[2.994,1.564,.994])
+        corner=lite.LabeledPolygram([(0,0,0),(5,0,0),(5,1,0),(1,1,0),(1,4,0),(0,4,0)],label='L',precision=.001)
+        self.assertEqual([round(v,3) for v in corner.pole[:2]],[.586,.586])
+        self.assertPointAlmostEqual(corner.label.get_center(),corner.pole)
+        circle=lite.ImplicitFunction(lambda x,y:x*x+y*y-4)
+        self.assertEqual((round(circle.get_width(),2),round(circle.get_height(),2)),(4,4))
+        hyperbola=lite.ImplicitFunction(lambda x,y:x*y-1,x_range=[-3,3],y_range=[-3,3])
+        self.assertEqual(len(hyperbola.get_subpaths()),2)
+        with self.assertRaises(TypeError): lite.ImplicitFunction(3)
+
+    def test_typing_cursor_animated_boundary_and_piecewise_fades(self):
+        frames=render("""text = Text("Hello world", font='Monospace').shift(UP)
+cursor = Rectangle(height=1.1, width=.5, fill_opacity=1).move_to(text[0])
+self.play(TypeWithCursor(text, cursor))
+self.play(UntypeWithCursor(text, cursor))""")['frames']
+        visible=lambda frame:sum(1 for c in frame['mobjects'][0]['children'] if c.get('opacity',1)>0) if frame['mobjects'] else 0
+        self.assertEqual([len(frames[2]['mobjects'][0]['children']),visible(frames[2]),visible(frames[8])],[11,3,7])
+        self.assertEqual(frames[-1]['mobjects'],[])
+        boundary=render("sq = Square()\nb = AnimatedBoundary(sq, cycle_rate=1)\nself.add(sq, b)\nself.wait(2)")['frames']
+        widths=[[c['stroke_width'] for c in f['mobjects'][1]['children']] for f in boundary[::8]]
+        self.assertEqual(widths[0],[3,0])
+        self.assertGreater(widths[-1][1],0)
+        flash=render("c = Circle()\nself.add(c)\nself.play(ShowPassingFlashWithThinningStrokeWidth(c, n_segments=5, time_width=.3))")['frames']
+        self.assertEqual((len(flash[7]['mobjects']),len(flash[-1]['mobjects'])),(6,1))
+        pieces=render("a = VGroup(Square(), Circle()).arrange()\nb = VGroup(Triangle(), Dot(), Star()).arrange().shift(DOWN)\nself.add(a)\nself.play(FadeTransformPieces(a, b))")['frames']
+        self.assertEqual([len(m['children']) for m in pieces[7]['mobjects']],[3,3])
+        self.assertEqual(len(pieces[-1]['mobjects'][0]['children']),3)
+
     def test_set_style_routes_fill_and_stroke(self):
         square=lite.Square().set_style(fill_color=lite.RED,fill_opacity=.5,stroke_color=lite.BLUE,
                                        stroke_width=6,stroke_opacity=.25,background_stroke_width=0)

@@ -1083,7 +1083,7 @@ class Mobject:
             points = [point for curve in _path_curves(self.to_dict()) for point in curve]
             if self._type == 'bezierpath':
                 points += self.vertices
-        return [list(self._point_to_world(Vector(point))) for point in points]
+        return self._points_to_world(points)
 
     def get_arc_length(self, sample_points_per_curve=10):
         lengths,_ = _curve_length_data(self,sample_points_per_curve)
@@ -1303,6 +1303,24 @@ class Mobject:
         if not all(math.isfinite(v) for v in point):
             raise ValueError('Path coordinates must be finite')
         return point
+
+    def _points_to_world(self, points):
+        """_point_to_world for many points, computing the pivot once."""
+        if self.position[2]:
+            raise NotImplementedError('Paths support only the XY plane')
+        px, py, pz = self.position
+        if self.angle == 0 and self.geometry_scale == 1:
+            result = [[px + p[0], py + p[1], pz + (p[2] if len(p) > 2 else 0)] for p in points]
+        else:
+            cx, cy, _ = self._geometry_center()
+            scale, cos, sin = self.geometry_scale, math.cos(self.angle), math.sin(self.angle)
+            result = []
+            for p in points:
+                ox, oy = (p[0] - cx) * scale, (p[1] - cy) * scale
+                result.append([px + cx + ox * cos - oy * sin, py + cy + ox * sin + oy * cos, pz])
+        if not all(math.isfinite(v) for point in result for v in point):
+            raise ValueError('Path coordinates must be finite')
+        return result
 
     def _own_bound_points(self):
         """Local points that define a point-based outline's bounds, or None."""
@@ -10266,6 +10284,387 @@ class ImageMobject(Mobject):
         return [list(self._point_to_world(Vector(p))) for p in ((-w, h, 0), (w, h, 0), (-w, -h, 0), (w, -h, 0))]
 
 
+class TypeWithCursor(AddTextLetterByLetter):
+    """Type a Text glyph by glyph with a cursor that follows the last shown glyph."""
+    def __init__(self, text, cursor, buff=0.1, keep_cursor_y=True, leave_cursor_on=True, time_per_char=0.1,
+                 reverse_rate_function=False, introducer=True, **kwargs):
+        if not isinstance(cursor, Mobject):
+            raise TypeError('TypeWithCursor needs a cursor Mobject')
+        self.cursor, self.buff = cursor, buff
+        self.keep_cursor_y, self.leave_cursor_on = keep_cursor_y, leave_cursor_on
+        super().__init__(text, time_per_char=time_per_char, reverse_rate_function=reverse_rate_function,
+                         introducer=introducer, **kwargs)
+        text._explode()
+
+    def begin(self, scene):
+        text = self.mobject
+        self.y_cursor = self.cursor.get_y()
+        self.initial_y = text.get_center()[1]
+        if self.keep_cursor_y:
+            self.cursor.set_y(self.y_cursor)
+        self.cursor.set_opacity(0)
+        if self.cursor in text.children:
+            text.remove(self.cursor)
+        text.add(self.cursor)  # Community adds the cursor as the text's last member.
+        super().begin(scene)
+
+    def _place(self, group, index):
+        *glyphs, cursor = group.children  # The cursor is the text's last member.
+        for position, glyph in enumerate(glyphs):
+            glyph.opacity = 1 if position < index else 0
+        if index != 0:
+            cursor.next_to(glyphs[index - 1], RIGHT, buff=self.buff).set_y(self.initial_y)
+        else:
+            cursor.move_to(glyphs[0]).set_y(self.initial_y)
+        if self.keep_cursor_y:
+            cursor.set_y(self.y_cursor)
+        cursor.set_opacity(1)
+        return group
+
+    def sample(self, alpha):
+        group = self.mobject.copy()
+        # Community lists the glyphs before the cursor joins the text.
+        count = len(group.children) - 1
+        return [self._place(group, max(0, min(count, int(self.int_func(alpha * count))))).to_dict()]
+
+    def sample_members(self, alpha, rate_func):
+        return self.sample(rate_func(alpha))
+
+    def finish(self, scene):
+        # Community's finish interpolates to the end: the cursor follows the final glyph.
+        count = len(self.mobject.children) - 1
+        final = 0 if self.reverse_rate_function else count
+        self._place(self.mobject, max(0, min(count, int(self.int_func(final)))))
+        for glyph in self.mobject.children:
+            glyph.opacity = 1
+        if self.leave_cursor_on:
+            self.cursor.set_opacity(1)
+        else:
+            self.cursor.set_opacity(0)
+            self.mobject.remove(self.cursor)
+
+
+class UntypeWithCursor(TypeWithCursor):
+    def __init__(self, text, cursor=None, time_per_char=0.1, reverse_rate_function=True, introducer=False,
+                 remover=True, **kwargs):
+        super().__init__(text, cursor=cursor if cursor is not None else VectorizedPoint(),
+                         time_per_char=time_per_char, reverse_rate_function=reverse_rate_function,
+                         introducer=introducer, remover=remover, **kwargs)
+
+
+class AnimatedBoundary(VGroup):
+    """Two outline copies that redraw and fade in cycling colors, driven by an updater."""
+    def __init__(self, vmobject, colors=None, max_stroke_width=3, cycle_rate=0.5, back_and_forth=True,
+                 draw_rate_func=smooth, fade_rate_func=smooth, **kwargs):
+        super().__init__(**kwargs)
+        self.colors = list(colors) if colors is not None else [BLUE_D, BLUE_B, BLUE_E, GREY_BROWN]
+        if not self.colors:
+            raise ValueError('AnimatedBoundary needs at least one color')
+        self.max_stroke_width, self.cycle_rate, self.back_and_forth = max_stroke_width, cycle_rate, back_and_forth
+        self.draw_rate_func, self.fade_rate_func = draw_rate_func, fade_rate_func
+        self.vmobject = vmobject
+        self.boundary_copies = [vmobject.copy().set_style(stroke_width=0, fill_opacity=0) for _ in range(2)]
+        self.add(*self.boundary_copies)
+        self.total_time = 0.0
+        self.add_updater(lambda m, dt: m.update_boundary_copies(dt))
+
+    def update_boundary_copies(self, dt):
+        time = self.total_time * self.cycle_rate
+        growing, fading = self.children[:2]
+        colors, width = self.colors, self.max_stroke_width
+        index = int(time % len(colors))
+        alpha = time % 1
+        draw, fade = self.draw_rate_func(alpha), self.fade_rate_func(alpha)
+        bounds = (1.0 - draw, 1.0) if self.back_and_forth and int(time) % 2 == 1 else (0.0, draw)
+        self.full_family_become_partial(growing, self.vmobject, *bounds)
+        growing.set_stroke(colors[index], width=width)
+        if time >= 1:
+            self.full_family_become_partial(fading, self.vmobject, 0, 1)
+            fading.set_stroke(color=colors[index - 1], width=(1 - fade) * width)
+        self.total_time += dt
+
+    def full_family_become_partial(self, mob1, mob2, a, b):
+        for sm1, sm2 in zip(mob1.family_members_with_points(), mob2.family_members_with_points()):
+            sm1.pointwise_become_partial(sm2, a, b)
+        return self
+
+
+class ShowPassingFlashWithThinningStrokeWidth(AnimationGroup):
+    """Stacked passing flashes whose widths thin toward the leading edge."""
+    def __init__(self, vmobject, n_segments=10, time_width=0.1, remover=True, **kwargs):
+        if isinstance(n_segments, bool) or not isinstance(n_segments, numbers.Integral) or not 1 <= n_segments <= 100:
+            raise ValueError('n_segments must be an integer from 1 to 100')
+        self.n_segments, self.time_width, self.remover = n_segments, time_width, remover
+        width = vmobject.get_stroke_width()
+        space = lambda a, b: [a + (b - a) * i / (n_segments - 1) for i in range(n_segments)] if n_segments > 1 else [a]
+        group_options = {key: kwargs.pop(key) for key in ('run_time', 'lag_ratio') if key in kwargs}
+        super().__init__(*(ShowPassingFlash(vmobject.copy().set_stroke(width=w), time_width=t, **kwargs)
+                           for w, t in zip(space(0, width), space(time_width, 0))), **group_options)
+
+
+class FadeTransformPieces(FadeTransform):
+    """FadeTransform piece by piece: each source member ghosts onto its matching target member."""
+    @staticmethod
+    def _pieces(mobject, count):
+        group = mobject.copy()
+        pieces = list(group.children) or [group]
+        if len(pieces) < count:
+            # Community's add_n_more_submobjects: repeated members become faded copies.
+            current = len(pieces)
+            repeats = [(i * current) // count for i in range(count)]
+            padded = []
+            for index, piece in enumerate(pieces):
+                padded.append(piece)
+                padded += [piece.copy().fade(1) for _ in range(1, repeats.count(index))]
+            pieces = padded
+        return pieces
+
+    def begin(self, scene):
+        Animation.begin(self, scene)
+        count = max(len(self.mobject.children) or 1, len(self.replacement.children) or 1)
+        sources, targets = self._pieces(self.mobject, count), self._pieces(self.replacement, count)
+        snapshot = lambda pieces: Group(*pieces).to_dict()
+        self.start = snapshot([p.copy() for p in sources])
+        self.source_end = snapshot([self._fit(s.copy(), t) for s, t in zip(sources, targets)])
+        self.target_start = snapshot([self._fit(t.copy(), s) for s, t in zip(sources, targets)])
+        self.target_end = snapshot([t.copy() for t in targets])
+
+
+def _marching_squares(func, x_range, y_range, resolution):
+    """Polylines along func(x, y) = 0 from a uniform marching-squares grid."""
+    (x0, x1), (y0, y1) = x_range[:2], y_range[:2]
+    nx = ny = resolution
+    xs = [x0 + (x1 - x0) * i / nx for i in range(nx + 1)]
+    ys = [y0 + (y1 - y0) * j / ny for j in range(ny + 1)]
+    def value(x, y):
+        v = _plain_number(func(x, y))
+        if isinstance(v, bool) or not isinstance(v, _REAL):
+            raise ValueError('ImplicitFunction must return real numbers')
+        return v if math.isfinite(v) else math.nan
+    grid = [[value(x, y) for x in xs] for y in ys]
+    def edge_point(i0, j0, i1, j1):
+        a, b = grid[j0][i0], grid[j1][i1]
+        t = .5 if a == b else a / (a - b)
+        return (xs[i0] + (xs[i1] - xs[i0]) * t, ys[j0] + (ys[j1] - ys[j0]) * t)
+    segments = []
+    for j in range(ny):
+        for i in range(nx):
+            corners = [(i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1)]
+            values = [grid[c[1]][c[0]] for c in corners]
+            if any(math.isnan(v) for v in values):
+                continue
+            crossings = []
+            for k in range(4):
+                (ia, ja), (ib, jb) = corners[k], corners[(k + 1) % 4]
+                va, vb = values[k], values[(k + 1) % 4]
+                if (va < 0) != (vb < 0):
+                    crossings.append(((min(ia, ib), min(ja, jb), max(ia, ib), max(ja, jb)), edge_point(ia, ja, ib, jb)))
+            if len(crossings) == 2:
+                segments.append((crossings[0], crossings[1]))
+            elif len(crossings) == 4:
+                center = sum(values) / 4
+                # Saddle: pair crossings so the center's sign separates them.
+                pairs = ((0, 1), (2, 3)) if (center < 0) == (values[0] < 0) else ((0, 3), (1, 2))
+                segments += [(crossings[a], crossings[b]) for a, b in pairs]
+    # Stitch segments sharing grid edges into polylines.
+    by_edge = {}
+    for index, (a, b) in enumerate(segments):
+        by_edge.setdefault(a[0], []).append(index)
+        by_edge.setdefault(b[0], []).append(index)
+    used, curves = set(), []
+    for start in range(len(segments)):
+        if start in used:
+            continue
+        used.add(start)
+        a, b = segments[start]
+        chain = [a, b]
+        for direction in (1, -1):
+            while True:
+                end = chain[-1] if direction == 1 else chain[0]
+                following = next((k for k in by_edge.get(end[0], []) if k not in used), None)
+                if following is None:
+                    break
+                used.add(following)
+                p, q = segments[following]
+                nxt = q if p[0] == end[0] else p
+                if direction == 1:
+                    chain.append(nxt)
+                else:
+                    chain.insert(0, nxt)
+        curves.append([point for _, point in chain])
+    return curves
+
+
+class ImplicitFunction(VMobject):
+    """The curve func(x, y) = 0, traced with marching squares and smoothed (Community uses an
+    adaptive quadtree; contours agree, sample points differ)."""
+    def __init__(self, func, x_range=None, y_range=None, min_depth=5, max_quads=1500, use_smoothing=True, **kwargs):
+        if not callable(func):
+            raise TypeError('ImplicitFunction needs a callable func(x, y)')
+        super().__init__(**kwargs)
+        self.function, self.min_depth, self.max_quads, self.use_smoothing = func, min_depth, max_quads, use_smoothing
+        self.x_range = list(x_range or [-config.frame_width / 2, config.frame_width / 2])
+        self.y_range = list(y_range or [-config.frame_height / 2, config.frame_height / 2])
+        resolution = max(2 ** max(1, min(int(min_depth), 7)), min(256, int(math.sqrt(max(1, max_quads)) * 2)))
+        curves = [c for c in _marching_squares(func, self.x_range, self.y_range, resolution) if len(c) > 1]
+        for curve in curves:
+            self.start_new_path((curve[0][0], curve[0][1], 0))
+            self.add_points_as_corners([(x, y, 0) for x, y in curve[1:]])
+        if curves and use_smoothing:
+            self.make_smooth()
+
+    @property
+    def underlying_function(self):
+        return self.function
+
+
+class _LabelCell:
+    """A polylabel search cell, ordered by distance like Community's Cell."""
+    def __init__(self, x, y, h, distance):
+        self.x, self.y, self.h, self.d = x, y, h, distance(x, y)
+        self.p = self.d + h * math.sqrt(2)
+
+    def __lt__(self, other):
+        return self.d < other.d
+
+
+def _polylabel(rings, precision=0.01):
+    """Community's polylabel (manim.utils.polylabel): a pole of inaccessibility and its distance."""
+    import heapq
+    segments = [(a, b) for ring in rings for a, b in zip(ring, ring[1:])]
+    def inside(x, y):
+        for (x0, y0), (x1, y1) in segments:
+            if min(x0, x1) <= x <= max(x0, x1) and min(y0, y1) <= y <= max(y0, y1) and \
+                    abs((x1 - x0) * (y - y0) - (y1 - y0) * (x - x0)) <= 1e-8:
+                return True
+        crossings = 0
+        for (x0, y0), (x1, y1) in segments:
+            if (y0 > y) != (y1 > y) and x < (x1 - x0) / (y1 - y0) * (y - y0) + x0:
+                crossings += 1
+        return crossings % 2 == 1
+    def distance(x, y):
+        best = math.inf
+        for (ax, ay), (bx, by) in segments:
+            dx, dy = bx - ax, by - ay
+            t = max(0, min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy))) if dx or dy else 0
+            best = min(best, math.hypot(ax + dx * t - x, ay + dy * t - y))
+        return best if inside(x, y) else -best
+    points = [p for ring in rings for p in ring]
+    min_x, min_y = min(p[0] for p in points), min(p[1] for p in points)
+    width, height = max(p[0] for p in points) - min_x, max(p[1] for p in points) - min_y
+    size = min(width, height)
+    if size <= 0:
+        return (min_x, min_y), 0.0
+    h = size / 2.0
+    queue = []
+    ys = [min_y + i * size for i in range(math.ceil(height / size - 1e-12))]
+    xs = [min_x + i * size for i in range(math.ceil(width / size - 1e-12))]
+    for y in ys:
+        for x in xs:
+            heapq.heappush(queue, _LabelCell(x + h, y + h, h, distance))
+    area = cx = cy = 0.0
+    for (x0, y0), (x1, y1) in segments:
+        factor = x0 * y1 - x1 * y0
+        area += factor / 2
+        cx, cy = cx + (x0 + x1) * factor, cy + (y0 + y1) * factor
+    best = _LabelCell(cx / (6 * area), cy / (6 * area), 0, distance) if area else _LabelCell(min_x, min_y, 0, distance)
+    box = _LabelCell(min_x + width / 2, min_y + height / 2, 0, distance)
+    if box.d > best.d:
+        best = box
+    steps = 0
+    while queue and steps < 200000:
+        cell = heapq.heappop(queue)
+        steps += 1
+        if cell.d > best.d:
+            best = cell
+        if cell.p - best.d > precision:
+            half = cell.h / 2.0
+            for dx, dy in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
+                heapq.heappush(queue, _LabelCell(cell.x + dx * half, cell.y + dy * half, half, distance))
+    return (best.x, best.y), best.d
+
+
+class LabeledPolygram(Polygram):
+    """A polygram with a Label at its pole of inaccessibility."""
+    def __init__(self, *vertex_groups, label, precision=0.01, label_config=None, box_config=None,
+                 frame_config=None, **kwargs):
+        super().__init__(*vertex_groups, **kwargs)
+        self.label = Label(label=label, label_config=label_config, box_config=box_config, frame_config=frame_config)
+        rings = []
+        for group in vertex_groups:
+            ring = [(float(p[0]), float(p[1])) for p in group]
+            if ring[0] != ring[-1]:
+                ring.append(ring[0])
+            rings.append(ring)
+        center, self.radius = _polylabel(rings, precision)
+        self.pole = Vector((center[0], center[1], 0))
+        self.label.move_to(self.pole)
+        self.add(self.label)
+
+
+class ChangeSpeed(AnimationGroup):
+    """Re-time an animation with speed factors at chosen progress nodes (Community's ChangeSpeed)."""
+    dt, is_changing_dt = 0, False
+
+    def __init__(self, anim, speedinfo, rate_func=None, affects_speed_updaters=True, **kwargs):
+        if not isinstance(anim, (Animation, AnimationGroup)):
+            raise TypeError('ChangeSpeed expects an animation')
+        speedinfo = dict(speedinfo)
+        if any(isinstance(v, bool) or not isinstance(v, _REAL) or not v > 0 for v in speedinfo.values()):
+            raise ValueError('ChangeSpeed speed factors must be positive')
+        if any(not 0 <= k <= 1 for k in speedinfo):
+            raise ValueError('ChangeSpeed nodes must lie between 0 and 1')
+        speedinfo.setdefault(0, 1)
+        if 1 not in speedinfo:
+            speedinfo[1] = sorted(speedinfo.items())[-1][1]
+        self.speedinfo = dict(sorted(speedinfo.items()))
+        self.anim, self.affects_speed_updaters = anim, affects_speed_updaters
+        self.rate_func_inner = anim.rate_func if rate_func is None else rate_func
+        self.segments, current, previous, init = [], 0.0, 0.0, self.speedinfo[0]
+        for node, final in list(self.speedinfo.items())[1:]:
+            duration = node - previous
+            length = 2 / (init + final) * duration
+            self.segments.append((current, length, duration, previous, init, final))
+            current += length
+            previous, init = node, final
+        self.scaled_total_time = current
+        super().__init__(anim, run_time=self.scaled_total_time * anim.run_time, **kwargs)
+        self._progress = 0.0
+
+    def _remap(self, t):
+        x = self.rate_func_inner(t) * self.scaled_total_time
+        for start, length, duration, node, init, final in self.segments:
+            if x <= start + length or (start, length) == self.segments[-1][:2]:
+                u = (x - start) / duration if duration else 0
+                return ((final ** 2 - init ** 2) * u * u / 4 + init * u) * duration + node
+        return 1.0
+
+    def prepare(self, scene):
+        if self.affects_speed_updaters:
+            ChangeSpeed.is_changing_dt = True
+        self._progress = 0.0
+        super().prepare(scene)
+
+    def states(self, alpha, rate_func=None):
+        progress = 1.0 if alpha >= 1 else min(1.0, self._remap(max(0.0, alpha)))
+        if self.affects_speed_updaters:
+            ChangeSpeed.dt = (progress - self._progress) * self.anim.run_time
+        self._progress = progress
+        return self.anim.states(progress, lambda t: t) if isinstance(self.anim, Animation) else \
+            self.anim.states(progress, lambda t: t)
+
+    def finish(self, scene):
+        ChangeSpeed.is_changing_dt = False
+        super().finish(scene)
+
+    @classmethod
+    def add_updater(cls, mobject, update_function, index=None, call_updater=False):
+        if 'dt' in inspect.signature(update_function).parameters:
+            return mobject.add_updater(lambda mob, dt: update_function(mob, cls.dt if cls.is_changing_dt else dt),
+                                       index=index, call_updater=call_updater)
+        return mobject.add_updater(update_function, index=index, call_updater=call_updater)
+
+
 class _PCG64:
     """NumPy's default_rng(seed) stream (SeedSequence + PCG64), for exact Community noise."""
     _MULT = 0x2360ED051FC65DA44385DF649FCCF645
@@ -10695,7 +11094,7 @@ class _StreamLinesEnd(Animation):
 EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
            'Triangle', 'Polygon', 'Polygram', 'RegularPolygram', 'RegularPolygon', 'Star', 'Brace', 'BraceBetweenPoints', 'BraceLabel', 'BraceText',
            'Title', 'BulletedList', 'Tex', 'SingleStringMathTex', 'MarkupText', 'LabeledDot', 'Variable', 'always', 'f_always', 'always_shift', 'always_rotate',
-           'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'BarChart', 'PolarPlane', 'NumberPlane', 'ComplexPlane', 'VectorField', 'ArrowVectorField', 'StreamLines', 'sigmoid', 'ScreenRectangle', 'FullScreenRectangle', 'VectorizedPoint', 'ComplexValueTracker', 'UnitInterval', 'TangentialArc', 'CurvesAsSubmobjects', 'VDict', 'Cutout', 'ConvexHull', 'ArcBrace', 'LaggedStartMap', 'MaintainPositionRelativeTo', 'Blink', 'Broadcast', 'SpiralIn', 'AddTextWordByWord', 'Animation', 'line_intersection', 'angle_between_vectors', 'DEFAULT_LAGGED_START_LAG_RATIO', 'Graph', 'DiGraph', 'Union', 'Intersection', 'Difference', 'Exclusion', 'Code', 'SVGMobject', 'VMobjectFromSVGPath', 'ImageMobject', 'RESAMPLING_ALGORITHMS', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
+           'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'BarChart', 'PolarPlane', 'NumberPlane', 'ComplexPlane', 'VectorField', 'ArrowVectorField', 'StreamLines', 'sigmoid', 'ScreenRectangle', 'FullScreenRectangle', 'VectorizedPoint', 'ComplexValueTracker', 'UnitInterval', 'TangentialArc', 'CurvesAsSubmobjects', 'VDict', 'Cutout', 'ConvexHull', 'ArcBrace', 'LaggedStartMap', 'MaintainPositionRelativeTo', 'Blink', 'Broadcast', 'SpiralIn', 'AddTextWordByWord', 'Animation', 'line_intersection', 'angle_between_vectors', 'DEFAULT_LAGGED_START_LAG_RATIO', 'Graph', 'DiGraph', 'Union', 'Intersection', 'Difference', 'Exclusion', 'Code', 'SVGMobject', 'VMobjectFromSVGPath', 'ImageMobject', 'RESAMPLING_ALGORITHMS', 'TypeWithCursor', 'UntypeWithCursor', 'AnimatedBoundary', 'ShowPassingFlashWithThinningStrokeWidth', 'FadeTransformPieces', 'ImplicitFunction', 'LabeledPolygram', 'ChangeSpeed', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',
            'AnimationGroup', 'LaggedStart', 'Succession', 'MoveAlongPath',
            'GrowFromCenter', 'GrowFromPoint', 'ShrinkToCenter', 'Restore', 'Indicate', 'ShowPassingFlash', 'TransformFromCopy',
            'FadeOut', 'Uncreate', 'Rotate', 'Rotating', 'Transform', 'ReplacementTransform',

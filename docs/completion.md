@@ -294,3 +294,7 @@ code_file and custom Pygments Style classes from user code remain unsupported.
 SVGMobject/VMobjectFromSVGPath (markup strings) and ImageMobject (arrays/data URIs) are
 implemented with Community geometry/style checks; file paths, gradients/patterns,
 clip paths and image pixel interpolation in Transform remain open.
+
+TypeWithCursor/UntypeWithCursor, AnimatedBoundary, ChangeSpeed, ImplicitFunction,
+LabeledPolygram, ShowPassingFlashWithThinningStrokeWidth and FadeTransformPieces are
+implemented with Community checks for timing, cursor placement and pole positions.
