@@ -337,12 +337,20 @@ const ManimRenderer = {
     }
 
     let paintDefs = null;
-    const paint = color => {
-      if (!Array.isArray(color)) return color;
+    const paint = (color, opacities) => {
+      // Community draws color and opacity lists as gradients; make_even pairs their stops.
+      const alphas = Array.isArray(opacities) && opacities.length > 1 && opacities.length <= 64 &&
+        opacities.every(Number.isFinite) ? opacities : null;
+      if (!Array.isArray(color) && !alphas) return color;
+      if (!Array.isArray(color)) color = [color];
       if (!color.length || color.length > 64 || !color.every(stop => /^#[0-9a-f]{6}$/i.test(stop))) {
         throw new Error('Gradient colors require 1 to 64 six-digit hex colors');
       }
-      if (color.length === 1) return color[0];
+      if (color.length === 1 && !alphas) return color[0];
+      const count = Math.max(color.length, alphas ? alphas.length : 1);
+      const even = list => Array.from({ length: count }, (_, i) => list[Math.floor(i * list.length / count)]);
+      const stopColors = even(color);
+      const stopAlphas = alphas ? even(alphas) : null;
       paintDefs ||= document.createElementNS(this.SVG_NS, 'defs');
       const gradient = document.createElementNS(this.SVG_NS, 'linearGradient');
       const id = `manim-gradient-${this._gradientSerial = (this._gradientSerial || 0) + 1}`;
@@ -363,10 +371,11 @@ const ManimRenderer = {
         gradient.setAttribute('x2', '100%');
         gradient.setAttribute('y2', '0%');
       }
-      color.forEach((stopColor, index) => {
+      stopColors.forEach((stopColor, index) => {
         const stop = document.createElementNS(this.SVG_NS, 'stop');
-        stop.setAttribute('offset', `${100 * index / (color.length - 1)}%`);
+        stop.setAttribute('offset', `${100 * index / (count - 1)}%`);
         stop.setAttribute('stop-color', stopColor);
+        if (stopAlphas) stop.setAttribute('stop-opacity', Math.max(0, Math.min(1, stopAlphas[index])));
         gradient.appendChild(stop);
       });
       paintDefs.appendChild(gradient);
@@ -376,8 +385,8 @@ const ManimRenderer = {
       element.setAttribute('opacity', mobject.opacity ?? 1);
       // Group styles live on each child, avoiding compounded group opacity.
       if (type !== 'vgroup') {
-        const fill = paint(mobject.fill_color ?? mobject.color ?? '#FFFFFF');
-        const stroke = paint(mobject.stroke_color ?? mobject.color ?? '#FFFFFF');
+        const fill = paint(mobject.fill_color ?? mobject.color ?? '#FFFFFF', mobject.fill_opacities);
+        const stroke = paint(mobject.stroke_color ?? mobject.color ?? '#FFFFFF', mobject.stroke_opacities);
         for (const leaf of [element, ...element.querySelectorAll('*')]) {
           if (leaf.getAttribute('fill') && leaf.getAttribute('fill') !== 'none') {
             leaf.setAttribute('fill', fill);

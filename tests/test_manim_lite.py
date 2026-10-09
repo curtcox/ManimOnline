@@ -8056,6 +8056,33 @@ class Demo(Scene):
         with self.assertRaisesRegex(NotImplementedError, 'planar'):
             lite.Graph(vertices, edges, layout='planar')
 
+    def test_doc_example_options_tips_opacity_lists_and_arange_sampling(self):
+        # Opacity lists become gradient stops (Community draws rgba lists as gradients).
+        path = lite.TracedPath(lambda: lite.ORIGIN, stroke_opacity=[0, 1])
+        self.assertEqual((path.stroke_opacity, path.stroke_opacities), (1, [0.0, 1.0]))
+        line = lite.Line(stroke_opacity=[0.2, 1]).to_dict()
+        self.assertEqual(line['stroke_opacities'], [0.2, 1.0])
+        self.assertIn('gradient_points', line)
+        # Axis tips may use any ArrowTip class.
+        axes = lite.Axes(axis_config={'tip_shape': lite.StealthTip})
+        self.assertIsInstance(axes.x_axis.get_tip() if hasattr(axes.x_axis, 'get_tip') else
+                              next(c for c in axes.x_axis.children if c.__dict__.get('_number_line_role') == 'tip'),
+                              lite.StealthTip)
+        # Community samples plots with np.arange, so x = 2 is never hit exactly here.
+        plane = lite.NumberPlane((-3, 3), (-4, 4))
+        graph = plane.plot(lambda x: (x ** 2 - 2) / (x ** 2 - 4))
+        self.assertGreater(max(abs(p[1]) for p in graph.get_points()), 1e14)
+        # DecimalNumber unit spacing, Text/MathTex SVG sizing, arced lines and grids.
+        number = lite.DecimalNumber(1, unit='m', unit_buff_per_font_unit=0.003)
+        self.assertAlmostEqual(number.unit_buff_per_font_unit, 0.003)
+        self.assertAlmostEqual(lite.Text('Hello', height=1).get_height(), 1)
+        self.assertAlmostEqual(lite.MathTex('x^2', width=3).get_width(), 3)
+        arc = lite.Line(lite.LEFT * 2, lite.RIGHT * 2, path_arc=lite.PI / 2)
+        # Counterclockwise from left to right: the sagitta r(1 - cos 45deg) lies below.
+        self.assertAlmostEqual(arc.get_bottom()[1], -(2 * 2 ** 0.5) * (1 - 2 ** -0.5), 2)
+        grid = lite.Rectangle(width=4.0, height=2.0, grid_xstep=1.0, grid_ystep=0.5)
+        self.assertEqual([len(g) for g in grid.grid_lines], [3, 3])
+
 
 if __name__ == '__main__':
     unittest.main()

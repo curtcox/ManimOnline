@@ -659,8 +659,8 @@ class Mobject:
         self.color = color
         self.fill_color = color if fill_color is None else fill_color
         self.stroke_color = color if stroke_color is None else stroke_color
-        self._validate_opacity(fill_opacity)
-        self._validate_opacity(stroke_opacity)
+        fill_opacity = self._opacity_channel('fill', fill_opacity)
+        stroke_opacity = self._opacity_channel('stroke', stroke_opacity)
         self._validate_width(stroke_width)
         self.fill_opacity = fill_opacity
         self.stroke_opacity = stroke_opacity
@@ -2252,9 +2252,28 @@ class Mobject:
                 child.set_color(color)
         return self
 
+    def _opacity_channel(self, channel, opacity):
+        """A scalar opacity, or a list drawn as Community's gradient of opacities. A list is
+        kept as relative stop opacities (``<channel>_opacities``) under a scalar of 1."""
+        if isinstance(opacity, (list, tuple)) or hasattr(opacity, 'tolist'):
+            values = [float(v) for v in (opacity.tolist() if hasattr(opacity, 'tolist') else opacity)]
+            if not values or len(values) > 64:
+                raise ValueError('Opacity lists need 1 to 64 values')
+            for value in values:
+                self._validate_opacity(value)
+            if len(values) == 1:
+                self.__dict__.pop(channel + '_opacities', None)
+                return values[0]
+            self.__dict__[channel + '_opacities'] = values
+            return 1
+        self._validate_opacity(opacity)
+        self.__dict__.pop(channel + '_opacities', None)
+        return opacity
+
     def set_fill(self, color=None, opacity=None, family=True):
+        raw = opacity
         if opacity is not None:
-            self._validate_opacity(opacity)
+            opacity = self._opacity_channel('fill', opacity)
         color = _paint(color)
         if color is not None:
             self.fill_color = color
@@ -2262,14 +2281,15 @@ class Mobject:
             self.fill_opacity = opacity
         if family:
             for child in self.children:
-                child.set_fill(color, opacity)
+                child.set_fill(color, raw)
         return self
 
     def set_stroke(self, color=None, width=None, opacity=None, family=True):
         if width is not None:
             self._validate_width(width)
+        raw = opacity
         if opacity is not None:
-            self._validate_opacity(opacity)
+            opacity = self._opacity_channel('stroke', opacity)
         color = _paint(color)
         if color is not None:
             self.stroke_color = color
@@ -2279,7 +2299,7 @@ class Mobject:
             self.stroke_opacity = opacity
         if family:
             for child in self.children:
-                child.set_stroke(color, width, opacity)
+                child.set_stroke(color, width, raw)
         return self
 
     def set_opacity(self, opacity, family=True):
@@ -2609,7 +2629,8 @@ class Mobject:
         result['geometry_center'] = list(center)
         result['children'] = [child.to_dict() for child in self.children]
         if result['type'] in _GRADIENT_TYPES and (self.sheen_factor or isinstance(self.fill_color, list) or
-                                                  isinstance(self.stroke_color, list)):
+                                                  isinstance(self.stroke_color, list) or 'fill_opacities' in result
+                                                  or 'stroke_opacities' in result):
             self._gradient_paint(result)
         return _refresh_tip_shafts(result)
 
@@ -3162,7 +3183,9 @@ class ParametricFunction(VMobject):
             raise ValueError('Plots are limited to 10001 sampled points')
         curves,lengths,pending = [],[],[]
         for (start,end),count in zip(intervals,counts):
-            times = [start+i*self.t_step for i in range(count) if start+i*self.t_step < end]+[end]
+            # np.arange fills start + i * ((start + step) - start), as Community samples.
+            delta = (start+self.t_step)-start
+            times = [start+i*delta for i in range(count) if start+i*delta < end]+[end]
             anchors = [self.get_point_from_function(t) for t in times]
             if len(anchors) == 1:
                 pending = [list(anchors[0])]
@@ -4575,7 +4598,8 @@ def _math_parts(text, parts, font_size):
 
 class Text(Mobject):
     def __init__(self, text, font_size=48, line_spacing=-1, font='', slant=NORMAL, weight=NORMAL,
-                 t2c=None, t2f=None, t2g=None, t2s=None, t2w=None, gradient=None, disable_ligatures=False, **kwargs):
+                 t2c=None, t2f=None, t2g=None, t2s=None, t2w=None, gradient=None, disable_ligatures=False,
+                 height=None, width=None, **kwargs):
         if isinstance(font_size, bool) or not isinstance(font_size, _REAL) or not math.isfinite(font_size) or font_size <= 0:
             raise ValueError('font_size must be positive and finite')
         if isinstance(line_spacing, bool) or not isinstance(line_spacing, _REAL) or not math.isfinite(line_spacing):
@@ -4616,6 +4640,16 @@ class Text(Mobject):
                     else:
                         for glyph in glyphs:
                             setattr(glyph, kind, value)
+        if type(self) in (Text, MarkupText):
+            self._fit_svg_size(height, width)
+
+    def _fit_svg_size(self, height, width):
+        """Community's SVGMobject sizing: scale to height, then to width (both uniform)."""
+        if height is not None:
+            self.scale_to_fit_height(NumberLine._real(height, 'height', positive=True))
+        if width is not None:
+            self.scale_to_fit_width(NumberLine._real(width, 'width', positive=True))
+        return self
 
     def _indices(self, key):
         """Original-text character indices for a t2* key: a substring or '[start:stop]'."""
@@ -4735,7 +4769,8 @@ def _number_text(number, options):
 class DecimalNumber(Text):
     """A finite real numeric label using the preview's centered SVG text."""
     def __init__(self, number=0, num_decimal_places=2, include_sign=False,
-                 group_with_commas=True, show_ellipsis=False, unit=None, font_size=48, **kwargs):
+                 group_with_commas=True, show_ellipsis=False, unit=None, font_size=48,
+                 digit_buff_per_font_unit=0.001, unit_buff_per_font_unit=0, **kwargs):
         if (isinstance(num_decimal_places, bool) or not isinstance(num_decimal_places, numbers.Integral) or
                 not 0 <= num_decimal_places <= 12):
             raise ValueError('num_decimal_places must be an integer from 0 to 12')
@@ -4750,6 +4785,8 @@ class DecimalNumber(Text):
                        group_with_commas=group_with_commas, show_ellipsis=show_ellipsis, unit=None)
         super().__init__(_number_text(number, options), font_size=font_size, **kwargs)
         self.number, self._number_format, self.unit = number, options, unit
+        self.digit_buff_per_font_unit = NumberLine._real(digit_buff_per_font_unit, 'digit_buff_per_font_unit')
+        self.unit_buff_per_font_unit = NumberLine._real(unit_buff_per_font_unit, 'unit_buff_per_font_unit')
         if unit:
             sign = MathTex(unit, font_size=font_size, color=self.fill_color)
             sign._number_role = 'unit'
@@ -4767,7 +4804,9 @@ class DecimalNumber(Text):
         if sign is None:
             return
         width, height = _text_extent(self.__dict__)
-        buff = 0.001 * self.font_size  # Community's digit_buff_per_font_unit spacing.
+        # Community's next_to buff: (unit_buff_per_font_unit + digit_buff_per_font_unit) * font_size.
+        buff = (self.__dict__.get('unit_buff_per_font_unit', 0) +
+                self.__dict__.get('digit_buff_per_font_unit', 0.001)) * self.font_size
         # Children of a shape live in its local frame, where the digits' ink is centered on 0.
         x = width / 2 + buff + sign.get_width() / 2
         y = (height - sign.get_height()) / 2 * (1 if self.unit.startswith('^') else -1)
@@ -4944,7 +4983,7 @@ class MathTex(Text):
         return self.tex_string
 
     def __init__(self, *tex_strings, arg_separator=' ', substrings_to_isolate=None, tex_to_color_map=None,
-                 font_size=48, tex_environment='align*', tex_template=None, **kwargs):
+                 font_size=48, tex_environment='align*', tex_template=None, height=None, width=None, **kwargs):
         # MathJax typesets in the browser; LaTeX templates (preamble, fonts) cannot apply.
         if tex_template is not None and not isinstance(tex_template, TexTemplate):
             raise TypeError('tex_template must be a TexTemplate')
@@ -4983,6 +5022,7 @@ class MathTex(Text):
             self.add(*members)
         for tex, color in color_map.items():
             self.set_color_by_tex(tex, color)
+        self._fit_svg_size(height, width)
 
     @staticmethod
     def _break_up(tex_strings, isolate):
@@ -5426,10 +5466,28 @@ class Title(VGroup):
 
 class BulletedList(VGroup):
     """Tex items with bullet dots, arranged downward and left-aligned."""
-    def __init__(self, *items, buff=MED_LARGE_BUFF, dot_scale_factor=2, tex_environment=None, **kwargs):
+    def set_color_by_tex(self, tex, color, **kwargs):
+        # Community's items are Tex parts that include their bullet.
+        for row in self.children:
+            if tex in row[1].tex_string:
+                row.set_color(color)
+        return self
+
+    def __init__(self, *items, buff=MED_LARGE_BUFF, dot_scale_factor=2, tex_environment=None,
+                 height=None, width=None, **kwargs):
         super().__init__()
-        for item in items:
-            text = Tex(item, **kwargs)
+        texts = [Tex(item, **kwargs) for item in items]
+        if (height is not None or width is not None) and texts:
+            # Community sizes the whole Tex (items stacked) before adding the bullets.
+            stacked = VGroup(*(text.copy() for text in texts)).arrange(DOWN, aligned_edge=LEFT, buff=buff)
+            factor = 1
+            if height is not None:
+                factor = NumberLine._real(height, 'height', positive=True) / stacked.get_height()
+            if width is not None:
+                factor = NumberLine._real(width, 'width', positive=True) / (stacked.get_width() * factor) * factor
+            for text in texts:
+                text.scale(factor)
+        for text in texts:
             dot = MathTex('\\cdot').scale(dot_scale_factor).next_to(text, LEFT, SMALL_BUFF)
             self.add(VGroup(dot, text))
         self.arrange(DOWN, aligned_edge=LEFT, buff=buff)
@@ -6286,7 +6344,7 @@ class NumberLine(VGroup):
                  tip_width=.35, tip_height=.35, include_numbers=False, font_size=36,
                  label_direction=DOWN, line_to_number_buff=.25,
                  decimal_number_config=None, numbers_to_exclude=None,
-                 numbers_to_include=None, label_constructor=None, scaling=None, **kwargs):
+                 numbers_to_include=None, label_constructor=None, scaling=None, tip_shape=None, **kwargs):
         self.scaling = LinearBase() if scaling is None else scaling
         if not isinstance(self.scaling, _ScaleBase):
             raise TypeError('NumberLine scaling must be LinearBase, LogBase or another _ScaleBase')
@@ -6338,7 +6396,16 @@ class NumberLine(VGroup):
                      stroke_opacity=self.stroke_opacity).rotate(rotation)
         shaft._number_line_role = 'shaft'
         self.add(shaft)
-        if include_tip:
+        if include_tip and tip_shape is not None and tip_shape is not ArrowTriangleFilledTip:
+            # Community's add_tip(tip_shape=...): the shape at the end, stroked like the line.
+            if not (isinstance(tip_shape, type) and issubclass(tip_shape, ArrowTip)):
+                raise TypeError('tip_shape must be an ArrowTip class')
+            tip = tip_shape(length=tip_height, fill_color=self.stroke_color, stroke_color=self.stroke_color)
+            tip.set_stroke(self.stroke_color, self.stroke_width)
+            shaft._orient_tip(tip, False)
+            tip._number_line_role = 'tip'
+            self.add(tip)
+        elif include_tip:
             end = shaft.get_end()
             direction = shaft.get_unit_vector()
             normal = Vector((-direction[1],direction[0],0))
@@ -8878,12 +8945,14 @@ class MoveAlongPath(Animation):
 class _TransformMatching(Animation):
     """Morph parts with matching keys; fade the rest (Community's matching rules)."""
     def __init__(self, mobject, target_mobject, transform_mismatches=False, fade_transform_mismatches=False,
-                 key_map=None, **kwargs):
+                 key_map=None, path_arc=0, **kwargs):
         if not isinstance(mobject, Mobject) or not isinstance(target_mobject, Mobject):
             raise TypeError(type(self).__name__ + ' expects two mobjects')
         if mobject is target_mobject:
             raise ValueError('Source and target must be different mobjects')
         super().__init__(mobject, **kwargs)
+        # Community passes transform options such as path_arc to the matched transforms.
+        self.path_arc = NumberLine._real(path_arc, 'path_arc')
         self.target_mobject, self.key_map = target_mobject, dict(key_map or {})
         self.transform_mismatches = transform_mismatches or fade_transform_mismatches
 
@@ -8928,9 +8997,13 @@ class _TransformMatching(Animation):
         return moved.shift(reference.get_center() - moved.get_center())
 
     def sample(self, alpha):
-        states = [state for plan in self.plans for state in _sample_transform(plan, alpha)]
+        arc = self.path_arc if abs(self.path_arc) >= STRAIGHT_PATH_THRESHOLD else 0
+        states = [state for plan in self.plans for state in _sample_transform(plan, alpha, arc)]
         for source, source_end, target_start, target in self.sliding:
             leaving, arriving = interpolate(source, source_end, alpha), interpolate(target_start, target, alpha)
+            if arc and 0 < alpha < 1:
+                _arc_geometry(leaving, source, source_end, alpha, arc)
+                _arc_geometry(arriving, target_start, target, alpha, arc)
             leaving['opacity'] = source['opacity'] * (1 - alpha)
             arriving['opacity'] = target['opacity'] * alpha
             states += [leaving, arriving]
@@ -12237,7 +12310,9 @@ class LaggedStartMap(LaggedStart):
                  lag_ratio=DEFAULT_LAGGED_START_LAG_RATIO, **kwargs):
         arg_creator = arg_creator or (lambda mob: (mob,))
         kwargs.pop('lag_ratio', None)
-        animations = [animation_class(*arg_creator(submob), **kwargs) for submob in mobject]
+        # A leaf (e.g. a whole Tex without glyph members here) maps as one member.
+        members = list(mobject) or [mobject]
+        animations = [animation_class(*arg_creator(submob), **kwargs) for submob in members]
         super().__init__(*animations, run_time=run_time, lag_ratio=lag_ratio)
 
 
