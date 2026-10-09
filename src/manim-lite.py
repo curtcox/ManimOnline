@@ -14,6 +14,15 @@ MAX_FRAMES = 901  # 900 timed samples plus a final seekable state.
 
 
 _REAL = numbers.Real  # Includes NumPy scalars; bool is excluded where it matters.
+
+
+def _holds_mobject(value):
+    """True for mobject references (also inside lists/dicts), which frames never store."""
+    if isinstance(value, (list, tuple)):
+        return any(_holds_mobject(item) for item in value)
+    if isinstance(value, dict):
+        return any(_holds_mobject(item) for item in value.values())
+    return type(value).__name__ != 'Vector' and hasattr(value, 'get_family') and hasattr(value, 'to_dict')
 _BOUNDS_WITH_HANDLES = False  # Set only while measuring width/height.
 
 
@@ -674,6 +683,23 @@ class Mobject:
                 # Bake the displayed shaft before deforming its tip family. A
                 # similarity refit after a nonuniform map would change the curve.
                 new.__dict__.pop('_curved_tip_path',None)
+            elif kind in ('text','mathtex') and linear:
+                # Glyphs keep a pose plus an axis-aligned stretch in their own frame.
+                axis = world(RIGHT)-world(ORIGIN)
+                angle, size = math.atan2(axis[1],axis[0]), math.hypot(axis[0],axis[1])
+                quarter = round(angle/(PI/2))
+                columns = [mapped(pivot+direction)-mapped(pivot) for direction in (RIGHT,UP)]
+                if abs(angle-quarter*PI/2) > 1e-9 or abs(columns[0][1]) > 1e-12 or abs(columns[1][0]) > 1e-12:
+                    raise NotImplementedError('Text and formulas support axis-aligned stretching only')
+                sx, sy = old.__dict__.get('glyph_stretch', (1, 1))
+                mx, my = (columns[0][0], columns[1][1]) if quarter % 2 == 0 else (columns[1][1], columns[0][0])
+                new.glyph_stretch = [sx*mx, sy*my]
+                new.position,new.angle,new.geometry_scale = list(origin-parent_origin),quarter*PI/2,size
+                for key in ('_family_pivot_cache','_sampled_geometry_center'):
+                    new.__dict__.pop(key,None)
+                for old_child,new_child in zip(old.children,new.children):
+                    visit(old_child,new_child,world,origin)
+                return
             elif kind not in ('vgroup','mobject','valuetracker'):
                 raise NotImplementedError('Point mapping requires editable vector geometry')
             if '_curve_arc_center' in old.__dict__:
@@ -903,6 +929,8 @@ class Mobject:
             else:
                 width, height = (_math_box(self.text, self.font_size) if self._type == 'mathtex' else
                                  _text_extent(self.__dict__))
+            sx, sy = self.__dict__.get('glyph_stretch', (1, 1))
+            width, height = width * abs(sx), height * abs(sy)
             return (-width / 2, -height / 2, width / 2, height / 2)
         else:
             return (0, 0, 0, 0)
@@ -1543,7 +1571,7 @@ class Mobject:
     def to_dict(self):
         center = self._geometry_center()
         result = copy.deepcopy({key: value for key, value in self.__dict__.items()
-                                if not isinstance(value, Mobject) and not callable(value) and
+                                if not _holds_mobject(value) and not callable(value) and
                                 key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache')})
         result['type'] = result.pop('_type')
         result['geometry_center'] = list(center)
@@ -3268,10 +3296,22 @@ def _math_estimate(text, font_size):
     import re
     em = font_size * TEX_EM_PER_POINT
     body = re.sub(r'\\class\{manim-part-\d+\}', '', text)
-    body = re.sub(r'\\[a-zA-Z]+', 'x', body)
-    body = re.sub(r'[{}^_\s\\]', '', body)
+    rows = [body]
+    array = re.search(r'\\begin\{array\}\{[^}]*\}(.*?)\\end\{array\}', body, re.S)
+    if array:
+        rows = [row for row in array.group(1).split('\\\\') if row.strip()] or ['']
+        rows = [row if row.strip() != '\\quad' else '' for row in rows]
+    def width(row):
+        delimiters = len(re.findall(r'\\(?:left|right)[^.a-zA-Z]|\\(?:left|right)\\[a-zA-Z]+', row))
+        row = re.sub(r'\\begin\{array\}\{[^}]*\}|\\end\{array\}|\\quad|\\(?:left|right)\.?|\\[,;! ]', '', row)
+        cells = row.count('&')
+        row = re.sub(r'\\[a-zA-Z]+', 'x', row.replace('&', ''))
+        row = re.sub(r'[{}^_\s\\\[\]()|.]', '', row)
+        return len(row) * .55 + cells * 1.0 + delimiters * .4
     tall = 2 if re.search(r'\\(frac|sum|int|prod|binom|dfrac)', text) else 1
-    return max(1, len(body)) * .55 * em, .75 * tall * em
+    outer = .4 * len(re.findall(r'\\(?:left|right)[\[\]()|]', body)) if array else 0
+    total = max(width(row) for row in rows) + outer
+    return max(.3, total) * em, .75 * max(tall, 1.6 * len(rows) if array else 1) * em
 
 
 def _math_box(text, font_size):
@@ -3388,6 +3428,10 @@ class Integer(DecimalNumber):
 _PART_CLASS = '\\class{manim-part-%d}{%s}'
 
 
+def _reject_tex(value):
+    raise TypeError('MathTex expects TeX strings or numbers')
+
+
 def _class_wrap(piece, index):
     """Tag a tex piece in place: braces and ^/_ stay structural, balanced runs get the class."""
     out, buffer, i = [], '', 0
@@ -3469,7 +3513,10 @@ class MathTex(Text):
     """Formulas rendered as SVG paths by MathJax; several strings become parts."""
     def __init__(self, *tex_strings, arg_separator=' ', substrings_to_isolate=None, tex_to_color_map=None,
                  font_size=48, tex_environment='align*', **kwargs):
-        if not all(isinstance(value, str) for value in (*tex_strings, arg_separator)):
+        # Community converts non-string entries (e.g. matrix numbers) with str().
+        tex_strings = tuple(value if isinstance(value, str) else str(value) for value in tex_strings
+                            if isinstance(value, (str, numbers.Number)) or _reject_tex(value))
+        if not isinstance(arg_separator, str):
             raise TypeError('MathTex expects TeX strings')
         if isinstance(font_size, bool) or not isinstance(font_size, _REAL) or not math.isfinite(font_size) or font_size <= 0:
             raise ValueError('MathTex font_size must be positive and finite')
@@ -3935,6 +3982,369 @@ class VectorArrow(Arrow):
     def __init__(self, direction=RIGHT, buff=0, **kwargs):
         direction = Mobject._xy_vector(direction, 'Vector direction')
         super().__init__(ORIGIN, direction, buff=buff, **kwargs)
+
+
+class Paragraph(VGroup):
+    """Lines of Text on Community's baseline pitch, left-aligned unless told otherwise."""
+    def __init__(self, *text, line_spacing=-1, alignment=None, **kwargs):
+        if alignment not in (None, 'left', 'center', 'right'):
+            raise ValueError("alignment must be None, 'left', 'center' or 'right'")
+        super().__init__()
+        self.alignment = alignment
+        lines = '\n'.join(str(t) for t in text).split('\n')
+        font_size = kwargs.get('font_size', DEFAULT_FONT_SIZE)
+        spacing = .3 if line_spacing == -1 else line_spacing
+        pitch = font_size * (1 + spacing) * TEX_EM_PER_POINT
+        self.lines_text = lines
+        for index, line in enumerate(lines):
+            mob = Text(line, line_spacing=line_spacing, **kwargs)
+            layout = _text_layout(mob.__dict__)
+            baseline = layout['lines'][0]['y'] if layout['lines'] else 0
+            mob.move_to((0, -index * pitch - baseline, 0))
+            mob._paragraph_left = layout['lines'][0]['x'] if layout['lines'] else 0
+            self.add(mob)
+        self._align(alignment or 'left')
+        self.center()
+
+    def _align(self, alignment):
+        lines = list(self.children)
+        if not lines:
+            return
+        if alignment == 'left':
+            # Pango starts every line at the same pen position (not the ink edge).
+            for line in lines:
+                line.shift(RIGHT * (lines[0].get_center()[0] + lines[0]._paragraph_left - line.get_center()[0] - line._paragraph_left))
+        elif alignment == 'center':
+            for line in lines:
+                line.set_x(lines[0].get_center()[0])
+        else:
+            right = max(line.get_right()[0] for line in lines)
+            for line in lines:
+                line.shift(RIGHT * (right - line.get_right()[0]))
+
+
+class Table(VGroup):
+    """Community's Table: entries on a grid with optional labels, lines and highlights."""
+    def __init__(self, table, row_labels=None, col_labels=None, top_left_entry=None, v_buff=0.8, h_buff=1.3,
+                 include_outer_lines=False, include_inner_lines=True, add_background_rectangles_to_entries=False,
+                 entries_background_color=BLACK, include_background_rectangle=False,
+                 background_rectangle_color=BLACK, element_to_mobject=None, element_to_mobject_config=None,
+                 arrange_in_grid_config=None, line_config=None, **kwargs):
+        data = [list(row) for row in table]
+        if not data or not data[0]:
+            raise ValueError('Table needs at least one row and column')
+        if any(len(row) != len(data[0]) for row in data):
+            raise ValueError('Not all rows in table have the same length.')
+        if len(data) * len(data[0]) > 400:
+            raise ValueError('Tables are limited to 400 entries in this preview')
+        self.row_labels = list(row_labels) if row_labels else None
+        self.col_labels = list(col_labels) if col_labels else None
+        self.top_left_entry = top_left_entry
+        self.row_dim, self.col_dim = len(data), len(data[0])
+        self.v_buff, self.h_buff = v_buff, h_buff
+        self.include_outer_lines, self.include_inner_lines = include_outer_lines, include_inner_lines
+        self.line_config = dict(line_config or {})
+        make = Paragraph if element_to_mobject is None else element_to_mobject
+        options = dict(element_to_mobject_config or {})
+        super().__init__(**kwargs)
+        mob_table = [[make(item, **options) for item in row] for row in data]
+        self.elements_without_labels = VGroup(*(mob for row in mob_table for mob in row))
+        mob_table = self._add_labels(mob_table)
+        grid = VGroup(*(mob for row in mob_table for mob in row))
+        grid.arrange_in_grid(rows=len(mob_table), cols=len(mob_table[0]), buff=(h_buff, v_buff),
+                             **dict(arrange_in_grid_config or {}))
+        self.elements = VGroup(*(mob for row in mob_table for mob in row))
+        if not self.elements[0]._painted_members():
+            self.elements.remove(self.elements[0])
+        self.add(self.elements)
+        self.center()
+        self.mob_table = mob_table
+        self._add_horizontal_lines()
+        self._add_vertical_lines()
+        if add_background_rectangles_to_entries:
+            self.add_background_to_entries(color=entries_background_color)
+        if include_background_rectangle:
+            self.add_background_rectangle(color=background_rectangle_color)
+
+    def _add_labels(self, mob_table):
+        if self.row_labels is not None:
+            for k, label in enumerate(self.row_labels):
+                mob_table[k] = [label] + mob_table[k]
+        if self.col_labels is not None:
+            if self.row_labels is not None:
+                corner = self.top_left_entry if self.top_left_entry is not None else VMobject()
+                mob_table.insert(0, [corner] + self.col_labels)
+            else:
+                mob_table.insert(0, list(self.col_labels))
+        return mob_table
+
+    def _line(self, start, end):
+        line = Line(start, end, **self.line_config)
+        self.add(line)
+        return line
+
+    def _add_horizontal_lines(self):
+        left, right = self.get_left()[0] - .5 * self.h_buff, self.get_right()[0] + .5 * self.h_buff
+        rows, group = self.get_rows(), VGroup()
+        if self.include_outer_lines:
+            for y in (rows[0].get_top()[1] + .5 * self.v_buff, rows[-1].get_bottom()[1] - .5 * self.v_buff):
+                group.add(self._line((left, y, 0), (right, y, 0)))
+        if self.include_inner_lines:
+            for k in range(len(self.mob_table) - 1):
+                y = rows[k + 1].get_top()[1] + .5 * (rows[k].get_bottom()[1] - rows[k + 1].get_top()[1])
+                group.add(self._line((left, y, 0), (right, y, 0)))
+        self.horizontal_lines = group
+        return self
+
+    def _add_vertical_lines(self):
+        rows = self.get_rows()
+        top, bottom = rows.get_top()[1] + .5 * self.v_buff, rows.get_bottom()[1] - .5 * self.v_buff
+        columns, group = self.get_columns(), VGroup()
+        if self.include_outer_lines:
+            for x in (columns[0].get_left()[0] - .5 * self.h_buff, columns[-1].get_right()[0] + .5 * self.h_buff):
+                group.add(self._line((x, top, 0), (x, bottom, 0)))
+        if self.include_inner_lines:
+            for k in range(len(self.mob_table[0]) - 1):
+                x = columns[k + 1].get_left()[0] + .5 * (columns[k].get_right()[0] - columns[k + 1].get_left()[0])
+                group.add(self._line((x, bottom, 0), (x, top, 0)))
+        self.vertical_lines = group
+        return self
+
+    def get_horizontal_lines(self):
+        return self.horizontal_lines
+
+    def get_vertical_lines(self):
+        return self.vertical_lines
+
+    def get_columns(self):
+        return VGroup(*(VGroup(*(row[i] for row in self.mob_table)) for i in range(len(self.mob_table[0]))))
+
+    def get_rows(self):
+        return VGroup(*(VGroup(*row) for row in self.mob_table))
+
+    def set_column_colors(self, *colors):
+        for color, column in zip(colors, self.get_columns()):
+            column.set_color(color)
+        return self
+
+    def set_row_colors(self, *colors):
+        for color, row in zip(colors, self.get_rows()):
+            row.set_color(color)
+        return self
+
+    def get_entries(self, pos=None):
+        if pos is None:
+            return self.elements
+        offset = 2 if self.row_labels is not None and self.col_labels is not None and self.top_left_entry is None else 1
+        return self.elements[len(self.mob_table[0]) * (pos[0] - 1) + pos[1] - offset]
+
+    def get_entries_without_labels(self, pos=None):
+        if pos is None:
+            return self.elements_without_labels
+        return self.elements_without_labels[self.col_dim * (pos[0] - 1) + pos[1] - 1]
+
+    def get_row_labels(self):
+        return VGroup(*self.row_labels) if self.row_labels else VGroup()
+
+    def get_col_labels(self):
+        return VGroup(*self.col_labels) if self.col_labels else VGroup()
+
+    def get_labels(self):
+        group = VGroup()
+        if self.top_left_entry is not None:
+            group.add(self.top_left_entry)
+        for labels in (self.col_labels, self.row_labels):
+            if labels:
+                group.add(*labels)
+        return group
+
+    def add_background_to_entries(self, color=BLACK):
+        for mob in self.get_entries():
+            mob.add_background_rectangle(color=color)
+        return self
+
+    def get_cell(self, pos=(1, 1), **kwargs):
+        row, column = self.get_rows()[pos[0] - 1], self.get_columns()[pos[1] - 1]
+        left, right = column.get_left()[0] - self.h_buff / 2, column.get_right()[0] + self.h_buff / 2
+        top, bottom = row.get_top()[1] + self.v_buff / 2, row.get_bottom()[1] - self.v_buff / 2
+        return Polygon((left, top, 0), (right, top, 0), (right, bottom, 0), (left, bottom, 0), **kwargs)
+
+    def get_highlighted_cell(self, pos=(1, 1), color=PURE_YELLOW, **kwargs):
+        return BackgroundRectangle(self.get_cell(pos), color=color, **kwargs)
+
+    def add_highlighted_cell(self, pos=(1, 1), color=PURE_YELLOW, **kwargs):
+        cell = self.get_highlighted_cell(pos, color=color, **kwargs)
+        self.add_to_back(cell)
+        self.get_entries(pos).background_rectangle = cell
+        return self
+
+    def create(self, lag_ratio=1, line_animation=None, label_animation=None, element_animation=None,
+               entry_animation=None, **kwargs):
+        line_animation = Create if line_animation is None else line_animation
+        label_animation = Write if label_animation is None else label_animation
+        element_animation = Create if element_animation is None else element_animation
+        entry_animation = FadeIn if entry_animation is None else entry_animation
+        animations = [line_animation(VGroup(self.vertical_lines, self.horizontal_lines), **kwargs),
+                      element_animation(self.elements_without_labels.set_z_index(2), **kwargs)]
+        if len(self.get_labels()):
+            animations.append(label_animation(self.get_labels(), **kwargs))
+        for entry in self.elements_without_labels:
+            if isinstance(entry.__dict__.get('background_rectangle'), Mobject):
+                animations.append(entry_animation(entry.background_rectangle, **kwargs))
+        return AnimationGroup(*animations, lag_ratio=lag_ratio)
+
+    def scale(self, scale_factor, scale_stroke=False, **kwargs):
+        self.h_buff *= scale_factor
+        self.v_buff *= scale_factor
+        return super().scale(scale_factor, **kwargs)
+
+
+class MathTable(Table):
+    def __init__(self, table, element_to_mobject=None, **kwargs):
+        super().__init__(table, element_to_mobject=MathTex if element_to_mobject is None else element_to_mobject, **kwargs)
+
+
+class MobjectTable(Table):
+    def __init__(self, table, element_to_mobject=None, **kwargs):
+        super().__init__(table, element_to_mobject=(lambda m: m) if element_to_mobject is None else element_to_mobject,
+                         **kwargs)
+
+
+class IntegerTable(Table):
+    def __init__(self, table, element_to_mobject=None, **kwargs):
+        super().__init__(table, element_to_mobject=Integer if element_to_mobject is None else element_to_mobject, **kwargs)
+
+
+class DecimalTable(Table):
+    def __init__(self, table, element_to_mobject=None, element_to_mobject_config=None, **kwargs):
+        super().__init__(table, element_to_mobject=DecimalNumber if element_to_mobject is None else element_to_mobject,
+                         element_to_mobject_config={'num_decimal_places': 1} if element_to_mobject_config is None
+                         else element_to_mobject_config, **kwargs)
+
+
+def matrix_to_tex_string(matrix):
+    rows = [list(row) if isinstance(row, (list, tuple)) or hasattr(row, '__iter__') else [row] for row in matrix]
+    columns = len(rows[0]) if rows else 0
+    body = ' \\\\ '.join(' & '.join(str(item) for item in row) for row in rows)
+    return '\\left[ \\begin{array}{%s}' % ('c' * columns) + body + '\\end{array} \\right]'
+
+
+def matrix_to_mobject(matrix):
+    return MathTex(matrix_to_tex_string(matrix))
+
+
+class Matrix(VGroup):
+    """Entries on a grid between stretched TeX brackets, as in Community."""
+    BRACKET_HEIGHT = 0.5977
+
+    def __init__(self, matrix, v_buff=0.8, h_buff=1.3, bracket_h_buff=MED_SMALL_BUFF, bracket_v_buff=MED_SMALL_BUFF,
+                 add_background_rectangles_to_entries=False, include_background_rectangle=False,
+                 element_to_mobject=None, element_to_mobject_config=None, element_alignment_corner=DR,
+                 left_bracket='[', right_bracket=']', stretch_brackets=True, bracket_config=None, **kwargs):
+        rows = [list(row) for row in matrix]
+        if not rows or any(len(row) != len(rows[0]) for row in rows) or not rows[0]:
+            raise ValueError('Matrix needs a nonempty rectangular list of rows')
+        if len(rows) * len(rows[0]) > 400:
+            raise ValueError('Matrices are limited to 400 entries in this preview')
+        super().__init__(**kwargs)
+        self.v_buff, self.h_buff = v_buff, h_buff
+        self.bracket_h_buff, self.bracket_v_buff = bracket_h_buff, bracket_v_buff
+        self.element_alignment_corner = Mobject._xy_vector(element_alignment_corner, 'Alignment corner')
+        make = MathTex if element_to_mobject is None else element_to_mobject
+        config_ = dict(element_to_mobject_config or {})
+        self.mob_matrix = [[make(item, **config_) for item in row] for row in rows]
+        for i, row in enumerate(self.mob_matrix):
+            for j, mob in enumerate(row):
+                mob.move_to(DOWN * (i * v_buff) + RIGHT * (j * h_buff), self.element_alignment_corner)
+        self.elements = VGroup(*(mob for row in self.mob_matrix for mob in row))
+        self.add(self.elements)
+        self._add_brackets(left_bracket, right_bracket, stretch_brackets, **dict(bracket_config or {}))
+        self.center()
+        if add_background_rectangles_to_entries:
+            for mob in self.elements:
+                mob.add_background_rectangle()
+        if include_background_rectangle:
+            self.add_background_rectangle()
+
+    def _add_brackets(self, left, right, stretch, **kwargs):
+        count = int(self.get_height() / self.BRACKET_HEIGHT) + 1
+        empty = '\\begin{array}{c}' + '\\quad \\\\' * count + '\\end{array}'
+        l_bracket = MathTex('\\left' + left + empty + '\\right.', **kwargs)
+        r_bracket = MathTex('\\left.' + empty + '\\right' + right, **kwargs)
+        pair = VGroup(l_bracket, r_bracket)
+        if stretch:
+            pair.stretch_to_fit_height(self.get_height() + 2 * self.bracket_v_buff)
+        l_bracket.next_to(self, LEFT, self.bracket_h_buff)
+        r_bracket.next_to(self, RIGHT, self.bracket_h_buff)
+        self.brackets = pair
+        self.add(l_bracket, r_bracket)
+        return self
+
+    def get_columns(self):
+        return VGroup(*(VGroup(*(row[i] for row in self.mob_matrix)) for i in range(len(self.mob_matrix[0]))))
+
+    def get_rows(self):
+        return VGroup(*(VGroup(*row) for row in self.mob_matrix))
+
+    def set_column_colors(self, *colors):
+        for color, column in zip(colors, self.get_columns()):
+            column.set_color(color)
+        return self
+
+    def set_row_colors(self, *colors):
+        for color, row in zip(colors, self.get_rows()):
+            row.set_color(color)
+        return self
+
+    def add_background_to_entries(self):
+        for mob in self.get_entries():
+            mob.add_background_rectangle()
+        return self
+
+    def get_mob_matrix(self):
+        return self.mob_matrix
+
+    def get_entries(self):
+        return self.elements
+
+    def get_brackets(self):
+        return self.brackets
+
+
+class DecimalMatrix(Matrix):
+    def __init__(self, matrix, element_to_mobject=None, element_to_mobject_config=None, **kwargs):
+        super().__init__(matrix, element_to_mobject=DecimalNumber if element_to_mobject is None else element_to_mobject,
+                         element_to_mobject_config={'num_decimal_places': 1} if element_to_mobject_config is None
+                         else element_to_mobject_config, **kwargs)
+
+
+class IntegerMatrix(Matrix):
+    def __init__(self, matrix, element_to_mobject=None, **kwargs):
+        super().__init__(matrix, element_to_mobject=Integer if element_to_mobject is None else element_to_mobject, **kwargs)
+
+
+class MobjectMatrix(Matrix):
+    def __init__(self, matrix, element_to_mobject=None, **kwargs):
+        super().__init__(matrix, element_to_mobject=(lambda m: m) if element_to_mobject is None else element_to_mobject,
+                         **kwargs)
+
+
+def get_det_text(matrix, determinant=None, background_rect=False, initial_scale_factor=2):
+    parens = MathTex('(', ')')
+    parens.scale(initial_scale_factor)
+    parens.stretch_to_fit_height(matrix.get_height())
+    l_paren, r_paren = parens
+    l_paren.next_to(matrix, LEFT, buff=0.1)
+    r_paren.next_to(matrix, RIGHT, buff=0.1)
+    det = Tex('det').scale(initial_scale_factor).next_to(l_paren, LEFT, buff=0.1)
+    if background_rect:
+        det.add_background_rectangle()
+    det_text = VGroup(det, l_paren, r_paren)
+    if determinant is not None:
+        eq = MathTex('=').next_to(r_paren, RIGHT, buff=0.1)
+        result = MathTex(str(determinant)).next_to(eq, RIGHT, buff=0.2)
+        det_text.add(eq, result)
+    return det_text
 
 
 class AnnotationDot(Dot):
@@ -7297,7 +7707,9 @@ EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'Mobject', 'ValueTracker', 'a
            'ClockwiseTransform', 'CounterclockwiseTransform', 'MoveToTarget', 'CyclicReplace', 'Swap',
            'FadeTransform', 'ApplyPointwiseFunction', 'ApplyPointwiseFunctionToCenter', 'ApplyMatrix',
            'ApplyComplexFunction', 'ApplyFunction', 'Homotopy', 'SmoothedVectorizedHomotopy', 'ComplexHomotopy',
-           'ApplyWave', 'PhaseFlow', 'ChangingDecimal', 'ChangeDecimalToValue', 'AnnotationDot', 'Label',
+           'ApplyWave', 'PhaseFlow', 'ChangingDecimal', 'ChangeDecimalToValue', 'AnnotationDot', 'Label', 'Matrix', 'DecimalMatrix', 'IntegerMatrix', 'MobjectMatrix',
+           'get_det_text', 'matrix_to_tex_string', 'matrix_to_mobject', 'Paragraph', 'Table', 'MathTable',
+           'MobjectTable', 'IntegerTable', 'DecimalTable',
            'LabeledLine', 'LabeledArrow', 'TransformMatchingTex', 'TransformMatchingShapes', 'ApplyMethod', 'ScaleInPlace', 'FadeToColor', 'Wait', 'GrowFromEdge', 'GrowArrow',
            'SpinInFromNothing', 'Wiggle', 'FocusOn', 'UpdateFromFunc', 'UpdateFromAlphaFunc',
            'ShowIncreasingSubsets', 'ShowSubmobjectsOneByOne', 'AddTextLetterByLetter',

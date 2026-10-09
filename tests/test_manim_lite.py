@@ -16,6 +16,51 @@ def render(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_matrix_table_gallery_renders_and_cleans_up(self):
+        result=json.loads(lite.render_scene((ROOT/'examples/matrix_table_scene.py').read_text()))
+        self.assertEqual(result['duration'],8)
+        self.assertTrue(any(r'\left[' in text for text in result['math_estimated']))
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+
+    def test_matrices_tables_paragraphs_and_glyph_stretching(self):
+        # Reference values: Manim Community 0.22 with font='Liberation Sans'.
+        paragraph=lite.Paragraph('One line','and a much longer line')
+        self.assertEqual([round(line.get_left()[0],3) for line in paragraph],[-3.34,-3.343])
+        self.assertEqual([round(line.get_center()[1],3) for line in paragraph],[.391,-.325])
+        centered=lite.Paragraph('One line','and a much longer line',alignment='center')
+        self.assertAlmostEqual(centered[0].get_center()[0],centered[1].get_center()[0])
+        table=lite.Table([['This','is a'],['simple','Table.']],row_labels=[lite.Text('R1'),lite.Text('R2')],
+                         col_labels=[lite.Text('C1'),lite.Text('C2')],top_left_entry=lite.Text('TOP'))
+        self.assertAlmostEqual(table.get_height(),3.982,delta=.01)
+        self.assertAlmostEqual(table.get_width(),8.789,delta=.12)
+        self.assertEqual([round(l.get_start()[1],2) for l in table.horizontal_lines],[.72,-.57])
+        self.assertEqual((len(table.vertical_lines),len(table.elements)),(2,9))
+        self.assertAlmostEqual(table.get_cell((2,2)).get_width(),3.1775,delta=.01)
+        self.assertIs(table.get_entries((2,2)),table.mob_table[1][1])
+        table.add_highlighted_cell((2,2),color=lite.GREEN)
+        self.assertIsInstance(table.children[0],lite.BackgroundRectangle)
+        creation=table.create()
+        self.assertIsInstance(creation,lite.AnimationGroup)
+        self.assertEqual(len(lite.Table([[1,2]],include_outer_lines=True).horizontal_lines),2)
+        with self.assertRaises(ValueError): lite.Table([[1,2],[3]])
+        self.assertEqual(lite.DecimalTable([[1.25]]).elements[0].text,'1.2')
+        matrix=lite.Matrix([[1,2],[3,4]])
+        self.assertPointAlmostEqual(matrix.get_center(),lite.ORIGIN)
+        left,right=matrix.get_brackets()
+        self.assertAlmostEqual(left.get_height(),matrix.elements.get_height()+2*lite.MED_SMALL_BUFF)
+        self.assertLess(left.get_right()[0],matrix.elements.get_left()[0])
+        self.assertEqual([m.text for m in matrix.get_columns()[1]],['2','4'])
+        matrix.set_row_colors(lite.RED,lite.BLUE)
+        self.assertEqual(matrix.get_rows()[1][0].color,lite.BLUE)
+        self.assertEqual(lite.matrix_to_tex_string([[1,2],[3,4]]),r'\left[ \begin{array}{cc}1 & 2 \\ 3 & 4\end{array} \right]')
+        self.assertEqual(lite.IntegerMatrix([[1.6]]).elements[0].text,'2')
+        self.assertEqual(len(lite.get_det_text(matrix,determinant=-2)),5)
+        text=lite.Text('Hello')
+        height=text.get_height()
+        text.stretch_to_fit_height(2*height)
+        self.assertEqual(text.glyph_stretch,[1.0,2.0])
+        self.assertAlmostEqual(text.get_height(),2*height)
+
     def test_functional_transform_animations_and_labeled_connectors(self):
         result=render('s = Square()\nself.add(s)\nself.play(ApplyMatrix([[1,1],[0,1]], s), rate_func=linear, run_time=2)')
         self.assertPointAlmostEqual(result['frames'][-1]['mobjects'][0]['curves'][0][0],(2,1,0))
@@ -822,7 +867,12 @@ assert isinstance(t.get_value(), (int, float))""")
             self.assertPointAlmostEqual(actual,(old[0],old[1]*.5,0))
         self.assertPointAlmostEqual(arrow.get_end(),(end[0],end[1]*.5,0))
         self.assertPointAlmostEqual(arrow.get_points()[-1],arrow._point_to_world(arrow.tip.base))
+        # Glyphs stretch along their own axes; sheared glyphs still fail atomically.
         host=lite.VGroup(lite.Circle(),lite.Text('hello'))
+        width=host[1].get_width()
+        host.stretch(2,0)
+        self.assertAlmostEqual(host[1].get_width(),2*width)
+        host=lite.VGroup(lite.Circle(),lite.Text('hello').rotate(.3))
         before=host.to_dict()
         with self.assertRaises(NotImplementedError): host.stretch(2,0)
         self.assertEqual(host.to_dict(),before)
@@ -5187,8 +5237,10 @@ self.wait(1)""")
                 lite.MathTex('x', font_size=size)
         with self.assertRaises(ValueError):
             lite.MathTex('x' * 4097)
+        # Community converts numbers with str(); other objects are rejected.
+        self.assertEqual(lite.MathTex(12).text, '12')
         with self.assertRaises(TypeError):
-            lite.MathTex(12)
+            lite.MathTex(object())
         with self.assertRaises(NotImplementedError):
             lite.MathTex('x', tex_template='custom')
 

@@ -1431,3 +1431,15 @@ arc path), `ApplyFunction`, `Homotopy`, `SmoothedVectorizedHomotopy`,
 `ChangeDecimalToValue`. `Label`, `LabeledLine`, `LabeledArrow` and
 `AnnotationDot` are available. Nonlinear maps bend cubic control points, so a
 waved or flowed outline becomes an editable cubic path.
+
+
+Try **Matrices, determinants and tables** (`examples/matrix_table_scene.py`).
+`Matrix`, `DecimalMatrix`, `IntegerMatrix`, `MobjectMatrix`, `get_det_text`,
+`matrix_to_tex_string` and `matrix_to_mobject` follow Community, including
+stretched TeX brackets, row/column access and coloring. `Table`, `MathTable`,
+`MobjectTable`, `IntegerTable` and `DecimalTable` support labels, inner/outer
+lines, cells, highlighted cells, `create()` and scaling; `Paragraph` lays out
+lines on Community's baseline pitch with left/center/right alignment. Text and
+formulas can now be stretched along their own axes (`stretch_to_fit_height`),
+which brackets and parentheses rely on; stretching rotated glyphs (a shear) is
+still unsupported.

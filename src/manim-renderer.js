@@ -197,6 +197,14 @@ const ManimRenderer = {
       }
     }
 
+    if (element && (type === 'text' || type === 'mathtex') && Array.isArray(mobject.glyph_stretch)) {
+      // Axis-aligned glyph stretching happens in the glyph's own frame.
+      const [sx, sy] = mobject.glyph_stretch;
+      if (Number.isFinite(sx) && Number.isFinite(sy)) {
+        element.setAttribute('transform', `scale(${sx}, ${sy}) ${element.getAttribute('transform') || ''}`.trim());
+      }
+    }
+
     if (element && mobject.draw_progress !== undefined) {
       const progress = Math.max(0, Math.min(1, mobject.draw_progress));
       for (const path of [element, ...element.querySelectorAll('line, path')]) {

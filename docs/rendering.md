@@ -2195,3 +2195,18 @@ unmatched targets' center (origin if none) and unmatched targets fade in place.
 Verification: all 387 Python and 83 Node tests passed; Chromium playback showed
 colored parts, Indicate/Circumscribe on single parts, parts sliding into
 `c² − b² = a²`, and `e^{iπ}+1=0` with an isolated π.
+
+
+Try **Matrices, determinants and tables** (`examples/matrix_table_scene.py`).
+Glyph stretching: linear maps on text/mathtex leaves are accepted when the
+glyph's world angle is a multiple of 90° and the map is diagonal; the result is
+stored as `glyph_stretch` (applied to bounds and as an inner SVG scale), with the
+pose rebased to world angle/scale. Matrix brackets use Community's `\left[`
+array-of-`\quad` construction stretched to the entries' height plus
+`bracket_v_buff`. Paragraph lines are placed on baselines `1.3 · font_size/96`
+apart and left-aligned at the pen position; Community's Paragraph matches to
+0.001 units with Liberation Sans. The table grid uses `arrange_in_grid` with
+separate horizontal/vertical buffers; dividing lines bisect neighboring rows and
+columns as in Community. Frames now omit any attribute holding mobject
+references, including lists such as `mob_matrix`. The MathTex estimator
+understands arrays and `\left/\right` delimiters for the first render pass.

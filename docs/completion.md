@@ -258,3 +258,7 @@ part measurement. Glyph-level submobjects inside parts remain open.
 
 Functional/pointwise animations (ApplyMatrix, Homotopy, ApplyWave, PhaseFlow,
 ChangeDecimalToValue, …) and labeled connectors are implemented with tests.
+
+
+Matrix family, get_det_text, Table family and Paragraph are implemented with
+Community reference checks; glyph stretching is axis-aligned only.
