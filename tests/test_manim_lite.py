@@ -23,6 +23,19 @@ def render_3d(body):
 
 
 class SceneTests(unittest.TestCase):
+    def test_removing_a_zoomed_display_frame_removes_the_display_like_community(self):
+        source = """from manim import *
+class Demo(ZoomedScene):
+    def construct(self):
+        dot = Dot()
+        self.add(dot)
+        self.activate_zooming()
+        self.play(Uncreate(self.zoomed_display.display_frame), FadeOut(self.zoomed_camera.frame))
+        # Manim 0.22: the display's screen is the display itself, so nothing is left behind.
+        assert [type(m).__name__ for m in self.mobjects] == ['Dot'], self.mobjects
+"""
+        lite.render_scene(source)
+
     def test_zoomed_scene_matches_community_frame_and_display_geometry(self):
         source = """from manim import *
 class Demo(ZoomedScene):

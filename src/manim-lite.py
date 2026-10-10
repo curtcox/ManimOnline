@@ -10788,7 +10788,8 @@ class Scene:
                 if mobject.angle or mobject.geometry_scale != 1 or any(mobject.position):
                     raise NotImplementedError('Cannot split a rotated or transformed group; '
                                               'add or remove the whole group')
-                visit(mobject.children, hit)
+                # A camera display's screen is the display itself in Community, not a member.
+                visit([child for child in mobject.children if 'camera_screen' not in child.__dict__], hit)
         visit(roots, list(removing))
         return result
 
