@@ -5442,6 +5442,12 @@ def _glyph_family(mobject):
                 _explode_math(member)
 
 
+def _texts(mobject):
+    """The text and formula strings of a family (numbers excluded: they interpolate values)."""
+    return [member.text for member in mobject.get_family() if member._type in ('text', 'mathtex')
+            and isinstance(member, Text) and '_number_format' not in member.__dict__]
+
+
 def _has_glyphs(mobject):
     return any('glyph' in member.__dict__ or '_char_index' in member.__dict__ for member in mobject.get_family())
 
@@ -9040,12 +9046,29 @@ def _transform_plan(start, target):
     if aligned:
         return ('interpolate', *aligned, [])
     matching = (start['type'] == target['type'] and
-                (target['type'] != 'mathtex' or start['text'] == target['text']) and
+                (target['type'] != 'mathtex' or start['text'] == target['text']
+                 or _glyph_identity(start) == _glyph_identity(target) is not None) and
+                (target['type'] != 'text' or start['text'] == target['text']
+                 or ('_number_format' in start and '_number_format' in target)) and
                 (target['type'] not in ('polygon', 'polyline') or
                  len(start['vertices']) == len(target['vertices'])) and
                 (target['type'] != 'bezierpath' or
                  len(start['curves']) == len(target['curves'])))
     return ('interpolate' if matching else 'fade', start, target, [])
+
+
+def _glyph_identity(node):
+    """The same glyph of the same tex string, drawn at the same size, in two formulas."""
+    if 'glyph' not in node:
+        return None
+    glyphs = _math_glyphs(node['text'], node['font_size'], node.get('part_strings'))
+    if not 0 <= node['glyph'] < len(glyphs):
+        return None
+    _, _, width, height, part, sub = glyphs[node['glyph']]
+    within = sum(1 for glyph in glyphs[:node['glyph']] if glyph[4] == part)
+    strings = node.get('part_strings') or []
+    string = strings[part] if 0 <= part < len(strings) else node['text']
+    return (string, within, round(width, 9), round(height, 9), node.get('glyph_matrix'), node.get('glyph_stretch'))
 
 
 def _plan_members(plan):
@@ -9371,13 +9394,13 @@ class Animation:
             # Like Community, reversal also applies to a play() rate override.
             forward = rate
             rate = lambda t: forward(1 - t)
-        if alpha >= 1:
+        if alpha >= 1 and not self.__dict__.get('_holding'):
             result = self._terminal
         elif getattr(self, '_lagged', False):
             # Lagged members apply the rate function to their own sub-alphas.
-            result = self.sample_members(max(0, alpha), rate)
+            result = self.sample_members(max(0, min(1, alpha)), rate)
         else:
-            result = self.sample(rate(max(0, alpha)))
+            result = self.sample(rate(max(0, min(1, alpha))))
         return {self.mobject: result}
 
 
@@ -9696,10 +9719,6 @@ class Transform(Animation):
         self.target = target_mobject.copy()
 
     def begin(self, scene):
-        # Community morphs text glyph by glyph: once either side has been split into
-        # glyphs (by Write, Create or indexing), split the other side to match.
-        if _has_glyphs(self.mobject) != _has_glyphs(self.target):
-            _glyph_family(self.target if _has_glyphs(self.mobject) else self.mobject)
         super().begin(scene)
         self._transform_plan = None
         self._path_target = None
@@ -9707,6 +9726,12 @@ class Transform(Animation):
         # updaters) every frame, so e.g. a rotating updater keeps turning the morph.
         self._live_start = (self.mobject.copy() if any(m.updaters for m in self.mobject.get_family())
                             else None)
+        # Community morphs text glyph by glyph: when either side has been split into glyphs
+        # (by Write, Create or indexing) or the texts differ, morph split copies.
+        self._split_glyphs = (_has_glyphs(self.mobject) != _has_glyphs(self.target)
+                              or _texts(self.mobject) != _texts(self.target))
+        if self._split_glyphs:
+            self.start = self._plan_snapshot(self.mobject)
         if self.mobject.__dict__.get('_stretch_baked') or self.target.__dict__.get('_stretch_baked'):
             def canonical(mobject):
                 # Already-baked families are canonical; re-mapping them is costly.
@@ -9721,15 +9746,22 @@ class Transform(Animation):
                 self.start,self._path_target = start,target
                 self._live_start = None
 
+    def _plan_snapshot(self, mobject):
+        """A snapshot to morph from or to; split copies leave the live families unchanged."""
+        if self.__dict__.get('_split_glyphs'):
+            mobject = mobject.copy()
+            _glyph_family(mobject)
+        return mobject.to_dict()
+
     def _advance_copies(self, dt):
         if self.__dict__.get('_live_start') is None:
             return
         self._live_start.update(dt)
         self.target.update(dt)
-        self.start, self._transform_plan = self._live_start.to_dict(), None
+        self.start, self._transform_plan = self._plan_snapshot(self._live_start), None
 
     def sample(self, alpha):
-        end = self._path_target or self.target.to_dict()
+        end = self._path_target or self._plan_snapshot(self.target)
         if self._transform_plan is None:
             self._transform_plan = _transform_plan(self.start, end)
         return _sample_transform(self._transform_plan, alpha, self.path_arc)
@@ -10237,12 +10269,17 @@ class AnimationGroup:
     def states(self, alpha, rate_func=None):
         time = self.natural_duration if alpha >= 1 else (rate_func or self.rate_func)(max(0, alpha)) * self.natural_duration
         result = {}
+        # Like Community, a member that ends before its group holds its final interpolated
+        # state (e.g. a FadeOut's shifted copy) until the whole group finishes.
+        holding = alpha < 1 or self.__dict__.get('_holding', False)
         for animation, (start, duration) in zip(self.animations, self.timings):
+            animation._holding = holding
             result.update(animation.states((time - start) / duration if duration else (1 if time >= start else 0)))
         return result
 
     def finish(self, scene):
         for animation in self.animations:
+            animation.__dict__.pop('_holding', None)
             animation._complete(scene)
 
     def _complete(self, scene):

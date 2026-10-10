@@ -6582,6 +6582,21 @@ class Demo(Scene):
         xs = [g['position'][0] for g in first if g['opacity'] > 0]
         self.assertTrue(xs and -5 < min(xs) < -2.5)
 
+    def test_transform_between_different_texts_morphs_split_copies(self):
+        source, target = lite.Tex("Fade", "In"), lite.Tex("Fade", "Out")
+        scene = lite.Scene().add(source)
+        scene.play(lite.ReplacementTransform(source, target))
+        scene.wait(0.2)
+        def glyphs(node):
+            return [node] if 'glyph' in node else [g for c in node.get('children', []) for g in glyphs(c)]
+        middle = glyphs(scene.frames[7]['mobjects'][0])
+        # "Fade" glyphs are shared and stay solid; "In" cross-fades into "Out".
+        self.assertEqual([g['opacity'] for g in middle[:4]], [1, 1, 1, 1])
+        self.assertTrue(any(0 < g['opacity'] < 1 for g in middle[4:]))
+        # Live families stay unsplit; only the morph's copies were split.
+        self.assertFalse(lite._has_glyphs(source) or lite._has_glyphs(target))
+        self.assertFalse(glyphs(scene.frames[-1]['mobjects'][0]))
+
     def test_transform_from_copy_source_can_animate_while_copy_holds_terminal(self):
         source = lite.Square().shift(lite.LEFT * 2)
         target = lite.Square().shift(lite.RIGHT * 2)
@@ -6592,7 +6607,8 @@ class Demo(Scene):
             lite.TransformFromCopy(source, target, run_time=1),
             movement))
         # The group's members are drawn in its order: the copy's target, then the source.
-        self.assertEqual(scene.frames[45]['mobjects'][0], target.to_dict())
+        held = scene.frames[45]['mobjects'][0]
+        self.assertEqual((held['type'], held['position']), ('square', [2, 0, 0]))
         self.assertEqual(scene.frames[0]['mobjects'][0]['position'], [-2, 0, 0])
         self.assertEqual(source.position, [-2, 2, 0])
 
@@ -6870,7 +6886,8 @@ class Demo(Scene):
         shrink_center = group.get_center()
         scene.play(lite.AnimationGroup(lite.ShrinkToCenter(group, run_time=1, remover=True),
                                        lite.GrowFromCenter(other, run_time=2)), rate_func=lite.linear)
-        self.assertEqual(len(scene.frames[45]['mobjects']), 1)
+        # Like Community, the finished shrink holds its zero-size state until the group ends.
+        self.assertEqual([m['geometry_scale'] for m in scene.frames[45]['mobjects'][0]['children']], [0, 0])
         self.assertEqual(scene.mobjects, [other])
         self.assertEqual([c.geometry_scale for c in group], [0, 0])
         # Community shrinks toward the bounds center of the rotated family.
@@ -7092,7 +7109,7 @@ class Demo(Scene):
         self.assertEqual(result['frames'][-1]['mobjects'][0]['position'], [0, 1, 0])
         result = render('a, b = Dot(), Dot(RIGHT)\nself.play(AnimationGroup(Rotate(a, run_time=10), FadeOut(b, run_time=1), lag_ratio=0.1))')
         self.assertEqual(result['duration'], 10)
-        self.assertEqual(len(result['frames'][30]['mobjects']), 1)
+        self.assertEqual([m['opacity'] for m in result['frames'][30]['mobjects']], [1, 0])
 
     def test_nested_groups_and_group_easing_preserve_child_timing(self):
         result = render('a, b, c = Dot(LEFT), Dot(), Dot(RIGHT)\nself.play(AnimationGroup(LaggedStart(FadeIn(a, rate_func=linear), FadeIn(b, rate_func=linear), lag_ratio=1, run_time=4), FadeIn(c, run_time=2, rate_func=linear), lag_ratio=1))')
@@ -7106,8 +7123,11 @@ class Demo(Scene):
     def test_group_holds_completed_creation_and_replacement_then_cleans_up(self):
         result = render('a, b, c = Circle(), Square().shift(RIGHT), Dot(UP)\nself.play(AnimationGroup(ReplacementTransform(a, b), Create(c, run_time=2)))\nself.play(b.animate.shift(UP))')
         middle = result['frames'][15]['mobjects']
-        self.assertEqual(middle[0]['type'], 'square')
-        self.assertEqual(middle[0]['position'], [1, 0, 0])
+        # The finished morph holds its final aligned outline: the square's corners.
+        points = [p for curve in middle[0]['curves'] for p in curve]
+        for axis, low, high in ((0, 0, 2), (1, -1, 1)):
+            self.assertAlmostEqual(min(p[axis] for p in points), low)
+            self.assertAlmostEqual(max(p[axis] for p in points), high)
         final = result['frames'][-1]['mobjects']
         self.assertEqual(len(final), 2)
         self.assertNotIn('draw_progress', final[0])
@@ -7150,7 +7170,8 @@ class Demo(Scene):
     def test_staggered_example_finishes_empty_and_group_limit_is_exact(self):
         result = json.loads(lite.render_scene((ROOT / 'examples/staggered_scene.py').read_text()))
         self.assertEqual(result['duration'], 10)
-        self.assertEqual(len(result['frames'][120]['mobjects']), 2)
+        # A finished FadeOut holds its transparent state until its group ends (Community).
+        self.assertEqual([m['opacity'] for m in result['frames'][120]['mobjects']], [0, 0.5, 1])
         self.assertEqual(result['frames'][-1]['mobjects'], [])
         result = render('self.play(LaggedStart(FadeIn(Dot(LEFT)), FadeIn(Dot(RIGHT))), run_time=60)')
         self.assertEqual(len(result['frames']), 901)
