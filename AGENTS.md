@@ -671,3 +671,9 @@ foreignObject overlays. MathTypst groups come from `hide` probe documents compar
 leaf signature, exactly as Community; a placeholder (and lenient select) covers the
 first pass. Imported black members (glyphs or stroked rules) take the mobject color.
 
+AnimationGroup/LaggedStart/Succession reproduce Community's add_mobjects_from_animations
+draw order: their non-introducer members (flattened through nested groups) are re-added
+in group order before they begin, so they move in front as Community's added Group does.
+The preview keeps them as separate roots (no Group root); groups with an explicit
+`group=` and internal ones (`_internal`, e.g. ChangeSpeed) are left alone.
+

@@ -5769,7 +5769,8 @@ self.wait(1)""")
         result = render('p = VMobject().set_points_as_corners([ORIGIN, RIGHT*2]).save_state()\nq = VMobject().set_points_as_corners([ORIGIN, RIGHT*2, UR*2])\nself.add(p)\nself.play(TransformFromCopy(p,q), run_time=2, rate_func=linear)\nassert p.vertices == [[0,0,0],[2,0,0]]\nself.play(Succession(Transform(p,q), Restore(p)), rate_func=linear)')
         self.assertEqual(len(result['frames'][15]['mobjects']), 2)
         self.assertEqual(result['frames'][15]['mobjects'][1]['type'], 'bezierpath')
-        self.assertEqual(result['frames'][-1]['mobjects'][0]['vertices'], [[0,0,0],[2,0,0]])
+        # Manim 0.22: the Succession's group moves p in front of the copy q.
+        self.assertEqual(result['frames'][-1]['mobjects'][1]['vertices'], [[0,0,0],[2,0,0]])
         result = render('p = VMobject().set_points_as_corners([ORIGIN,RIGHT])\nq = CubicBezier(ORIGIN,UP,UR,RIGHT)\nself.play(ReplacementTransform(p,q), run_time=2, rate_func=linear)\nassert self.mobjects == [q]')
         self.assertEqual(result['frames'][15]['mobjects'][0]['type'], 'bezierpath')
 
@@ -6214,6 +6215,16 @@ self.wait(1)""")
         for index, angle in ((15, lite.PI / 4), (30, lite.PI / 2), (45, 3 * lite.PI / 4), (60, lite.PI)):
             self.assertAlmostEqual(result['frames'][index]['mobjects'][0]['angle'], angle)
 
+    def test_animation_groups_move_their_members_in_front_like_community(self):
+        # Manim 0.22 adds an AnimationGroup's Group of non-introducer mobjects to the scene,
+        # moving those members in front; introducers are added after it as they begin.
+        render("a, b, c = Square(), Circle(), Triangle()\nself.add(a, b, c)\n"
+               "names = lambda: [type(m).__name__ for m in self.get_mobject_family_members()]\n"
+               "self.play(AnimationGroup(a.animate.shift(UP), FadeIn(Dot())))\n"
+               "assert names() == ['Circle', 'Triangle', 'Square', 'Dot'], names()\n"
+               "self.play(Succession(b.animate.shift(UP), c.animate.shift(DOWN)))\n"
+               "assert names() == ['Square', 'Dot', 'Circle', 'Triangle'], names()")
+
     def test_succession_lag_ratio_keeps_one_active_stage_like_community(self):
         source = """from manim import *
 class Demo(Scene):
@@ -6322,7 +6333,9 @@ class Demo(Scene):
     def test_succession_gallery_example_completes_all_steps(self):
         result = json.loads(lite.render_scene((ROOT / 'examples/succession_scene.py').read_text()))
         self.assertEqual(result['duration'], 10)
-        self.assertEqual([m['type'] for m in result['frames'][15]['mobjects']], ['text', 'square'])
+        # Manim 0.22 adds the Succession's Group of non-introducer mobjects (the square and the
+        # circle Indicate highlights) when it starts, so the circle shows from the first stage.
+        self.assertEqual([m['type'] for m in result['frames'][15]['mobjects']], ['text', 'square', 'circle'])
         self.assertEqual([m['type'] for m in result['frames'][105]['mobjects']], ['text', 'circle'])
         self.assertEqual([m['type'] for m in result['frames'][-1]['mobjects']], ['text'])
 
@@ -6496,8 +6509,9 @@ class Demo(Scene):
         scene.play(lite.AnimationGroup(
             lite.TransformFromCopy(source, target, run_time=1),
             movement))
-        self.assertEqual(scene.frames[45]['mobjects'][1], target.to_dict())
-        self.assertEqual(scene.frames[0]['mobjects'][1]['position'], [-2, 0, 0])
+        # The group's members are drawn in its order: the copy's target, then the source.
+        self.assertEqual(scene.frames[45]['mobjects'][0], target.to_dict())
+        self.assertEqual(scene.frames[0]['mobjects'][0]['position'], [-2, 0, 0])
         self.assertEqual(source.position, [-2, 2, 0])
 
     def test_transform_from_copy_conflicts_and_invalid_objects(self):
@@ -6584,7 +6598,8 @@ class Demo(Scene):
         result = json.loads(lite.render_scene((ROOT / 'examples/indicate_scene.py').read_text()))
         self.assertEqual(result['duration'], 9)
         first, last = result['frames'][0]['mobjects'], result['frames'][-1]['mobjects']
-        self.assertEqual(first, last)
+        # LaggedStart moves the highlighted members in front of the title, as Manim 0.22 does.
+        self.assertEqual([first[2], first[0], first[1]], last)
 
     def test_save_and_restore_are_repeatable_isolated_and_replace_the_checkpoint(self):
         shape = lite.Arc().set_fill(lite.BLUE, 0.4).set_stroke(lite.YELLOW, 4)

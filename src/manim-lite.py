@@ -10155,8 +10155,32 @@ class AnimationGroup:
         return [m for animation in self.animations for m in animation.objects()]
 
     def prepare(self, scene):
+        self._introduce_group(scene)
         for animation in self.animations:
             animation.prepare(scene)
+
+    def _introduce_group(self, scene):
+        """Community's add_mobjects_from_animations adds a non-introducer group's Group of
+        member mobjects, moving those members in front of the rest of the scene. The preview
+        keeps the members as roots, in the group's order (the same drawing order)."""
+        if self.introducer or self._group is not None or self.__dict__.get('_internal'):
+            return
+        def flat(group):
+            for animation in group.animations:
+                if animation.introducer:
+                    continue
+                if isinstance(animation, AnimationGroup):
+                    if animation._group is None and not animation.__dict__.get('_internal'):
+                        yield from flat(animation)
+                elif isinstance(animation.mobject, Mobject):
+                    yield animation.mobject
+        members = list(dict.fromkeys(flat(self)))
+        if not members or members == scene.mobjects[-len(members):]:
+            return
+        try:
+            scene.add(*members)
+        except NotImplementedError:
+            pass  # Members inside transformed groups stay where they are.
 
     def states(self, alpha, rate_func=None):
         time = self.natural_duration if alpha >= 1 else (rate_func or self.rate_func)(max(0, alpha)) * self.natural_duration
@@ -10192,6 +10216,7 @@ class Succession(AnimationGroup):
         return list(dict.fromkeys(super().objects()))
 
     def prepare(self, scene):
+        self._introduce_group(scene)
         self._scene, self._active = scene, -1
         # Objects first introduced by a later stage stay hidden until it begins.
         self._hidden = {m for m in self.objects() if m not in scene.get_mobject_family_members()}
@@ -16704,6 +16729,7 @@ class ChangeSpeed(AnimationGroup):
             previous, init = node, final
         self.scaled_total_time = current
         super().__init__(anim, run_time=self.scaled_total_time * anim.run_time, **kwargs)
+        self._internal = True  # Community's ChangeSpeed is a plain Animation of anim's mobject.
         self._progress = 0.0
 
     def _remap(self, t):

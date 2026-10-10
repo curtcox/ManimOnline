@@ -340,7 +340,7 @@ on curved arrows, the isosurfaces quadtree for ImplicitFunction, Computer Modern
 ligatures and interword glue for Tex text, TeX-style fractions, align*/gather* rows,
 LaTeX logos, CJK in formulas, nested-svg delimiters, LabeledDot sizing, MarkupText
 wrapping/justify and planar 3D text. Remaining diffs: platform font metrics for Text, the
-AnimationGroup scene-group quirk and \xrightarrow widths. Typst/MathTypst are now
+\xrightarrow widths (AnimationGroup draw order now follows Community's scene group). Typst/MathTypst are now
 compiled in the browser by typst.ts (matching Community bounds and selections with native
 Typst SVG); \_, the color libraries, quaternion utilities, RendererType/QUALITIES,
 Section, Camera/MultiCamera and Scene(camera_class=..., random_seed=...) were added. With
