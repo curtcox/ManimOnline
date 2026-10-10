@@ -862,8 +862,10 @@ const ManimRenderer = {
     group.setAttribute('stroke', mobject.color || '#FFFFFF');
     group.setAttribute('stroke-width', mobject.stroke_width || 0);
     // Copy only inert vector geometry. No links, scripts, styles or font references.
-    const tags = new Set(['g', 'path', 'rect', 'line', 'polygon', 'polyline', 'circle', 'ellipse']);
-    const attributes = ['d', 'transform', 'x', 'y', 'x1', 'y1', 'x2', 'y2', 'width', 'height', 'points', 'cx', 'cy', 'r', 'rx', 'ry'];
+    // Nested svg viewports clip the extension pieces of stretchy delimiters.
+    const tags = new Set(['g', 'svg', 'path', 'rect', 'line', 'polygon', 'polyline', 'circle', 'ellipse']);
+    const attributes = ['d', 'transform', 'x', 'y', 'x1', 'y1', 'x2', 'y2', 'width', 'height', 'points', 'cx', 'cy', 'r', 'rx', 'ry',
+      'viewBox'];
     function copyGeometry(node) {
       if (!tags.has(node.localName)) throw new Error('Unsupported math SVG geometry: ' + node.localName);
       const element = document.createElementNS('http://www.w3.org/2000/svg', node.localName);

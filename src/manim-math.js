@@ -67,7 +67,9 @@ const ManimMath = {
         else if (role === 'munderover' && kids.length === 3) kids = [kids[2], kids[0], kids[1]];
         else if (role === 'mover' && kids.length === 2) kids = [kids[1], kids[0]];
         for (const kid of kids) {
-          if (!drawable.has(kid.localName)) visit(kid);
+          // A nested svg is a clipped piece of a stretchy delimiter: keep it whole.
+          if (kid.localName === 'svg') leaves.push(kid);
+          else if (!drawable.has(kid.localName)) visit(kid);
           else if (kid.localName !== 'path' || (kid.getAttribute('d') || '').trim()) leaves.push(kid);
         }
       };
@@ -77,10 +79,13 @@ const ManimMath = {
       const inverse = root.inverse();
       const result = [];
       for (const leaf of leaves) {
-        const ctm = leaf.getScreenCTM();
+        const viewport = leaf.localName === 'svg';
+        // A nested viewport is placed by its parent's transform and clipped to x/y/width/height.
+        const ctm = viewport ? leaf.parentNode.getScreenCTM() : leaf.getScreenCTM();
         if (!ctm) return null;
         const m = inverse.multiply(ctm);
-        const box = leaf.getBBox();
+        const box = viewport ? ['x', 'y', 'width', 'height'].reduce((result, key) =>
+          Object.assign(result, { [key]: Number(leaf.getAttribute(key)) || 0 }), {}) : leaf.getBBox();
         const xs = [], ys = [];
         for (const [px, py] of [[box.x, box.y], [box.x + box.width, box.y], [box.x, box.y + box.height],
           [box.x + box.width, box.y + box.height]]) {
@@ -93,7 +98,12 @@ const ManimMath = {
           const tagged = leaf.closest(`[class*="manim-${kind}-"]`);
           return tagged ? this.classIndex(tagged, kind) : -1;
         };
-        const clone = leaf.cloneNode(true);
+        let clone = leaf.cloneNode(true);
+        if (viewport) {
+          const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          group.appendChild(clone);
+          clone = group;
+        }
         clone.setAttribute('transform', `matrix(${m.a} ${m.b} ${m.c} ${m.d} ${m.e} ${m.f})`);
         result.push({ svg: `<svg xmlns="http://www.w3.org/2000/svg">${clone.outerHTML}</svg>`, bbox,
           part: tag('part'), sub: tag('sub') });
@@ -203,7 +213,8 @@ const ManimMath = {
         if (!svg || container.querySelector('[data-mml-node="merror"]')) {
           throw new Error('Invalid or unsupported TeX expression.');
         }
-        const tags = new Set(['g', 'path', 'rect', 'line', 'polygon', 'polyline', 'circle', 'ellipse']);
+        // Nested svg viewports clip the extension pieces of stretchy delimiters.
+        const tags = new Set(['g', 'svg', 'path', 'rect', 'line', 'polygon', 'polyline', 'circle', 'ellipse']);
         for (const node of svg.querySelectorAll('*')) {
           if (!tags.has(node.localName)) {
             throw new Error('This formula needs a glyph or SVG feature that is not supported yet.');
