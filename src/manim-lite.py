@@ -8422,10 +8422,12 @@ def _ease_functions():
 
 
 globals().update(_ease_functions())
-rate_functions = types.SimpleNamespace(**{name: globals()[name] for name in (
+# In Community's module order (code that iterates rate_functions.__dict__ sees the same order).
+rate_functions = types.SimpleNamespace(sigmoid=sigmoid, unit_interval=_unit_interval, zero=_zero,
+                                       **{name: globals()[name] for name in (
     'linear', 'smooth', 'smoothstep', 'smootherstep', 'smoothererstep', 'rush_into', 'rush_from',
     'slow_into', 'double_smooth', 'there_and_back', 'there_and_back_with_pause', 'running_start',
-    'not_quite_there', 'wiggle', 'squish_rate_func', 'lingering', 'exponential_decay', 'sigmoid',
+    'not_quite_there', 'wiggle', 'squish_rate_func', 'lingering', 'exponential_decay',
     *_ease_functions())})
 
 
@@ -15690,74 +15692,178 @@ class FadeTransformPieces(FadeTransform):
         self.target_end = snapshot([t.copy() for t in targets])
 
 
-def _marching_squares(func, x_range, y_range, resolution):
-    """Polylines along func(x, y) = 0 from a uniform marching-squares grid."""
-    (x0, x1), (y0, y1) = x_range[:2], y_range[:2]
-    nx = ny = resolution
-    xs = [x0 + (x1 - x0) * i / nx for i in range(nx + 1)]
-    ys = [y0 + (y1 - y0) * j / ny for j in range(ny + 1)]
-    def value(x, y):
-        v = _plain_number(func(x, y))
-        if isinstance(v, bool) or not isinstance(v, _REAL):
-            raise ValueError('ImplicitFunction must return real numbers')
-        return v if math.isfinite(v) else math.nan
-    grid = [[value(x, y) for x in xs] for y in ys]
-    def edge_point(i0, j0, i1, j1):
-        a, b = grid[j0][i0], grid[j1][i1]
-        t = .5 if a == b else a / (a - b)
-        return (xs[i0] + (xs[i1] - xs[i0]) * t, ys[j0] + (ys[j1] - ys[j0]) * t)
-    segments = []
-    for j in range(ny):
-        for i in range(nx):
-            corners = [(i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1)]
-            values = [grid[c[1]][c[0]] for c in corners]
-            if any(math.isnan(v) for v in values):
-                continue
-            crossings = []
-            for k in range(4):
-                (ia, ja), (ib, jb) = corners[k], corners[(k + 1) % 4]
-                va, vb = values[k], values[(k + 1) % 4]
-                if (va < 0) != (vb < 0):
-                    crossings.append(((min(ia, ib), min(ja, jb), max(ia, ib), max(ja, jb)), edge_point(ia, ja, ib, jb)))
-            if len(crossings) == 2:
-                segments.append((crossings[0], crossings[1]))
-            elif len(crossings) == 4:
-                center = sum(values) / 4
-                # Saddle: pair crossings so the center's sign separates them.
-                pairs = ((0, 1), (2, 3)) if (center < 0) == (values[0] < 0) else ((0, 3), (1, 2))
-                segments += [(crossings[a], crossings[b]) for a, b in pairs]
-    # Stitch segments sharing grid edges into polylines.
-    by_edge = {}
-    for index, (a, b) in enumerate(segments):
-        by_edge.setdefault(a[0], []).append(index)
-        by_edge.setdefault(b[0], []).append(index)
-    used, curves = set(), []
-    for start in range(len(segments)):
-        if start in used:
-            continue
-        used.add(start)
-        a, b = segments[start]
-        chain = [a, b]
-        for direction in (1, -1):
-            while True:
-                end = chain[-1] if direction == 1 else chain[0]
-                following = next((k for k in by_edge.get(end[0], []) if k not in used), None)
-                if following is None:
+class _IsoPoint:
+    __slots__ = ('pos', 'val')
+
+    def __init__(self, pos, val):
+        self.pos, self.val = pos, val
+
+
+class _IsoCell:
+    __slots__ = ('vertices', 'depth', 'children', 'parent', 'child_direction')
+
+    def __init__(self, vertices, depth, parent, child_direction):
+        self.vertices, self.depth, self.children = vertices, depth, []
+        self.parent, self.child_direction = parent, child_direction
+
+
+class _IsoTriangle:
+    __slots__ = ('vertices', 'next', 'next_bisect_point', 'prev', 'visited')
+
+    def __init__(self, vertices):
+        self.vertices, self.next, self.next_bisect_point, self.prev, self.visited = vertices, None, None, None, False
+
+
+def _plot_isoline(fn, pmin, pmax, min_depth=5, max_quads=10000):
+    """The isosurfaces package's plot_isoline, which Community's ImplicitFunction uses: an
+    adaptive quadtree, its dual triangulation and the traced zero crossings, in its order."""
+    def value(pos):
+        try:
+            result = float(fn(pos))
+        except (ZeroDivisionError, OverflowError, ValueError):
+            return math.nan  # NumPy gives inf/nan here instead of raising.
+        return result
+    def sign(v):
+        return math.nan if math.isnan(v) else (v > 0) - (v < 0)
+    def point(pos):
+        return _IsoPoint(pos, value(pos))
+    def midpoint(a, b):
+        return point(((a.pos[0] + b.pos[0]) / 2, (a.pos[1] + b.pos[1]) / 2))
+    def intersect_zero(a, b):
+        denom = a.val - b.val
+        k1, k2 = -b.val / denom, a.val / denom
+        return point((k1 * a.pos[0] + k2 * b.pos[0], k1 * a.pos[1] + k2 * b.pos[1]))
+    tol = ((pmax[0] - pmin[0]) / 1000, (pmax[1] - pmin[1]) / 1000)
+    def extremes(lo, hi):
+        w = (hi[0] - lo[0], hi[1] - lo[1])
+        return [point((lo[0] + (i & 1) * w[0], lo[1] + (i >> 1 & 1) * w[1])) for i in range(4)]
+    def should_descend(cell):
+        a, b = cell.vertices[0].pos, cell.vertices[-1].pos
+        if b[0] - a[0] < 10 * tol[0] and b[1] - a[1] < 10 * tol[1]:
+            return False
+        if all(math.isnan(v.val) for v in cell.vertices):
+            return False
+        if any(math.isnan(v.val) for v in cell.vertices):
+            return True
+        first = sign(cell.vertices[0].val)
+        return any(sign(v.val) != first for v in cell.vertices[1:])
+    import collections
+    max_cells = max(4 ** min_depth, max_quads)
+    root = _IsoCell(extremes(pmin, pmax), 0, None, 0)
+    queue, leaves = collections.deque([root]), 1
+    while queue and leaves < max_cells:
+        cell = queue.popleft()
+        if cell.depth < min_depth or should_descend(cell):
+            for i, vertex in enumerate(cell.vertices):
+                lo = ((cell.vertices[0].pos[0] + vertex.pos[0]) / 2, (cell.vertices[0].pos[1] + vertex.pos[1]) / 2)
+                hi = ((cell.vertices[-1].pos[0] + vertex.pos[0]) / 2, (cell.vertices[-1].pos[1] + vertex.pos[1]) / 2)
+                cell.children.append(_IsoCell(extremes(lo, hi), cell.depth + 1, cell, i))
+            queue.extend(cell.children)
+            leaves += 3
+
+    def binary_search_zero(a, b):
+        while not (abs(b.pos[0] - a.pos[0]) < tol[0] and abs(b.pos[1] - a.pos[1]) < tol[1]):
+            mid = midpoint(a, b)
+            if mid.val == 0:
+                return mid, True
+            if (mid.val > 0) == (a.val > 0):
+                a = mid
+            else:
+                b = mid
+        pt = intersect_zero(a, b)
+        return pt, pt.val == 0 or (sign(pt.val - a.val) == sign(b.val - pt.val) and pt.val < 1e200)
+
+    triangles, hanging = [], {}
+    def set_next(t1, t2, vpos, vneg):
+        if not vpos.val > 0 >= vneg.val:
+            return
+        intersection, is_zero = binary_search_zero(vpos, vneg)
+        if is_zero:
+            t1.next_bisect_point, t1.next, t2.prev = intersection, t2, t1
+    def sandwich(a, b, c):
+        center, x, y = b.vertices[2], b.vertices[0], b.vertices[1]
+        if center.val > 0 >= y.val:
+            set_next(b, c, center, y)
+        if x.val > 0 >= center.val:
+            set_next(b, a, x, center)
+        key = struct.pack('dd', x.pos[0] + y.pos[0], x.pos[1] + y.pos[1])
+        if y.val > 0 >= x.val:
+            if key in hanging:
+                set_next(b, hanging.pop(key), y, x)
+            else:
+                hanging[key] = b
+        elif y.val <= 0 < x.val:
+            if key in hanging:
+                set_next(hanging.pop(key), b, x, y)
+            else:
+                hanging[key] = b
+    def add_four(a, b, c, d, center):
+        four = (_IsoTriangle([a, b, center]), _IsoTriangle([b, c, center]),
+                _IsoTriangle([c, d, center]), _IsoTriangle([d, a, center]))
+        for i in range(4):
+            sandwich(four[i], four[(i + 1) % 4], four[(i + 2) % 4])
+        triangles.extend(four)
+    def edge_dual(p1, p2):
+        if (p1.val > 0) != (p2.val > 0):
+            return midpoint(p1, p2)
+        dt = 0.01
+        df1 = value((p1.pos[0] * (1 - dt) + p2.pos[0] * dt, p1.pos[1] * (1 - dt) + p2.pos[1] * dt))
+        df2 = value((p1.pos[0] * dt + p2.pos[0] * (1 - dt), p1.pos[1] * dt + p2.pos[1] * (1 - dt)))
+        if (df1 > 0) == (df2 > 0):
+            return midpoint(p1, p2)
+        return intersect_zero(_IsoPoint(p1.pos, df1), _IsoPoint(p2.pos, df2))
+    def face_dual(cell):
+        return midpoint(cell.vertices[0], cell.vertices[-1])
+    def crossing(a, b, row):
+        first, second = ((1, 0), (3, 2)) if row else ((2, 0), (3, 1))
+        if a.children and b.children:
+            crossing(a.children[first[0]], b.children[first[1]], row)
+            crossing(a.children[second[0]], b.children[second[1]], row)
+        elif a.children:
+            crossing(a.children[first[0]], b, row)
+            crossing(a.children[second[0]], b, row)
+        elif b.children:
+            crossing(a, b.children[first[1]], row)
+            crossing(a, b.children[second[1]], row)
+        else:
+            fa, fb = face_dual(a), face_dual(b)
+            i, j = (2, 0) if row else (0, 1)
+            k, l = (3, 1) if row else (2, 3)
+            if a.depth < b.depth:
+                add_four(b.vertices[i], fb, b.vertices[j], fa, edge_dual(b.vertices[i], b.vertices[j]))
+            else:
+                add_four(a.vertices[k], fb, a.vertices[l], fa, edge_dual(a.vertices[k], a.vertices[l]))
+    def inside(cell):
+        if cell.children:
+            for child in cell.children:
+                inside(child)
+            crossing(cell.children[0], cell.children[1], True)
+            crossing(cell.children[2], cell.children[3], True)
+            crossing(cell.children[0], cell.children[2], False)
+            crossing(cell.children[1], cell.children[3], False)
+    inside(root)
+    curves = []
+    for triangle in triangles:
+        if not triangle.visited and triangle.next is not None:
+            curve, start, closed = [], triangle, False
+            while triangle.prev is not None:
+                triangle = triangle.prev
+                if triangle is start:
+                    closed = True
                     break
-                used.add(following)
-                p, q = segments[following]
-                nxt = q if p[0] == end[0] else p
-                if direction == 1:
-                    chain.append(nxt)
-                else:
-                    chain.insert(0, nxt)
-        curves.append([point for _, point in chain])
+            while triangle is not None and not triangle.visited:
+                if triangle.next_bisect_point is not None:
+                    curve.append(triangle.next_bisect_point)
+                triangle.visited = True
+                triangle = triangle.next
+            if closed:
+                curve.append(curve[0])
+            curves.append([v.pos for v in curve])
     return curves
 
 
 class ImplicitFunction(VMobject):
-    """The curve func(x, y) = 0, traced with marching squares and smoothed (Community uses an
-    adaptive quadtree; contours agree, sample points differ)."""
+    """The curve func(x, y) = 0, traced by the isosurfaces quadtree (as Community) and smoothed."""
     def __init__(self, func, x_range=None, y_range=None, min_depth=5, max_quads=1500, use_smoothing=True, **kwargs):
         if not callable(func):
             raise TypeError('ImplicitFunction needs a callable func(x, y)')
@@ -15765,8 +15871,12 @@ class ImplicitFunction(VMobject):
         self.function, self.min_depth, self.max_quads, self.use_smoothing = func, min_depth, max_quads, use_smoothing
         self.x_range = list(x_range or [-config.frame_width / 2, config.frame_width / 2])
         self.y_range = list(y_range or [-config.frame_height / 2, config.frame_height / 2])
-        resolution = max(2 ** max(1, min(int(min_depth), 7)), min(256, int(math.sqrt(max(1, max_quads)) * 2)))
-        curves = [c for c in _marching_squares(func, self.x_range, self.y_range, resolution) if len(c) > 1]
+        if isinstance(min_depth, bool) or not isinstance(min_depth, numbers.Integral) or not 0 <= min_depth <= 7:
+            raise ValueError('min_depth must be an integer from 0 to 7 in the browser preview')
+        if isinstance(max_quads, bool) or not isinstance(max_quads, numbers.Integral) or not 1 <= max_quads <= 20000:
+            raise ValueError('max_quads must be an integer from 1 to 20000 in the browser preview')
+        curves = [c for c in _plot_isoline(lambda u: func(u[0], u[1]), (self.x_range[0], self.y_range[0]),
+                                           (self.x_range[1], self.y_range[1]), min_depth, max_quads) if c]
         for curve in curves:
             self.start_new_path((curve[0][0], curve[0][1], 0))
             self.add_points_as_corners([(x, y, 0) for x, y in curve[1:]])
