@@ -347,3 +347,12 @@ Section, Camera/MultiCamera and Scene(camera_class=..., random_seed=...) were ad
 these, lite runs 406 of the 414 docstring examples (the other 8 also fail in Community)
 and all 75 documentation examples.
 
+Frame-level comparison (2026-10-10): a scene updater recording the scene's bounds every
+frame was run on all docstring examples in both libraries. It found and fixed:
+SpinInFromNothing's spiral path, compounding tips on scaled DiGraphs, interpolated glyph
+indices during transforms, partial Create/Uncreate geometry seen by updaters, Swap of a
+group, 0.22's opacity-based ShowIncreasingSubsets/ShowSubmobjectsOneByOne, and unbounded
+glyph shear under ApplyWave. Remaining per-frame differences come from platform text
+fonts, unseeded random layouts, glyph-level (rather than outline-point) nonlinear maps,
+updaters reading a source mid-TransformMatchingTex, and reusing a group after Unwrite.
+
