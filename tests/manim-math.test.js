@@ -99,3 +99,17 @@ test('class indices are read from merged MathJax class lists', () => {
   assert.equal(math.classIndex(node('manim-part-2'), 'sub'), -1);
   assert.equal(math.classIndex(node(null), 'part'), -1);
 });
+
+test('fractions are laid out without MathJax\'s extra 0.1em sides', () => {
+  class Mfrac {}
+  const mathjax = { startup: { output: { factory: { getNodeClass: () => Mfrac } } } };
+  math.patchFractions(mathjax);
+  const child = { getOuterBBox: () => ({ L: 0, w: 0.5, R: 0, d: 0, h: 0.6, rscale: 1 }) };
+  const frac = Object.assign(new Mfrac(), { childNodes: [child, child], pad: 0.12, font: { params: { axis_height: 0.25 } },
+    getTUV: () => ({ T: 0.1, u: 0.3, v: 0.3 }) });
+  const bbox = { w: 0, combine(box) { this.w = Math.max(this.w, box.w); } };
+  frac.getFractionBBox(bbox, true, 0.04);
+  assert.equal(bbox.w, 0.5 + 0.24);
+  math.patchFractions(mathjax);
+  assert.equal(Mfrac.prototype.texFractions, true);
+});

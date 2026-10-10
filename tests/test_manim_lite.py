@@ -1132,7 +1132,8 @@ self.play(UntypeWithCursor(text, cursor))""")['frames']
         vector=lite.VectorArrow(lite.UR)
         self.assertPointAlmostEqual(vector.get_end(),(1,1,0))
         dot=lite.LabeledDot('a')
-        self.assertAlmostEqual(dot.radius,.1+max(lite.MathTex('a').get_width(),lite.MathTex('a').get_height())/2)
+        # Manim 0.22: buff (SMALL_BUFF) plus the label's half diagonal.
+        self.assertAlmostEqual(dot.radius,.1+lite.math.hypot(lite.MathTex('a').get_width(),lite.MathTex('a').get_height())/2)
         result=render('v = Variable(1.5, "x")\nself.add(v, Vector(UP))\nself.play(v.tracker.animate.set_value(3), rate_func=linear)\nm = Square()\nalways_shift(m, RIGHT, rate=1)\nalways_rotate(Circle(), rate=1)\nself.add(m)\nself.wait(1)')
         variable,vec=result['frames'][7]['mobjects']
         self.assertAlmostEqual(variable['children'][1]['number'],1.5+1.5*7/15)

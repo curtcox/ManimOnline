@@ -138,6 +138,40 @@ const ManimMath = {
     }
     return parts;
   },
+  /**
+   * MathJax widens every ruled fraction by 0.1em on each side of its numerator,
+   * denominator and rule; TeX does not. Lay fractions out as TeX does, so formula
+   * sizes match Manim's LaTeX output.
+   */
+  patchFractions(mathjax) {
+    const mfrac = mathjax?.startup?.output?.factory?.getNodeClass?.('mfrac');
+    if (!mfrac || mfrac.prototype.texFractions) return;
+    mfrac.prototype.texFractions = true;
+    mfrac.prototype.getFractionBBox = function (bbox, display, t) {
+      const nbox = this.childNodes[0].getOuterBBox(), dbox = this.childNodes[1].getOuterBBox();
+      const a = this.font.params.axis_height;
+      const { T, u, v } = this.getTUV(display, t);
+      bbox.combine(nbox, 0, a + T + Math.max(nbox.d * nbox.rscale, u));
+      bbox.combine(dbox, 0, a - T - Math.max(dbox.h * dbox.rscale, v));
+      bbox.w += 2 * this.pad;
+    };
+    mfrac.prototype.makeFraction = function (display, t) {
+      const svg = this.element;
+      const { numalign, denomalign } = this.node.attributes.getList('numalign', 'denomalign');
+      const [num, den] = this.childNodes;
+      const nbox = num.getOuterBBox(), dbox = den.getOuterBBox();
+      const a = this.font.params.axis_height;
+      const pad = this.node.getProperty('withDelims') ? 0 : this.font.params.nulldelimiterspace;
+      const w = Math.max((nbox.L + nbox.w + nbox.R) * nbox.rscale, (dbox.L + dbox.w + dbox.R) * dbox.rscale);
+      const { T, u, v } = this.getTUV(display, t);
+      num.toSVG(svg);
+      num.place(this.getAlignX(w, nbox, numalign) + pad, a + T + Math.max(nbox.d * nbox.rscale, u));
+      den.toSVG(svg);
+      den.place(this.getAlignX(w, dbox, denomalign) + pad, a - T - Math.max(dbox.h * dbox.rscale, v));
+      this.adaptor.append(svg, this.svg('rect', { width: this.fixed(w), height: this.fixed(t), x: this.fixed(pad), y: this.fixed(a - t / 2) }));
+    };
+  },
+
   load() {
     if (!this.loading) {
       this.loading = new Promise((resolve, reject) => {
@@ -158,6 +192,7 @@ const ManimMath = {
         }, 20000);
         script.onload = () => window.MathJax.startup.promise.then(() => {
           clearTimeout(timeout);
+          this.patchFractions(window.MathJax);
           resolve(window.MathJax);
         }, error => { clearTimeout(timeout); reject(error); });
         script.onerror = () => {

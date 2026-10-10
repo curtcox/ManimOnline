@@ -6621,12 +6621,13 @@ class LabeledArrow(LabeledLine, Arrow):
 
 class LabeledDot(Dot):
     """A dot sized to hold a MathTex (or given) label at its center."""
-    def __init__(self, label, radius=None, **kwargs):
+    def __init__(self, label, radius=None, buff=SMALL_BUFF, **kwargs):
         rendered = MathTex(label, color=BLACK) if isinstance(label, str) else label
         if not isinstance(rendered, Mobject):
             raise TypeError('LabeledDot label must be a string or Mobject')
         if radius is None:
-            radius = 0.1 + max(rendered.get_width(), rendered.get_height()) / 2
+            # Manim 0.22: the label's half diagonal plus buff.
+            radius = buff + math.hypot(rendered.get_width(), rendered.get_height()) / 2
         super().__init__(radius=radius, **kwargs)
         rendered.move_to(self.get_center())
         self.add(rendered)
