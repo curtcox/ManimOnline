@@ -546,7 +546,6 @@ self.play(stream.end_animation())""")
         for bad in (lambda: lite.Graph([1],[],layout='tree'),lambda: lite.Graph([1,2],[(1,2),(2,1)],layout='nope'),
                     lambda: lite.Graph([1,2,3],[(1,2),(2,3),(3,1)],layout='tree',root_vertex=1)):
             with self.assertRaises(ValueError): bad()
-        with self.assertRaises(NotImplementedError): lite.Graph([1,2],[(1,2)],layout='planar')
         labeled=lite.Graph([1,2],[(1,2)],labels=True,layout={1:lite.LEFT,2:lite.RIGHT})
         self.assertIsInstance(labeled[1],lite.LabeledDot)
 
@@ -2905,7 +2904,7 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertNotIsInstance(angle,lite.VGroup)
         self.assertEqual(len(angle.get_family()),2)
         self.assertEqual(len(angle.lines),2)
-        self.assertEqual(angle.get_num_curves(),2)
+        self.assertEqual(angle.get_num_curves(),8)
         self.assertPointAlmostEqual(angle.point_from_proportion(.5),(2**-.5,2**-.5,0))
         points = angle.get_points()
         before = angle.to_dict()
@@ -4644,7 +4643,7 @@ assert isinstance(t.get_value(), (int, float))""")
         morph = result['frames'][105]['mobjects'][0]
         self.assertEqual(morph['subpath_lengths'], [8,8])
         collapse = result['frames'][135]['mobjects'][0]
-        self.assertEqual(collapse['subpath_lengths'], [12,8])
+        self.assertEqual(collapse['subpath_lengths'], [8,8])
         final = result['frames'][-1]['mobjects']
         self.assertEqual(len(final), 1)
         self.assertEqual([len(p) for p in lite._path_subpaths(final[0])], [4,4])
@@ -4657,19 +4656,22 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertEqual(box._bounds(), (-2,-1,2,1))
         self.assertEqual(box.get_start(), lite.Vector((2,.5,0)))
         self.assertEqual(box.get_end(), box.get_start())
-        self.assertEqual(len(box.curves), 12)
+        # Community's round_corners: one cubic per corner plus four edges.
+        self.assertEqual(len(box.curves), 8)
         for first, second in zip(box.curves, box.curves[1:]):
             self.assertEqual(first[-1], second[0])
         varying = lite.RoundedRectangle(corner_radius=[.1,.2,.3,.4])
-        for index, expected in [(0,[2,.6,0]),(3,[-1.9,1,0]),
-                                (6,[-2,-.8,0]),(9,[1.7,-1,0])]:
+        for index, expected in [(0,[2,.6,0]),(2,[-1.9,1,0]),
+                                (4,[-2,-.8,0]),(6,[1.7,-1,0])]:
             for actual, value in zip(varying.curves[index][0], expected):
                 self.assertAlmostEqual(actual, value)
         repeated = lite.RoundedRectangle(corner_radius=[.1,.2])
         self.assertEqual(repeated.curves[0][0], [2,.8,0])
         concave = lite.RoundedRectangle(corner_radius=-.5)
-        convex_mid = box.curves[0][-1]
-        concave_mid = concave.curves[0][-1]
+        def middle(curve):
+            return [(curve[0][i] + 3 * curve[1][i] + 3 * curve[2][i] + curve[3][i]) / 8 for i in range(2)]
+        convex_mid = middle(box.curves[0])
+        concave_mid = middle(concave.curves[0])
         self.assertGreater(convex_mid[0], concave_mid[0])
         self.assertGreater(convex_mid[1], concave_mid[1])
         box.rotate(lite.PI/2).scale(2).shift(lite.RIGHT)
@@ -4694,7 +4696,7 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertEqual(result['duration'], 11)
         middle = result['frames'][105]['mobjects'][0]
         self.assertEqual(middle['type'], 'bezierpath')
-        self.assertEqual(len(middle['curves']), 12)
+        self.assertEqual(len(middle['curves']), 8)
         final = result['frames'][-1]['mobjects']
         self.assertEqual(len(final), 1)
         original = lite.RoundedRectangle(width=5,height=3,corner_radius=.6,color=lite.BLUE,fill_opacity=.25)
@@ -4705,7 +4707,7 @@ assert isinstance(t.get_value(), (int, float))""")
     def test_rounded_rectangle_aligns_with_other_outlines(self):
         result = render('box = RoundedRectangle()\nself.add(box)\nself.play(Transform(box, Triangle()), run_time=2)')
         self.assertEqual(result['frames'][15]['mobjects'][0]['type'], 'bezierpath')
-        self.assertEqual(len(result['frames'][15]['mobjects'][0]['curves']), 12)
+        self.assertEqual(len(result['frames'][15]['mobjects'][0]['curves']), 8)
         self.assertEqual(result['frames'][-1]['mobjects'][0]['type'], 'polygon')
 
     def test_annulus_bounds_contour_order_and_validation(self):
@@ -4751,15 +4753,16 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertIsInstance(ring, lite.VMobject)
         self.assertEqual(ring.curves[0][0], [1,0,0])
         self.assertEqual(ring.curves[-1][-1], [1,0,0])
-        self.assertEqual(len(ring.curves), 6)
-        self.assertAlmostEqual(ring.curves[2][-1][1], 2)
+        # Community: 8-cubic inner and outer arcs joined by two radial edges.
+        self.assertEqual(len(ring.curves), 18)
+        self.assertAlmostEqual(ring.curves[8][-1][1], 2)
         self.assertEqual(ring.fill_opacity, 1)
         self.assertEqual(ring.stroke_width, 0)
         wedge = lite.Sector(radius=2, angle=-lite.PI)
         self.assertEqual(wedge.inner_radius, 0)
         self.assertEqual(wedge.get_start(), lite.ORIGIN)
         self.assertEqual(wedge.get_end(), lite.ORIGIN)
-        self.assertAlmostEqual(wedge.curves[4][-1][0], -2)
+        self.assertAlmostEqual(wedge.curves[8][-1][0], -2)
         for invalid in [-1, True, float('nan'), float('inf'), '2']:
             with self.assertRaises(ValueError): lite.Sector(radius=invalid)
             with self.assertRaises(ValueError): lite.AnnularSector(inner_radius=invalid)
@@ -4790,7 +4793,7 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertEqual(result['duration'], 10)
         middle = result['frames'][90]['mobjects'][1]
         self.assertEqual(middle['type'], 'bezierpath')
-        self.assertEqual(len(middle['curves']), 14)
+        self.assertEqual(len(middle['curves']), 18)
         final = result['frames'][-1]['mobjects']
         self.assertEqual(len(final), 2)
         self.assertEqual(final[1]['inner_radius'], .7)
@@ -5770,9 +5773,19 @@ self.wait(1)""")
         self.assertEqual(scene.foreground_mobjects, [])
 
     def test_foreground_fade_and_replacement_remove_membership(self):
-        for animation in ('FadeOut(a)', 'ReplacementTransform(a, b)', 'Succession(Rotate(a, PI), FadeOut(a))'):
+        for animation in ('FadeOut(a)', 'Succession(Rotate(a, PI), FadeOut(a))'):
             result = render('a = Circle()\nb = Square()\nself.add_foreground_mobject(a)\nself.play(' + animation + ')\nassert self.foreground_mobjects == []\nself.add(b)')
             self.assertEqual([m['type'] for m in result['frames'][-1]['mobjects']], ['square'])
+        # Manim 0.22: the replaced foreground mobject (now shaped like its target) stays drawn last.
+        render('a = Circle()\nb = Square()\nself.add_foreground_mobject(a)\nself.play(ReplacementTransform(a, b))\n'
+               'assert self.foreground_mobjects == [a] and self.mobjects == [b, a]')
+
+    def test_replacement_transform_replaces_nested_members_like_community(self):
+        render('r = VGroup(Integer(1), Integer(2), Integer(3), Text("R"))\nt = VGroup(Integer(4), Integer(5), Text("T"))\n'
+               'ints = VGroup(r, t)\ntexts = VGroup(r[3], t[2])\nself.add(ints, texts)\n'
+               'one, two, three = r[0], r[1], r[2]\n'
+               'self.play(ReplacementTransform(one, two))\nself.play(ReplacementTransform(two, three))\n'
+               'assert self.mobjects == [ints, texts] and list(ints) == [r, t] and len(r) == 2 and r[0] is three')
 
     def test_foreground_family_validation_is_atomic(self):
         child = lite.Circle()
@@ -6714,9 +6727,13 @@ class Demo(Scene):
                        {'start_angle': float('inf')}, {'arc_center': (float('nan'), 0)}):
             with self.assertRaises(ValueError):
                 lite.Arc(**kwargs)
-        for kwargs in ({'angle': lite.TAU * 2}, {'num_components': 20}):
-            with self.assertRaises(NotImplementedError):
-                lite.Arc(**kwargs)
+        with self.assertRaises(NotImplementedError):
+            lite.Arc(angle=lite.TAU * 2)
+        with self.assertRaises(ValueError):
+            lite.Arc(num_components=1)
+        # Community: num_components anchors whatever the sweep (default 9, 8 cubics).
+        self.assertEqual(lite.Arc(angle=lite.PI / 6).get_num_curves(), 8)
+        self.assertEqual(lite.Arc(num_components=20).get_num_curves(), 19)
 
     def test_arc_examples_render_with_final_path_positions(self):
         result = json.loads(lite.render_scene((ROOT / 'examples/arc_scene.py').read_text()))
@@ -8138,8 +8155,20 @@ class Demo(Scene):
                 graph = kind(vertices, edges, layout=layout)
                 for vertex, point in points.items():
                     self.assertPointAlmostEqual(graph[vertex].get_center()[:2], point, 4)
-        with self.assertRaisesRegex(NotImplementedError, 'planar'):
-            lite.Graph(vertices, edges, layout='planar')
+        # networkx 3.7 planar_layout (LR planarity + Chrobak-Payne), including a disconnected
+        # graph whose components are joined in BFS-set order. (String vertices follow
+        # networkx too, but set order then depends on the per-process hash seed.)
+        planar = {(tuple(range(1, 10)), ((1,2),(2,3),(3,4),(4,1),(1,5),(5,6),(6,7),(7,8),(8,9),(9,1),(2,9),(5,8),(4,6))):
+                  {1: (1.485714, -0.542857), 2: (-1.6, -0.8), 3: (2.0, -0.8), 4: (0.2, 1.0), 5: (0.2, 0.228571),
+                   6: (-0.057143, 0.742857), 7: (-0.314286, 0.485714), 8: (-0.828571, -0.028571), 9: (-1.085714, -0.285714)},
+                  (tuple(range(10, 15)), ((10, 11), (12, 13))):
+                  {10: (-2.0, -0.666667), 11: (-0.666667, 0.666667), 12: (2.0, -0.666667), 13: (0.0, 0.0), 14: (0.666667, 0.666667)}}
+        for (nodes, links), points in planar.items():
+            graph = lite.Graph(list(nodes), list(links), layout='planar')
+            for vertex, point in points.items():
+                self.assertPointAlmostEqual(graph[vertex].get_center()[:2], point, 5)
+        with self.assertRaisesRegex(ValueError, 'not planar'):
+            lite.Graph(list(range(5)), [(a, b) for a in range(5) for b in range(a + 1, 5)], layout='planar')
 
     def test_doc_example_options_tips_opacity_lists_and_arange_sampling(self):
         # Opacity lists become gradient stops (Community draws rgba lists as gradients).

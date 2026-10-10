@@ -3544,7 +3544,9 @@ class TipableVMobject(VMobject):
 
 
 class Arc(TipableVMobject):
-    def __init__(self, radius=1, start_angle=0, angle=PI / 2, arc_center=ORIGIN, **kwargs):
+    def __init__(self, radius=1, start_angle=0, angle=PI / 2, arc_center=ORIGIN, num_components=9, **kwargs):
+        if isinstance(num_components, bool) or not isinstance(num_components, numbers.Integral) or not 2 <= num_components <= 1000:
+            raise ValueError('num_components must be an integer from 2 to 1000')
         center = Vector(arc_center)
         if not all(math.isfinite(v) for v in (radius, start_angle, angle, *center)) or radius < 0:
             raise ValueError('Arc geometry must be finite with a nonnegative radius')
@@ -3554,6 +3556,8 @@ class Arc(TipableVMobject):
         super().__init__(**kwargs)
         self._type, self.radius = 'arc', radius
         self.start_angle, self.arc_angle = start_angle % TAU, angle
+        if num_components != 9:
+            self.num_components = int(num_components)
         self.position = list(center)
 
     def get_arc_center(self):
@@ -3908,7 +3912,8 @@ class RoundedRectangle(Rectangle):
             start = corner - before * cut
             center = corner - before * cut + after * cut if radius >= 0 else corner
             angle = math.atan2(start[1]-center[1], start[0]-center[0])
-            curves = _path_curves({'type':'arc', 'radius':cut, 'start_angle':angle,
+            # Community's round_corners: one cubic (components_per_rounded_corner=2) per corner.
+            curves = _path_curves({'type':'arc', 'radius':cut, 'start_angle':angle, 'num_components':2,
                                    'arc_angle':PI/2 if radius >= 0 else -PI/2})
             curves = [[list(Vector(p) + center) for p in curve] for curve in curves]
             # Pin joins exactly to avoid tiny floating-point closing seams.
@@ -4949,9 +4954,11 @@ def _number_text(number, options):
 
 class DecimalNumber(Text):
     """A finite real numeric label using the preview's centered SVG text."""
+    _frame_excluded = ('edge_to_fix',)
+
     def __init__(self, number=0, num_decimal_places=2, include_sign=False,
                  group_with_commas=True, show_ellipsis=False, unit=None, font_size=48,
-                 digit_buff_per_font_unit=0.001, unit_buff_per_font_unit=0, **kwargs):
+                 digit_buff_per_font_unit=0.001, unit_buff_per_font_unit=0, edge_to_fix=LEFT, **kwargs):
         if (isinstance(num_decimal_places, bool) or not isinstance(num_decimal_places, numbers.Integral) or
                 not 0 <= num_decimal_places <= 12):
             raise ValueError('num_decimal_places must be an integer from 0 to 12')
@@ -4966,6 +4973,7 @@ class DecimalNumber(Text):
                        group_with_commas=group_with_commas, show_ellipsis=show_ellipsis, unit=None)
         super().__init__(_number_text(number, options), font_size=font_size, **kwargs)
         self.number, self._number_format, self.unit = number, options, unit
+        self.edge_to_fix = Vector(edge_to_fix)
         self.digit_buff_per_font_unit = NumberLine._real(digit_buff_per_font_unit, 'digit_buff_per_font_unit')
         self.unit_buff_per_font_unit = NumberLine._real(unit_buff_per_font_unit, 'unit_buff_per_font_unit')
         if unit:
@@ -4997,9 +5005,13 @@ class DecimalNumber(Text):
         return self.number
 
     def set_value(self, number):
+        # Community re-typesets the number and keeps its edge_to_fix (LEFT) in place.
+        edge = self.__dict__.get('edge_to_fix', LEFT)
+        anchor = self.get_edge_center(edge)
         text = _number_text(number, self._number_format)
         self.number, self.text = number, text
         self._place_unit()
+        self.move_to(anchor, aligned_edge=edge)
         return self
 
     def increment_value(self, delta_t=1):
@@ -8482,7 +8494,8 @@ def _path_curves(snapshot):
             raise ValueError('Path radius must be nonnegative and finite')
         start = snapshot.get('start_angle', 0)
         sweep = snapshot.get('arc_angle', TAU)
-        count = max(1, math.ceil(abs(sweep) / (PI / 4)))
+        # Community's Arc: num_components anchors (default 9, so 8 cubics) for any sweep.
+        count = snapshot.get('num_components', 9) - 1
         step = sweep / count
         factor = 4 / 3 * math.tan(step / 4)
         anchors = [Vector((radius * math.cos(start + step*i),
@@ -9694,8 +9707,15 @@ class FadeTransform(Transform):
         return [source, target]
 
     def finish(self, scene):
-        scene.remove(self.mobject)
-        scene.add(self.replacement)
+        # Community: the mobject ends shaped like its target, which then takes its place
+        # in the scene (inside its parent group when nested).
+        super().finish(scene)
+        if self.mobject in scene.get_mobject_family_members():
+            scene.replace(self.mobject, self.replacement)
+            if self.mobject in scene.foreground_mobjects:
+                scene.add()  # Community keeps foreground mobjects drawn last.
+        else:
+            scene.add(self.replacement)
 
     def objects(self):
         return [self.mobject, self.replacement]
@@ -9707,8 +9727,15 @@ class ReplacementTransform(Transform):
         self.replacement = target_mobject
 
     def finish(self, scene):
-        scene.remove(self.mobject)
-        scene.add(self.replacement)
+        # Community: the mobject ends shaped like its target, which then takes its place
+        # in the scene (inside its parent group when nested).
+        super().finish(scene)
+        if self.mobject in scene.get_mobject_family_members():
+            scene.replace(self.mobject, self.replacement)
+            if self.mobject in scene.foreground_mobjects:
+                scene.add()  # Community keeps foreground mobjects drawn last.
+        else:
+            scene.add(self.replacement)
 
     def objects(self):
         return [self.mobject, self.replacement]
@@ -10862,16 +10889,31 @@ class Scene:
 
     def replace(self, old_mobject, new_mobject):
         """Swap a mobject in the scene (or inside a scene group) without changing order."""
-        if not isinstance(new_mobject, Mobject):
+        if not isinstance(new_mobject, Mobject) or not isinstance(old_mobject, Mobject):
             raise TypeError('replace expects Mobjects')
-        def swap(items):
+        def swap(items, owner=None):
+            # Community 0.22: drop new_mobject from each searched list (no duplicates), check
+            # the whole level first, then descend breadth-first into each member.
+            items = list(items)
+            changed = False
+            if any(item is new_mobject for item in items):
+                if old_mobject is new_mobject:
+                    return True
+                items = [item for item in items if item is not new_mobject]
+                changed = True
+            found = False
             for index, item in enumerate(items):
                 if item is old_mobject:
-                    items[index] = new_mobject
-                    return True
-                if swap(item.children):
-                    return True
-            return False
+                    items[index], found, changed = new_mobject, True, True
+                    break
+            if changed:
+                if owner is None:
+                    self.mobjects[:] = items
+                else:
+                    owner._replace_children(items)
+            if found:
+                return True
+            return any(swap(item.children, item) for item in items)
         if not swap(self.mobjects):
             raise ValueError('The mobject to replace is not in the scene')
 
@@ -13602,9 +13644,508 @@ def _kamada_kawai_layout(graph, dist=None, pos=None, weight='weight', scale=2, c
     return dict(zip(nodes, _rescale_layout(points, scale)))
 
 
+class _PlanarEmbedding:
+    """networkx's PlanarEmbedding half-edge structure: succ[v][w] = {'cw': .., 'ccw': ..},
+    kept in networkx's insertion order (the last successor is the leftmost neighbor)."""
+    def __init__(self, nodes=()):
+        self.succ = {v: {} for v in nodes}
+
+    def copy(self):
+        result = _PlanarEmbedding()
+        result.succ = {v: {w: dict(data) for w, data in nbrs.items()} for v, nbrs in self.succ.items()}
+        return result
+
+    def nodes(self):
+        return list(self.succ)
+
+    def __getitem__(self, v):
+        return self.succ[v]
+
+    def has_edge(self, u, v):
+        return u in self.succ and v in self.succ[u]
+
+    def neighbors_cw_order(self, v):
+        succs = self.succ[v]
+        if not succs:
+            return
+        start = next(reversed(succs))
+        yield start
+        current = succs[start]['cw']
+        while start != current:
+            yield current
+            current = succs[current]['cw']
+
+    def _add(self, u, v, data):
+        self.succ.setdefault(u, {})
+        self.succ.setdefault(v, {})
+        if v in self.succ[u]:
+            self.succ[u][v].update(data)
+        else:
+            self.succ[u][v] = data
+
+    def add_half_edge(self, start, end, cw=None, ccw=None):
+        succs = self.succ.get(start)
+        if succs:
+            leftmost = next(reversed(succs))
+            if cw is not None:
+                ref_ccw = succs[cw]['ccw']
+                self._add(start, end, {'cw': cw, 'ccw': ref_ccw})
+                succs[ref_ccw]['cw'] = end
+                succs[cw]['ccw'] = end
+                move = cw != leftmost
+            elif ccw is not None:
+                ref_cw = succs[ccw]['cw']
+                self._add(start, end, {'cw': ref_cw, 'ccw': ccw})
+                succs[ref_cw]['ccw'] = end
+                succs[ccw]['cw'] = end
+                move = True
+            else:
+                raise ValueError('A reference neighbor is required')
+            if move:
+                succs[leftmost] = succs.pop(leftmost)
+        else:
+            self._add(start, end, {'ccw': end, 'cw': end})
+
+    def add_half_edge_first(self, start, end):
+        succs = self.succ.get(start)
+        self.add_half_edge(start, end, cw=next(reversed(succs)) if succs else None)
+
+    def connect_components(self, v, w):
+        self.add_half_edge(v, w, cw=next(reversed(self.succ[v])) if self.succ.get(v) else None)
+        self.add_half_edge(w, v, cw=next(reversed(self.succ[w])) if self.succ.get(w) else None)
+
+    def next_face_half_edge(self, v, w):
+        return w, self.succ[w][v]['ccw']
+
+    def connected_components(self):
+        """networkx's connected_components (BFS sets, in their own iteration order)."""
+        def bfs(source, n):
+            seen, following = {source}, [source]
+            while following:
+                level, following = following, []
+                for v in level:
+                    for w in self.succ[v]:
+                        if w not in seen:
+                            seen.add(w)
+                            following.append(w)
+                    if len(seen) == n:
+                        return seen
+            return seen
+        seen = set()
+        for v in self.succ:
+            if v not in seen:
+                component = bfs(v, len(self.succ) - len(seen))
+                seen.update(component)
+                yield component
+
+
+def _lr_planarity(graph):
+    """networkx's check_planarity (left-right planarity test with embedding), ported
+    step for step so the embedding, and so planar_layout, match networkx exactly."""
+    from collections import defaultdict
+    adj = {v: {} for v in graph.nodes}
+    for u, v in graph.edges:
+        if u != v:
+            adj[u][v] = True
+            adj[v][u] = True
+    order = len(adj)
+    size = sum(len(n) for n in adj.values()) // 2
+    if order > 2 and size > 3 * order - 6:
+        return None
+    height, parent_edge = defaultdict(lambda: None), defaultdict(lambda: None)
+    lowpt, lowpt2, nesting = {}, {}, {}
+    dg = {v: {} for v in graph.nodes}
+    roots, ref, side = [], defaultdict(lambda: None), defaultdict(lambda: 1)
+    stack, stack_bottom, lowpt_edge, left_ref, right_ref = [], {}, {}, {}, {}
+    adjs = {v: list(adj[v]) for v in adj}
+
+    class Interval:
+        __slots__ = ('low', 'high')
+        def __init__(self, low=None, high=None):
+            self.low, self.high = low, high
+        def empty(self):
+            return self.low is None and self.high is None
+        def copy(self):
+            return Interval(self.low, self.high)
+        def conflicting(self, b):
+            return not self.empty() and lowpt[self.high] > lowpt[b]
+
+    class Pair:
+        __slots__ = ('left', 'right')
+        def __init__(self, left=None, right=None):
+            self.left = left if left is not None else Interval()
+            self.right = right if right is not None else Interval()
+        def swap(self):
+            self.left, self.right = self.right, self.left
+        def lowest(self):
+            if self.left.empty():
+                return lowpt[self.right.low]
+            if self.right.empty():
+                return lowpt[self.left.low]
+            return min(lowpt[self.left.low], lowpt[self.right.low])
+
+    def top():
+        return stack[-1] if stack else None
+
+    def orientation(v):
+        dfs, ind, skip = [v], defaultdict(int), defaultdict(bool)
+        while dfs:
+            v = dfs.pop()
+            e = parent_edge[v]
+            for w in adjs[v][ind[v]:]:
+                vw = (v, w)
+                if not skip[vw]:
+                    if w in dg[v] or v in dg[w]:
+                        ind[v] += 1
+                        continue
+                    dg[v][w] = True
+                    lowpt[vw] = lowpt2[vw] = height[v]
+                    if height[w] is None:
+                        parent_edge[w] = vw
+                        height[w] = height[v] + 1
+                        dfs.append(v)
+                        dfs.append(w)
+                        skip[vw] = True
+                        break
+                    lowpt[vw] = height[w]
+                nesting[vw] = 2 * lowpt[vw]
+                if lowpt2[vw] < height[v]:
+                    nesting[vw] += 1
+                if e is not None:
+                    if lowpt[vw] < lowpt[e]:
+                        lowpt2[e] = min(lowpt[e], lowpt2[vw])
+                        lowpt[e] = lowpt[vw]
+                    elif lowpt[vw] > lowpt[e]:
+                        lowpt2[e] = min(lowpt2[e], lowpt[vw])
+                    else:
+                        lowpt2[e] = min(lowpt2[e], lowpt2[vw])
+                ind[v] += 1
+
+    def add_constraints(ei, e):
+        P = Pair()
+        while True:
+            Q = stack.pop()
+            if not Q.left.empty():
+                Q.swap()
+            if not Q.left.empty():
+                return False
+            if lowpt[Q.right.low] > lowpt[e]:
+                if P.right.empty():
+                    P.right = Q.right.copy()
+                else:
+                    ref[P.right.low] = Q.right.high
+                P.right.low = Q.right.low
+            else:
+                ref[Q.right.low] = lowpt_edge[e]
+            if top() == stack_bottom[ei]:
+                break
+        while top().left.conflicting(ei) or top().right.conflicting(ei):
+            Q = stack.pop()
+            if Q.right.conflicting(ei):
+                Q.swap()
+            if Q.right.conflicting(ei):
+                return False
+            ref[P.right.low] = Q.right.high
+            if Q.right.low is not None:
+                P.right.low = Q.right.low
+            if P.left.empty():
+                P.left = Q.left.copy()
+            else:
+                ref[P.left.low] = Q.left.high
+            P.left.low = Q.left.low
+        if not (P.left.empty() and P.right.empty()):
+            stack.append(P)
+        return True
+
+    def remove_back_edges(e):
+        u = e[0]
+        while stack and top().lowest() == height[u]:
+            P = stack.pop()
+            if P.left.low is not None:
+                side[P.left.low] = -1
+        if stack:
+            P = stack.pop()
+            while P.left.high is not None and P.left.high[1] == u:
+                P.left.high = ref[P.left.high]
+            if P.left.high is None and P.left.low is not None:
+                ref[P.left.low] = P.right.low
+                side[P.left.low] = -1
+                P.left.low = None
+            while P.right.high is not None and P.right.high[1] == u:
+                P.right.high = ref[P.right.high]
+            if P.right.high is None and P.right.low is not None:
+                ref[P.right.low] = P.left.low
+                side[P.right.low] = -1
+                P.right.low = None
+            stack.append(P)
+        if lowpt[e] < height[u]:
+            hl, hr = top().left.high, top().right.high
+            ref[e] = hl if hl is not None and (hr is None or lowpt[hl] > lowpt[hr]) else hr
+
+    def testing(v):
+        dfs, ind, skip = [v], defaultdict(int), defaultdict(bool)
+        while dfs:
+            v = dfs.pop()
+            e, skip_final = parent_edge[v], False
+            for w in ordered[v][ind[v]:]:
+                ei = (v, w)
+                if not skip[ei]:
+                    stack_bottom[ei] = top()
+                    if ei == parent_edge[w]:
+                        dfs.append(v)
+                        dfs.append(w)
+                        skip[ei] = skip_final = True
+                        break
+                    lowpt_edge[ei] = ei
+                    stack.append(Pair(right=Interval(ei, ei)))
+                if lowpt[ei] < height[v]:
+                    if w == ordered[v][0]:
+                        lowpt_edge[e] = lowpt_edge[ei]
+                    elif not add_constraints(ei, e):
+                        return False
+                ind[v] += 1
+            if not skip_final and e is not None:
+                remove_back_edges(e)
+        return True
+
+    def sign(e):
+        dfs, old = [e], defaultdict(lambda: None)
+        while dfs:
+            e = dfs.pop()
+            if ref[e] is not None:
+                dfs.append(e)
+                dfs.append(ref[e])
+                old[e] = ref[e]
+                ref[e] = None
+            else:
+                side[e] *= side[old[e]]
+        return side[e]
+
+    for v in adj:
+        if height[v] is None:
+            height[v] = 0
+            roots.append(v)
+            orientation(v)
+    ordered = {v: sorted(dg[v], key=lambda x, v=v: nesting[v, x]) for v in dg}
+    for v in roots:
+        if not testing(v):
+            return None
+    for u in dg:
+        for w in dg[u]:
+            nesting[u, w] = sign((u, w)) * nesting[u, w]
+    embedding = _PlanarEmbedding(dg)
+    for v in dg:
+        ordered[v] = sorted(dg[v], key=lambda x, v=v: nesting[v, x])
+        previous = None
+        for w in ordered[v]:
+            embedding.add_half_edge(v, w, ccw=previous)
+            previous = w
+    for root in roots:
+        dfs, ind = [root], defaultdict(int)
+        while dfs:
+            v = dfs.pop()
+            for w in ordered[v][ind[v]:]:
+                ind[v] += 1
+                ei = (v, w)
+                if ei == parent_edge[w]:
+                    embedding.add_half_edge_first(w, v)
+                    left_ref[v] = right_ref[v] = w
+                    dfs.append(v)
+                    dfs.append(w)
+                    break
+                elif side[ei] == 1:
+                    embedding.add_half_edge(w, v, ccw=right_ref[w])
+                else:
+                    embedding.add_half_edge(w, v, cw=left_ref[w])
+                    left_ref[w] = v
+    return embedding
+
+
+def _make_bi_connected(embedding, start, out, counted):
+    if (start, out) in counted:
+        return []
+    counted.add((start, out))
+    v1, v2, face, face_set = start, out, [start], {start}
+    _, v3 = embedding.next_face_half_edge(v1, v2)
+    while v2 != start or v3 != out:
+        if v2 in face_set:
+            embedding.add_half_edge(v1, v3, ccw=v2)
+            embedding.add_half_edge(v3, v1, cw=v2)
+            counted.add((v2, v3))
+            counted.add((v3, v1))
+            v2 = v1
+        else:
+            face_set.add(v2)
+            face.append(v2)
+        v1 = v2
+        v2, v3 = embedding.next_face_half_edge(v2, v3)
+        counted.add((v1, v2))
+    return face
+
+
+def _triangulate_face(embedding, v1, v2):
+    _, v3 = embedding.next_face_half_edge(v1, v2)
+    _, v4 = embedding.next_face_half_edge(v2, v3)
+    if v1 in (v2, v3):
+        return
+    while v1 != v4:
+        if embedding.has_edge(v1, v3):
+            v1, v2, v3 = v2, v3, v4
+        else:
+            embedding.add_half_edge(v1, v3, ccw=v2)
+            embedding.add_half_edge(v3, v1, cw=v2)
+            v1, v2, v3 = v1, v3, v4
+        _, v4 = embedding.next_face_half_edge(v2, v3)
+
+
+def _canonical_ordering(embedding, outer):
+    from collections import defaultdict
+    v1, v2 = outer[0], outer[1]
+    chords, marked, ready = defaultdict(int), set(), set(outer)
+    ccw_nbr, cw_nbr = {}, {}
+    previous = v2
+    for index in range(2, len(outer)):
+        ccw_nbr[previous] = outer[index]
+        previous = outer[index]
+    ccw_nbr[previous] = v1
+    previous = v1
+    for index in range(len(outer) - 1, 0, -1):
+        cw_nbr[previous] = outer[index]
+        previous = outer[index]
+    def outer_nbr(x, y):
+        if x not in ccw_nbr:
+            return cw_nbr[x] == y
+        if x not in cw_nbr:
+            return ccw_nbr[x] == y
+        return ccw_nbr[x] == y or cw_nbr[x] == y
+    def on_outer(x):
+        return x not in marked and (x in ccw_nbr or x == v1)
+    for v in outer:
+        for nbr in embedding.neighbors_cw_order(v):
+            if on_outer(nbr) and not outer_nbr(v, nbr):
+                chords[v] += 1
+                ready.discard(v)
+    count = len(embedding.nodes())
+    ordering = [None] * count
+    ordering[0], ordering[1] = (v1, []), (v2, [])
+    ready.discard(v1)
+    ready.discard(v2)
+    for k in range(count - 1, 1, -1):
+        v = ready.pop()
+        marked.add(v)
+        wp = wq = None
+        neighbors = iter(embedding.neighbors_cw_order(v))
+        while True:
+            nbr = next(neighbors)
+            if nbr in marked:
+                continue
+            if on_outer(nbr):
+                if nbr == v1:
+                    wp = v1
+                elif nbr == v2:
+                    wq = v2
+                elif cw_nbr[nbr] == v:
+                    wp = nbr
+                else:
+                    wq = nbr
+            if wp is not None and wq is not None:
+                break
+        path, nbr = [wp], wp
+        while nbr != wq:
+            following = embedding[v][nbr]['ccw']
+            path.append(following)
+            cw_nbr[nbr] = following
+            ccw_nbr[following] = nbr
+            nbr = following
+        if len(path) == 2:
+            for end in (wp, wq):
+                chords[end] -= 1
+                if chords[end] == 0:
+                    ready.add(end)
+        else:
+            new_face = set(path[1:-1])
+            for w in new_face:
+                ready.add(w)
+                for nbr in embedding.neighbors_cw_order(w):
+                    if on_outer(nbr) and not outer_nbr(w, nbr):
+                        chords[w] += 1
+                        ready.discard(w)
+                        if nbr not in new_face:
+                            chords[nbr] += 1
+                            ready.discard(nbr)
+        ordering[k] = (v, path)
+    return ordering
+
+
+def _combinatorial_embedding_to_pos(embedding):
+    """networkx's Chrobak-Payne straight-line drawing on an integer grid."""
+    nodes = embedding.nodes()
+    if len(nodes) < 4:
+        return dict(zip(nodes, [(0, 0), (2, 0), (1, 1)]))
+    embedding = embedding.copy()
+    components = [next(iter(c)) for c in embedding.connected_components()]
+    for a, b in zip(components, components[1:]):
+        embedding.connect_components(a, b)
+    outer, faces, visited = [], [], set()
+    for v in embedding.nodes():
+        for w in embedding.neighbors_cw_order(v):
+            face = _make_bi_connected(embedding, v, w, visited)
+            if face:
+                faces.append(face)
+                if len(face) > len(outer):
+                    outer = face
+    for face in faces:
+        if face is not outer:
+            _triangulate_face(embedding, face[0], face[1])
+    ordering = _canonical_ordering(embedding, outer)
+    (v1, _), (v2, _), (v3, _) = ordering[:3]
+    dx, y = {v1: 0, v2: 1, v3: 1}, {v1: 0, v2: 0, v3: 1}
+    right, left = {v1: v3, v2: None, v3: v2}, {v1: None, v2: None, v3: None}
+    for k in range(3, len(ordering)):
+        vk, contour = ordering[k]
+        wp, wp1, wq, wq1 = contour[0], contour[1], contour[-1], contour[-2]
+        multi = len(contour) > 2
+        dx[wp1] += 1
+        dx[wq] += 1
+        span = sum(dx[x] for x in contour[1:])
+        dx[vk] = (-y[wp] + span + y[wq]) // 2
+        y[vk] = (y[wp] + span + y[wq]) // 2
+        dx[wq] = span - dx[vk]
+        if multi:
+            dx[wp1] -= dx[vk]
+        right[wp], right[vk] = vk, wq
+        if multi:
+            left[vk] = wp1
+            right[wq1] = None
+        else:
+            left[vk] = None
+    pos, remaining = {v1: (0, y[v1])}, [v1]
+    while remaining:
+        parent = remaining.pop()
+        for tree in (left, right):
+            child = tree[parent]
+            if child is not None:
+                pos[child] = (pos[parent][0] + dx[child], y[child])
+                remaining.append(child)
+    return pos
+
+
+def _planar_layout(graph, scale=2, center=None, dim=2):
+    scale = _layout_scale(scale)
+    if not len(graph):
+        return {}
+    embedding = _lr_planarity(graph)
+    if embedding is None:
+        raise ValueError('G is not planar.')
+    pos = _combinatorial_embedding_to_pos(embedding)
+    nodes = embedding.nodes()
+    return dict(zip(nodes, _rescale_layout([[float(c) for c in pos[v]] for v in nodes], scale)))
+
+
 _GRAPH_LAYOUTS = {'circular': _circular_layout, 'shell': _shell_layout, 'spiral': _spiral_layout,
                   'partite': _partite_layout, 'random': _random_layout, 'spring': _spring_layout,
-                  'tree': _tree_layout, 'spectral': _spectral_layout, 'kamada_kawai': _kamada_kawai_layout}
+                  'tree': _tree_layout, 'spectral': _spectral_layout, 'kamada_kawai': _kamada_kawai_layout,
+                  'planar': _planar_layout}
 
 
 def _determine_graph_layout(graph, layout='spring', layout_scale=2, layout_config=None):
@@ -13612,9 +14153,6 @@ def _determine_graph_layout(graph, layout='spring', layout_scale=2, layout_confi
     if isinstance(layout, dict):
         return {node: Vector(point) for node, point in layout.items()}
     if isinstance(layout, str):
-        if layout == 'planar':
-            raise NotImplementedError("The 'planar' layout needs networkx's planarity test; use circular, "
-                                      'shell, spiral, spring, random, partite, tree, spectral, kamada_kawai or a dict')
         if layout not in _GRAPH_LAYOUTS:
             raise ValueError(f"The layout '{layout}' is neither a recognized layout, a layout function,"
                              'nor a vertex placement dictionary.')
