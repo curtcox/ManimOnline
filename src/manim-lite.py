@@ -17,6 +17,7 @@ import re
 import struct
 import sys
 import types
+import typing
 
 FPS = 15
 MAX_FRAMES = 901  # 900 timed samples plus a final seekable state.
@@ -571,6 +572,11 @@ class PreviewConfig:
     @property
     def frame_rate(self):
         return FPS
+
+    @property
+    def renderer(self):
+        # Community code checks config.renderer; the preview draws like the Cairo renderer.
+        return RendererType.CAIRO
 
     @frame_y_radius.setter
     def frame_y_radius(self, value):
@@ -10695,7 +10701,20 @@ class DefaultSectionType:
 class Scene:
     camera_class = PreviewConfig
 
-    def __init__(self, camera_config=None):
+    def __init__(self, camera_config=None, *, renderer=None, camera_class=None, always_update_mobjects=False,
+                 random_seed=None, skip_animations=False):
+        # Community's Scene arguments: a camera class, and a seed for random and NumPy's random.
+        if camera_class is not None:
+            self.camera_class = camera_class
+        self.always_update_mobjects, self.random_seed = always_update_mobjects, random_seed
+        if random_seed is not None:
+            random.seed(random_seed)
+            try:
+                import numpy
+            except ImportError:
+                pass
+            else:
+                numpy.random.seed(random_seed)
         self.camera = self.camera_class(**config.to_dict())
         for name, value in (camera_config or {}).items():
             setattr(self.camera, name, value)
@@ -11254,6 +11273,23 @@ class Scene:
                 lay_out(node)
         return {'frames': self.frames, 'fps': FPS, 'duration': (len(self.frames)-1)/FPS,
                 'math_estimated': sorted(_MATH_ESTIMATED), 'typst_pending': sorted(_TYPST_PENDING)}
+
+
+Camera = PreviewConfig
+
+
+class MultiCamera(MovingCamera):
+    """Community's camera that also draws image mobjects of other cameras (ZoomedScene's
+    displays draw their views as vector insets here)."""
+    def __init__(self, image_mobjects_from_cameras=None, allow_cameras_to_capture_their_own_display=False,
+                 **kwargs):
+        super().__init__(**kwargs)
+        object.__setattr__(self, 'image_mobjects_from_cameras', list(image_mobjects_from_cameras or []))
+        object.__setattr__(self, 'allow_cameras_to_capture_their_own_display',
+                           allow_cameras_to_capture_their_own_display)
+
+    def add_image_mobject_from_camera(self, imfc):
+        self.image_mobjects_from_cameras.append(imfc)
 
 
 class MovingCameraScene(Scene):
@@ -18358,7 +18394,10 @@ EXPORTS += [name for name in _PALETTE if name not in EXPORTS]
 # Community utilities (manim.utils.*).
 EXPORTS += ['ManimBanner', 'MANIM_SVG_PATHS', 'SampleSpace', 'TransformAnimations', 'X_AXIS', 'Y_AXIS', 'Z_AXIS', 'DEFAULT_DASH_LENGTH', 'DEFAULT_POINTWISE_FUNCTION_RUN_TIME', 'DEFAULT_WAIT_TIME', 'SCALE_FACTOR_PER_FONT_POINT', 'START_X', 'START_Y', 'integer_interpolate', 'mid', 'inverse_interpolate', 'match_interpolate', 'midpoint', 'normalize', 'rotation_about_z', 'rotation_matrix', 'rotate_vector', 'z_to_vector', 'get_unit_normal', 'get_shaded_rgb', 'compass_directions', 'regular_vertices', 'complex_to_R3', 'R3_to_complex', 'complex_func_to_R3_func', 'center_of_mass', 'cross2d', 'shoelace', 'shoelace_direction', 'perpendicular_bisector', 'cartesian_to_spherical', 'spherical_to_cartesian', 'find_intersection', 'get_winding_number', 'thick_diagonal', 'bezier', 'split_bezier', 'partial_bezier_points', 'subdivide_bezier', 'bezier_remap', 'point_lies_on_bezier', 'proportions_along_bezier_curve_for_point', 'get_smooth_cubic_bezier_handle_points', 'is_closed', 'straight_path', 'path_along_arc', 'clockwise_path', 'counterclockwise_path', 'adjacent_n_tuples', 'adjacent_pairs', 'all_elements_are_instances', 'concatenate_lists', 'list_update', 'list_difference_update', 'listify', 'make_even', 'make_even_by_cycling', 'remove_list_redundancies', 'remove_nones', 'stretch_array_to_length', 'tuplify', 'choose', 'clip', 'binary_search', 'color_to_rgba', 'rgba_to_color', 'color_to_int_rgb', 'color_to_int_rgba', 'merge_dicts_recursively', 'update_dict_recursively', 'tempconfig', 'override_animate', 'override_animation', 'index_labels', 'print_family', 'assert_is_mobject_method', 'turn_animation_into_updater', 'cycle_animation']
 EXPORTS += ['LineJointType', 'CapStyleType', 'register_font', 'Typst', 'MathTypst',
-            'AS2700', 'BS381', 'DVIPSNAMES', 'SVGNAMES', 'X11', 'XKCD']
+            'AS2700', 'BS381', 'DVIPSNAMES', 'SVGNAMES', 'X11', 'XKCD', 'quaternion_mult',
+            'quaternion_from_angle_axis', 'angle_axis_from_quaternion', 'quaternion_conjugate', 'RendererType',
+            'QUALITIES', 'DEFAULT_QUALITY', 'ParsableManimColor', 'ManimColorDType', 'Section', 'console',
+            'error_console', 'Camera', 'MovingCamera', 'MultiCamera']
 
 
 def _rounded_array(value):
@@ -18865,6 +18904,80 @@ class _ColorLibrary(types.ModuleType):
 
 AS2700, BS381, DVIPSNAMES, SVGNAMES, X11, XKCD = (_ColorLibrary(name) for name in
                                                   ('AS2700', 'BS381', 'DVIPSNAMES', 'SVGNAMES', 'X11', 'XKCD'))
+
+
+def quaternion_mult(*quats):
+    """Community's quaternion product of [w, x, y, z] lists."""
+    if not quats:
+        return [1, 0, 0, 0]
+    result = list(quats[0])
+    for following in quats[1:]:
+        w1, x1, y1, z1 = result
+        w2, x2, y2, z2 = following
+        result = [w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2, w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+                  w1 * y2 + y1 * w2 + z1 * x2 - x1 * z2, w1 * z2 + z1 * w2 + x1 * y2 - y1 * x2]
+    return result
+
+
+def quaternion_from_angle_axis(angle, axis, axis_normalized=False):
+    axis = Vector(axis) if axis_normalized else normalize(axis)
+    return [math.cos(angle / 2), *(math.sin(angle / 2) * value for value in axis)]
+
+
+def angle_axis_from_quaternion(quaternion):
+    axis = normalize(list(quaternion)[1:], fall_back=Vector((1, 0, 0)))
+    angle = 2 * math.acos(quaternion[0])
+    if angle > TAU / 2:
+        angle, axis = TAU - angle, -Vector(axis)
+    return angle, axis
+
+
+def quaternion_conjugate(quaternion):
+    w, *rest = list(quaternion)
+    return [w] + [-value for value in rest]
+
+
+class RendererType(str, enum.Enum):
+    """Community's renderer choice; the preview always draws like the Cairo renderer."""
+    CAIRO = 'cairo'
+    OPENGL = 'opengl'
+
+
+QUALITIES = {
+    'fourk_quality': {'flag': 'k', 'pixel_height': 2160, 'pixel_width': 3840, 'frame_rate': 60},
+    'production_quality': {'flag': 'p', 'pixel_height': 1440, 'pixel_width': 2560, 'frame_rate': 60},
+    'high_quality': {'flag': 'h', 'pixel_height': 1080, 'pixel_width': 1920, 'frame_rate': 60},
+    'medium_quality': {'flag': 'm', 'pixel_height': 720, 'pixel_width': 1280, 'frame_rate': 30},
+    'low_quality': {'flag': 'l', 'pixel_height': 480, 'pixel_width': 854, 'frame_rate': 15},
+    'example_quality': {'flag': None, 'pixel_height': 480, 'pixel_width': 854, 'frame_rate': 30},
+}
+DEFAULT_QUALITY = 'high_quality'
+ParsableManimColor = typing.Union['ManimColor', str, int, tuple, list]
+ManimColorDType = float
+
+
+class Section:
+    """Community's video section record (the preview records sections without video files)."""
+    def __init__(self, type_, video, name, skip_animations):
+        self.type_, self.video, self.name, self.skip_animations = type_, video, name, skip_animations
+        self.partial_movie_files = []
+
+    def is_empty(self):
+        return not self.partial_movie_files
+
+    def __repr__(self):
+        return f"<Section '{self.name}' stored in '{self.video}'>"
+
+
+class _Console:
+    """Community's rich console: prints to the browser console."""
+    def print(self, *objects, **kwargs):
+        print(*objects)
+
+    log = print
+
+
+console = error_console = _Console()
 
 
 _SUBMODULE_NAMES = frozenset((

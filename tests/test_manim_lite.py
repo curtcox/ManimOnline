@@ -993,6 +993,26 @@ self.play(UntypeWithCursor(text, cursor))""")['frames']
         glyphs = lite.MarkupText(words)
         self.assertEqual([g._char_index for g in glyphs][-4:], [len(words) - 4 + i for i in range(4)])
 
+    def test_community_utility_exports(self):
+        render('q = quaternion_from_angle_axis(PI / 2, OUT)\n'
+               'angle, axis = angle_axis_from_quaternion(q)\n'
+               'assert abs(angle - PI / 2) < 1e-12 and abs(axis[2] - 1) < 1e-12\n'
+               'assert quaternion_mult(q, quaternion_conjugate(q)) == [1.0, 0.0, 0.0, 0.0]\n'
+               'assert config.renderer == RendererType.CAIRO and QUALITIES[DEFAULT_QUALITY]["pixel_width"] == 1920\n'
+               'assert Section("default.type", None, "intro", False).is_empty()')
+        # Community's Scene arguments: a camera class and a random seed.
+        source = '''from manim import *
+class Demo(Scene):
+    def __init__(self, **kwargs):
+        super().__init__(camera_class=MovingCamera, random_seed=3, **kwargs)
+    def construct(self):
+        import random
+        assert isinstance(self.camera, MovingCamera) and self.camera.frame.width > 0
+        self.value = random.random()
+'''
+        lite.render_scene(source)
+        self.assertTrue(issubclass(lite.MultiCamera, lite.MovingCamera))
+
     def test_color_libraries_match_community(self):
         # Manim 0.22's star import exposes these color modules (values from manim.utils.color).
         self.assertEqual((str(lite.XKCD.AVOCADO), str(lite.X11.ALICEBLUE), str(lite.SVGNAMES.ALICEBLUE),
