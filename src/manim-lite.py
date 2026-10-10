@@ -758,6 +758,25 @@ class Mobject:
         self._replace_children([m for m in self.children if m not in mobjects])
         return self
 
+    def _tip_shaft_curves(self, skip_role=None):
+        """Community's reset_endpoints_based_on_tip: a curved path with tips keeps its shape
+        but is moved by the similarity taking its ends onto the tip bases."""
+        curves = self.__dict__.get('curves', [])
+        if not self.__dict__.get('_curved_tip_path') or not curves:
+            return curves
+        ends = {}
+        for child in self.children:
+            role = child.__dict__.get('_tip_role')
+            if role in ('start', 'end') and role != skip_role:
+                tip_curves = _path_curves(child.to_dict())
+                if tip_curves:
+                    index = len(tip_curves) / 2
+                    point = VMobject._bezier_point(tip_curves[min(int(index), len(tip_curves) - 1)], index - int(index))
+                    ends[role] = child._point_to_world(point)
+        if not ends:
+            return curves
+        return _fit_curve_endpoints(curves, ends.get('start', curves[0][0]), ends.get('end', curves[-1][-1]))
+
     def _replace_children(self, children):
         # Keep the affine mapping fixed when any family's bounds change.
         previous = self._geometry_center()
@@ -1656,8 +1675,10 @@ class Mobject:
             points = self.vertices
         elif self._type == 'bezierpath':
             # Community edges use anchors (get_points_defining_boundary); sizes include handles.
-            points = ([point for curve in self.curves for point in curve] if _BOUNDS_WITH_HANDLES else
-                      [point for curve in self.curves for point in (curve[0], curve[-1])]) + getattr(self, 'vertices', [])
+            # A tipped curve's own points are its shaft, refit between the tip bases.
+            curves = self._tip_shaft_curves()
+            points = ([point for curve in curves for point in curve] if _BOUNDS_WITH_HANDLES else
+                      [point for curve in curves for point in (curve[0], curve[-1])]) + getattr(self, 'vertices', [])
         elif self._type == 'triangle':
             height = math.sqrt(3) / 2
             points = [(0, height * 2 / 3), (-0.5, -height / 3), (0.5, -height / 3)]
@@ -1743,7 +1764,9 @@ class Mobject:
         left, bottom, right, top = self._local_bounds()
         center = Vector(((left + right) / 2, (bottom + top) / 2, 0))
         if self.children:
-            own = self._own_local_bounds()
+            # A tipped curve's refit shaft moves with its tips: key its own geometry by the raw curves.
+            own = (tuple(map(tuple, (p for curve in self.curves for p in curve)))
+                   if self.__dict__.get('_curved_tip_path') else self._own_local_bounds())
             child_bounds = tuple(child._bounds() for child in self.children)
             previous = self.__dict__.get('_family_pivot_cache')
             if previous is not None and previous[0] == own and previous[1] != child_bounds:
@@ -2082,8 +2105,9 @@ class Mobject:
         if self._type in ('line', 'arrow'):
             return [self.start, self.end]
         if self._type == 'bezierpath':
-            return ([p for curve in self.curves for p in curve] if _BOUNDS_WITH_HANDLES else
-                    [p for curve in self.curves for p in (curve[0], curve[-1])]) + getattr(self, 'vertices', [])
+            curves = self._tip_shaft_curves()
+            return ([p for curve in curves for p in curve] if _BOUNDS_WITH_HANDLES else
+                    [p for curve in curves for p in (curve[0], curve[-1])]) + getattr(self, 'vertices', [])
         if self._type in ('square', 'rectangle', 'triangle'):
             return [curve[0] for curve in _path_curves(self.to_dict() if self._type == 'triangle' else
                     {'type': self._type, 'side_length': getattr(self, 'side_length', 0),
@@ -2100,7 +2124,8 @@ class Mobject:
             if self._type in ('circle', 'arc', 'ellipse', 'annulus'):
                 curves = _path_curves({key: value for key, value in self.__dict__.items()
                                        if key in ('radius', 'start_angle', 'arc_angle', 'width', 'height',
-                                                  'inner_radius', 'outer_radius')} | {'type': self._type})
+                                                  'inner_radius', 'outer_radius', 'num_components')}
+                                      | {'type': self._type})
                 own = ([p for c in curves for p in c] if _BOUNDS_WITH_HANDLES else
                        [p for c in curves for p in (c[0], c[-1])])
             elif self._type in ('text', 'mathtex'):
@@ -3389,7 +3414,9 @@ class TipableVMobject(VMobject):
         return getattr(self,'tip_length',.35)
 
     def _orient_tip(self, tip, at_start):
-        curves = self._raw_curves()
+        # Community orients each new tip along the path as already refit for the other tip.
+        curves = (self._tip_shaft_curves('start' if at_start else 'end') if self.__dict__.get('_curved_tip_path')
+                  else self._raw_curves())
         if not curves:
             raise ValueError('The curve has no completed segments')
         curve = curves[0] if at_start else curves[-1]
@@ -3446,6 +3473,19 @@ class TipableVMobject(VMobject):
         self._prepare_tip_path()
         role = 'start' if at_start else 'end'
         old = self._tip(at_start)
+        other = self._tip(not at_start)
+        if other is not None and self.__dict__.get('_curved_tip_path'):
+            # Community's reset_endpoints_based_on_tip runs put_start_and_end_on on the whole
+            # family: the existing tip turns and scales about its own point with the path.
+            fixed = Vector(other.tip_point)
+            shaft = self._tip_shaft_curves(role)
+            moving = Vector(shaft[0][0] if at_start else shaft[-1][-1])
+            base = Vector(tip.base)
+            current, target = complex(*(moving - fixed)[:2]), complex(*(base - fixed)[:2])
+            if current and target:
+                factor = target / current
+                other.scale(abs(factor), about_point=fixed)
+                other.rotate(cmath.phase(factor), about_point=fixed)
         tip._tip_role = role
         self._replace_children([child for child in self.children if child is not old and child is not tip]+[tip])
         self.explicit_tips = True

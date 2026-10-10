@@ -2107,7 +2107,8 @@ assert isinstance(t.get_value(), (int, float))""")
                 self.assertPointAlmostEqual(arrow.get_start(),(-2,1,0))
                 self.assertPointAlmostEqual(arrow.get_end(),(2,1,0))
                 raw=arrow._raw_curves()
-                for at_start in (False,True) if cls is lite.CurvedDoubleArrow else (False,):
+                # A single tip follows the raw tangent (double tips: see the Community test below).
+                for at_start in (False,) if cls is lite.CurvedArrow else ():
                     tip=arrow._tip(at_start)
                     curve=raw[0] if at_start else raw[-1]
                     vector=lite.Vector(curve[0])-lite.Vector(curve[1]) if at_start else lite.Vector(curve[-1])-lite.Vector(curve[-2])
@@ -2138,6 +2139,23 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertPointAlmostEqual(arc.get_arc_center(),(1,3,0))
         with self.assertRaises(ValueError):
             lite.CurvedArrow(lite.ORIGIN,lite.ORIGIN).put_start_and_end_on(lite.LEFT,lite.RIGHT)
+
+    def test_second_tip_follows_community_put_start_and_end_on(self):
+        # Manim 0.22: each new tip is oriented on the path as already refit for the other tip,
+        # and the refit turns and scales the existing tip about its point.
+        cases = ((lite.CurvedDoubleArrow(lite.ORIGIN, 2*lite.RIGHT),
+                  [[0.0, -0.5998, 2.0, 0.0], [1.6851, -0.3495, 2.0, 0.0], [0.0, -0.3849, 0.3503, 0.0]]),
+                 (lite.CurvedDoubleArrow((-2,1,0), (2,1,0), angle=-lite.PI/2, tip_length=.5),
+                  [[-2.0, 1.0, 2.0, 2.0751], [1.5289, 1.0, 2.0, 1.5053], [-2.0, 1.0, -1.4892, 1.5449]]),
+                 (lite.CurvedArrow(2*lite.LEFT, 2*lite.RIGHT, radius=-5).add_tip(at_start=True),
+                  [[-2.0, -0.0055, 2.0, 0.5009], [1.6392, -0.0039, 2.0, 0.2863], [-2.0, -0.0055, -1.6087, 0.3097]]),
+                 (lite.Arc(radius=2, angle=2).add_tip().add_tip(at_start=True),
+                  [[-0.8323, 0.0, 2.2066, 2.1503], [-0.8323, 1.8186, -0.4587, 2.1314], [1.8581, 0.0, 2.2066, 0.3647]]))
+        for mobject, expected in cases:
+            actual = [[*m.get_critical_point(lite.DL)[:2], *m.get_critical_point(lite.UR)[:2]] for m in mobject.get_family()]
+            for row, values in zip(actual, expected):
+                for a, b in zip(row, values):
+                    self.assertAlmostEqual(a, b, 3)
 
     def test_curved_arrow_unequal_curve_morph_and_validation(self):
         source=lite.CurvedDoubleArrow(lite.LEFT*2,lite.RIGHT*2,angle=lite.PI/3)
