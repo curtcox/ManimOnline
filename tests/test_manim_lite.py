@@ -8287,7 +8287,11 @@ class Demo(Scene):
         self.assertEqual(convert(r'\texttt{time\_width={{0.2}}}'), r'\texttt{time_width=0.2}')
         self.assertEqual(convert(r'50\% of \textbf{a \textit{b}}'), '\\text{50}\\%\\kern{0.333334em}\\text{of}\\kern{0.333334em}\\textbf{a}\\kern{0.383331em}\\textit{b}')
         self.assertEqual(convert(r'cost $x^2$ \& more'), '\\text{cost}\\kern{0.333334em}x^2\\kern{0.333334em}\\&\\kern{0.333334em}\\text{more}')
-        self.assertEqual(convert(r'This is some \LaTeX'), '\\text{This}\\kern{0.333334em}\\text{is}\\kern{0.333334em}\\text{some}\\kern{0.333334em}\\LaTeX ')
+        self.assertEqual(convert(r'This is some \LaTeX'), '\\text{This}\\kern{0.333334em}\\text{is}\\kern{0.333334em}\\text{some}\\kern{0.333334em}\\text{L}\\kern{-0.36em}\\raise{0.2049em}{\\scriptsize\\text{A}}\\kern{-0.0847em}\\text{T}\\kern{-0.1667em}\\lower{0.2153em}{\\text{E}}\\kern{-0.125em}\\text{X}')
+        # Tex line breaks are environment rows: LaTeX's center lines are 1.2em apart, align* rows 1.5em.
+        self.assertEqual(lite.Tex(r'a \\ b').text, '\\begin{gather*}\\text{a}\\\\[-0.1em]\\text{b}\\end{gather*}')
+        self.assertEqual(lite.MathTex(r'x &= 1\\ &= 2').text, '\\begin{align*}x &= 1\\\\[0.2em] &= 2\\end{align*}')
+        self.assertEqual(lite.MathTex(r'\begin{cases} a & b \\ c & d \end{cases}').text, r'\begin{cases} a & b \\ c & d \end{cases}')
         with self.assertRaises(NotImplementedError):
             convert(r'\textcolor{red}{x}')
 

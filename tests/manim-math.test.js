@@ -58,8 +58,19 @@ test('stale requests skip dependency loading and oversized glyph output fails', 
 test('unsupported glyph geometry is rejected before player construction', async () => {
   const scene = { frames: [frame(formula('x'))] };
   await assert.rejects(math.prepare(scene, () => true, async () => ({ tex2svgPromise: async () => ({
-    querySelector: selector => selector === 'svg' ? { querySelectorAll: () => [{ localName: 'text' }] } : null
+    querySelector: selector => selector === 'svg' ? { querySelectorAll: () => [{ localName: 'foreignObject' }] } : null
   }) })), /glyph or SVG feature/);
+  // Text elements (characters without MathJax glyphs) are allowed only as plain text.
+  await assert.rejects(math.prepare(scene, () => true, async () => ({ tex2svgPromise: async () => ({
+    querySelector: selector => selector === 'svg' ? { querySelectorAll: () => [{ localName: 'text', children: [{}] }] } : null
+  }) })), /glyph or SVG feature/);
+});
+
+test('rows and alignment points outside environments are typeset in align*', () => {
+  assert.equal(math.texSource('a &= b \\\\ &= c'), '\\begin{align*}a &= b \\\\ &= c\\end{align*}');
+  assert.equal(math.texSource('x^2'), 'x^2');
+  assert.equal(math.texSource('50\\% \\& more'), '50\\% \\& more');
+  assert.equal(math.texSource('\\begin{cases} a & b \\\\ c & d \\end{cases}'), '\\begin{cases} a & b \\\\ c & d \\end{cases}');
 });
 
 test('compiled formulas are cached across renders and expose em metrics', async () => {

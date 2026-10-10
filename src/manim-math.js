@@ -56,7 +56,7 @@ const ManimMath = {
     host.appendChild(probe);
     document.body.appendChild(host);
     try {
-      const drawable = new Set(['path', 'rect', 'line', 'polygon', 'polyline', 'circle', 'ellipse']);
+      const drawable = new Set(['path', 'rect', 'line', 'polygon', 'polyline', 'circle', 'ellipse', 'text']);
       const leaves = [];
       const visit = node => {
         let kids = [...node.children];
@@ -206,6 +206,19 @@ const ManimMath = {
     return this.loading;
   },
 
+  /**
+   * Manim typesets MathTex inside align*: rows (\\\\) and alignment points (&) outside other
+   * environments need that environment in MathJax too.
+   */
+  texSource(expression) {
+    let outer = expression, previous;
+    do {
+      previous = outer;
+      outer = outer.replace(/\\begin\{([^{}]*)\}(?:(?!\\begin\{)[\s\S])*?\\end\{\1\}/g, '');
+    } while (outer !== previous);
+    return /(^|[^\\])&|\\\\/.test(outer) ? `\\begin{align*}${expression}\\end{align*}` : expression;
+  },
+
   expressions(scene) {
     const expressions = new Set();
     function visit(mobject) {
@@ -242,16 +255,17 @@ const ManimMath = {
         continue;
       }
       try {
-        const container = await math.tex2svgPromise(expression, { display: true });
+        const container = await math.tex2svgPromise(this.texSource(expression), { display: true });
         if (!isCurrent()) return null;
         const svg = container.querySelector('svg');
         if (!svg || container.querySelector('[data-mml-node="merror"]')) {
           throw new Error('Invalid or unsupported TeX expression.');
         }
-        // Nested svg viewports clip the extension pieces of stretchy delimiters.
-        const tags = new Set(['g', 'svg', 'path', 'rect', 'line', 'polygon', 'polyline', 'circle', 'ellipse']);
+        // Nested svg viewports clip the extension pieces of stretchy delimiters; text
+        // elements draw characters MathJax has no glyph for (e.g. CJK) with a browser font.
+        const tags = new Set(['g', 'svg', 'path', 'rect', 'line', 'polygon', 'polyline', 'circle', 'ellipse', 'text']);
         for (const node of svg.querySelectorAll('*')) {
-          if (!tags.has(node.localName)) {
+          if (!tags.has(node.localName) || (node.localName === 'text' && node.children.length)) {
             throw new Error('This formula needs a glyph or SVG feature that is not supported yet.');
           }
         }

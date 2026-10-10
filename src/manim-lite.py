@@ -5315,6 +5315,13 @@ def _class_wrap(piece, index, form=_PART_CLASS):
         return piece[at]
     while i < len(piece):
         char = piece[i]
+        if char == '&' or piece.startswith('\\\\', i):
+            # Alignment points and row breaks belong to align*, outside any \class group.
+            flush()
+            step = 1 if char == '&' else 2
+            out.append(piece[i:i + step])
+            i += step
+            continue
         if char in '^_':
             flush()
             out.append(char)
@@ -5543,7 +5550,7 @@ class MathTex(Text):
                     self._matched.append((string, index, sub))
                     sub += 1
             typeset.append(self._typeset_part(segments, sub - sum(m for _, m in segments)))
-        text = arg_separator.join(typeset)
+        text = self._environment(arg_separator.join(typeset))
         if len(text) > 4096:
             raise ValueError('MathTex expressions are limited to 4096 characters')
         if len(parts) <= 1:
@@ -5553,7 +5560,7 @@ class MathTex(Text):
         else:
             # Each part is tagged with \class so MathJax keeps TeX spacing while
             # the browser measures and draws every part separately.
-            classed = arg_separator.join(_class_wrap(piece, i) for i, piece in enumerate(typeset))
+            classed = self._environment(arg_separator.join(_class_wrap(piece, i) for i, piece in enumerate(typeset)))
             super().__init__(classed, font_size=font_size, **kwargs)
             self._type = 'vgroup'
             self.tex_string, self.tex_strings = arg_separator.join(parts), parts
@@ -5570,6 +5577,40 @@ class MathTex(Text):
 
     def _typeset(self, string):
         return string
+
+    # Community typesets MathTex in align*: LaTeX puts rows 1.5em apart (baselineskip plus
+    # \jot), MathJax 1.3em.
+    _ROWS = ('align*', '0.2em')
+
+    def _environment(self, text):
+        """Wrap rows (\\\\) and alignment points (&) outside other environments in this
+        class's LaTeX environment, with LaTeX's row spacing."""
+        out, depth, i, rows, align = [], 0, 0, False, False
+        while i < len(text):
+            if text.startswith('\\begin{', i):
+                depth += 1
+            elif text.startswith('\\end{', i):
+                depth -= 1
+            if text.startswith('\\\\', i):
+                out.append(text[i:i + 2])
+                i += 2
+                if not depth:
+                    rows = True
+                    if not text.startswith('[', i):
+                        out.append('[%s]' % self._ROWS[1])
+                continue
+            if text[i] == '\\':
+                out.append(text[i:i + 2])
+                i += 2
+                continue
+            if text[i] == '&' and not depth:
+                align = True
+            out.append(text[i])
+            i += 1
+        if not (rows or align):
+            return text
+        environment = 'align*' if align else self._ROWS[0]
+        return '\\begin{%s}%s\\end{%s}' % (environment, ''.join(out), environment)
 
     def _typeset_part(self, segments, first_sub):
         """A part's TeX with each isolated substring tagged by \\class{manim-sub-k}."""
@@ -5856,13 +5897,29 @@ def _tex_text_to_math(text):
                         i += 1
                         parse(_TEX_FONT_COMMANDS[name], True)
                     continue
+                if name in ('\\', 'newline'):
+                    segments.append(('math', None, '\\\\'))  # A line break: a row of the environment.
+                    continue
                 if name in _TEX_TEXT_SPACES:
                     add_text(font, ' ')
                     continue
                 if name in _TEX_MATH_ESCAPES:
                     segments.append(('math', None, _TEX_MATH_ESCAPES[name]))
                     continue
-                if name in _TEX_TEXT_SYMBOLS and name not in ('LaTeX', 'TeX'):
+                if name in ('LaTeX', 'TeX'):
+                    # LaTeX's own logo definitions (MathJax's are wider): a 7pt A raised to the
+                    # T's height (cmr7 is wider than scaled cmr10) and E lowered half an ex.
+                    f = '\\' + font
+                    logo = (f'{f}{{T}}\\kern{{-0.1667em}}\\lower{{0.2153em}}{{{f}{{E}}}}'
+                            f'\\kern{{-0.125em}}{f}{{X}}')
+                    if name == 'LaTeX':
+                        logo = (f'{f}{{L}}\\kern{{-0.36em}}\\raise{{0.2049em}}{{\\scriptsize{f}{{A}}}}'
+                                f'\\kern{{-0.0847em}}' + logo)
+                    segments.append(('math', None, logo))
+                    if i < n and text[i] == '{' and text.startswith('{}', i):
+                        i += 2
+                    continue
+                if name in _TEX_TEXT_SYMBOLS:
                     add_text(font, _TEX_TEXT_SYMBOLS[name])
                     continue
                 if name.isalpha() and not (i < n and text[i] == '{'):
@@ -5884,6 +5941,13 @@ def _tex_text_to_math(text):
             i += 1
 
     parse('text', False)
+    # TeX drops spaces before a line break (\\unskip) and at the start of a line.
+    for index, (kind, font, value) in enumerate(segments):
+        if kind == 'math' and value == '\\\\':
+            if index and segments[index - 1][0] == 'text':
+                segments[index - 1] = ('text', segments[index - 1][1], segments[index - 1][2].rstrip(' '))
+            if index + 1 < len(segments) and segments[index + 1][0] == 'text':
+                segments[index + 1] = ('text', segments[index + 1][1], segments[index + 1][2].lstrip(' '))
     result = []
     for kind, font, value in segments:
         if kind == 'math':
@@ -5901,6 +5965,9 @@ class Tex(MathTex):
         if not all(isinstance(value, str) for value in (*tex_strings, arg_separator)):
             raise TypeError('Tex expects LaTeX strings')
         super().__init__(*tex_strings, arg_separator=arg_separator, font_size=font_size, **kwargs)
+
+    # Text lines in Community's center environment are a baselineskip (1.2em) apart.
+    _ROWS = ('gather*', '-0.1em')
 
     def _typeset(self, string):
         return _tex_text_to_math(string)

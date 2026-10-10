@@ -874,15 +874,22 @@ const ManimRenderer = {
     group.setAttribute('stroke', mobject.color || '#FFFFFF');
     group.setAttribute('stroke-width', mobject.stroke_width || 0);
     // Copy only inert vector geometry. No links, scripts, styles or font references.
-    // Nested svg viewports clip the extension pieces of stretchy delimiters.
-    const tags = new Set(['g', 'svg', 'path', 'rect', 'line', 'polygon', 'polyline', 'circle', 'ellipse']);
+    // Nested svg viewports clip the extension pieces of stretchy delimiters; text draws
+    // characters MathJax has no glyph for with a generic browser font.
+    const tags = new Set(['g', 'svg', 'path', 'rect', 'line', 'polygon', 'polyline', 'circle', 'ellipse', 'text']);
     const attributes = ['d', 'transform', 'x', 'y', 'x1', 'y1', 'x2', 'y2', 'width', 'height', 'points', 'cx', 'cy', 'r', 'rx', 'ry',
-      'viewBox'];
+      'viewBox', 'font-size', 'font-style', 'font-weight'];
     function copyGeometry(node) {
       if (!tags.has(node.localName)) throw new Error('Unsupported math SVG geometry: ' + node.localName);
       const element = document.createElementNS('http://www.w3.org/2000/svg', node.localName);
       for (const name of attributes) {
         if (node.hasAttribute(name)) element.setAttribute(name, node.getAttribute(name));
+      }
+      if (node.localName === 'text') {
+        const family = node.getAttribute('font-family');
+        if (family && /^[A-Za-z ,-]+$/.test(family)) element.setAttribute('font-family', family);
+        element.textContent = node.textContent;
+        return element;
       }
       for (const child of node.children) element.appendChild(copyGeometry(child));
       return element;
