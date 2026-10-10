@@ -993,6 +993,15 @@ self.play(UntypeWithCursor(text, cursor))""")['frames']
         glyphs = lite.MarkupText(words)
         self.assertEqual([g._char_index for g in glyphs][-4:], [len(words) - 4 + i for i in range(4)])
 
+    def test_color_libraries_match_community(self):
+        # Manim 0.22's star import exposes these color modules (values from manim.utils.color).
+        self.assertEqual((str(lite.XKCD.AVOCADO), str(lite.X11.ALICEBLUE), str(lite.SVGNAMES.ALICEBLUE),
+                          str(lite.DVIPSNAMES.AQUAMARINE), str(lite.AS2700.B11_RICH_BLUE), str(lite.BS381.SKY_BLUE)),
+                         ('#90B134', '#F0F8FF', '#EFF7FF', '#00B5BE', '#2B3770', '#94BFAC'))
+        self.assertEqual(len(dir(lite.XKCD)), 922)
+        with self.assertRaises(AttributeError):
+            lite.XKCD.NOT_A_COLOR
+
     def test_typst_documents_compile_in_the_page_and_import_like_community(self):
         def document(body, preamble=''):
             return lite._TYPST_TEMPLATE.format(text_size=10, preamble=preamble, body=body)
