@@ -91,3 +91,11 @@ test('glyph boxes are reported in TeX order with their part and substring, relat
   assert.deepEqual(entry[3].map(glyph => glyph.map(v => Math.round(v * 1000) / 1000 + 0)),
     [[-0.25, -0.05, 0.5, 0.5, -1, -1], [0.3, 0.3, 0.4, 0.4, -1, 0]]);
 });
+
+test('class indices are read from merged MathJax class lists', () => {
+  const node = cls => ({ getAttribute: () => cls });
+  assert.equal(math.classIndex(node('manim-sub-0 manim-part-12'), 'part'), 12);
+  assert.equal(math.classIndex(node('manim-sub-3 manim-part-1'), 'sub'), 3);
+  assert.equal(math.classIndex(node('manim-part-2'), 'sub'), -1);
+  assert.equal(math.classIndex(node(null), 'part'), -1);
+});

@@ -90,9 +90,8 @@ const ManimMath = {
         const bbox = [Math.min(...xs), Math.min(...ys), Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)];
         if (!bbox.every(Number.isFinite)) return null;
         const tag = kind => {
-          const tagged = leaf.closest(`[class^="manim-${kind}-"]`);
-          const match = tagged && new RegExp(`^manim-${kind}-(\\d+)$`).exec(tagged.getAttribute('class'));
-          return match ? Number(match[1]) : -1;
+          const tagged = leaf.closest(`[class*="manim-${kind}-"]`);
+          return tagged ? this.classIndex(tagged, kind) : -1;
         };
         const clone = leaf.cloneNode(true);
         clone.setAttribute('transform', `matrix(${m.a} ${m.b} ${m.c} ${m.d} ${m.e} ${m.f})`);
@@ -105,16 +104,25 @@ const ManimMath = {
     }
   },
 
+  /**
+   * The index in a manim-part-i / manim-sub-k class, or -1. MathJax merges nested
+   * \class tags on one node (class="manim-sub-0 manim-part-1").
+   */
+  classIndex(node, kind) {
+    const match = new RegExp(`(?:^|\\s)manim-${kind}-(\\d+)(?:\\s|$)`).exec(node.getAttribute('class') || '');
+    return match ? Number(match[1]) : -1;
+  },
+
   /** One SVG per \class{manim-part-i} group, each keeping only its own glyphs. */
   splitParts(svg) {
-    const tagged = node => [...node.querySelectorAll('*')].filter(n => /^manim-part-\d+$/.test(n.getAttribute('class') || ''));
+    const tagged = node => [...node.querySelectorAll('*')].filter(n => this.classIndex(n, 'part') >= 0);
     // A part may be tagged in several runs (around ^ and _); count distinct indices.
-    const count = Math.max(0, ...tagged(svg).map(n => Number(n.getAttribute('class').slice(11)) + 1));
+    const count = Math.max(0, ...tagged(svg).map(n => this.classIndex(n, 'part') + 1));
     const parts = [];
     for (let index = 0; index < count; index++) {
       const clone = svg.cloneNode(true);
       for (const node of tagged(clone)) {
-        if (node.getAttribute('class') !== `manim-part-${index}`) node.remove();
+        if (this.classIndex(node, 'part') !== index) node.remove();
       }
       parts.push({ svg: clone.outerHTML, bbox: this.measure(clone) });
     }
