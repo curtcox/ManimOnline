@@ -33,9 +33,10 @@ const ManimMath = {
       const parts = asset.parts && asset.parts.every(part => part.bbox) ? asset.parts.map(part => relative(part.bbox)) : null;
       if (parts) size.push(parts);
       if (Array.isArray(asset.glyphs) && asset.glyphs.length <= 2000) {
-        // Glyph submobjects, in TeX's order, tagged with their part (-1 for single strings).
+        // Glyph submobjects, in TeX's order, tagged with their part (-1 for single strings)
+        // and the isolated substring holding them (-1 for none).
         if (!parts) size.push(null);
-        size.push(asset.glyphs.map(glyph => [...relative(glyph.bbox), glyph.part]));
+        size.push(asset.glyphs.map(glyph => [...relative(glyph.bbox), glyph.part, glyph.sub ?? -1]));
       }
       result[expression] = size;
     }
@@ -88,12 +89,15 @@ const ManimMath = {
         }
         const bbox = [Math.min(...xs), Math.min(...ys), Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)];
         if (!bbox.every(Number.isFinite)) return null;
-        const tagged = leaf.closest('[class^="manim-part-"]');
-        const match = tagged && /^manim-part-(\d+)$/.exec(tagged.getAttribute('class'));
+        const tag = kind => {
+          const tagged = leaf.closest(`[class^="manim-${kind}-"]`);
+          const match = tagged && new RegExp(`^manim-${kind}-(\\d+)$`).exec(tagged.getAttribute('class'));
+          return match ? Number(match[1]) : -1;
+        };
         const clone = leaf.cloneNode(true);
         clone.setAttribute('transform', `matrix(${m.a} ${m.b} ${m.c} ${m.d} ${m.e} ${m.f})`);
         result.push({ svg: `<svg xmlns="http://www.w3.org/2000/svg">${clone.outerHTML}</svg>`, bbox,
-          part: match ? Number(match[1]) : -1 });
+          part: tag('part'), sub: tag('sub') });
       }
       return result;
     } finally {
@@ -104,7 +108,8 @@ const ManimMath = {
   /** One SVG per \class{manim-part-i} group, each keeping only its own glyphs. */
   splitParts(svg) {
     const tagged = node => [...node.querySelectorAll('*')].filter(n => /^manim-part-\d+$/.test(n.getAttribute('class') || ''));
-    const count = tagged(svg).length;
+    // A part may be tagged in several runs (around ^ and _); count distinct indices.
+    const count = Math.max(0, ...tagged(svg).map(n => Number(n.getAttribute('class').slice(11)) + 1));
     const parts = [];
     for (let index = 0; index < count; index++) {
       const clone = svg.cloneNode(true);

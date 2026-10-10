@@ -5,11 +5,11 @@ from manim import *
 class FormulaPartsScene(Scene):
     def construct(self):
         first = MathTex("a^2", "+", "b^2", "=", "c^2", font_size=72)
-        first.set_color_by_tex("a", BLUE).set_color_by_tex("b", GREEN)
+        first.set_color_by_tex("a^2", BLUE).set_color_by_tex("b^2", GREEN)
         self.play(Write(first))
         self.play(Indicate(first[4]), Circumscribe(first[0]))
         second = MathTex("c^2", "-", "b^2", "=", "a^2", font_size=72)
-        second.set_color_by_tex_to_color_map({"a": BLUE, "b": GREEN})
+        second.set_color_by_tex_to_color_map({"a^2": BLUE, "b^2": GREEN})
         self.play(TransformMatchingTex(first, second), run_time=2)
         label = Tex(r"Solve for $a^2$", font_size=40).next_to(second, UP, buff=.6)
         self.play(FadeIn(label, shift=DOWN * .3))

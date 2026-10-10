@@ -1,12 +1,14 @@
 """Small, explicit Manim subset for SVG frame playback (not full Manim)."""
 import bisect
 import cmath
+import contextlib
 import copy
 import enum
 import functools
 import inspect
 import itertools
 import json
+import logging
 import math
 import numbers
 import operator
@@ -4599,7 +4601,7 @@ def _math_estimate(text, font_size):
     # Rough placeholder until the browser measures the typeset formula.
     import re
     em = font_size * TEX_EM_PER_POINT
-    body = re.sub(r'\\class\{manim-part-\d+\}', '', text)
+    body = re.sub(r'\\class\{manim-(?:part|sub)-\d+\}', '', text)
     rows = [body]
     array = re.search(r'\\begin\{array\}\{[^}]*\}(.*?)\\end\{array\}', body, re.S)
     if array:
@@ -4668,7 +4670,7 @@ _TEX_NAMED_FUNCTIONS = {'sin', 'cos', 'tan', 'cot', 'sec', 'csc', 'log', 'ln', '
                         'ker', 'arg', 'sup', 'inf', 'Pr', 'hom', 'lg', 'liminf', 'limsup'}
 
 
-def _estimate_glyph_count(tex):
+def _estimate_glyph_count(tex, minimum=1):
     """How many glyph submobjects TeX would produce, until the browser counts MathJax's."""
     import re
     count = 0
@@ -4691,27 +4693,31 @@ def _estimate_glyph_count(tex):
             count += 1
     # Delimiters after \left/\right were counted; a '.' there draws nothing.
     count -= len(re.findall(r'\\(?:left|right)\.', tex))
-    return max(1, count)
+    return max(minimum, count)
 
 
 def _math_glyphs(text, font_size, part_strings=None):
-    """(cx, cy, w, h, part) of every glyph relative to the formula's ink center, in scene units."""
+    """(cx, cy, w, h, part, sub) of every glyph relative to the formula's ink center, in scene
+    units; sub is the isolated substring (\\class{manim-sub-k}) holding the glyph, or -1."""
     em = font_size * TEX_EM_PER_POINT
     metric = _MATH_METRICS.get(text)
     if metric is not None and len(metric) >= 4 and metric[3] is not None:
-        return [(cx * em, cy * em, w * em, h * em, int(part)) for cx, cy, w, h, part in metric[3]]
+        return [(cx * em, cy * em, w * em, h * em, part, sub) for cx, cy, w, h, part, sub in metric[3]]
     _MATH_ESTIMATED.add(text)
-    if part_strings and len(part_strings) > 1:
-        boxes = [(box, index, part_strings[index]) for index, box in enumerate(_math_parts(text, part_strings, font_size))]
+    multi = bool(part_strings and len(part_strings) > 1)
+    if multi:
+        boxes = list(enumerate(_math_parts(text, part_strings, font_size)))
     else:
         width, height = _math_box(text, font_size)
-        boxes = [((0, 0, width, height), -1, text)]
+        boxes = [(-1, (0, 0, width, height))]
+    runs = _classed_runs(text)
     result = []
-    for (cx, cy, width, height), index, tex in boxes:
-        count = _estimate_glyph_count(tex)
-        step = width / count
-        for k in range(count):
-            result.append((cx - width / 2 + step * (k + .5), cy, step, height, index))
+    for index, (cx, cy, width, height) in boxes:
+        subs = [sub for part, sub, fragment in runs if part == index or not multi
+                for _ in range(_estimate_glyph_count(fragment, 0))] or [-1]
+        step = width / len(subs)
+        for k, sub in enumerate(subs):
+            result.append((cx - width / 2 + step * (k + .5), cy, step, height, index, sub))
     return result
 
 
@@ -5017,19 +5023,140 @@ class Integer(DecimalNumber):
 
 
 _PART_CLASS = '\\class{manim-part-%d}{%s}'
+_SUB_CLASS = '\\class{manim-sub-%d}{%s}'
+
+
+def _split_double_braces(tex_string):
+    """Community 0.22's {{ ... }} split: a group opens at the start or after whitespace and
+    closes at a }} outside inner braces; \\, \\{ and \\} are atomic."""
+    segments, current, i, inside, depth = [], '', 0, False, 0
+    while i < len(tex_string):
+        if tex_string[i] == '\\' and i + 1 < len(tex_string) and (tex_string[i + 1] == '\\' or tex_string[i + 1] in '{}'):
+            current += tex_string[i:i + 2]
+            i += 2
+            continue
+        if not inside:
+            if tex_string[i:i + 2] == '{{' and (i == 0 or tex_string[i - 1].isspace()):
+                segments.append(current)
+                current, inside, depth = '', True, 0
+                i += 2
+            else:
+                current += tex_string[i]
+                i += 1
+        elif tex_string[i] == '{':
+            depth += 1
+            current += '{'
+            i += 1
+        elif tex_string[i] == '}' and depth == 0 and tex_string[i:i + 2] == '}}':
+            segments.append(current)
+            current, inside = '', False
+            i += 2
+        else:
+            depth -= tex_string[i] == '}'
+            current += tex_string[i]
+            i += 1
+    segments.append(current)
+    return segments
+
+
+def _isolate_segments(string, isolate):
+    """Community's _locate_first_match loop: the earliest match (longest on ties) is
+    isolated, then matching continues on the rest. Returns (text, matched) pieces."""
+    segments, rest = [], string
+    while rest:
+        best = None
+        for sub in isolate:
+            at = rest.find(sub)
+            if at >= 0 and (best is None or at < best[0] or (at == best[0] and len(sub) > len(best[1]))):
+                best = (at, sub)
+        if best is None:
+            segments.append((rest, False))
+            break
+        at, sub = best
+        if at:
+            segments.append((rest[:at], False))
+        segments.append((sub, True))
+        rest = rest[at + len(sub):]
+    return segments
+
+
+def _isolated_tex(pre, match, post, index):
+    """Tag an isolated math substring with its class, or None where a TeX group there would
+    change the formula (a split control word, unbalanced braces, alignment)."""
+    import re
+    depth, i = 0, 0
+    while i < len(match):
+        if match[i] == '\\':
+            i += 2
+            continue
+        depth += {'{': 1, '}': -1}.get(match[i], 0)
+        if depth < 0:
+            return None
+        i += 1
+    if depth or '&' in match or not match.strip():
+        return None
+    if re.search(r'\\[A-Za-z]*$', pre) and (match[0].isalpha() or not re.search(r'\\[A-Za-z]+\s*$', pre)):
+        return None
+    if re.search(r'(?<!\\)(\\\\)*\\[A-Za-z]*$', match) and (post[:1].isalpha() or match.endswith('\\')):
+        return None
+    wrapped = _class_wrap(match, index, _SUB_CLASS)
+    # A superscript, subscript or command argument takes a single token: brace the group.
+    return '{' + wrapped + '}' if re.search(r'(?:[\^_]|\\[A-Za-z]+)\s*$', pre) else wrapped
+
+
+def _classed_runs(text):
+    """(part, sub, fragment) runs of a class-tagged expression, in source order."""
+    import re
+    runs, stack, depth, i, current = [], [], 0, 0, ''
+    def state():
+        part = next((n for kind, n, _ in reversed(stack) if kind == 'part'), -1)
+        sub = next((n for kind, n, _ in reversed(stack) if kind == 'sub'), -1)
+        return part, sub
+    def flush():
+        nonlocal current
+        if current:
+            runs.append(state() + (current,))
+        current = ''
+    while i < len(text):
+        match = re.match(r'\\class\{manim-(part|sub)-(\d+)\}\{', text[i:])
+        if match:
+            flush()
+            depth += 1
+            stack.append((match.group(1), int(match.group(2)), depth))
+            i += match.end()
+            continue
+        char = text[i]
+        if char == '\\':
+            current += text[i:i + 2]
+            i += 2
+            continue
+        if char == '{':
+            depth += 1
+        elif char == '}':
+            if stack and stack[-1][2] == depth:
+                flush()
+                stack.pop()
+                depth -= 1
+                i += 1
+                continue
+            depth -= 1
+        current += char
+        i += 1
+    flush()
+    return runs
 
 
 def _reject_tex(value):
     raise TypeError('MathTex expects TeX strings or numbers')
 
 
-def _class_wrap(piece, index):
+def _class_wrap(piece, index, form=_PART_CLASS):
     """Tag a tex piece in place: braces and ^/_ stay structural, balanced runs get the class."""
     out, buffer, i = [], '', 0
     def flush():
         nonlocal buffer
         if buffer.strip():
-            out.append(_PART_CLASS % (index, buffer))
+            out.append(form % (index, buffer))
         else:
             out.append(buffer)
         buffer = ''
@@ -5067,7 +5194,7 @@ def _class_wrap(piece, index):
             if argument is None:
                 continue  # An unmatched brace opens here; handled below.
             inner = argument[1:-1] if argument.startswith('{') else argument
-            out.append('{' + _class_wrap(inner, index) + '}')
+            out.append('{' + _class_wrap(inner, index, form) + '}')
             i += len(argument)
             continue
         if char == '{':
@@ -5132,6 +5259,8 @@ class _MathTexPart(Text):
 
 class _MathTexGlyph(Text):
     """One glyph (or rule) of a typeset formula, Community's path submobject."""
+    _frame_excluded = ('sub',)
+
     def __init__(self, text, glyph, font_size, part_strings=None, **kwargs):
         super().__init__(text, font_size=font_size, **kwargs)
         self._type, self.glyph = 'mathtex', glyph
@@ -5177,9 +5306,11 @@ def _explode_math(leaf):
                                                 'stroke_opacity', 'stroke_width', 'z_index')}
     (a, b), (c, d) = _glyph_matrix(leaf.__dict__)
     children = []
-    for index, (cx, cy, _, _, _) in members:
+    for index, (cx, cy, _, _, _, sub) in members:
         x, y = cx - px, cy - py
         glyph = _MathTexGlyph(leaf.text, index, leaf.font_size, part_strings, **style)
+        if sub >= 0:
+            glyph.sub = sub
         glyph.position = list(leaf._point_to_world(Vector((a * x + b * y, c * x + d * y, 0))))
         glyph.angle, glyph.geometry_scale, glyph.opacity = leaf.angle, leaf.geometry_scale, leaf.opacity
         for key in ('glyph_stretch', 'glyph_matrix'):
@@ -5267,39 +5398,62 @@ class MathTex(Text):
             raise NotImplementedError('MathTex environments other than align* are not supported')
         color_map = dict(tex_to_color_map or {})
         isolate = [s for s in list([] if substrings_to_isolate is None else substrings_to_isolate) + list(color_map) if s]
-        parts = self._break_up(tex_strings, isolate)
-        text = arg_separator.join(parts)
+        # Community 0.22: parts are the strings (split at {{ }}); isolated substrings only
+        # tag glyph groups for get_part_by_tex/set_color_by_tex, they never split parts.
+        parts = [piece for string in tex_strings for piece in _split_double_braces(string) if piece] or ['']
+        typeset, self._matched, sub = [], [], 0
+        for index, part in enumerate(parts):
+            self._matched.append((part, index, None))
+            segments = _isolate_segments(part, isolate)
+            for string, matched in segments:
+                if matched:
+                    self._matched.append((string, index, sub))
+                    sub += 1
+            typeset.append(self._typeset_part(segments, sub - sum(m for _, m in segments)))
+        text = arg_separator.join(typeset)
         if len(text) > 4096:
             raise ValueError('MathTex expressions are limited to 4096 characters')
         if len(parts) <= 1:
             super().__init__(text, font_size=font_size, **kwargs)
             self._type = 'mathtex'
-            self.tex_string, self.tex_strings = text, [text]
+            self.tex_string, self.tex_strings = arg_separator.join(parts), parts
         else:
             # Each part is tagged with \class so MathJax keeps TeX spacing while
             # the browser measures and draws every part separately.
-            classed = arg_separator.join(_class_wrap(part, i) for i, part in enumerate(parts))
+            classed = arg_separator.join(_class_wrap(piece, i) for i, piece in enumerate(typeset))
             super().__init__(classed, font_size=font_size, **kwargs)
             self._type = 'vgroup'
-            self.tex_string, self.tex_strings = text, parts
+            self.tex_string, self.tex_strings = arg_separator.join(parts), parts
             style = {key: kwargs[key] for key in kwargs
                      if key in ('color', 'fill_color', 'stroke_color', 'fill_opacity', 'stroke_width', 'stroke_opacity', 'z_index')}
             members = []
-            for index, (cx, cy, _, _) in enumerate(_math_parts(classed, parts, font_size)):
-                member = _MathTexPart(classed, index, parts, font_size, **style)
+            for index, (cx, cy, _, _) in enumerate(_math_parts(classed, typeset, font_size)):
+                member = _MathTexPart(classed, index, typeset, font_size, **style)
+                member.tex_string = parts[index]
                 members.append(member.move_to((cx, cy, 0)))
             self.add(*members)
-        for tex, color in color_map.items():
-            self.set_color_by_tex(tex, color)
+        self.set_color_by_tex_to_color_map(color_map)
         self._fit_svg_size(height, width)
 
-    @staticmethod
-    def _break_up(tex_strings, isolate):
-        import re
-        if not isolate:
-            return [s for s in tex_strings if s] or ['']
-        pattern = '(' + '|'.join(re.escape(s) for s in sorted(isolate, key=len, reverse=True)) + ')'
-        return [piece for s in tex_strings for piece in re.split(pattern, s) if piece and piece.strip()] or ['']
+    def _typeset(self, string):
+        return string
+
+    def _typeset_part(self, segments, first_sub):
+        """A part's TeX with each isolated substring tagged by \\class{manim-sub-k}."""
+        try:
+            out, sub = [], first_sub
+            for i, (string, matched) in enumerate(segments):
+                piece = self._typeset(string)
+                if matched:
+                    pre = ''.join(self._typeset(s) for s, _ in segments[:i])
+                    post = ''.join(self._typeset(s) for s, _ in segments[i + 1:])
+                    piece = _isolated_tex(pre, piece, post, sub) or piece
+                    sub += 1
+                out.append(piece)
+            return ''.join(out)
+        except (ValueError, NotImplementedError):
+            # A substring that cannot be typeset on its own stays untagged.
+            return self._typeset(''.join(string for string, _ in segments))
 
     def _parts(self):
         return list(self.children) if self._type == 'vgroup' else [self]
@@ -5339,17 +5493,36 @@ class MathTex(Text):
         return VGroup(*[part for part in self._parts() if matches(part)]) if self._type == 'vgroup' else (
             [self] if matches(self) else [])
 
+    def _matches(self, tex):
+        """Community 0.22's id groups whose string equals tex exactly: whole parts and
+        isolated substrings (the glyphs tagged with that substring)."""
+        groups = []
+        for string, index, sub in self.__dict__.get('_matched', ()):
+            if string != tex:
+                continue
+            self._split_single()
+            parts = [child for child in self.children if isinstance(child, _MathTexPart)]
+            if index >= len(parts):
+                continue
+            if sub is None:
+                groups.append(parts[index])
+            else:
+                _explode_math(parts[index])
+                groups.append(VGroup(*[glyph for glyph in parts[index].children
+                                       if glyph.__dict__.get('sub') == sub]))
+        return groups
+
     def get_part_by_tex(self, tex, **kwargs):
-        parts = self.get_parts_by_tex(tex, **kwargs)
-        return parts[0] if len(parts) else None
+        groups = self._matches(tex)
+        return groups[0] if groups else None
 
     def index_of_part_by_tex(self, tex, **kwargs):
         part = self.get_part_by_tex(tex, **kwargs)
-        return -1 if part is None else self._parts().index(part)
+        return self._parts().index(part) if part in self._parts() else -1
 
     def set_color_by_tex(self, tex, color, **kwargs):
-        for part in list(self.get_parts_by_tex(tex, **kwargs)):
-            part.set_color(color)
+        for group in self._matches(tex):
+            group.set_color(color)
         return self
 
     def set_color_by_tex_to_color_map(self, texs_to_color_map, **kwargs):
@@ -5360,8 +5533,8 @@ class MathTex(Text):
     def set_opacity_by_tex(self, tex, opacity=0.5, remaining_opacity=None, **kwargs):
         if remaining_opacity is not None:
             self.set_opacity(remaining_opacity)
-        for part in list(self.get_parts_by_tex(tex, **kwargs)):
-            part.set_opacity(opacity)
+        for group in self._matches(tex):
+            group.set_opacity(opacity)
         return self
 
 
@@ -5485,9 +5658,10 @@ class Tex(MathTex):
             raise NotImplementedError('Tex environments other than center are not supported')
         if not all(isinstance(value, str) for value in (*tex_strings, arg_separator)):
             raise TypeError('Tex expects LaTeX strings')
-        source = arg_separator.join(tex_strings)
-        super().__init__(_tex_text_to_math(source), font_size=font_size, **kwargs)
-        self.tex_string = source
+        super().__init__(*tex_strings, arg_separator=arg_separator, font_size=font_size, **kwargs)
+
+    def _typeset(self, string):
+        return _tex_text_to_math(string)
 
 
 
@@ -8560,7 +8734,7 @@ def _sample_transform(plan, alpha, path_arc=0, member_alpha=None):
     if kind == 'group':
         result['children'] = [snapshot for child in children
                               for snapshot in _sample_transform(child, alpha, path_arc, member_alpha)]
-    elif abs(path_arc) >= STRAIGHT_PATH_THRESHOLD and 0 < alpha < 1:
+    elif (isinstance(path_arc, _PointPath) or abs(path_arc) >= STRAIGHT_PATH_THRESHOLD) and 0 < alpha < 1:
         _arc_geometry(result, start, target, alpha, path_arc)
     return [result]
 
@@ -8587,29 +8761,35 @@ def _snapshot_pose(node):
 
 
 def _arc_geometry(result, start, target, alpha, path_arc):
-    """Community's path_along_arc: every point follows an arc in the parent frame."""
-    factor = _arc_factor(alpha, path_arc)
+    """Community's path functions: every point follows its path (an arc, or a _PointPath
+    such as path_along_circles or a user function) in the parent frame."""
+    if isinstance(path_arc, _PointPath):
+        def move(p, q):
+            return list(path_arc.point(p, q, alpha))
+    else:
+        factor = _arc_factor(alpha, path_arc)
+        def move(p, q):
+            dx, dy = q[0] - p[0], q[1] - p[1]
+            dz = (q[2] - p[2]) if len(p) > 2 and len(q) > 2 else 0
+            return [p[0] + factor.real * dx - factor.imag * dy, p[1] + factor.imag * dx + factor.real * dy,
+                    p[2] + alpha * dz if len(p) > 2 else 0]
     kind = result['type']
     fields = {'bezierpath': ('curves', 'vertices'), 'polygon': ('vertices',), 'polyline': ('vertices',),
               'line': ('start', 'end'), 'arrow': ('start', 'end')}.get(kind)
     if fields is None or start['type'] != kind or target['type'] != kind:
-        # Analytical shapes, text and images: the center follows the arc.
+        # Analytical shapes, text and images: the center follows the path.
         centers = [Vector(data['position']) + Vector(data.get('geometry_center', ORIGIN)) for data in (start, target)]
-        delta = centers[1] - centers[0]
-        offset = factor - alpha
-        result['position'] = list(Vector(result['position']) + (delta[0] * offset.real - delta[1] * offset.imag,
-                                                                delta[0] * offset.imag + delta[1] * offset.real, 0))
+        offset = Vector(move(list(centers[0]), list(centers[1]))) - (centers[0] + (centers[1] - centers[0]) * alpha)
+        result['position'] = list(Vector(result['position']) + offset)
         return
     first, last, (_, inverse) = _snapshot_pose(start)[0], _snapshot_pose(target)[0], _snapshot_pose(result)
     if inverse is None:
         return
     def arc(a, b):
         p, q = first(a), last(b)
-        dx, dy = q[0] - p[0], q[1] - p[1]
-        dz = (q[2] - p[2]) if len(p) > 2 and len(q) > 2 else 0
-        return inverse([p[0] + factor.real * dx - factor.imag * dy,
-                        p[1] + factor.imag * dx + factor.real * dy,
-                        p[2] + alpha * dz if len(p) > 2 else 0])
+        if len(p) < 3 or len(q) < 3:
+            p, q = list(p) + [0] * (3 - len(p)), list(q) + [0] * (3 - len(q))
+        return inverse(move(p, q))
     for field in fields:
         a, b = start.get(field), target.get(field)
         if a is None or b is None:
@@ -8907,10 +9087,12 @@ def _strip_children(data):
 
 class GrowFromPoint(Animation):
     """Scale a snapshot from a fixed XY point to its original geometry."""
-    def __init__(self, mobject, point, **kwargs):
+    def __init__(self, mobject, point, point_color=None, **kwargs):
         kwargs.setdefault('introducer', True)
         super().__init__(mobject, **kwargs)
-        self.point = Vector(point)
+        if isinstance(point, Mobject):
+            point = point.get_center()
+        self.point, self.point_color = Vector(point), point_color
         if not all(math.isfinite(v) for v in self.point):
             raise ValueError('Growth point must be finite')
         if self.point[2]:
@@ -8927,12 +9109,27 @@ class GrowFromPoint(Animation):
 
     def sample(self, alpha):
         current = self.original.copy().scale(alpha, about_point=self.point)
-        return [current.to_dict()]
+        return [self._tint(current, alpha).to_dict()]
+
+    def _tint(self, current, alpha):
+        """Community starts from a copy recolored with point_color (set_color) and
+        interpolates every family member's colors toward the original's."""
+        if not self.point_color:
+            return current
+        start = self.original.copy().set_color(self.point_color)
+        def first(color):
+            return color[0] if isinstance(color, (list, tuple)) and color and not isinstance(color, str) else color
+        for member, a, b in zip(current.get_family(), start.get_family(), self.original.get_family()):
+            for name in ('color', 'fill_color', 'stroke_color'):
+                ca, cb = first(a.__dict__.get(name)), first(b.__dict__.get(name))
+                if isinstance(ca, str) and isinstance(cb, str):
+                    member.__dict__[name] = _paint(interpolate_color(ca, cb, alpha))
+        return current
 
 
 class GrowFromCenter(GrowFromPoint):
-    def __init__(self, mobject, **kwargs):
-        super().__init__(mobject, ORIGIN, **kwargs)
+    def __init__(self, mobject, point_color=None, **kwargs):
+        super().__init__(mobject, ORIGIN, point_color=point_color, **kwargs)
 
     def begin(self, scene):
         # Resolve the center at playback start, after any previous animations.
@@ -9108,17 +9305,23 @@ def _arc_factor(alpha, path_arc):
 class Transform(Animation):
     def __init__(self, mobject, target_mobject, path_arc=0, path_arc_axis=OUT, path_func=None, **kwargs):
         super().__init__(mobject, **kwargs)
+        point_path = None
         if path_func is not None:
-            if not isinstance(path_func, _PathFunction):
-                raise NotImplementedError('path_func supports straight_path, path_along_arc, '
-                                          'clockwise_path and counterclockwise_path')
-            path_arc, path_arc_axis = path_func.path_arc, OUT
+            if isinstance(path_func, _PathFunction):
+                path_arc, path_arc_axis = path_func.path_arc, OUT
+            elif isinstance(path_func, _PointPath):
+                point_path = path_func
+            elif callable(path_func):
+                point_path = _FunctionPath(path_func)
+            else:
+                raise TypeError('path_func must be a path function')
         if not isinstance(target_mobject, Mobject):
             raise TypeError('Transform expects a target Mobject')
         NumberLine._real(path_arc, 'path_arc')
-        if Vector(path_arc_axis) not in (OUT, IN):
-            raise NotImplementedError('Transform paths support only OUT/IN arcs')
-        self.path_arc = path_arc if Vector(path_arc_axis) == OUT else -path_arc
+        if point_path is None and Vector(path_arc_axis) not in (OUT, IN):
+            # Community's path_along_arc about any axis moves every point on its own arc.
+            point_path = _AxisArcPath(path_arc, path_arc_axis)
+        self.path_arc = point_path or (path_arc if Vector(path_arc_axis) == OUT else -path_arc)
         self.target = target_mobject.copy()
 
     def begin(self, scene):
@@ -9645,9 +9848,7 @@ class Succession(AnimationGroup):
     """Run consecutive stages live, as Community does: each stage begins on the live
     scene when the previous one finishes, so stage callbacks see real objects."""
     def __init__(self, *animations, lag_ratio=1, **kwargs):
-        if lag_ratio != 1:
-            raise NotImplementedError('Succession supports non-overlapping stages with lag_ratio=1')
-        super().__init__(*animations, lag_ratio=1, **kwargs)
+        super().__init__(*animations, lag_ratio=lag_ratio, **kwargs)
 
     def objects(self):
         return list(dict.fromkeys(super().objects()))
@@ -9673,14 +9874,16 @@ class Succession(AnimationGroup):
 
     def states(self, alpha, rate_func=None):
         time = self.natural_duration if alpha >= 1 else (rate_func or self.rate_func)(max(0, alpha)) * self.natural_duration
-        stage = 0
-        for index, (start, _) in enumerate(self.timings):
-            if start <= time:
-                stage = index
+        # Only one stage is active: the next begins when the active one ends, so with
+        # lag_ratio < 1 a later stage starts partway through (Community's interpolate).
+        stage = max(self._active, 0)
+        while stage < len(self.animations) - 1 and time >= sum(self.timings[stage]):
+            stage += 1
         self._advance(stage)
         start, duration = self.timings[self._active]
         result = {m: [] for m in self._hidden}
-        result.update(self.animations[self._active].states((time - start) / duration if duration else 1))
+        result.update(self.animations[self._active].states(
+            min(1, max(0, (time - start) / duration)) if duration else 1))
         return result
 
     def finish(self, scene):
@@ -9926,8 +10129,8 @@ class Wait(Animation):
 
 
 class GrowFromEdge(GrowFromPoint):
-    def __init__(self, mobject, edge, **kwargs):
-        super().__init__(mobject, ORIGIN, **kwargs)
+    def __init__(self, mobject, edge, point_color=None, **kwargs):
+        super().__init__(mobject, ORIGIN, point_color=point_color, **kwargs)
         self.edge = Mobject._xy_vector(edge, 'Growth edge')
 
     def begin(self, scene):
@@ -9936,8 +10139,8 @@ class GrowFromEdge(GrowFromPoint):
 
 
 class GrowArrow(GrowFromPoint):
-    def __init__(self, arrow, **kwargs):
-        super().__init__(arrow, ORIGIN, **kwargs)
+    def __init__(self, arrow, point_color=None, **kwargs):
+        super().__init__(arrow, ORIGIN, point_color=point_color, **kwargs)
 
     def begin(self, scene):
         self.point = Vector(self.mobject.get_start())
@@ -9946,15 +10149,15 @@ class GrowArrow(GrowFromPoint):
 
 class SpinInFromNothing(GrowFromCenter):
     """Grow from the center along Community's arc path (path_arc = angle)."""
-    def __init__(self, mobject, angle=PI / 2, **kwargs):
-        super().__init__(mobject, **kwargs)
+    def __init__(self, mobject, angle=PI / 2, point_color=None, **kwargs):
+        super().__init__(mobject, point_color=point_color, **kwargs)
         self.angle = NumberLine._real(angle, 'Spin angle')
 
     def sample(self, alpha):
         factor = _arc_factor(alpha, self.angle)
         current = self.original.copy().scale(abs(factor), about_point=self.point)
         current.rotate(math.atan2(factor.imag, factor.real), about_point=self.point)
-        return [current.to_dict()]
+        return [self._tint(current, alpha).to_dict()]
 
 
 class Wiggle(Animation):
@@ -16140,10 +16343,123 @@ def counterclockwise_path():
     return _PathFunction(PI)
 
 
-class _PathFunction:
+def path_along_circles(arc_angle, circles_centers, axis=OUT):
+    return _CirclesPath(arc_angle, circles_centers, axis)
+
+
+def spiral_path(angle, axis=OUT):
+    if abs(angle) < STRAIGHT_PATH_THRESHOLD:
+        return straight_path()
+    return _SpiralPath(angle, axis)
+
+
+def _rotation_rows(angle, axis):
+    x, y, z = _point(axis)
+    norm = math.sqrt(x * x + y * y + z * z)
+    x, y, z = (x / norm, y / norm, z / norm) if norm else (0, 0, 1)
+    c, s, t = math.cos(angle), math.sin(angle), 1 - math.cos(angle)
+    return ((t * x * x + c, t * x * y - s * z, t * x * z + s * y),
+            (t * x * y + s * z, t * y * y + c, t * y * z - s * x),
+            (t * x * z - s * y, t * y * z + s * x, t * z * z + c))
+
+
+def _apply_rows(rows, v):
+    return Vector(sum(a * b for a, b in zip(row, v)) for row in rows)
+
+
+class _PointPath:
+    """A path function moving each point independently: point(p, q, alpha), and callable
+    on point lists (Community's PathFuncType)."""
+    def __call__(self, start_points, end_points, alpha):
+        starts = start_points.tolist() if hasattr(start_points, 'tolist') else start_points
+        ends = end_points.tolist() if hasattr(end_points, 'tolist') else end_points
+        if starts is not None and len(starts) and isinstance(list(starts)[0], _REAL):
+            return self.point(starts, ends, alpha)
+        return [self.point(p, q, alpha) for p, q in zip(starts, ends)]
+
+
+class _CirclesPath(_PointPath):
+    """Community's path_along_circles: orbit each point's own center while blending."""
+    def __init__(self, arc_angle, circles_centers, axis=OUT):
+        self.arc_angle, self.axis = NumberLine._real(arc_angle, 'arc_angle'), axis
+        centers = circles_centers.tolist() if hasattr(circles_centers, 'tolist') else circles_centers
+        self.centers = (_point(centers) if len(centers) and isinstance(list(centers)[0], _REAL)
+                        else [_point(c) for c in centers])
+        self._index = 0
+
+    def _center(self):
+        if isinstance(self.centers, list):
+            center = self.centers[self._index % len(self.centers)]
+            self._index += 1
+            return center
+        return self.centers
+
+    def __call__(self, start_points, end_points, alpha):
+        self._index = 0
+        return super().__call__(start_points, end_points, alpha)
+
+    def point(self, p, q, alpha):
+        c = self._center()
+        back = _apply_rows(_rotation_rows(-self.arc_angle, self.axis), _point(q) - c) + c
+        p = _point(p)
+        return _apply_rows(_rotation_rows(alpha * self.arc_angle, self.axis), p + (back - p) * alpha - c) + c
+
+
+class _AxisArcPath(_PointPath):
+    """Community's path_along_arc about an arbitrary axis."""
+    def __init__(self, arc_angle, axis):
+        self.arc_angle, self.axis = arc_angle, axis
+        x, y, z = _point(axis)
+        norm = math.sqrt(x * x + y * y + z * z) or 1
+        self.unit = Vector((x / norm, y / norm, z / norm)) if (x or y or z) else Vector(OUT)
+
+    def point(self, p, q, alpha):
+        p, q = _point(p), _point(q)
+        if abs(self.arc_angle) < STRAIGHT_PATH_THRESHOLD:
+            return p + (q - p) * alpha
+        half = (q - p) * 0.5
+        center = p + half
+        if self.arc_angle != PI:
+            u = self.unit
+            cross = Vector((u[1] * half[2] - u[2] * half[1], u[2] * half[0] - u[0] * half[2],
+                            u[0] * half[1] - u[1] * half[0]))
+            center = center + cross * (1 / math.tan(self.arc_angle / 2))
+        return _apply_rows(_rotation_rows(alpha * self.arc_angle, self.unit), p - center) + center
+
+
+class _SpiralPath(_PointPath):
+    """Community's spiral_path: the offset to the target turns as it grows."""
+    def __init__(self, angle, axis=OUT):
+        self.angle, self.axis = NumberLine._real(angle, 'spiral angle'), axis
+
+    def point(self, p, q, alpha):
+        p = _point(p)
+        return p + _apply_rows(_rotation_rows((alpha - 1) * self.angle, self.axis), _point(q) - p) * alpha
+
+
+class _FunctionPath(_PointPath):
+    """A user path function, applied to one start/end point pair at a time."""
+    def __init__(self, function):
+        self.function = function
+
+    def point(self, p, q, alpha):
+        try:
+            import numpy
+        except ImportError:
+            value = self.function([list(p)], [list(q)], alpha)
+        else:
+            value = self.function(numpy.array([list(p)], dtype=float), numpy.array([list(q)], dtype=float), alpha)
+        value = value.tolist() if hasattr(value, 'tolist') else value
+        return _point(value[0])
+
+
+class _PathFunction(_PointPath):
     """Community's arc path functions: callable on point lists, and usable as path_func."""
     def __init__(self, arc):
         self.path_arc = arc if abs(arc) >= STRAIGHT_PATH_THRESHOLD else 0
+
+    def point(self, p, q, alpha):
+        return self([p], [q], alpha)[0]
 
     def __call__(self, start_points, end_points, alpha):
         factor = _arc_factor(alpha, self.path_arc)
@@ -16686,7 +17002,7 @@ EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'ZoomedScene', 'VectorScene',
 EXPORTS += [name for name in _PALETTE if name not in EXPORTS]
 # Community utilities (manim.utils.*).
 EXPORTS += ['ManimBanner', 'MANIM_SVG_PATHS', 'SampleSpace', 'TransformAnimations', 'X_AXIS', 'Y_AXIS', 'Z_AXIS', 'DEFAULT_DASH_LENGTH', 'DEFAULT_POINTWISE_FUNCTION_RUN_TIME', 'DEFAULT_WAIT_TIME', 'SCALE_FACTOR_PER_FONT_POINT', 'START_X', 'START_Y', 'integer_interpolate', 'mid', 'inverse_interpolate', 'match_interpolate', 'midpoint', 'normalize', 'rotation_about_z', 'rotation_matrix', 'rotate_vector', 'z_to_vector', 'get_unit_normal', 'get_shaded_rgb', 'compass_directions', 'regular_vertices', 'complex_to_R3', 'R3_to_complex', 'complex_func_to_R3_func', 'center_of_mass', 'cross2d', 'shoelace', 'shoelace_direction', 'perpendicular_bisector', 'cartesian_to_spherical', 'spherical_to_cartesian', 'find_intersection', 'get_winding_number', 'thick_diagonal', 'bezier', 'split_bezier', 'partial_bezier_points', 'subdivide_bezier', 'bezier_remap', 'point_lies_on_bezier', 'proportions_along_bezier_curve_for_point', 'get_smooth_cubic_bezier_handle_points', 'is_closed', 'straight_path', 'path_along_arc', 'clockwise_path', 'counterclockwise_path', 'adjacent_n_tuples', 'adjacent_pairs', 'all_elements_are_instances', 'concatenate_lists', 'list_update', 'list_difference_update', 'listify', 'make_even', 'make_even_by_cycling', 'remove_list_redundancies', 'remove_nones', 'stretch_array_to_length', 'tuplify', 'choose', 'clip', 'binary_search', 'color_to_rgba', 'rgba_to_color', 'color_to_int_rgb', 'color_to_int_rgba', 'merge_dicts_recursively', 'update_dict_recursively', 'tempconfig', 'override_animate', 'override_animation', 'index_labels', 'print_family', 'assert_is_mobject_method', 'turn_animation_into_updater', 'cycle_animation']
-EXPORTS += ['LineJointType', 'CapStyleType']
+EXPORTS += ['LineJointType', 'CapStyleType', 'register_font']
 
 
 def _rounded_array(value):
@@ -16771,12 +17087,57 @@ class _SubmoduleFinder:
         module = types.ModuleType(spec.name)
         root = sys.modules['manim']
         module.__dict__.update({name: getattr(root, name) for name in root.__all__})
+        module.__dict__.update({name: globals()[name] for name in _SUBMODULE_ONLY})
         module.__all__ = list(root.__all__)
         module.__path__ = []
         return module
 
     def exec_module(self, module):
         pass
+
+
+_SUBMODULE_NAMES = frozenset((
+    'animation', 'camera', 'mobject', 'scene', 'constants', 'typing', 'color', 'manim_colors', 'unit', 'core',
+    'data_structures', 'opengl', 'renderer', 'utils', 'paths', 'rate_functions', 'space_ops', 'bezier',
+    'iterables', 'simple_functions', 'config_ops', 'tex', 'tex_templates', 'images', 'family', 'geometry', 'line',
+    'arc', 'polygram', 'boolean_ops', 'shape_matchers', 'labeled', 'tips', 'text', 'tex_mobject', 'numbers',
+    'text_mobject', 'code_mobject', 'graphing', 'coordinate_systems', 'functions', 'number_line', 'probability',
+    'scale', 'three_d', 'three_dimensions', 'three_d_utils', 'polyhedra', 'svg', 'svg_mobject', 'brace', 'table',
+    'matrix', 'value_tracker', 'vector_field', 'graph', 'logo', 'types', 'vectorized_mobject',
+    'point_cloud_mobject', 'image_mobject', 'creation', 'fading', 'growing', 'indication', 'movement', 'rotation',
+    'specialized', 'speedmodifier', 'transform', 'transform_matching_parts', 'updaters', 'mobject_update_utils',
+    'update', 'composition', 'changing', 'moving_camera_scene', 'zoomed_scene', 'vector_space_scene',
+    'three_d_scene', 'section', 'moving_camera', 'multi_camera', 'mapping_camera', 'three_d_camera', 'frame',
+    'unit', 'debug', 'file_ops', 'qhull', 'polylabel', 'deprecation'))
+
+
+# Public in Community's submodules but not in its star import.
+_SUBMODULE_ONLY = ('path_along_circles', 'spiral_path')
+
+
+class _ModuleNamespace(types.ModuleType):
+    """Community's submodules (manim.utils.paths, manim.utils.rate_functions, ...) as
+    attribute chains over the flat preview namespace."""
+    def __init__(self, name, root):
+        super().__init__(name)
+        self._root = root
+
+    def __getattr__(self, name):
+        if name.startswith('__'):
+            raise AttributeError(name)
+        if hasattr(self._root, name):
+            return getattr(self._root, name)
+        if name in _SUBMODULE_ONLY:
+            return globals()[name]
+        if name in _SUBMODULE_NAMES:
+            return _ModuleNamespace(f'{self.__name__}.{name}', self._root)
+        raise AttributeError(f"module {self.__name__!r} has no attribute {name!r}")
+
+
+@contextlib.contextmanager
+def register_font(font_file):
+    """Community registers a font file for Pango; the preview draws with browser fonts."""
+    yield
 
 
 def _render_scene(source, scene_name=None, compact=False):
@@ -16798,6 +17159,13 @@ def _render_scene(source, scene_name=None, compact=False):
         module.np = numpy
         module.__all__.append('np')
     module.__version__ = '0.22.0'
+    # Community's star import also exposes its submodules (utils.paths.straight_path(), ...).
+    for name in ('animation', 'camera', 'mobject', 'scene', 'constants', 'typing', 'color', 'manim_colors',
+                 'unit', 'core', 'data_structures', 'opengl', 'renderer', 'utils'):
+        setattr(module, name, _ModuleNamespace('manim.' + name, module))
+        module.__all__.append(name)
+    module.logger = logging.getLogger('manim')
+    module.__all__.append('logger')
     # Submodule imports (manim.utils.color.manim_colors, manim.mobject.geometry.tips, ...)
     # resolve to the same flat namespace.
     module.__path__ = []
@@ -16851,13 +17219,14 @@ def _set_math_metrics(math_metrics):
                     (parts is not None and (len(parts) > 256 or
                      any(len(part) != 4 or not finite(part) or not finite(part[2:], 0) for part in parts))) or
                     (len(size) == 4 and (glyphs is None or len(glyphs) > 2000 or
-                     any(len(glyph) != 5 or not finite(glyph[:4]) or not finite(glyph[2:4], 0) or
-                         isinstance(glyph[4], bool) or not isinstance(glyph[4], _REAL) or
-                         glyph[4] != int(glyph[4]) or not -1 <= glyph[4] <= 256 for glyph in glyphs)))):
+                     any(len(glyph) not in (5, 6) or not finite(glyph[:4]) or not finite(glyph[2:4], 0) or
+                         any(isinstance(v, bool) or not isinstance(v, _REAL) or v != int(v) or not -1 <= v <= 4096
+                             for v in glyph[4:]) or glyph[4] > 256 for glyph in glyphs)))):
                 raise ValueError('Math metrics must map expressions to finite [width, height(, parts(, glyphs))] in em')
             metrics[text] = (float(size[0]), float(size[1]),
                              None if parts is None else [tuple(float(v) for v in part) for part in parts],
                              None if glyphs is None else [tuple(float(v) for v in glyph[:4]) + (int(glyph[4]),)
+                                                          + (int(glyph[5]) if len(glyph) > 5 else -1,)
                                                           for glyph in glyphs])
             if len(metrics) > 1024:
                 raise ValueError('At most 1024 math metrics may be supplied')

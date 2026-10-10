@@ -963,17 +963,59 @@ self.play(UntypeWithCursor(text, cursor))""")['frames']
         self.assertPointAlmostEqual(line.label.get_center(),(-1,0,0))
         self.assertEqual((lite.AnnotationDot().stroke_width,lite.AnnotationDot().fill_color),(5,lite.BLUE))
 
+    def test_mathtex_parts_and_isolated_substrings_follow_community_0_22(self):
+        def colors(m):
+            return [[str(g.get_color()) for g in part] for part in m]
+        braces=lite.MathTex('{{ a }} + {{ b }} = {{ c }}')
+        self.assertEqual([p.tex_string for p in braces],[' a ',' + ',' b ',' = ',' c '])
+        self.assertEqual(len(lite.MathTex(r'\frac{1}{a+b\sqrt{2}}')),1)
+        self.assertEqual([p.tex_string for p in lite.MathTex('a^{{2}}')],['a^{{2}}'])
+        # Exact matches only: parts and isolated substrings.
+        m=lite.MathTex('x','y^2','x'); m.set_color_by_tex('x',lite.RED)
+        self.assertEqual(colors(m),[['#FC6255'],['#FFFFFF','#FFFFFF'],['#FC6255']])
+        m=lite.MathTex('x^2','+','y'); m.set_color_by_tex('x',lite.RED)
+        self.assertEqual(colors(m),[['#FFFFFF','#FFFFFF'],['#FFFFFF'],['#FFFFFF']])
+        m=lite.MathTex('x^2 + x',tex_to_color_map={'x':lite.RED})
+        self.assertEqual(colors(m),[['#FC6255','#FFFFFF','#FFFFFF','#FC6255']])
+        m=lite.MathTex('a+b','=','c+b',substrings_to_isolate=['b','c']); m.set_color_by_tex('b',lite.BLUE)
+        self.assertEqual(colors(m),[['#FFFFFF','#FFFFFF','#58C4DD'],['#FFFFFF'],['#FFFFFF','#FFFFFF','#58C4DD']])
+        self.assertEqual(len(m.get_part_by_tex('b')),1)
+        m=lite.MathTex('a','b','a'); m.set_opacity_by_tex('a',0.3,remaining_opacity=0.8)
+        self.assertEqual([[g.get_fill_opacity() for g in p] for p in m],[[0.3],[0.8],[0.3]])
+        # Isolation never splits a control word; ^/_ arguments are braced.
+        self.assertEqual(lite.MathTex(r'e^{i\pi}',substrings_to_isolate=['e',r'\pi']).text,
+                         r'\class{manim-sub-0}{e}^{i\class{manim-sub-1}{\pi}}')
+        self.assertEqual(lite.MathTex('x^2',substrings_to_isolate=['2']).text,r'x^{\class{manim-sub-0}{2}}')
+        self.assertEqual(lite.MathTex(r'\pin',substrings_to_isolate=[r'\pi']).text,r'\pin')
+        # Tex: one part per string (text mode), isolated runs keep their own \text.
+        t=lite.Tex('FadeIn with ','shift ',r' or target\_position',' and scale')
+        self.assertEqual([p.tex_string for p in t],['FadeIn with ','shift ',r' or target\_position',' and scale'])
+        self.assertEqual(t.tex_string,r'FadeIn with shift  or target\_position and scale')
+        t=lite.Tex('Hello world',tex_to_color_map={'world':lite.RED})
+        self.assertEqual(t.text,r'\text{Hello }\class{manim-sub-0}{\text{world}}')
+        self.assertEqual(colors(t),[['#FFFFFF']*5+['#FC6255']*5])
+        # Browser glyph metrics carry each glyph's substring.
+        source='from manim import *\nclass S(Scene):\n    def construct(self):\n        m = MathTex("ab", substrings_to_isolate=["b"])\n        m.set_color_by_tex("b", RED)\n        self.add(m)\n'
+        expression=lite.MathTex('ab',substrings_to_isolate=['b']).text
+        metrics={expression:[1,.5,None,[[-.25,0,.4,.4,-1,-1],[.25,0,.4,.4,-1,0]]]}
+        frame=json.loads(lite.render_scene(source,math_metrics=metrics))['frames'][-1]['mobjects'][0]
+        glyphs=frame['children'][0]['children']
+        self.assertEqual([(g['glyph'],g['color']) for g in glyphs],[(0,'#FFFFFF'),(1,'#FC6255')])
+        self.assertNotIn('sub',glyphs[1])
+
     def test_multipart_mathtex_parts_colors_metrics_and_matching(self):
         eq=lite.MathTex('x^2','+','y^2',color=lite.BLUE)
         self.assertEqual((len(eq),eq.tex_strings,eq[2].tex_string),(3,['x^2','+','y^2'],'y^2'))
         self.assertLess(eq[0].get_center()[0],eq[1].get_center()[0])
         eq.set_color_by_tex('+',lite.RED)
         self.assertEqual([p.color for p in eq],[lite.BLUE,lite.RED,lite.BLUE])
-        self.assertEqual(eq.index_of_part_by_tex('y'),2)
+        self.assertEqual(eq.index_of_part_by_tex('y^2'),2)
         self.assertIsNone(eq.get_part_by_tex('q'))
+        # Manim 0.22: isolated substrings tag glyph groups but do not split the parts.
         isolated=lite.MathTex('a^2 + b^2 = c^2',substrings_to_isolate=['a','b','c'],tex_to_color_map={'c':lite.YELLOW})
-        self.assertEqual([p.tex_string for p in isolated],['a','^2 + ','b','^2 = ','c','^2'])
-        self.assertEqual(isolated.get_part_by_tex('c').color,lite.YELLOW)
+        self.assertEqual([p.tex_string for p in isolated],['a^2 + b^2 = c^2'])
+        self.assertEqual([g.color for g in isolated.get_part_by_tex('c')],[lite.YELLOW])
+        self.assertEqual([g.color for g in isolated[0]].count(lite.YELLOW),1)
         single=lite.MathTex('x')
         # Community: the string is the formula's only part, holding the glyphs.
         self.assertEqual(len(single),1)
@@ -6029,6 +6071,30 @@ self.wait(1)""")
         for index, angle in ((15, lite.PI / 4), (30, lite.PI / 2), (45, 3 * lite.PI / 4), (60, lite.PI)):
             self.assertAlmostEqual(result['frames'][index]['mobjects'][0]['angle'], angle)
 
+    def test_succession_lag_ratio_keeps_one_active_stage_like_community(self):
+        source = """from manim import *
+class Demo(Scene):
+    def construct(self):
+        a, b, self.log = Dot(), Dot(UP), []
+        self.add(a, b)
+        self.add_updater(lambda dt: self.log.append((round(a.get_x(), 4), round(b.get_x(), 4))))
+        self.play(Succession(a.animate(rate_func=linear).shift(RIGHT*2), b.animate(rate_func=linear, run_time=2).shift(RIGHT*2), lag_ratio=0.5))
+        self.play(Succession(a.animate(rate_func=linear).shift(LEFT*2), b.animate(rate_func=linear).shift(LEFT*2), lag_ratio=2))
+"""
+        namespace = {}
+        exec(compile(source, '<test>', 'exec'), namespace)
+        scene = namespace['Demo']()
+        scene.render()
+        log = scene.log
+        # Manim 0.22: b starts when a ends, already half a second into its own timing;
+        # with lag_ratio=2 b holds its start state through the gap.
+        self.assertEqual(len(log), 83)
+        self.assertEqual(log[14], (1.8667, 0.0))
+        self.assertEqual(log[15], (2.0, 0.5))
+        self.assertEqual(log[37], (2.0, 1.9667))
+        self.assertEqual(log[60], (0.0, 2.0))
+        self.assertEqual(log[69], (0.0, 1.8667))
+
     def test_succession_introduces_later_objects_only_when_their_stage_begins(self):
         result = render('a = Circle(color=BLUE)\nb = Square(color=RED).shift(RIGHT * 3)\nself.play(Succession(Create(a, run_time=2), FadeOut(a), FadeIn(b, run_time=2, rate_func=linear)))')
         self.assertEqual(result['duration'], 5)
@@ -6080,8 +6146,6 @@ self.wait(1)""")
                      's = Square()\nself.play(Succession(AnimationGroup(Create(s), Rotate(s)), FadeOut(s)))'):
             with self.assertRaisesRegex(ValueError, 'one animation per object'):
                 render(body)
-        with self.assertRaises(NotImplementedError):
-            lite.Succession(lite.Create(lite.Dot()), lag_ratio=0.5)
         with self.assertRaises(TypeError):
             lite.Succession()
         with self.assertRaises(ValueError):
@@ -6598,8 +6662,11 @@ self.wait(1)""")
             with self.assertRaises(NotImplementedError):
                 scene.play(animation)
             self.assertEqual(scene.mobjects, [])
-        with self.assertRaises(TypeError):
-            lite.GrowFromCenter(lite.Square(), point_color=lite.RED)
+        # Manim 0.22: the start copy is recolored with point_color and blends to the original.
+        result = render('s = Square(color=BLUE)\nself.play(GrowFromCenter(s, point_color=RED), rate_func=linear)')
+        for index, color in ((0, '#FC6255'), (7, '#AF8F94'), (14, '#62BDD3'), (15, '#58C4DD')):
+            frame = result['frames'][index]['mobjects'][0]
+            self.assertEqual((frame['stroke_color'], frame['fill_color']), (color, color))
 
     def test_growth_example_finishes_with_only_origin_marker(self):
         result = json.loads(lite.render_scene((ROOT / 'examples/growth_scene.py').read_text()))
