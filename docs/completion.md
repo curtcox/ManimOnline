@@ -340,5 +340,10 @@ on curved arrows, the isosurfaces quadtree for ImplicitFunction, Computer Modern
 ligatures and interword glue for Tex text, TeX-style fractions, align*/gather* rows,
 LaTeX logos, CJK in formulas, nested-svg delimiters, LabeledDot sizing, MarkupText
 wrapping/justify and planar 3D text. Remaining diffs: platform font metrics for Text, the
-AnimationGroup scene-group quirk, \xrightarrow widths, \_ in \texttt, MultiCamera.
+AnimationGroup scene-group quirk and \xrightarrow widths. Typst/MathTypst are now
+compiled in the browser by typst.ts (matching Community bounds and selections with native
+Typst SVG); \_, the color libraries, quaternion utilities, RendererType/QUALITIES,
+Section, Camera/MultiCamera and Scene(camera_class=..., random_seed=...) were added. With
+these, lite runs 406 of the 414 docstring examples (the other 8 also fail in Community)
+and all 75 documentation examples.
 
