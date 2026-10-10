@@ -327,3 +327,18 @@ networkx-exact spectral and Kamada-Kawai layouts. Remaining diffs are platform f
 metrics, MathTex sizes before browser measurement, unseeded random layouts and
 Community's AnimationGroup scene-group quirk. Still open: planar layout, Typst/MathTypst,
 Succession with lag_ratio != 1, GrowFromEdge default edge, MultiCamera.
+
+Corpus update (2026-10-10): the docstring corpus (414 extracted examples) and the Manim
+0.22 documentation gallery/tutorial/guide examples (75) both run with no lite-only
+failures; the only lite failures are Typst/MathTypst, which also need the optional typst
+package in Community. Formula sizes were compared with browser MathJax measurements fed
+back as math_metrics. Newly matched: MathTex/Tex part semantics of 0.22 ({{ }} parts,
+isolated substrings as glyph groups, exact-match coloring, multi-part Tex), Succession
+lag_ratio, Grow point_color, path functions (utils.paths), planar layout (networkx-exact),
+8-cubic arcs, nested ReplacementTransform, DecimalNumber edge_to_fix, second-tip placement
+on curved arrows, the isosurfaces quadtree for ImplicitFunction, Computer Modern kerns,
+ligatures and interword glue for Tex text, TeX-style fractions, align*/gather* rows,
+LaTeX logos, CJK in formulas, nested-svg delimiters, LabeledDot sizing, MarkupText
+wrapping/justify and planar 3D text. Remaining diffs: platform font metrics for Text, the
+AnimationGroup scene-group quirk, \xrightarrow widths, \_ in \texttt, MultiCamera.
+

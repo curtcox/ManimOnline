@@ -650,4 +650,15 @@ Community docstring corpus: extract every `.. manim::` example from an installed
 0.22 and run it through both libraries (dry_run, low quality) to find failures and
 compare final bounds/durations; Text bounds differ by platform fonts, so compare them
 only on Linux with Liberation Sans. A TinyTeX install provides latex/dvisvgm for the
-reference side.
+reference side. For formulas, collect `math_estimated` expressions from a native run,
+measure them in the browser with `ManimMath.prepare`/`metrics`, and rerun natively with
+those `math_metrics` (the page's second pass); without that, MathTex sizes are estimates.
+
+MathTex follows Manim 0.22: parts are the strings split at `{{ }}` only; isolated
+substrings and tex_to_color_map tag glyphs with `\class{manim-sub-k}` (MathJax merges
+nested classes into one attribute, so parse class lists) and match exactly. Rows/`&` are
+wrapped by `_environment` (align* rows 1.5em, Tex gather* lines 1.2em). Tex text runs use
+the cmr/cmbx/cmti/cmtt/cmss TFM kerns, ligature widths and TeX interword glue
+(`_kerned_text`); ManimMath.patchFractions lays MathJax fractions out as TeX does.
+Text in ThreeDScene is planar: 3D rotations bake into glyph_matrix + glyph_depth and
+frames export `plane3d`, which the renderer projects as an affine glyph map.
