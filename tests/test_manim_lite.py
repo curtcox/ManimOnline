@@ -1392,7 +1392,18 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertAlmostEqual(alpha['frames'][15]['mobjects'][0]['position'][1],.5)
         self.assertAlmostEqual(alpha['frames'][-1]['mobjects'][0]['position'][1],1)
         subsets=render('g = VGroup(*[Dot(RIGHT*i) for i in range(4)])\nself.play(ShowIncreasingSubsets(g), rate_func=linear, run_time=2)')
-        self.assertEqual(len(subsets['frames'][15]['mobjects'][0]['children']),2)
+        # Manim 0.22 keeps every member and toggles opacity: two of four are opaque halfway.
+        self.assertEqual([c['fill_opacity'] for c in subsets['frames'][15]['mobjects'][0]['children']],[1,1,0,0])
+        # Constructing the animation already hides the members; revealing makes them opaque,
+        # so an unfilled Square ends filled, as in Community.
+        render('s = Square()\ng = VGroup(s)\nself.add(g)\na = ShowIncreasingSubsets(g)\n'
+               'assert s.get_fill_opacity() == 0 and s.get_stroke_opacity() == 0\nself.play(a)\n'
+               'assert s.get_fill_opacity() == 1 and s.get_stroke_opacity() == 1')
+        render('g = VGroup(Dot(), Square(), Circle())\nself.play(ShowSubmobjectsOneByOne(g))\n'
+               'assert [m.get_fill_opacity() for m in g] == [0, 0, 1]')
+        # Swap cycles the members of a single group argument.
+        render('a, b = Square().move_to(LEFT), Circle().move_to(RIGHT)\nself.add(a, b)\n'
+               'self.play(Swap(Group(a, b)))\nassert a.get_center()[0] > 0 > b.get_center()[0]')
         letters=render('t = Text("Hi you")\nself.play(AddTextLetterByLetter(t))')
         self.assertAlmostEqual(letters['duration'],.5,places=1)
         partial=letters['frames'][4]['mobjects'][0]['layout']['lines'][0]

@@ -1312,9 +1312,11 @@ class Mobject:
                 if linear:
                     jacobian = [mapped(pivot+direction)-mapped(pivot) for direction in (RIGHT,UP)]
                 else:
-                    step = 1e-4
+                    # Community maps every outline point; a glyph follows the map's secant across
+                    # its own extent, so quickly varying maps (ApplyWave ripples) stay bounded.
+                    steps = [max(1e-4, old.get_width()/2), max(1e-4, old.get_height()/2)]
                     jacobian = [(mapped(center+direction*step)-mapped(center-direction*step))*(1/(2*step))
-                                for direction in (RIGHT,UP)]
+                                for direction, step in zip((RIGHT,UP), steps)]
                 frame = [world(RIGHT)-center, world(UP)-center]
                 (ga,gb),(gc,gd) = _glyph_matrix(old.__dict__)
                 # total = J . L . G, with L the leaf's current local-to-world linear part.
@@ -9979,7 +9981,8 @@ class CyclicReplace(Transform):
     def __init__(self, *mobjects, path_arc=90 * DEGREES, **kwargs):
         if len(mobjects) < 1 or any(not isinstance(m, Mobject) for m in mobjects):
             raise TypeError('CyclicReplace expects mobjects')
-        self.group = Group(*mobjects)
+        # Community cycles the members of a single Group/VGroup argument.
+        self.group = mobjects[0] if len(mobjects) == 1 and isinstance(mobjects[0], Group) else Group(*mobjects)
         super().__init__(self.group, self.group, path_arc=path_arc, **kwargs)
 
     def begin(self, scene):
@@ -10603,29 +10606,50 @@ class UpdateFromAlphaFunc(UpdateFromFunc):
 
 
 class ShowIncreasingSubsets(Animation):
-    def __init__(self, group, suspend_mobject_updating=False, int_func=math.floor, **kwargs):
-        super().__init__(group, **kwargs)
+    """Community 0.22: members turn fully opaque (set_opacity(1)) in order; constructing the
+    animation makes them all transparent (set_opacity(0)) right away."""
+    def __init__(self, group, suspend_mobject_updating=False, int_func=math.floor, reverse_rate_function=False,
+                 **kwargs):
+        self.all_submobs = list(group.children)
+        for member in self.all_submobs:
+            member.set_opacity(0)
+        super().__init__(group, reverse_rate_function=reverse_rate_function, **kwargs)
         self.int_func = int_func
 
+    def _index(self, alpha):
+        return int(self.int_func(alpha * len(self.all_submobs)))
+
+    def update_submobject_list(self, index, members=None):
+        members = self.all_submobs if members is None else members
+        for member in members[:index]:
+            member.set_opacity(1)
+        for member in members[index:]:
+            member.set_opacity(0)
+
     def sample(self, alpha):
-        result = _snapshot_copy(self.start)
-        count = max(0, min(len(result['children']), int(self.int_func(alpha * len(result['children'])))))
-        result['children'] = result['children'][:count]
-        return [result]
+        current = self.mobject.copy()
+        members = [current.children[self.mobject.children.index(m)] for m in self.all_submobs
+                   if m in self.mobject.children]
+        self.update_submobject_list(self._index(alpha), members)
+        return [current.to_dict()]
+
+    def finish(self, scene):
+        members = [m for m in self.all_submobs if m in self.mobject.children]
+        self.update_submobject_list(self._index(self.rate_func(1)), members)
 
 
 class ShowSubmobjectsOneByOne(ShowIncreasingSubsets):
+    """Community 0.22: only the latest member is opaque; the group is a new Group."""
     def __init__(self, group, int_func=math.ceil, **kwargs):
-        super().__init__(group, int_func=int_func, **kwargs)
+        super().__init__(Group(*group), int_func=int_func, **kwargs)
 
-    def sample(self, alpha):
-        result = _snapshot_copy(self.start)
-        index = int(self.int_func(alpha * len(result['children']))) - 1
-        result['children'] = result['children'][index:index + 1] if 0 <= index < len(result['children']) else []
-        return [result]
-
-    def finish(self, scene):
-        pass
+    def update_submobject_list(self, index, members=None):
+        members = self.all_submobs if members is None else members
+        shown = members[:index]
+        for member in shown[:-1]:
+            member.set_opacity(0)
+        if shown:
+            shown[-1].set_opacity(1)
 
 
 class AddTextLetterByLetter(Animation):
