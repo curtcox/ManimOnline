@@ -8344,7 +8344,8 @@ class Demo(Scene):
                           '#FA8D5E', '#F99860', '#F9A263', '#F8AD65', '#F8B867', '#F7C36A', '#F7CE6C', '#F7D96F',
                           '#75C18A', '#77C185', '#79C180', '#7BC17B', '#7DC176', '#7FC171', '#81C16C', '#83C167'])
         convert = lite._tex_text_to_math
-        self.assertEqual(convert(r'\texttt{time\_width={{0.2}}}'), r'\texttt{time_width=0.2}')
+        # LaTeX's OT1 \_ is a kern and a 0.3em rule, even in typewriter text.
+        self.assertEqual(convert(r'\texttt{time\_width={{0.2}}}'), r'\texttt{time}\kern{0.06em}\rule{0.3em}{0.04em}\texttt{width=0.2}')
         self.assertEqual(convert(r'50\% of \textbf{a \textit{b}}'), '\\text{50}\\%\\kern{0.333334em}\\text{of}\\kern{0.333334em}\\textbf{a}\\kern{0.383331em}\\textit{b}')
         self.assertEqual(convert(r'cost $x^2$ \& more'), '\\text{cost}\\kern{0.333334em}x^2\\kern{0.333334em}\\&\\kern{0.333334em}\\text{more}')
         self.assertEqual(convert(r'This is some \LaTeX'), '\\text{This}\\kern{0.333334em}\\text{is}\\kern{0.333334em}\\text{some}\\kern{0.333334em}\\text{L}\\kern{-0.36em}\\raise{0.2049em}{\\scriptsize\\text{A}}\\kern{-0.0847em}\\text{T}\\kern{-0.1667em}\\lower{0.2153em}{\\text{E}}\\kern{-0.125em}\\text{X}')

@@ -5920,6 +5920,10 @@ def _tex_text_to_math(text):
                     if i < n and text[i] == '{' and text.startswith('{}', i):
                         i += 2
                     continue
+                if name in ('_', 'textunderscore'):
+                    # LaTeX's OT1 underscore: a 0.06em kern and a 0.3em rule on the baseline.
+                    segments.append(('math', None, '\\kern{0.06em}\\rule{0.3em}{0.04em}'))
+                    continue
                 if name in _TEX_TEXT_SYMBOLS:
                     add_text(font, _TEX_TEXT_SYMBOLS[name])
                     continue
