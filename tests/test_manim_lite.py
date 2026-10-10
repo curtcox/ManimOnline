@@ -962,6 +962,24 @@ self.play(UntypeWithCursor(text, cursor))""")['frames']
         self.assertPointAlmostEqual(line.label.get_center(),(-1,0,0))
         self.assertEqual((lite.AnnotationDot().stroke_width,lite.AnnotationDot().fill_color),(5,lite.BLUE))
 
+    def test_markup_text_wraps_and_justifies_like_pango(self):
+        # Manim 0.22 lays MarkupText out 500 Pango px (25 scene units) wide at any font size;
+        # justify stretches the spaces of each wrapped line but the last to that width.
+        words = ' '.join(['mmmm'] * 12)
+        self.assertEqual(len(lite._text_layout(lite.MarkupText(' '.join(['mmmm'] * 4)).__dict__)['lines']), 1)
+        layout = lite._text_layout(lite.MarkupText(words).__dict__)
+        self.assertEqual(len({line['y'] for line in layout['lines']}), 2)
+        self.assertLessEqual(max(line['x'] + line['length'] for line in layout['lines']) -
+                             min(line['x'] for line in layout['lines']), 25 + 1e-9)
+        ipsum = ('Lorem ipsum dolor sit amet, consectetur adipiscing elit. Praesent feugiat metus sit amet '
+                 'iaculis pulvinar. Nulla posuere quam a ex aliquam, eleifend consectetur tellus viverra.')
+        justified = lite.MarkupText(ipsum, justify=True)
+        self.assertAlmostEqual(justified.get_width(), 25, 1)
+        self.assertLess(lite.MarkupText(ipsum).get_width(), 25)
+        # Glyph indices follow the source string across wrapped lines.
+        glyphs = lite.MarkupText(words)
+        self.assertEqual([g._char_index for g in glyphs][-4:], [len(words) - 4 + i for i in range(4)])
+
     def test_mathtex_parts_and_isolated_substrings_follow_community_0_22(self):
         def colors(m):
             return [[str(g.get_color()) for g in part] for part in m]

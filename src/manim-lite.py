@@ -4603,10 +4603,14 @@ def _glyph_box(char, table):
 _TEXT_LAYOUTS = {}
 
 
+def _text_layout_key(snapshot):
+    return (snapshot['text'], snapshot['font_size'], snapshot.get('line_spacing', .3), '_number_format' in snapshot,
+            _is_mono(snapshot.get('font')), snapshot.get('_wrap_width'), bool(snapshot.get('justify')))
+
+
 def _text_layout(snapshot):
     """Ink-centered line layout for a Text/DecimalNumber snapshot, in scene units."""
-    key = (snapshot['text'], snapshot['font_size'], snapshot.get('line_spacing', .3), '_number_format' in snapshot,
-           _is_mono(snapshot.get('font')))
+    key = _text_layout_key(snapshot)
     if key not in _TEXT_LAYOUTS:
         if len(_TEXT_LAYOUTS) > 4096:
             _TEXT_LAYOUTS.clear()
@@ -4615,14 +4619,39 @@ def _text_layout(snapshot):
 
 
 def _text_extent(snapshot):
-    layout = _TEXT_LAYOUTS.get((snapshot['text'], snapshot['font_size'], snapshot.get('line_spacing', .3),
-                                '_number_format' in snapshot, _is_mono(snapshot.get('font'))))
+    layout = _TEXT_LAYOUTS.get(_text_layout_key(snapshot))
     if layout is None:
         layout = _text_layout(snapshot)
     return layout['width'], layout['height']
 
 
-def _compute_text_layout(text, font_size, line_spacing, numeric, mono=False):
+def _wrap_paragraph(paragraph, width, measure):
+    """Pango's word wrapping: greedy lines broken after runs of spaces; a word wider
+    than the layout stays whole. Returns (start, end) spans including trailing spaces."""
+    spans, start, n = [], 0, len(paragraph)
+    while True:
+        end = None
+        position = start
+        while True:
+            k = position
+            while k < n and paragraph[k] != ' ':
+                k += 1
+            while k < n and paragraph[k] == ' ':
+                k += 1
+            if end is not None and measure(paragraph[start:k].rstrip(' ')) > width:
+                break
+            end = k
+            if k >= n or measure(paragraph[start:k].rstrip(' ')) > width:
+                break
+            position = k
+        spans.append((start, end))
+        start = end
+        if start >= n:
+            return spans
+
+
+def _compute_text_layout(text, font_size, line_spacing, numeric, mono=False, wrap=None, justify=False):
+    import re
     snapshot = {'text': text, 'font_size': font_size, 'line_spacing': line_spacing}
     em = font_size * (TEX_EM_PER_POINT if numeric else TEXT_EM_PER_POINT) / 1000
     lines, ink = [], None
@@ -4654,14 +4683,33 @@ def _compute_text_layout(text, font_size, line_spacing, numeric, mono=False):
             lines.append({'text': snapshot['text'], 'x': ink[0], 'y': 0, 'length': ink[2] - ink[0]})
     else:
         pitch = font_size * (1 + snapshot.get('line_spacing', .3)) * TEX_EM_PER_POINT
-        for row, line in enumerate(snapshot['text'].split('\n')):
-            x, baseline = 0, -row * pitch
-            for char in line:
-                advance, x0, x1, y0, y1 = _glyph_box(char, _MONO_GLYPHS if mono else _SANS_GLYPHS)
-                if x1 > x0 or y1 > y0:
-                    merge(((x + x0) * em, baseline + y0 * em, (x + x1) * em, baseline + y1 * em))
-                x += advance
-            lines.append({'text': line, 'x': 0, 'y': baseline, 'length': x * em})
+        table = _MONO_GLYPHS if mono else _SANS_GLYPHS
+        def measure(chunk):
+            return sum(_glyph_box(char, table)[0] for char in chunk) * em
+        row, offset = 0, 0
+        for paragraph in snapshot['text'].split('\n'):
+            # MarkupText wraps at Community's Pango layout width; justify stretches the
+            # spaces of every wrapped line but a paragraph's last to that width.
+            spans = _wrap_paragraph(paragraph, wrap, measure) if wrap and paragraph else [(0, len(paragraph))]
+            for number, (start, end) in enumerate(spans):
+                line = paragraph[start:end].rstrip(' ') if wrap else paragraph[start:end]
+                baseline = -row * pitch
+                spaces = line.count(' ')
+                extra = ((wrap - measure(line)) / spaces if justify and wrap and spaces and number < len(spans) - 1
+                         else 0)
+                words = [(0, line)] if not extra else [(m.start(), m.group()) for m in re.finditer(r'[^ ]+', line)]
+                for at, word in words:
+                    x = measure(line[:at]) / em + extra * line[:at].count(' ') / em
+                    left = x
+                    for char in word:
+                        advance, x0, x1, y0, y1 = _glyph_box(char, table)
+                        if x1 > x0 or y1 > y0:
+                            merge(((x + x0) * em, baseline + y0 * em, (x + x1) * em, baseline + y1 * em))
+                        x += advance
+                    lines.append({'text': word, 'x': left * em, 'y': baseline, 'length': (x - left) * em,
+                                  'start': offset + start + at})
+                row += 1
+            offset += len(paragraph) + 1
     if ink is None:
         return {'width': 0, 'height': 0, 'lines': [], 'em': em * 1000}
     cx, cy = (ink[0] + ink[2]) / 2, (ink[1] + ink[3]) / 2
@@ -4877,6 +4925,7 @@ class Text(Mobject):
         glyphs, index = [], 0
         for line in layout['lines']:
             x = line['x']
+            index = line.get('start', index)
             for char in line['text']:
                 advance, x0, x1, y0, y1 = _glyph_box(char, _glyph_table(self.__dict__.get('font')))
                 if not char.isspace() and (x1 > x0 or y1 > y0):
@@ -4988,6 +5037,8 @@ class MarkupText(Text):
                 elif tag not in ('u', 'small', 'big', 's', 'tt', 'sub', 'sup'):
                     raise NotImplementedError(f'MarkupText does not support <{tag}> in this preview')
                 stack.append(style)
+        # Community lays markup out in a Pango box 500 px wide: 25 scene units at any size.
+        self._wrap_width = 25.0
         super().__init__(plain, **kwargs)
         self.markup = str(text)
         if any(styles):
