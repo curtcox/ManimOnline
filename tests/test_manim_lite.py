@@ -991,7 +991,7 @@ self.play(UntypeWithCursor(text, cursor))""")['frames']
         self.assertEqual([p.tex_string for p in t],['FadeIn with ','shift ',r' or target\_position',' and scale'])
         self.assertEqual(t.tex_string,r'FadeIn with shift  or target\_position and scale')
         t=lite.Tex('Hello world',tex_to_color_map={'world':lite.RED})
-        self.assertEqual(t.text,r'\text{Hello }\class{manim-sub-0}{\text{world}}')
+        self.assertEqual(t.text,'\\text{Hello}\\kern{0.333334em}\\class{manim-sub-0}{\\text{w}\\kern{-0.027779em}\\text{orld}}')
         self.assertEqual(colors(t),[['#FFFFFF']*5+['#FC6255']*5])
         # Browser glyph metrics carry each glyph's substring.
         source='from manim import *\nclass S(Scene):\n    def construct(self):\n        m = MathTex("ab", substrings_to_isolate=["b"])\n        m.set_color_by_tex("b", RED)\n        self.add(m)\n'
@@ -1072,7 +1072,7 @@ self.play(UntypeWithCursor(text, cursor))""")['frames']
         result=json.loads(lite.render_scene((ROOT/'examples/annotation_scene.py').read_text()))
         # Manim 0.22: 10 s, since Write(title) counts its 21 glyphs (2 s).
         self.assertEqual(result['duration'],10)
-        self.assertIn(r'\text{Annotating a rectangle}',result['math_estimated'])
+        self.assertIn('\\text{Annotating}\\kern{0.333334em}\\text{a}\\kern{0.333334em}\\text{rectangle}',result['math_estimated'])
         frame=result['frames'][95]['mobjects']
         title=frame[0]
         self.assertAlmostEqual(title['children'][1]['position'][0]+title['children'][1]['geometry_center'][0],0)
@@ -1115,7 +1115,11 @@ self.play(UntypeWithCursor(text, cursor))""")['frames']
         self.assertIs(labeled.shift_brace(lite.Circle()),labeled)
         tex=brace.get_tex('a')
         self.assertLess(tex.get_top()[1],brace.get_tip()[1])
-        self.assertEqual(lite._tex_text_to_math(r'Area $x^2$ and \textbf{bold}'),r'\text{Area }x^2\text{ and }\textbf{bold}')
+        self.assertEqual(lite._tex_text_to_math(r'Area $x^2$ and \textbf{bold}'), '\\text{Area}\\kern{0.333334em}x^2\\kern{0.333334em}\\text{and}\\kern{0.333334em}\\textbf{b}\\kern{0.031944em}\\textbf{old}')
+        # Computer Modern kerns and ligatures (cmr10 TFM: "ffi" is f f i kerned to the ligature width)
+        # and TeX interword glue, with extra space after sentence punctuation.
+        self.assertEqual(lite._tex_text_to_math('Wa office -- ``q"'), '\\text{W}\\kern{-0.083334em}\\text{a}\\kern{0.333334em}\\text{of}\\kern{-0.027779em}\\text{f}\\kern{-0.027779em}\\text{ice}\\kern{0.333334em}\\text{–}\\kern{0.333334em}\\text{“q”}')
+        self.assertEqual(lite._tex_text_to_math('End. U.S. ok'), '\\text{End.}\\kern{0.444446em}\\text{U.S.}\\kern{0.333334em}\\text{ok}')
         with self.assertRaises(ValueError): lite.Tex('one $x')
         with self.assertRaises(NotImplementedError): lite.Tex(r'\textcolor{red}{x}')
         title=lite.Title('Hello World')
@@ -8244,9 +8248,9 @@ class Demo(Scene):
                           '#75C18A', '#77C185', '#79C180', '#7BC17B', '#7DC176', '#7FC171', '#81C16C', '#83C167'])
         convert = lite._tex_text_to_math
         self.assertEqual(convert(r'\texttt{time\_width={{0.2}}}'), r'\texttt{time_width=0.2}')
-        self.assertEqual(convert(r'50\% of \textbf{a \textit{b}}'), r'\text{50}\%\text{ of }\textbf{a }\textit{b}')
-        self.assertEqual(convert(r'cost $x^2$ \& more'), r'\text{cost }x^2\text{ }\&\text{ more}')
-        self.assertEqual(convert(r'This is some \LaTeX'), r'\text{This is some }\LaTeX ')
+        self.assertEqual(convert(r'50\% of \textbf{a \textit{b}}'), '\\text{50}\\%\\kern{0.333334em}\\text{of}\\kern{0.333334em}\\textbf{a}\\kern{0.383331em}\\textit{b}')
+        self.assertEqual(convert(r'cost $x^2$ \& more'), '\\text{cost}\\kern{0.333334em}x^2\\kern{0.333334em}\\&\\kern{0.333334em}\\text{more}')
+        self.assertEqual(convert(r'This is some \LaTeX'), '\\text{This}\\kern{0.333334em}\\text{is}\\kern{0.333334em}\\text{some}\\kern{0.333334em}\\LaTeX ')
         with self.assertRaises(NotImplementedError):
             convert(r'\textcolor{red}{x}')
 
