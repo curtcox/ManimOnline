@@ -9780,17 +9780,15 @@ class Transform(Animation):
     def begin(self, scene):
         super().begin(scene)
         self._transform_plan = None
-        self._path_target = None
+        self._canonical = None
+        self.__dict__.pop('_path_target', None)
         # Community updates the starting and target copies (which keep the mobject's
         # updaters) every frame, so e.g. a rotating updater keeps turning the morph.
         self._live_start = (self.mobject.copy() if any(m.updaters for m in self.mobject.get_family())
                             else None)
         # Community morphs text glyph by glyph: when either side has been split into glyphs
         # (by Write, Create or indexing) or the texts differ, morph split copies.
-        self._split_glyphs = (_has_glyphs(self.mobject) != _has_glyphs(self.target)
-                              or _texts(self.mobject) != _texts(self.target))
-        if self._split_glyphs:
-            self.start = self._plan_snapshot(self.mobject)
+        self._split_for(self.mobject)
         if self.mobject.__dict__.get('_stretch_baked') or self.target.__dict__.get('_stretch_baked'):
             def canonical(mobject):
                 # Already-baked families are canonical; re-mapping them is costly.
@@ -9798,30 +9796,40 @@ class Transform(Animation):
                     return mobject.to_dict()
                 return mobject.copy().stretch(1,0).to_dict()
             try:
-                start, target = canonical(self.mobject), canonical(self.target)
+                start, self._path_target = canonical(self.mobject), canonical(self.target)
             except NotImplementedError:
                 pass  # Unsupported target types keep the existing fade/morph plan.
             else:
-                self.start,self._path_target = start,target
-                self._live_start = None
+                self.start, self._canonical = start, canonical
+
+    def _split_for(self, source):
+        self._split_glyphs = (_has_glyphs(source) != _has_glyphs(self.target)
+                              or _texts(source) != _texts(self.target))
+        if self._split_glyphs:
+            self.start = self._plan_snapshot(source)
 
     def _plan_snapshot(self, mobject):
         """A snapshot to morph from or to; split copies leave the live families unchanged."""
+        if self.__dict__.get('_canonical'):
+            return self._canonical(mobject)
         if self.__dict__.get('_split_glyphs'):
             mobject = mobject.copy()
             _glyph_family(mobject)
         return mobject.to_dict()
 
     def _advance_copies(self, dt):
-        if self.__dict__.get('_live_start') is None:
-            return
-        self._live_start.update(dt)
-        self.target.update(dt)
-        self.start, self._transform_plan = self._plan_snapshot(self._live_start), None
+        live = self.__dict__.get('_live_start')
+        if live is not None:
+            live.update(dt)
+            self.start, self._transform_plan = self._plan_snapshot(live), None
+        if any(m.updaters for m in self.target.get_family()):
+            self.target.update(dt)
+            self.__dict__.pop('_path_target', None)
+            self._transform_plan = None
 
     def sample(self, alpha):
-        end = self._path_target or self._plan_snapshot(self.target)
         if self._transform_plan is None:
+            end = self.__dict__.get('_path_target') or self._plan_snapshot(self.target)
             self._transform_plan = _transform_plan(self.start, end)
         return _sample_transform(self._transform_plan, alpha, self.path_arc)
 
@@ -9864,8 +9872,14 @@ class TransformFromCopy(Transform):
         # Only the target is animated/added. The source is a read-only snapshot,
         # so it may also move independently or belong to a scene-added group.
         super().begin(scene)
-        self.start = self.source.to_dict()
         self.target = self.mobject.copy()
+        # Community animates the target from a copy of the source; both copies keep
+        # their updaters, which run every frame.
+        self._live_start = (self.source.copy() if any(m.updaters for m in self.source.get_family())
+                            else None)
+        self.__dict__.pop('_path_target', None)
+        self._split_for(self.source)
+        self.start = self._plan_snapshot(self.source)
 
     def sample(self, alpha):
         if alpha == 0:

@@ -5362,6 +5362,22 @@ self.wait(1)""")
         self.assertEqual(midpoint['camera']['frame_center'], [0,0,0])
         self.assertEqual(result['frames'][-1]['mobjects'][1]['position'], [2,1,0])
 
+    def test_transform_updates_target_copy_and_copied_source_every_frame(self):
+        # Community updates Transform's starting and target copies with each frame's dt
+        # (14 nonzero steps in a 15-frame second); the real target stays put.
+        scene = lite.Scene()
+        circle = lite.Circle()
+        target = lite.Square().add_updater(lambda m,dt:m.shift(lite.RIGHT*dt))
+        scene.add(circle).play(lite.Transform(circle,target),rate_func=lite.linear)
+        self.assertAlmostEqual(circle.get_center()[0], 14/15)
+        self.assertEqual(target.get_center(), lite.ORIGIN)
+        scene = lite.Scene()
+        source = lite.Circle().add_updater(lambda m,dt:m.shift(lite.UP*dt))
+        destination = lite.Square().shift(lite.RIGHT*3)
+        scene.add(source).play(lite.TransformFromCopy(source,destination))
+        self.assertAlmostEqual(source.get_center()[1], 14/15)
+        self.assertEqual(destination.get_center(), (3,0,0))
+
     def test_auto_zoom_fits_wide_and_tall_bounds_without_eager_animation(self):
         scene = lite.MovingCameraScene()
         camera = scene.camera
@@ -5641,7 +5657,10 @@ self.wait(1)""")
         effect = lite.TransformFromCopy(source,target)
         original, destination = source.to_dict(), target.to_dict()
         effect.prepare(lite.Scene())
-        self.assertEqual(len(effect.sample(.5)[0]['children']), 5)
+        # Differing texts morph glyph by glyph, aligned exactly like Transform.
+        plain = lite.Transform(source.copy(), target)
+        plain.prepare(lite.Scene())
+        self.assertEqual(len(effect.sample(.5)[0]['children']), len(plain.sample(.5)[0]['children']))
         effect.finish(lite.Scene())
         self.assertEqual(source.to_dict(),original)
         self.assertEqual(target.to_dict(),destination)
