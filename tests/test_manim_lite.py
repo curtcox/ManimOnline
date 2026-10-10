@@ -5560,7 +5560,11 @@ self.wait(1)""")
         a,b = lite.Circle(),lite.Square()
         inner = lite.VGroup(a,b)
         outer = lite.Group(inner,a)
-        self.assertEqual(outer.get_family(),[outer,inner,a,b])
+        # Community's remove_list_redundancies keeps a shared member's last occurrence.
+        self.assertEqual(outer.get_family(),[outer,inner,b,a])
+        frame = outer.to_dict()
+        self.assertTrue(frame['children'][0]['children'][0].get('_shared_copy'))
+        self.assertEqual(lite._painted_paths(frame), [(0, 1), (1,)])
         copied = outer.copy()
         self.assertIs(copied[0][0],copied[1])
         self.assertIsNot(copied[1],a)
@@ -6606,6 +6610,17 @@ class Demo(Scene):
             for p, q in zip(old, new):
                 for a, b in zip(p, q):
                     self.assertAlmostEqual(a, b)
+
+    def test_write_reverse_orders_members_and_unwrite_reverse_false_collapses(self):
+        # Community: reverse writes members last-first; only Unwrite runs time backwards.
+        result = render('a, b = Square().shift(LEFT*2), Square().shift(RIGHT*2)\nself.play(Write(VGroup(a, b), reverse=True, run_time=2))')
+        early = result['frames'][5]['mobjects'][0]['children']
+        self.assertGreater(early[1].get('draw_progress', 1), early[0].get('draw_progress', 0))
+        self.assertEqual(result['frames'][-1]['mobjects'], [])
+        result = render('s = Square()\nself.add(s)\nself.play(Unwrite(s, reverse=False))\nassert s in self.mobjects\nself.wait(0.2)')
+        final = result['frames'][-1]['mobjects'][0]
+        self.assertEqual(final['fill_opacity'], 0)
+        self.assertEqual(len({tuple(p) for curve in final['curves'] for p in curve}), 1)
 
     def test_transform_from_copy_source_can_animate_while_copy_holds_terminal(self):
         source = lite.Square().shift(lite.LEFT * 2)

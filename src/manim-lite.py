@@ -936,15 +936,29 @@ class Mobject:
 
     def get_family(self, recurse=True):
         result, seen = [], set()
+        shared = False
         def visit(mobject):
+            nonlocal shared
             if id(mobject) in seen:
+                shared = True
                 return
             seen.add(id(mobject))
             result.append(mobject)
             for child in mobject.children:
                 visit(child)
         visit(self)
-        return result
+        if not shared:
+            return result
+        # A member reached twice keeps its last position, as Community's
+        # remove_list_redundancies (e.g. letters also added directly to ManimBanner).
+        expanded = []
+        def expand(mobject):
+            expanded.append(mobject)
+            for child in mobject.children:
+                expand(child)
+        expand(self)
+        last = {id(mobject): index for index, mobject in enumerate(expanded)}
+        return [mobject for index, mobject in enumerate(expanded) if last[id(mobject)] == index]
 
     def add_updater(self, update_function, index=None, call_updater=False):
         if not callable(update_function):
@@ -2743,7 +2757,7 @@ class Mobject:
         # Nothing moves while a family serializes, so local bounds are computed once.
         _BOUNDS_MEMO = {}
         try:
-            return self._to_dict()
+            return _mark_shared(self, self._to_dict())
         finally:
             _BOUNDS_MEMO = None
 
@@ -9204,8 +9218,28 @@ def _bbox_center(points):
                   for i in range(3))
 
 
+def _mark_shared(mobject, data):
+    """Hide all but the last occurrence of a member reached twice in a family: Community's
+    family keeps only that one, so it is drawn and animated once."""
+    occurrences = []
+    def walk(member, node):
+        occurrences.append((id(member), node))
+        for child, child_node in zip(member.children, node['children']):
+            walk(child, child_node)
+    walk(mobject, data)
+    if len({key for key, _ in occurrences}) == len(occurrences):
+        return data
+    last = {key: index for index, (key, _) in enumerate(occurrences)}
+    for index, (key, node) in enumerate(occurrences):
+        if last[key] != index:
+            node['opacity'], node['_shared_copy'] = 0, True
+    return data
+
+
 def _painted_paths(data, path=(), nested=True):
     """Preorder paths of drawable family members (Community's family_members_with_points)."""
+    if data.get('_shared_copy'):
+        return []
     painted = data['type'] not in ('vgroup', 'mobject', 'valuetracker')
     result = [path] if painted else []
     if nested or not painted:
@@ -9321,6 +9355,9 @@ class Animation:
     def _member_states(self, data, alpha, rate_func, member, nested=True):
         """Apply member(node, sub_alpha) to drawable members with Community's lag timing."""
         paths = _painted_paths(data, nested=nested)
+        if self.__dict__.get('_inverted_members'):
+            # Community's invert(recursive=True): siblings reversed at every level.
+            paths.sort(key=lambda path: tuple(-index for index in path))
         full = (len(paths) - 1) * self.lag_ratio + 1 if paths else 1
         order = {path: index for index, path in enumerate(paths)}
         def visit(node, path):
@@ -9661,6 +9698,20 @@ class DrawBorderThenFill(Animation):
     def sample_members(self, alpha, rate_func):
         return [self._member_states(_snapshot_copy(self.start), alpha, rate_func, self._member)]
 
+    def finish(self, scene=None):
+        if scene is None or not self.reverse_rate_function or self.remover:
+            return super().finish(scene)
+        # A reversed draw that stays in the scene ends as Community's alpha 0: every
+        # outline collapsed onto its first point, unfilled (e.g. Unwrite(reverse=False)).
+        for member in self.mobject.get_family():
+            if member._type in _PATH_TYPES and isinstance(member, VMobject):
+                points = member.get_points()
+                if points:
+                    VMobject.set_points(member, [points[0]] * 4)
+                member.fill_opacity = 0
+            elif member._type in ('text', 'mathtex') and not member.children:
+                member.opacity = 0
+
 
 class Write(DrawBorderThenFill):
     """Community's Write: lagged border-then-fill with length-based defaults.
@@ -9673,14 +9724,15 @@ class Write(DrawBorderThenFill):
         kwargs.setdefault('run_time', 1 if length < 15 else 2)
         kwargs.setdefault('lag_ratio', min(4.0 / max(1.0, length), 0.2))
         kwargs.setdefault('remover', reverse)
-        self.reverse = reverse
-        super().__init__(vmobject, rate_func=rate_func, introducer=not reverse,
-                         reverse_rate_function=reverse, **kwargs)
+        # Community's reverse writes the members in reverse order (reverse_submobjects);
+        # only Unwrite also runs time backwards.
+        self.reverse = self._inverted_members = reverse
+        super().__init__(vmobject, rate_func=rate_func, introducer=not reverse, **kwargs)
 
 
 class Unwrite(Write):
     def __init__(self, vmobject, rate_func=linear, reverse=True, **kwargs):
-        super().__init__(vmobject, rate_func=rate_func, reverse=reverse, **kwargs)
+        super().__init__(vmobject, rate_func=rate_func, reverse=reverse, reverse_rate_function=True, **kwargs)
 
 
 class FadeOut(FadeIn):
@@ -11038,7 +11090,7 @@ class Scene:
             return
         saved, blocked = {}, set()
         def expose(mobject, snapshot):
-            if mobject in saved:
+            if mobject in saved or snapshot.get('_shared_copy'):
                 return
             saved[mobject] = mobject.__dict__
             mobject.__dict__ = dict(mobject.__dict__)
