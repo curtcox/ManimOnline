@@ -6564,6 +6564,24 @@ class Demo(Scene):
         self.assertEqual(scene.frames[15]['mobjects'][1]['position'],
                          [(a + b) / 2 for a, b in zip(source.position, target.position)])
 
+    def test_create_draws_from_a_starting_copy_that_runs_updaters(self):
+        # Community's ToyExample: the dot's updater moves the starting copy during Create.
+        result = render('c = Circle()\nd = Dot()\nd.add_updater(lambda m: m.next_to(c, DOWN))\nself.add(c)\nself.play(Create(d), rate_func=linear)')
+        dot = result['frames'][10]['mobjects'][1]
+        self.assertLess(dot['position'][1] + dot.get('geometry_center', [0, 0])[1], -1)
+
+    def test_transform_of_written_tex_morphs_glyph_by_glyph(self):
+        result = render('a = Tex("This is some text")\nself.play(Write(a))\nb = Tex("That was a transform").to_corner(UL)\nself.play(Transform(a, b), rate_func=linear)')
+        start = len(result['frames']) - 15
+        def glyphs(node):
+            if 'glyph' in node:
+                return [node]
+            return [g for child in node.get('children', []) for g in glyphs(child)]
+        first = glyphs(result['frames'][start + 7]['mobjects'][0])
+        # Halfway, glyphs have left the center but not yet reached the corner.
+        xs = [g['position'][0] for g in first if g['opacity'] > 0]
+        self.assertTrue(xs and -5 < min(xs) < -2.5)
+
     def test_transform_from_copy_source_can_animate_while_copy_holds_terminal(self):
         source = lite.Square().shift(lite.LEFT * 2)
         target = lite.Square().shift(lite.RIGHT * 2)

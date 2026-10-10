@@ -5442,6 +5442,10 @@ def _glyph_family(mobject):
                 _explode_math(member)
 
 
+def _has_glyphs(mobject):
+    return any('glyph' in member.__dict__ or '_char_index' in member.__dict__ for member in mobject.get_family())
+
+
 def _explode_math(leaf):
     """Split a formula leaf (a whole single-string formula or one part) into glyph leaves
     placed by the browser-measured (or, before measurement, estimated) glyph boxes."""
@@ -9064,6 +9068,19 @@ def _sample_transform(plan, alpha, path_arc=0, member_alpha=None):
         return own
     if member_alpha is not None and kind != 'group':
         alpha = member_alpha()
+    if kind == 'fade' and {start['type'], target['type']} <= {'text', 'mathtex'}:
+        # Different glyphs: each slides and scales onto the other's place while they
+        # cross-fade, approximating Community's outline morph between glyphs.
+        first, last = interpolate(start, target, alpha), interpolate(target, start, 1 - alpha)
+        for state, source in ((first, start), (last, target)):
+            for key in ('type', 'text', 'tex_string', 'glyph', 'part', 'part_strings', 'sub', '_char_index'):
+                if key in source:
+                    state[key] = copy.deepcopy(source[key])
+                else:
+                    state.pop(key, None)
+        first['opacity'] = start['opacity'] * (1 - alpha)
+        last['opacity'] = target['opacity'] * alpha
+        return [first, last]
     if kind == 'fade':
         first, last = _snapshot_copy(start), _snapshot_copy(target)
         first['opacity'] *= 1 - alpha
@@ -9296,16 +9313,27 @@ class Animation:
         if self.remover:
             scene.remove(self.mobject)
 
+    # Animations drawn from their starting copy, which (as Community's starting_mobject)
+    # keeps the mobject's updaters and is updated every frame.
+    _start_follows_updaters = False
+
     def _advance_copies(self, dt):
         """Community's Animation.update_mobjects: run updaters on internal copies."""
         if self._community_style:
             self.update_mobjects(dt)
+            return
+        live = self.__dict__.get('_live_start')
+        if live is not None:
+            live.update(dt)
+            self.start = live.to_dict()
 
     def begin(self, scene=None):
         if scene is None:
             return self._community_begin()
         scene._introduce(self.mobject)
         self.start = self.mobject.to_dict()
+        if self._start_follows_updaters and any(m.updaters for m in self.mobject.get_family()):
+            self._live_start = self.mobject.copy()
 
     def sample(self, alpha):
         return [self.start]
@@ -9495,6 +9523,7 @@ class ShrinkToCenter(GrowFromCenter):
 class Create(Animation):
     """Trace outlines; Community's default lag_ratio=1 draws members in sequence."""
     _lagged = True
+    _start_follows_updaters = True
 
     def __init__(self, mobject, lag_ratio=1.0, introducer=True, **kwargs):
         _glyph_family(mobject)
@@ -9567,6 +9596,7 @@ class Uncreate(Create):
 class DrawBorderThenFill(Animation):
     """Draw each member's outline, then interpolate to its fill and stroke."""
     _lagged = True
+    _start_follows_updaters = True
 
     def __init__(self, vmobject, run_time=2, rate_func=double_smooth, stroke_width=2,
                  stroke_color=None, introducer=True, **kwargs):
@@ -9666,6 +9696,10 @@ class Transform(Animation):
         self.target = target_mobject.copy()
 
     def begin(self, scene):
+        # Community morphs text glyph by glyph: once either side has been split into
+        # glyphs (by Write, Create or indexing), split the other side to match.
+        if _has_glyphs(self.mobject) != _has_glyphs(self.target):
+            _glyph_family(self.target if _has_glyphs(self.mobject) else self.mobject)
         super().begin(scene)
         self._transform_plan = None
         self._path_target = None
