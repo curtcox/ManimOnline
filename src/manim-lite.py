@@ -13,6 +13,7 @@ import math
 import numbers
 import operator
 import random
+import re
 import struct
 import sys
 import types
@@ -11248,7 +11249,7 @@ class Scene:
             for node in frame['mobjects']:
                 lay_out(node)
         return {'frames': self.frames, 'fps': FPS, 'duration': (len(self.frames)-1)/FPS,
-                'math_estimated': sorted(_MATH_ESTIMATED)}
+                'math_estimated': sorted(_MATH_ESTIMATED), 'typst_pending': sorted(_TYPST_PENDING)}
 
 
 class MovingCameraScene(Scene):
@@ -13050,6 +13051,16 @@ class ThreeDAxes(Axes):
         self.axis_labels = VGroup(self.get_x_axis_label(x_label), self.get_y_axis_label(y_label),
                                   self.get_z_axis_label(z_label))
         return self.axis_labels
+
+
+def _solve3(rows, rhs):
+    """Cramer's rule for a 3x3 linear system."""
+    det = _det3(rows)
+    result = []
+    for column in range(3):
+        replaced = [[rhs[r] if c == column else rows[r][c] for c in range(3)] for r in range(3)]
+        result.append(_det3(replaced) / det)
+    return result
 
 
 def _det3(rows):
@@ -15474,6 +15485,7 @@ class VMobjectFromSVGPath(VMobject):
 class SVGMobject(VGroup):
     """Community's SVGMobject: one VMobject per SVG shape, y flipped, centered and fit
     to height 2. The browser has no file system, so pass SVG markup as file_name."""
+    _frame_excluded = ('_svg_shape_sources',)
     def __init__(self, file_name=None, should_center=True, height=2, width=None, color=None, opacity=None,
                  fill_color=None, fill_opacity=None, stroke_color=None, stroke_opacity=None, stroke_width=None,
                  svg_default=None, path_string_config=None, use_svg_cache=True, **kwargs):
@@ -15492,6 +15504,7 @@ class SVGMobject(VGroup):
         self.path_string_config = dict(path_string_config or {})
         self.id_to_vgroup_dict = {}
         self._svg_shapes = 0
+        self._svg_shape_sources = []
         shapes = self._parse(markup)
         if shapes:
             # SVG y points down: mirror each shape about the drawing's center (Community's flip).
@@ -15586,6 +15599,10 @@ class SVGMobject(VGroup):
                 mobject.apply_matrix([[a, c], [b, d]], about_point=ORIGIN)
             mobject.shift(Vector((e, f, 0)))
             result.append(mobject)
+            # The SVG transform and stroke width each shape was drawn with (Typst uses them).
+            stroke = current.get('stroke')
+            self._svg_shape_sources.append((mobject, transform, _svg_number(current.get('stroke-width'), 1.0)
+                                            if stroke and stroke != 'none' else 0))
             for group_name in ['root'] + names:
                 groups.setdefault(group_name, []).append(mobject)
         visit(root, style, matrix, [], 0)
@@ -15649,6 +15666,383 @@ class SVGMobject(VGroup):
         mobject.set_style(stroke_width=_svg_number(style.get('stroke-width'), 1.0) if stroke else 0,
                           stroke_color=stroke, stroke_opacity=alpha(stroke_alpha, 'stroke-opacity') * opacity if stroke else None,
                           fill_color=fill, fill_opacity=alpha(fill_alpha, 'fill-opacity') * opacity if fill else 0)
+
+
+# Community 0.22's Typst: compiled by the typst package, here by typst.ts in the page. Python
+# records each document it needs (typst_pending); the page compiles them and renders again.
+TYPST_COMPILATION_FONT_SIZE = 10
+_TYPST_TEMPLATE = ('#set page(width: auto, height: auto, margin: 0pt, fill: none)\n'
+                   '#set text(size: {text_size}pt)\n{preamble}\n{body}\n')
+_TYPST_SVGS = {}
+_TYPST_PENDING = set()
+_TYPST_LABEL = re.compile(r'^(.*)\s*:\s*([a-zA-Z_][a-zA-Z0-9_-]*)\s*$', re.DOTALL)
+_TYPST_INTERNAL_ID = re.compile(r'g[0-9A-Fa-f]+')
+_TYPST_DUPLICATE = '__manim_typst_dup_'
+_TYPST_STROKE_SCALE = 0.5
+_TYPST_LEAF_TAGS = {'circle', 'ellipse', 'image', 'line', 'path', 'polygon', 'polyline', 'rect', 'text', 'use'}
+
+
+def _typst_document(code, preamble=''):
+    """The compiled SVG of a Typst body, or None (requested from the page) until compiled."""
+    source = _TYPST_TEMPLATE.format(text_size=TYPST_COMPILATION_FONT_SIZE, preamble=preamble, body=code)
+    if len(source) > 100000:
+        raise ValueError('Typst sources are limited to 100000 characters')
+    svg = _TYPST_SVGS.get(source)
+    if svg is None:
+        if len(_TYPST_PENDING) >= 64:
+            raise ValueError('Preview is limited to 64 distinct Typst documents.')
+        _TYPST_PENDING.add(source)
+    return svg
+
+
+def _typst_placeholder(code, font_size):
+    """An invisible box roughly the size of the text, until the page has compiled it."""
+    width = max(1, len(re.sub(r'\s+', ' ', code).strip())) * 5
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} 10"><path d="M0 0H{width}V10H0Z" '
+            f'fill="#000000" fill-opacity="0"/></svg>')
+
+
+def _manimgrp_preamble(target):
+    target_value = 'none' if target is None else f'"{target}"'
+    return f'#let manimgrp(lbl, body) = if lbl == {target_value} {{ hide(body) }} else {{ body }}'
+
+
+def _svg_local_tag(element):
+    return element.tag.rsplit('}', 1)[-1] if isinstance(element.tag, str) else ''
+
+
+def _iter_svg_leaves(parent, transform=(1, 0, 0, 1, 0, 0), inside_defs=False):
+    """Rendered SVG leaves (parent, index, element, effective transform) in drawing order."""
+    for index, element in enumerate(list(parent)):
+        tag = _svg_local_tag(element)
+        hidden = inside_defs or tag == 'defs'
+        effective = _svg_compose(transform, _svg_transform(element.get('transform')))
+        if not hidden and tag in _TYPST_LEAF_TAGS:
+            yield parent, index, element, effective
+        yield from _iter_svg_leaves(element, effective, hidden)
+
+
+def _svg_leaf_signatures(markup):
+    from xml.etree import ElementTree
+    root = ElementTree.fromstring(markup)
+    result = []
+    for _, _, element, transform in _iter_svg_leaves(root):
+        attributes = tuple(sorted((k, v) for k, v in element.attrib.items() if k != 'transform'))
+        result.append((_svg_local_tag(element), attributes, tuple(element.itertext()),
+                       tuple(round(v, 12) for v in transform)))
+    return result
+
+
+def _hidden_leaf_indices(visible, probe):
+    hidden, at = set(), 0
+    for index, signature in enumerate(visible):
+        if at < len(probe) and signature == probe[at]:
+            at += 1
+        else:
+            hidden.add(index)
+    if at != len(probe):
+        raise ValueError('The MathTypst grouping probe changed visible SVG geometry instead of only hiding '
+                         'captured leaves. A custom Typst show rule for `hide` may be interfering with '
+                         'subexpression selection.')
+    return hidden
+
+
+class Typst(SVGMobject):
+    """Typst markup compiled to SVG (by typst.ts in the page) and imported like Community."""
+    _frame_excluded = ('_svg_shape_sources', '_label_aliases', '_svg_leaf_labels', '_typst_tracked')
+
+    def __init__(self, typst_code, *, font_size=DEFAULT_FONT_SIZE, typst_preamble='', color=None,
+                 stroke_width=None, font_paths=None, track_baselines=False, should_center=True,
+                 height=None, **kwargs):
+        if not isinstance(typst_code, str) or not isinstance(typst_preamble, str):
+            raise TypeError('Typst expects Typst source strings')
+        NumberLine._real(font_size, 'Typst font_size', positive=True)
+        if font_paths:
+            raise NotImplementedError('The browser preview compiles Typst with its bundled fonts only')
+        self.typst_code, self.typst_preamble, self.track_baselines = typst_code, typst_preamble, bool(track_baselines)
+        self._preserve_svg_stroke_widths = stroke_width is None
+        labels = self.__dict__.get('_svg_leaf_labels', {})
+        svg = _typst_document(typst_code, typst_preamble)
+        # Until the page has compiled the document, a placeholder keeps layout going.
+        self._typst_waiting = svg is None
+        markup = self._labelled(svg, labels) if svg is not None else _typst_placeholder(typst_code, font_size)
+        super().__init__(markup, should_center=should_center, height=height, stroke_width=stroke_width, **kwargs)
+        self._svg_leaf_labels = labels
+        sources = self.__dict__.pop('_svg_shape_sources', [])
+        # Per shape: (index, reference size, source stroke width, reference points, baseline frame).
+        self._typst_tracked = []
+        for index, (mobject, transform, width) in enumerate(sources):
+            if mobject not in self.children:
+                continue
+            a, b, c, d, e, f = transform
+            frame = [[e, -f, 0], [a + e, -(b + f), 0], [c + e, -(d + f), 0]]
+            self._typst_tracked.append([self.children.index(mobject), max(mobject.get_width(), mobject.get_height()),
+                                        width, [list(p) for p in mobject.get_points()], frame])
+        self._rebuild_label_aliases()
+        color = VMobject().color if color is None else color
+        # Community's init_colors: members drawn in Typst's default black (filled glyphs or
+        # stroked rules) take the mobject's color; explicitly colored Typst content keeps its own.
+        black = ('#000000', '#000')
+        for child in self.children:
+            filled = child.get_fill_opacity() > 0
+            paint = child.get_fill_color() if filled else child.get_stroke_color()
+            if str(paint).upper() in black:
+                child.set_color(color)
+        self.initial_height = self.get_height()
+        self._refresh_svg_stroke_widths()
+        if height is None and self.initial_height > 0:
+            self.font_size = font_size
+
+    @staticmethod
+    def _labelled(markup, leaf_labels):
+        """Wrap labelled leaves (MathTypst groups) and data-typst-label elements in id groups."""
+        from xml.etree import ElementTree
+        if not leaf_labels and 'data-typst-label' not in markup:
+            return markup
+        root = ElementTree.fromstring(markup)
+        counts = {}
+        def next_id(label):
+            count = counts.get(label, 0)
+            counts[label] = count + 1
+            return label if count == 0 else f'{label}{_TYPST_DUPLICATE}{count}'
+        if leaf_labels:
+            for leaf_index, (parent, index, element, _) in enumerate(list(_iter_svg_leaves(root))):
+                wrapped = element
+                for label in reversed(leaf_labels.get(leaf_index, [])):
+                    namespace = wrapped.tag.partition('}')[0] + '}' if '}' in wrapped.tag else ''
+                    group = ElementTree.Element(f'{namespace}g', {'id': next_id(label)})
+                    group.append(wrapped)
+                    wrapped = group
+                parent[index] = wrapped
+        for element in root.iter():
+            label = element.get('data-typst-label')
+            if label is not None:
+                element.set('id', next_id(label))
+                del element.attrib['data-typst-label']
+        return ElementTree.tostring(root, encoding='unicode')
+
+    def __repr__(self):
+        return f'{type(self).__name__}({self.typst_code!r})'
+
+    @property
+    def font_size(self):
+        return self.get_height() / self.initial_height / SCALE_FACTOR_PER_FONT_POINT
+
+    @font_size.setter
+    def font_size(self, value):
+        NumberLine._real(value, 'Typst font_size', positive=True)
+        if self.get_height() > 0:
+            self.scale(value / self.font_size)
+
+    def scale(self, scale_factor, scale_stroke=False, **kwargs):
+        result = super().scale(scale_factor, scale_stroke=scale_stroke, **kwargs) if scale_stroke else \
+            super().scale(scale_factor, **kwargs)
+        if '_typst_tracked' in self.__dict__:
+            self._refresh_svg_stroke_widths()
+        return result
+
+    def _refresh_svg_stroke_widths(self):
+        """Community keeps Typst's own stroke weights (fraction bars, rules) proportional to size."""
+        if not self._preserve_svg_stroke_widths:
+            return
+        pixels_per_unit = config.pixel_width / config.frame_width
+        for index, reference, width, _, _ in self._typst_tracked:
+            if not width or reference <= 0 or index >= len(self.children):
+                continue
+            child = self.children[index]
+            size = max(child.get_width(), child.get_height())
+            child.set_stroke(width=width * size / reference * pixels_per_unit * _TYPST_STROKE_SCALE, family=False)
+
+    def get_baseline_frame(self, submobject):
+        """Community's (origin, right, up) of a glyph's Typst baseline frame, following the
+        submobject's current placement (a least-squares affine fit of its points)."""
+        entry = next((t for t in self.__dict__.get('_typst_tracked', ())
+                      if t[0] < len(self.children) and self.children[t[0]] is submobject), None)
+        if not self.track_baselines or entry is None:
+            raise ValueError('No tracked Typst baseline frame is available for this submobject. '
+                             'Construct the Typst mobject with track_baselines=True.')
+        reference, current = entry[3], submobject.get_points()
+        if len(reference) != len(current) or len(reference) < 3:
+            raise ValueError('The stored Typst reference geometry is degenerate, so its baseline frame '
+                             'cannot be recovered.')
+        rows = [[p[0], p[1], 1.0] for p in reference]
+        normal = [[sum(r[i] * r[j] for r in rows) for j in range(3)] for i in range(3)]
+        if abs(_det3(normal)) < 1e-12:
+            raise ValueError('The stored Typst reference geometry is degenerate, so its baseline frame '
+                             'cannot be recovered.')
+        solution = []
+        for axis in range(3):
+            rhs = [sum(r[i] * q[axis] for r, q in zip(rows, current)) for i in range(3)]
+            solution.append(_solve3(normal, rhs))
+        result = []
+        for x, y, _ in entry[4]:
+            result.append(Vector(sum(c * v for c, v in zip(column, (x, y, 1.0))) for column in solution))
+        return tuple(result)
+
+    @property
+    def baseline_frames(self):
+        if not self.track_baselines:
+            return []
+        return [self.get_baseline_frame(self.children[t[0]]) for t in self._typst_tracked
+                if t[0] < len(self.children)]
+
+    def _rebuild_label_aliases(self):
+        aliases = {}
+        for key in self.id_to_vgroup_dict:
+            if key == 'root' or key.startswith('numbered_group_') or _TYPST_INTERNAL_ID.fullmatch(key):
+                continue
+            base = key.partition(_TYPST_DUPLICATE)[0] if _TYPST_DUPLICATE in key else key
+            aliases.setdefault(base, []).append(key)
+        self._label_aliases = aliases
+
+    def _user_label_keys(self):
+        return list(self._label_aliases)
+
+    def _select_label(self, label):
+        if self.__dict__.get('_typst_waiting') and label not in self._label_aliases:
+            return VGroup()
+        if label not in self._label_aliases:
+            raise KeyError(f'No group with label {label!r} found. Available labels: {self._user_label_keys()}')
+        result, seen = VGroup(), set()
+        for group_id in self._label_aliases[label]:
+            for member in self.id_to_vgroup_dict.get(group_id, ()):
+                if id(member) not in seen:
+                    seen.add(id(member))
+                    result.add(member)
+        return result
+
+    def select(self, key):
+        if isinstance(key, int):
+            label = f'_grp-{key}'
+            if label not in self._label_aliases and not self.__dict__.get('_typst_waiting'):
+                raise IndexError(f'Group index {key} out of range. Available labels: {self._user_label_keys()}')
+            return self._select_label(label)
+        return self._select_label(key)
+
+
+class MathTypst(Typst):
+    """A Typst math expression ($ ... $) whose {{ body : label }} groups can be selected."""
+    def __init__(self, math_expression, **kwargs):
+        processed, labels = self._preprocess_groups(math_expression)
+        self._group_labels = labels
+        typst_code = f'$ {processed} $'
+        distinct = list(dict.fromkeys(labels))
+        if distinct:
+            user_preamble = kwargs.get('typst_preamble', '')
+            final_preamble = _manimgrp_preamble(None) + (f'\n{user_preamble}' if user_preamble else '')
+            final_svg = _typst_document(typst_code, final_preamble)
+            probes = {label: _typst_document(typst_code, _manimgrp_preamble(label) +
+                                             (f'\n{user_preamble}' if user_preamble else ''))
+                      for label in distinct}
+            leaf_labels = {}
+            if final_svg is not None and all(svg is not None for svg in probes.values()):
+                visible = _svg_leaf_signatures(final_svg)
+                for label in distinct:
+                    try:
+                        hidden = _hidden_leaf_indices(visible, _svg_leaf_signatures(probes[label]))
+                    except ValueError as error:
+                        raise ValueError(f'Could not map MathTypst group {label!r} to SVG leaves. {error}') from error
+                    for index in sorted(hidden):
+                        leaf_labels.setdefault(index, []).append(label)
+            self._svg_leaf_labels = leaf_labels
+            kwargs['typst_preamble'] = final_preamble
+        super().__init__(typst_code, **kwargs)
+        for label in distinct:
+            self._label_aliases.setdefault(label, [])
+
+    @staticmethod
+    def _preprocess_groups(math_expr):
+        """Community's {{ body : label }} rewriting into manimgrp("label", body) calls."""
+        labels, auto = [], 0
+        def process(expression):
+            nonlocal auto
+            result, i, n, in_string, depth_bracket = [], 0, len(expression), False, 0
+            while i < n:
+                ch = expression[i]
+                if in_string:
+                    result.append(ch)
+                    if ch == '\\' and i + 1 < n:
+                        result.append(expression[i + 1])
+                        i += 2
+                        continue
+                    if ch == '"':
+                        in_string = False
+                    i += 1
+                    continue
+                if ch == '"':
+                    in_string = True
+                    result.append(ch)
+                    i += 1
+                    continue
+                if ch == '[':
+                    depth_bracket += 1
+                    result.append(ch)
+                    i += 1
+                    continue
+                if ch == ']' and depth_bracket > 0:
+                    depth_bracket -= 1
+                    result.append(ch)
+                    i += 1
+                    continue
+                if depth_bracket > 0 or i + 1 >= n or ch != '{' or expression[i + 1] != '{':
+                    result.append(ch)
+                    i += 1
+                    continue
+                start = i
+                i += 2
+                content_start, depth, group_string, group_bracket = i, 1, False, 0
+                content = None
+                while i < n and depth > 0:
+                    ch = expression[i]
+                    if group_string:
+                        if ch == '\\' and i + 1 < n:
+                            i += 2
+                            continue
+                        if ch == '"':
+                            group_string = False
+                        i += 1
+                        continue
+                    if ch == '"':
+                        group_string = True
+                        i += 1
+                        continue
+                    if ch == '[':
+                        group_bracket += 1
+                        i += 1
+                        continue
+                    if ch == ']' and group_bracket > 0:
+                        group_bracket -= 1
+                        i += 1
+                        continue
+                    if group_bracket > 0:
+                        i += 1
+                        continue
+                    if ch == '{' and i + 1 < n and expression[i + 1] == '{':
+                        depth += 1
+                        i += 2
+                        continue
+                    if ch == '}' and i + 1 < n and expression[i + 1] == '}':
+                        depth -= 1
+                        if depth == 0:
+                            content = expression[content_start:i]
+                            i += 2
+                            break
+                        i += 2
+                        continue
+                    i += 1
+                if content is None:
+                    result.append(expression[start:])
+                    return ''.join(result)
+                match = _TYPST_LABEL.match(content)
+                if match is not None:
+                    body, label = match.group(1).strip(), match.group(2)
+                else:
+                    body, label = content.strip(), f'_grp-{auto}'
+                    auto += 1
+                labels.append(label)
+                result.append(f'manimgrp("{label}", {process(body)})')
+            return ''.join(result)
+        return process(math_expr), labels
 
 
 _IMAGE_PIXEL_LIMIT = 4000000
@@ -17959,7 +18353,7 @@ EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'ZoomedScene', 'VectorScene',
 EXPORTS += [name for name in _PALETTE if name not in EXPORTS]
 # Community utilities (manim.utils.*).
 EXPORTS += ['ManimBanner', 'MANIM_SVG_PATHS', 'SampleSpace', 'TransformAnimations', 'X_AXIS', 'Y_AXIS', 'Z_AXIS', 'DEFAULT_DASH_LENGTH', 'DEFAULT_POINTWISE_FUNCTION_RUN_TIME', 'DEFAULT_WAIT_TIME', 'SCALE_FACTOR_PER_FONT_POINT', 'START_X', 'START_Y', 'integer_interpolate', 'mid', 'inverse_interpolate', 'match_interpolate', 'midpoint', 'normalize', 'rotation_about_z', 'rotation_matrix', 'rotate_vector', 'z_to_vector', 'get_unit_normal', 'get_shaded_rgb', 'compass_directions', 'regular_vertices', 'complex_to_R3', 'R3_to_complex', 'complex_func_to_R3_func', 'center_of_mass', 'cross2d', 'shoelace', 'shoelace_direction', 'perpendicular_bisector', 'cartesian_to_spherical', 'spherical_to_cartesian', 'find_intersection', 'get_winding_number', 'thick_diagonal', 'bezier', 'split_bezier', 'partial_bezier_points', 'subdivide_bezier', 'bezier_remap', 'point_lies_on_bezier', 'proportions_along_bezier_curve_for_point', 'get_smooth_cubic_bezier_handle_points', 'is_closed', 'straight_path', 'path_along_arc', 'clockwise_path', 'counterclockwise_path', 'adjacent_n_tuples', 'adjacent_pairs', 'all_elements_are_instances', 'concatenate_lists', 'list_update', 'list_difference_update', 'listify', 'make_even', 'make_even_by_cycling', 'remove_list_redundancies', 'remove_nones', 'stretch_array_to_length', 'tuplify', 'choose', 'clip', 'binary_search', 'color_to_rgba', 'rgba_to_color', 'color_to_int_rgb', 'color_to_int_rgba', 'merge_dicts_recursively', 'update_dict_recursively', 'tempconfig', 'override_animate', 'override_animation', 'index_labels', 'print_family', 'assert_is_mobject_method', 'turn_animation_into_updater', 'cycle_animation']
-EXPORTS += ['LineJointType', 'CapStyleType', 'register_font']
+EXPORTS += ['LineJointType', 'CapStyleType', 'register_font', 'Typst', 'MathTypst']
 
 
 def _rounded_array(value):
@@ -18155,6 +18549,23 @@ def _render_scene(source, scene_name=None, compact=False):
     return json.dumps(result, allow_nan=False, default=plain)
 
 
+def _set_typst_svgs(typst_svgs):
+    svgs = {}
+    if typst_svgs is not None:
+        items = typst_svgs.items() if hasattr(typst_svgs, 'items') else None
+        if items is None:
+            raise TypeError('Typst SVGs must map Typst documents to SVG markup')
+        for source, svg in items:
+            if not isinstance(source, str) or not isinstance(svg, str) or len(svg) > 2000000:
+                raise ValueError('Typst SVGs must map Typst documents to SVG markup of at most 2 MB')
+            svgs[source] = svg
+            if len(svgs) > 256:
+                raise ValueError('At most 256 Typst documents may be supplied')
+    _TYPST_SVGS.clear()
+    _TYPST_SVGS.update(svgs)
+    _TYPST_PENDING.clear()
+
+
 def _set_math_metrics(math_metrics):
     metrics = {}
     if math_metrics is not None:
@@ -18192,8 +18603,9 @@ def _set_math_metrics(math_metrics):
     _MATH_ESTIMATED.clear()
 
 
-def render_scene(source, scene_name=None, math_metrics=None, compact=False):
-    """Render frames; math_metrics holds browser-measured MathTex ink sizes in em.
+def render_scene(source, scene_name=None, math_metrics=None, compact=False, typst_svgs=None):
+    """Render frames; math_metrics holds browser-measured MathTex ink sizes in em and
+    typst_svgs maps Typst documents (as requested in typst_pending) to compiled SVG.
 
     compact=True pools repeated top-level snapshots (decoded by the worker)."""
     global config
@@ -18201,6 +18613,7 @@ def render_scene(source, scene_name=None, math_metrics=None, compact=False):
     config = PreviewConfig()
     try:
         _set_math_metrics(math_metrics)
+        _set_typst_svgs(typst_svgs)
         return _render_scene(source, scene_name, compact)
     finally:
         config = previous

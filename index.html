@@ -563,6 +563,7 @@ class HelloWorld(Scene):
   <script src="src/manim-player.js?v=mathtex-1"></script>
   <script src="src/examples.js"></script>
   <script src="src/manim-math.js?v=7"></script>
+  <script src="src/manim-typst.js?v=2"></script>
   <script src="src/manim-export.js?v=1"></script>
   <script src="src/offline.js?v=1"></script>
   <script>
@@ -1050,6 +1051,7 @@ class HelloWorld(Scene):
       }
 
       const mathMetrics = new Map();
+      const typstSvgs = new Map();
       async function renderManim() {
         const revision = renderRevision;
         reviewer.classList.add('working');
@@ -1058,8 +1060,23 @@ class HelloWorld(Scene):
         try {
           const code = editor.getSession().getDocument().getValue();
           const sceneName = sceneNameInput.value.trim();
-          let sceneData = await manimClient.render(code, { sceneName, mathMetrics: Object.fromEntries(mathMetrics) });
+          const renderOptions = () => ({ sceneName, mathMetrics: Object.fromEntries(mathMetrics),
+            typstSvgs: Object.fromEntries(typstSvgs) });
+          let sceneData = await manimClient.render(code, renderOptions());
           if (revision !== renderRevision) return;
+          // Typst documents are compiled here (typst.ts) and imported by Python on a second pass.
+          if ((sceneData.typst_pending || []).length) {
+            pyodideStatus.textContent = 'Compiling Typst…';
+            const compiled = await ManimTypst.compile(sceneData.typst_pending, () => revision === renderRevision);
+            if (revision !== renderRevision || !compiled) return;
+            for (const [source, svg] of Object.entries(compiled)) {
+              typstSvgs.delete(source);
+              typstSvgs.set(source, svg);
+              if (typstSvgs.size > 256) typstSvgs.delete(typstSvgs.keys().next().value);
+            }
+            sceneData = await manimClient.render(code, renderOptions());
+            if (revision !== renderRevision) return;
+          }
           const expressions = ManimMath.expressions(sceneData);
           if (expressions.size) pyodideStatus.textContent = 'Rendering math…';
           sceneData.mathGlyphs = await ManimMath.prepare(sceneData, () => revision === renderRevision);
@@ -1072,7 +1089,7 @@ class HelloWorld(Scene):
           // Python placed unmeasured formulas with estimates; repeat once with real sizes.
           if ((sceneData.math_estimated || []).some(expression => mathMetrics.has(expression))) {
             pyodideStatus.textContent = 'Placing math…';
-            sceneData = await manimClient.render(code, { sceneName, mathMetrics: Object.fromEntries(mathMetrics) });
+            sceneData = await manimClient.render(code, renderOptions());
             if (revision !== renderRevision) return;
             sceneData.mathGlyphs = await ManimMath.prepare(sceneData, () => revision === renderRevision);
             if (revision !== renderRevision) return;

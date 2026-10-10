@@ -993,6 +993,53 @@ self.play(UntypeWithCursor(text, cursor))""")['frames']
         glyphs = lite.MarkupText(words)
         self.assertEqual([g._char_index for g in glyphs][-4:], [len(words) - 4 + i for i in range(4)])
 
+    def test_typst_documents_compile_in_the_page_and_import_like_community(self):
+        def document(body, preamble=''):
+            return lite._TYPST_TEMPLATE.format(text_size=10, preamble=preamble, body=body)
+        glyph = '<path id="g{0}" d="M0 0L{1} 0L{1} 7L0 7Z"/>'
+        def svg(leaves, extra=''):
+            uses = ''.join(f'<g transform="translate({x},10)"><use href="#g{n}" fill="#000"/></g>' for n, x in leaves)
+            return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 20" width="40" height="20"><defs>'
+                    + ''.join(glyph.format(n, 4 + n) for n in range(3)) + f'</defs>{uses}{extra}</svg>')
+        # First pass: the document is requested and a placeholder keeps layout going.
+        source = 'from manim import *\nclass S(Scene):\n    def construct(self):\n        self.add(Typst("*Hi*"))\n'
+        first = json.loads(lite.render_scene(source))
+        self.assertEqual(first['typst_pending'], [document('*Hi*')])
+        # Second pass: Community's import, font_size scaling (svg height x font_size / 960) and
+        # recoloring of black glyphs and rules.
+        rule = '<path d="M0 18 L 30 18" stroke-width="0.5" fill="none" stroke="#000"/>'
+        second = json.loads(lite.render_scene(source, typst_svgs={document('*Hi*'): svg([(0, 0), (1, 10)], rule)}))
+        self.assertEqual(second['typst_pending'], [])
+        lite._set_typst_svgs({document('*Hi*'): svg([(0, 0), (1, 10)], rule)})
+        text = lite.Typst('*Hi*', font_size=96)
+        self.assertEqual(len(text), 3)
+        self.assertAlmostEqual(text.get_height(), 8 * 96 / 960)  # glyphs at y 10-17, rule at 18
+        self.assertAlmostEqual(text.font_size, 96)
+        self.assertTrue(all(str(member.get_color()) == '#FFFFFF' for member in text))
+        self.assertGreater(text[2].get_stroke_width(), 0)
+        # data-typst-label groups become selectable labels.
+        labelled = svg([(0, 0)], '<g data-typst-label="picked"><g transform="translate(10,10)"><use href="#g2"/></g></g>')
+        lite._set_typst_svgs({document('#box[x] <picked>'): labelled})
+        picked = lite.Typst('#box[x] <picked>')
+        self.assertEqual(len(picked.select('picked')), 1)
+        with self.assertRaises(KeyError):
+            picked.select('missing')
+        # MathTypst groups: leaves hidden by each layout-preserving probe belong to its label.
+        processed, labels = lite.MathTypst._preprocess_groups('{{ a : lhs }} = {{ c }}')
+        self.assertEqual((processed, labels), ('manimgrp("lhs", a) = manimgrp("_grp-0", c)', ['lhs', '_grp-0']))
+        body = f'$ {processed} $'
+        lite._set_typst_svgs({
+            document(body, lite._manimgrp_preamble(None)): svg([(0, 0), (1, 10), (2, 20)]),
+            document(body, lite._manimgrp_preamble('lhs')): svg([(1, 10), (2, 20)]),
+            document(body, lite._manimgrp_preamble('_grp-0')): svg([(0, 0), (1, 10)])})
+        math = lite.MathTypst('{{ a : lhs }} = {{ c }}')
+        self.assertEqual([len(math.select('lhs')), len(math.select(0))], [1, 1])
+        self.assertIs(math.select('lhs')[0], math[0])
+        self.assertIs(math.select(0)[0], math[2])
+        with self.assertRaises(IndexError):
+            math.select(5)
+        lite._set_typst_svgs(None)
+
     def test_mathtex_parts_and_isolated_substrings_follow_community_0_22(self):
         def colors(m):
             return [[str(g.get_color()) for g in part] for part in m]

@@ -83,14 +83,17 @@ self.onmessage = event => {
       runtime.globals.set('_scene_name', options.sceneName || null);
       // Browser-measured MathTex ink sizes let Python place formulas exactly.
       runtime.globals.set('_math_metrics', runtime.toPy(options.mathMetrics || {}));
+      // Typst documents the page compiled for an earlier pass (typst_pending).
+      runtime.globals.set('_typst_svgs', runtime.toPy(options.typstSvgs || {}));
       try {
-        const result = await runtime.runPythonAsync('render_scene(_source, _scene_name, _math_metrics, compact=True)');
+        const result = await runtime.runPythonAsync('render_scene(_source, _scene_name, _math_metrics, compact=True, typst_svgs=_typst_svgs)');
         if (result.length > 32 * 1024 * 1024) throw new Error('Preview is too large. Use fewer objects or shorter animations.');
         self.postMessage({ id, type: 'manim-result', sceneData: expandPooledScene(JSON.parse(result)) });
       } finally {
         runtime.globals.delete('_source');
         runtime.globals.delete('_scene_name');
         runtime.globals.delete('_math_metrics');
+        runtime.globals.delete('_typst_svgs');
       }
     } catch (error) {
       self.postMessage({ id, type: 'error', error: String(error.message || error).slice(-8000) });

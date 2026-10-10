@@ -662,3 +662,12 @@ the cmr/cmbx/cmti/cmtt/cmss TFM kerns, ligature widths and TeX interword glue
 (`_kerned_text`); ManimMath.patchFractions lays MathJax fractions out as TeX does.
 Text in ThreeDScene is planar: 3D rotations bake into glyph_matrix + glyph_depth and
 frames export `plane3d`, which the renderer projects as an affine glyph map.
+
+Typst/MathTypst follow Community 0.22: Python builds the same documents
+(`_TYPST_TEMPLATE`, 10pt) and lists missing ones in `typst_pending`; the page compiles
+them with typst.ts (`src/manim-typst.js`, lazy CDN WebAssembly) and renders again with
+`typst_svgs`. Keep `ManimTypst.clean` stripping typst.ts's style, script and
+foreignObject overlays. MathTypst groups come from `hide` probe documents compared by
+leaf signature, exactly as Community; a placeholder (and lenient select) covers the
+first pass. Imported black members (glyphs or stroked rules) take the mobject color.
+

@@ -1,6 +1,6 @@
 /** Exact offline dependencies. Bump VERSION whenever any listed local file changes. */
 const OfflineAssets = {
-  VERSION: 'manimonline-offline-v131',
+  VERSION: 'manimonline-offline-v132',
   local: [
     'examples/three_d_scene.py',
     'examples/banner_scene.py',
@@ -66,7 +66,7 @@ const OfflineAssets = {
     'index.html', 'ace/ace.js', 'ace/theme-twilight.js', 'ace/mode-python.js', 'ace/mode-dot.js',
     'viz-global.js', 'svg-pan-zoom.min.js', 'src/detector.js', 'src/render-scheduler.js', 'src/unified-worker.js',
     'src/manim-lite.py', 'src/manim-client.js', 'src/manim-renderer.js', 'src/manim-player.js',
-    'src/manim-math.js', 'src/manim-export.js', 'src/examples.js', 'src/offline.js', 'src/share-links.js',
+    'src/manim-math.js', 'src/manim-typst.js', 'src/manim-export.js', 'src/examples.js', 'src/offline.js', 'src/share-links.js',
     'examples/minimal_scene.py', 'examples/math_scene.py', 'examples/multiple_scenes.py',
     'examples/creation_and_rotation.py', 'examples/layout_scene.py', 'examples/staggered_scene.py',
     'examples/succession_scene.py', 'examples/auto_zoom_scene.py', 'examples/updater_scene.py', 'examples/value_tracker_scene.py', 'examples/redraw_scene.py', 'examples/numeric_scene.py', 'examples/trace_scene.py', 'examples/ellipse_scene.py', 'examples/sector_scene.py', 'examples/annulus_scene.py',

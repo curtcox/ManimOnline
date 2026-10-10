@@ -1564,4 +1564,18 @@ The **3D axes, surfaces and solids** example covers `ThreeDScene` (`set_camera_o
 colorscales and 3D `plot_parametric_curve`, and the solids `Sphere`, `Cube`, `Torus`,
 `Cylinder`, `Cone`, `Line3D` and `Arrow3D`. `Rotate` accepts any axis. Frames carry
 world-space geometry and the renderer applies Community's projection, start-corner shading
-and depth sorting, so camera moves are cheap; text stays an upright billboard in 3D.
+and depth sorting, so camera moves are cheap; text is a planar object turned and foreshortened by the camera, as in Community (fixed-in-frame and fixed-orientation text face the camera).
+
+`MathTex` and `Tex` now follow Manim 0.22's part rules: parts are the string
+arguments and `{{ }}` groups; `substrings_to_isolate` and `tex_to_color_map` tag
+glyph groups for `get_part_by_tex`/`set_color_by_tex` (exact matches) without
+splitting parts. `Tex` text runs use Computer Modern kerning, ligature widths and
+TeX word spacing, `\\` line breaks and `&` alignment use LaTeX's row spacing, and
+`\LaTeX`/`\TeX` use LaTeX's logo construction.
+
+`Typst` and `MathTypst` (Manim 0.22) are compiled in the browser by typst.ts
+0.7.0, a WebAssembly build of the Typst compiler loaded from jsDelivr on first use
+(about 30 MB, so the first Typst render needs internet access and takes a few
+seconds). As in Community, the SVG is imported like `SVGMobject`, scaled by
+`font_size`, recolored, and `select()` finds `<label>` content and `{{ body : label }}`
+groups. Custom font paths are not available in the browser.
