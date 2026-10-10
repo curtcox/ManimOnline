@@ -1382,8 +1382,9 @@ assert isinstance(t.get_value(), (int, float))""")
         edge=render('s = Square()\nself.play(GrowFromEdge(s, DOWN), rate_func=linear, run_time=2)')['frames'][15]['mobjects'][0]
         self.assertAlmostEqual(lite.Vector(edge['position'])[1]+edge['geometry_center'][1],-.5)
         spin=render('s = Square()\nself.play(SpinInFromNothing(s), rate_func=linear, run_time=2)')['frames'][15]['mobjects'][0]
-        self.assertAlmostEqual(spin['angle'],-lite.PI/8)
-        self.assertAlmostEqual(spin['geometry_scale'],lite.math.sin(lite.PI/8)/lite.math.sin(lite.PI/4))
+        # Community's spiral_path(PI/2): scale alpha, turn (alpha - 1) * PI/2.
+        self.assertAlmostEqual(spin['angle'],-lite.PI/4)
+        self.assertAlmostEqual(spin['geometry_scale'],.5)
         moving=render('t = ValueTracker(0)\nd = Dot()\nself.add(d)\nself.play(t.animate.set_value(4), UpdateFromFunc(d, lambda m: m.move_to(RIGHT*t.get_value())), rate_func=linear, run_time=2)')
         self.assertAlmostEqual(moving['frames'][15]['mobjects'][0]['position'][0],2)
         self.assertAlmostEqual(moving['frames'][-1]['mobjects'][0]['position'][0],4)
@@ -6214,6 +6215,51 @@ self.wait(1)""")
         self.assertEqual(result['duration'], 4)
         for index, angle in ((15, lite.PI / 4), (30, lite.PI / 2), (45, 3 * lite.PI / 4), (60, lite.PI)):
             self.assertAlmostEqual(result['frames'][index]['mobjects'][0]['angle'], angle)
+
+    def test_updaters_see_partially_drawn_paths_like_community(self):
+        # Manim 0.22 values: Create traces with pointwise_become_partial, so get_end() and
+        # bounds follow the drawn part; Uncreate runs it backwards.
+        source = """from manim import *
+class Demo(Scene):
+    def construct(self):
+        line, sq, self.log = Line(LEFT * 2, RIGHT * 2), Square(), []
+        self.add_updater(lambda dt: self.log.append((round(line.get_end()[0], 3),
+                         [round(v, 3) for v in list(sq.get_critical_point(DL)[:2]) + list(sq.get_critical_point(UR)[:2])])))
+        self.play(Create(line), Create(sq), rate_func=linear)
+        self.play(Uncreate(sq), rate_func=linear)
+"""
+        namespace = {}
+        holder = {}
+        original = lite.Scene.render
+        def render(scene, *args, **kwargs):
+            holder['scene'] = scene
+            return original(scene, *args, **kwargs)
+        lite.Scene.render = render
+        try:
+            lite.render_scene(source)
+        finally:
+            lite.Scene.render = original
+        log = holder['scene'].log
+        self.assertEqual([log[i] for i in (0, 3, 7, 11, 15, 29)],
+                         [(-2.0, [1.0, 1.0, 1.0, 1.0]), (-1.2, [-0.6, 1.0, 1.0, 1.0]), (-0.133, [-1.0, -0.733, 1.0, 1.0]),
+                          (0.933, [-1.0, -1.0, 1.0, 1.0]), (2.0, [-1.0, -1.0, 1.0, 1.0]), (2.0, [0.467, 1.0, 1.0, 1.0])])
+
+    def test_piece_indices_switch_rather_than_blend(self):
+        middle = lite.interpolate({'type': 'mathtex', 'glyph': 1, 'part': 0, 'position': [0, 0, 0]},
+                                  {'type': 'mathtex', 'glyph': 4, 'part': 2, 'position': [2, 0, 0]}, 0.5)
+        self.assertEqual((middle['glyph'], middle['part'], middle['position']), (1, 0, [1, 0, 0]))
+        # Glyph leaves keep integer indices while a labeled DiGraph moves (Manim 0.22 example).
+        render('g = DiGraph([0, 1], [(0, 1)], labels=True, layout="circular")\nself.add(g)\n'
+               'self.add_updater(lambda dt: g.get_critical_point(DL))\n'
+               'self.play(g[1].animate.move_to([1, 1, 1]))')
+        # A scaled DiGraph's edge updater pops and re-adds tips every frame; a re-added tip keeps
+        # its world size instead of compounding the graph's scale.
+        render('g = DiGraph([0, 1], [(0, 1)], layout="circular").scale(1.4)\nself.play(Create(g))\n'
+               'w = g.edges[(0, 1)].tip.get_width()\nself.wait(0.5)\n'
+               'assert abs(g.edges[(0, 1)].tip.get_width() - w) < 1e-9, (w, g.edges[(0, 1)].tip.get_width())')
+        # SpinInFromNothing follows spiral_path: a full turn stays finite and bounded.
+        result = render('s = Square()\nself.play(SpinInFromNothing(s, angle=2 * PI), rate_func=linear)')
+        self.assertAlmostEqual(result['frames'][7]['mobjects'][0]['geometry_scale'], 7 / 15)
 
     def test_animation_groups_move_their_members_in_front_like_community(self):
         # Manim 0.22 adds an AnimationGroup's Group of non-introducer mobjects to the scene,

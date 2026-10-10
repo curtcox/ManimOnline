@@ -3505,6 +3505,10 @@ class TipableVMobject(VMobject):
             raise ValueError('at_start must be a boolean')
         if self.geometry_scale == 0:
             raise ValueError('Cannot add a tip to collapsed geometry')
+        if tip is not None and tip not in self.children and self.geometry_scale != 1:
+            # A supplied tip (e.g. one pop_tips released into world coordinates) keeps its
+            # world size, as in Community: express it in this path's local frame.
+            tip.scale(1/abs(self.geometry_scale))
         tip = (self.create_tip(tip_shape,tip_length,tip_width,at_start) if tip is None
                else self.position_tip(tip,at_start))
         self._prepare_tip_path()
@@ -8723,7 +8727,8 @@ def interpolate(start, end, alpha):
         # Tip roles identify aligned child slots, rather than animated values.
         if '_tip_role' in end:
             result['_tip_role'] = end['_tip_role']
-        for key in ('part', 'part_strings'):
+        # Part, glyph and character indices identify drawn pieces; they switch, never blend.
+        for key in ('part', 'part_strings', 'glyph', 'sub', '_char_index', 'num_components'):
             if key in start or key in end:
                 result[key] = copy.deepcopy(end.get(key) if alpha >= 1 or key not in start else start[key])
         if 'subpath_lengths' in start:
@@ -10511,15 +10516,16 @@ class GrowArrow(GrowFromPoint):
 
 
 class SpinInFromNothing(GrowFromCenter):
-    """Grow from the center along Community's arc path (path_arc = angle)."""
+    """Grow from the center along Community's spiral path (spiral_path(angle))."""
     def __init__(self, mobject, angle=PI / 2, point_color=None, **kwargs):
         super().__init__(mobject, point_color=point_color, **kwargs)
         self.angle = NumberLine._real(angle, 'Spin angle')
 
     def sample(self, alpha):
-        factor = _arc_factor(alpha, self.angle)
-        current = self.original.copy().scale(abs(factor), about_point=self.point)
-        current.rotate(math.atan2(factor.imag, factor.real), about_point=self.point)
+        # Community's spiral_path(angle): every point is p + alpha * R((alpha - 1) * angle)(q - p),
+        # starting from the collapsed center p: a scale by alpha and a turn by (alpha - 1) * angle.
+        current = self.original.copy().scale(alpha, about_point=self.point)
+        current.rotate((alpha - 1) * self.angle, about_point=self.point)
         return [self._tint(current, alpha).to_dict()]
 
 
@@ -10935,6 +10941,17 @@ class Scene:
                 expose(member, child)
                 children.append(member)
             mobject.children = children
+            progress = snapshot.get('draw_progress')
+            if progress is not None and progress < 1 and snapshot['type'] in _PATH_TYPES and \
+                    isinstance(mobject, VMobject):
+                # Community traces outlines by pointwise_become_partial: queries such as
+                # get_end() follow the drawn part.
+                try:
+                    source = copy.copy(mobject)
+                    source.__dict__ = dict(mobject.__dict__, children=[])
+                    mobject.pointwise_become_partial(source, 0, max(0.0, progress))
+                except (TypeError, ValueError, NotImplementedError):
+                    pass
         try:
             for mobject, states in (overrides or {}).items():
                 blocked.update(mobject.get_family())
