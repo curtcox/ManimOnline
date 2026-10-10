@@ -8863,11 +8863,13 @@ def _split_cubic(curve, t):
 
 
 def _subdivide_curves(curves, count):
-    # Distribute inserted curves across existing segments, preserving every join.
-    quotient, remainder = divmod(count, len(curves))
+    # Community's bezier_remap: new curve k comes from old curve k * len(curves) // count,
+    # each old curve split into equal parameter parts; every join is preserved.
+    shares = [0] * len(curves)
+    for k in range(count):
+        shares[k * len(curves) // count] += 1
     result = []
-    for index, curve in enumerate(curves):
-        parts = quotient + (index < remainder)
+    for curve, parts in zip(curves, shares):
         remaining = curve
         for part in range(parts - 1):
             left, remaining = _split_cubic(remaining, 1 / (parts - part))
@@ -8933,8 +8935,16 @@ def _align_path_snapshots(start, target):
                              for curve in _subdivide_curves(path, count)]
         aligned['vertices'] = []
         aligned['subpath_lengths'] = counts[:]
-        # Keep the original pivot. Subdivision changes control-point bounds but
-        # must not move a previously scaled/rotated curve at either endpoint.
+        # Community interpolates the aligned points in the parent frame: bake each pose into
+        # its points, so differing rotations or scales morph exactly as Community does.
+        forward, _ = _snapshot_pose(aligned)
+        aligned['curves'] = [[forward(point if len(point) > 2 else list(point) + [0]) for point in curve]
+                             for curve in aligned['curves']]
+        aligned['position'], aligned['angle'], aligned['geometry_scale'] = [0, 0, 0], 0, 1
+        points = [point for curve in aligned['curves'] for point in (curve[0], curve[-1])]
+        aligned['geometry_center'] = list(_bbox_center(points))
+        for key in ('glyph_matrix', 'glyph_stretch', '_sampled_geometry_center'):
+            aligned.pop(key, None)
         result.append(aligned)
     return tuple(result)
 

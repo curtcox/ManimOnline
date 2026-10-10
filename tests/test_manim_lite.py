@@ -5626,8 +5626,9 @@ self.wait(1)""")
         frame = effect.sample(0)[0]
         self.assertEqual(frame['position'], [0,0,0])
         nested = frame['children'][0]['children']
-        self.assertEqual(nested[0]['position'], [-1,0,0])
-        self.assertEqual(nested[0]['geometry_scale'], 2)
+        xs = [point[0] for curve in nested[0]['curves'] for point in curve]
+        self.assertAlmostEqual(min(xs), -3)
+        self.assertAlmostEqual(max(xs), 1)
         self.assertEqual(nested[1]['opacity'], 0)
 
     def test_group_copy_restore_sequence_and_unsupported_leaf_fades(self):
@@ -5687,8 +5688,10 @@ self.wait(1)""")
                 direction = handle-anchor
                 self.assertEqual((anchor[0]*direction[1]-anchor[1]*direction[0]) > 0, sweep > 0)
             aligned = lite._align_path_snapshots(snapshot, lite.Square().to_dict())[0]
-            self.assertEqual(aligned['geometry_center'],snapshot['geometry_center'])
-            self.assertEqual(aligned['position'],snapshot['position'])
+            forward, _ = lite._snapshot_pose(snapshot)
+            for actual, point in ((aligned['curves'][0][0], curves[0][0]), (aligned['curves'][-1][-1], curves[-1][-1])):
+                for a, b in zip(actual, forward(list(point))):
+                    self.assertAlmostEqual(a, b)
 
     def test_straight_primitive_conversion_preserves_outline_vertices(self):
         cases = ((lite.Line((1,2),(4,5)), 1, (1,2,0), (4,5,0)),
@@ -5733,7 +5736,8 @@ self.wait(1)""")
         self.assertEqual(result['frames'][45]['mobjects'][0]['type'],'bezierpath')
         self.assertEqual(len(result['frames'][45]['mobjects'][0]['curves']),8)
         self.assertEqual(len(result['frames'][120]['mobjects'][0]['curves']),8)
-        self.assertEqual(result['frames'][120]['mobjects'][0]['geometry_scale'],1.2)
+        xs = [point[0] for curve in result['frames'][120]['mobjects'][0]['curves'] for point in curve]
+        self.assertAlmostEqual(max(xs), 1.2)
         self.assertEqual(result['frames'][-1]['mobjects'][0]['type'],'bezierpath')
         self.assertEqual(len(result['frames'][-1]['mobjects'][0]['curves']),1)
 
@@ -5759,10 +5763,13 @@ self.wait(1)""")
         for alpha, original in ((0,before[0]), (1,before[1])):
             frame = animation.sample(alpha)[0]
             self.assertEqual(len(frame['curves']), 3)
-            for key in ('geometry_center', 'geometry_scale', 'angle', 'position'):
-                self.assertEqual(frame[key], original[key])
-            self.assertEqual(frame['curves'][0][0], original['curves'][0][0])
-            self.assertEqual(frame['curves'][-1][-1], original['curves'][-1][-1])
+            # Aligned samples hold parent-frame points (Community interpolates them there).
+            self.assertEqual((frame['geometry_scale'], frame['angle'], frame['position']), (1, 0, [0,0,0]))
+            forward, _ = lite._snapshot_pose(original)
+            for actual, point in ((frame['curves'][0][0], original['curves'][0][0]),
+                                  (frame['curves'][-1][-1], original['curves'][-1][-1])):
+                for a, b in zip(actual, forward(list(point) + [0] * (3 - len(point)))):
+                    self.assertAlmostEqual(a, b)
         self.assertEqual((source.to_dict(),target.to_dict()),before)
 
     def test_corner_to_cubic_morph_and_single_point_growth_keep_endpoints(self):
