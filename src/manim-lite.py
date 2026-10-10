@@ -2924,6 +2924,13 @@ class VMobject(Mobject):
         points = VMobject._corners(points)
         if len(points) % 4 not in (0, 1):
             raise ValueError('Cubic points need groups of four, optionally followed by one new anchor')
+        # Children of a posed parent are stored locally: place them in the world first,
+        # since the parent's pose is about to become the identity.
+        if self.children and (self.angle or self.geometry_scale != 1 or any(self.position)):
+            # Pin the pivot: placing one child must not move the frame of the next.
+            self._sampled_geometry_center = list(self._geometry_center())
+            for child in self.children:
+                self._place_in_world(child)
         completed = len(points) - len(points) % 4
         self.curves = [points[i:i+4] for i in range(0, completed, 4)]
         self.vertices = points[completed:]

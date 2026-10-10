@@ -6597,6 +6597,16 @@ class Demo(Scene):
         self.assertFalse(lite._has_glyphs(source) or lite._has_glyphs(target))
         self.assertFalse(glyphs(scene.frames[-1]['mobjects'][0]))
 
+    def test_set_points_on_a_posed_parent_keeps_children_in_place(self):
+        shape = lite.ArcPolygon((0,0,0), (2,0,0), (0,2,0), radius=2).shift(lite.LEFT * 3).rotate(0.3)
+        before = [child.get_points() for child in [shape._world_member(c) for c in shape.children]]
+        shape.set_points(shape.get_points())
+        after = [child.get_points() for child in [shape._world_member(c) for c in shape.children]]
+        for old, new in zip(before, after):
+            for p, q in zip(old, new):
+                for a, b in zip(p, q):
+                    self.assertAlmostEqual(a, b)
+
     def test_transform_from_copy_source_can_animate_while_copy_holds_terminal(self):
         source = lite.Square().shift(lite.LEFT * 2)
         target = lite.Square().shift(lite.RIGHT * 2)
