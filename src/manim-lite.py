@@ -1085,6 +1085,12 @@ class Mobject:
         for child in self.children:
             low, high = child._z_extent()
             zs.extend(pivot_z + (z - center_z) * scale for z in (low, high))
+        depth = self.__dict__.get('glyph_depth') if self._type in ('text', 'mathtex') else None
+        if depth:
+            # A text plane turned out of XY spans the z of its mapped ink box.
+            width, height = self._glyph_size()
+            half = (abs(depth[0]) * width + abs(depth[1]) * height) / 2 * scale
+            zs.extend((pivot_z - half, pivot_z + half))
         if not zs:
             return self.position[2], self.position[2]
         return min(zs), max(zs)
@@ -1338,10 +1344,19 @@ class Mobject:
         visit(source,target,lambda point:point,ORIGIN)
         return self.become(target)
 
+    def _glyph_size(self):
+        """The unmapped ink box (width, height) of a text or formula leaf."""
+        if self._type == 'mathtex' and 'glyph' in self.__dict__:
+            glyphs = _math_glyphs(self.text, self.font_size, self.__dict__.get('part_strings'))
+            return glyphs[self.glyph][2:4] if self.glyph < len(glyphs) else (0, 0)
+        if self._type == 'mathtex' and 'part' in self.__dict__:
+            return _math_parts(self.text, self.part_strings, self.font_size)[self.part][2:]
+        return _math_box(self.text, self.font_size) if self._type == 'mathtex' else _text_extent(self.__dict__)
+
     def _is_3d(self):
         """True when any family member holds geometry outside the XY plane."""
         for member in self.get_family():
-            if member.position[2]:
+            if member.position[2] or member.__dict__.get('glyph_depth'):
                 return True
             state = member.__dict__
             vertices = state.get('vertices')
@@ -1426,10 +1441,32 @@ class Mobject:
                 self.__dict__.pop(key, None)
             if '_curve_arc_center' in snapshot:
                 self._curve_arc_center = mapped(self._point_to_world(Vector(snapshot['_curve_arc_center'])))
+        elif kind in ('text', 'mathtex'):
+            # Community maps the glyph outlines: keep the anchor's image and the map's
+            # derivative there as a 3x2 local glyph map (rows x, y in glyph_matrix and
+            # z in glyph_depth), exact for rotations and other linear maps.
+            center = self._geometry_center()
+            anchor = self._point_to_world(center)
+            image = Vector(mapped(anchor))
+            (ga, gb), (gc, gd) = _glyph_matrix(self.__dict__)
+            ge, gf = self.__dict__.get('glyph_depth') or (0, 0)
+            c, s_, k = math.cos(self.angle), math.sin(self.angle), self.geometry_scale
+            local = [[k * (c * ga - s_ * gc), k * (c * gb - s_ * gd)],
+                     [k * (s_ * ga + c * gc), k * (s_ * gb + c * gd)], [k * ge, k * gf]]
+            step = 1e-4
+            jacobian = [[(mapped(anchor + Vector(axis) * step)[row] - mapped(anchor - Vector(axis) * step)[row])
+                         / (2 * step) for axis in (RIGHT, UP, OUT)] for row in range(3)]
+            total = [[sum(jacobian[r][m] * local[m][col] for m in range(3)) for col in range(2)] for r in range(3)]
+            for key in ('glyph_stretch', 'glyph_matrix', 'glyph_depth', '_family_pivot_cache', '_sampled_geometry_center'):
+                self.__dict__.pop(key, None)
+            self.glyph_matrix = [total[0][0], total[0][1], total[1][0], total[1][1]]
+            if abs(total[2][0]) > 1e-12 or abs(total[2][1]) > 1e-12:
+                self.glyph_depth = [total[2][0], total[2][1]]
+            self.angle, self.geometry_scale = 0, 1
+            self.position = list(image - center)
         elif kind not in ('vgroup', 'mobject', 'valuetracker'):
-            # Text, formulas, images and other non-path leaves: only the anchor
-            # is mapped. Community rotates the glyph outlines themselves; this
-            # preview keeps text upright facing the camera instead.
+            # Images and other non-path leaves: only the anchor is mapped (they stay
+            # upright facing the camera).
             center = self._geometry_center()
             anchor = self._point_to_world(center)
             self.position = list(Vector(mapped(anchor)) - (anchor - Vector(self.position)))
@@ -1684,14 +1721,7 @@ class Mobject:
             points = [(0, height * 2 / 3), (-0.5, -height / 3), (0.5, -height / 3)]
         elif self._type in ('text', 'mathtex'):
             # Text is centered on its estimated (Text) or measured (MathTex) ink box.
-            if self._type == 'mathtex' and 'glyph' in self.__dict__:
-                glyphs = _math_glyphs(self.text, self.font_size, self.__dict__.get('part_strings'))
-                width, height = glyphs[self.glyph][2:4] if self.glyph < len(glyphs) else (0, 0)
-            elif self._type == 'mathtex' and 'part' in self.__dict__:
-                width, height = _math_parts(self.text, self.part_strings, self.font_size)[self.part][2:]
-            else:
-                width, height = (_math_box(self.text, self.font_size) if self._type == 'mathtex' else
-                                 _text_extent(self.__dict__))
+            width, height = self._glyph_size()
             (a, b), (c, d) = _glyph_matrix(self.__dict__)
             # The glyph map's image of the centered ink box.
             half_w, half_h = (abs(a) * width + abs(b) * height) / 2, (abs(c) * width + abs(d) * height) / 2
@@ -12146,6 +12176,16 @@ class ThreeDScene(Scene):
             anchor = list(world_map(gc)) if world_map else [gc[0], gc[1], gc[2] if len(gc) > 2 else 0]
             out['anchor3d'] = anchor
             out['position'] = [anchor[i] - (gc[i] if i < len(gc) else 0) for i in range(3)]
+            if node['type'] in ('text', 'mathtex') and not node.get('_fixed_orientation'):
+                # Community's text is a planar object: export the world images of the glyph
+                # map's x and y directions, which the renderer projects like any geometry.
+                (ga, gb), (gc_, gd) = _glyph_matrix(node)
+                ge, gf = node.get('glyph_depth') or (0, 0)
+                base = [gc[0], gc[1], gc[2] if len(gc) > 2 else 0]
+                image = world_map or (lambda point: list(point))
+                origin = list(image(base))
+                out['plane3d'] = [[a - b for a, b in zip(image([base[0] + x, base[1] + y, base[2] + z]), origin)]
+                                  for x, y, z in ((ga, gc_, ge), (gb, gd, gf))]
             if node.get('_fixed_orientation'):
                 out['orient_center'] = orientation_center(node, [anchor])
             out.pop('_fixed_orientation_key', None)

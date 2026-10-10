@@ -184,6 +184,18 @@ const ManimRenderer = {
         if (orient) {
           const shift = sub(project(orient), orient);
           out.position = leaf.position.map((v, i) => v + shift[i]);
+        } else if (!fixed && Array.isArray(leaf.plane3d) && leaf.plane3d.length === 2 && leaf.plane3d.every(point3)) {
+          // A planar text leaf: its glyph map is the projection's derivative at the anchor.
+          const p0 = project(leaf.anchor3d), k = 1e-3;
+          const [ax, ay] = leaf.plane3d.map(u => {
+            const p = project(leaf.anchor3d.map((v, i) => v + u[i] * k));
+            return [(p[0] - p0[0]) / k, (p[1] - p0[1]) / k];
+          });
+          out.position = [p0[0] - gc[0], p0[1] - gc[1], 0];
+          out.angle = 0;
+          out.geometry_scale = 1;
+          out.glyph_matrix = [ax[0], ay[0], ax[1], ay[1]];
+          delete out.glyph_stretch;
         } else if (!fixed) {
           const projected = project(leaf.anchor3d);
           out.position = [projected[0] - gc[0], projected[1] - gc[1], 0];

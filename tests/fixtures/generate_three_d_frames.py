@@ -26,6 +26,10 @@ self.add_fixed_orientation_mobjects(dot)
 self.set_camera_orientation(phi=75 * DEGREES)""",
     'cube': """self.set_camera_orientation(phi=75 * DEGREES, theta=-30 * DEGREES)
 self.add(Cube())""",
+    'text_planes': """standing = Tex('z').rotate(PI / 2, axis=RIGHT)
+flat = Text('flat').shift(2 * RIGHT)
+self.add(standing, flat)
+self.set_camera_orientation(phi=90 * DEGREES, theta=-90 * DEGREES)""",
     'rotated_square': """s = Square()
 s.rotate(PI / 3, axis=UP)
 self.add(s)

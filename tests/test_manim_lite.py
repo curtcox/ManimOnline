@@ -7583,6 +7583,24 @@ class Demo(Scene):
 
 
 class ThreeDTests(unittest.TestCase):
+    def test_text_rotated_out_of_the_plane_is_planar_like_community(self):
+        # Manim 0.22: Tex('z').shift(RIGHT).rotate(PI/2, axis=RIGHT) has zero height and
+        # spans z by half its glyph height.
+        text = lite.Tex('z').shift(lite.RIGHT).rotate(lite.PI / 2, axis=lite.RIGHT)
+        width, height = text._glyph_size()
+        self.assertAlmostEqual(text.get_height(), 0)
+        self.assertAlmostEqual(text.get_width(), width)
+        for actual, expected in zip(text.get_critical_point(lite.OUT), (1, 0, height / 2)):
+            self.assertAlmostEqual(actual, expected)
+        self.assertTrue(text._is_3d())
+        # A second quarter turn about RIGHT lays it upside down in the XY plane.
+        text.rotate(lite.PI / 2, axis=lite.RIGHT)
+        self.assertAlmostEqual(text.get_height(), height)
+        self.assertEqual(text.__dict__.get('glyph_depth'), None)
+        (a, b), (c, d) = lite._glyph_matrix(text.__dict__)
+        for actual, expected in zip((a, b, c, d), (1, 0, 0, -1)):
+            self.assertAlmostEqual(actual, expected, 6)
+
     def assertPointAlmostEqual(self, actual, expected, places=9):
         self.assertEqual(len(actual), len(expected))
         for a, e in zip(actual, expected):

@@ -68,3 +68,15 @@ test('full renders project ThreeDScene frames and reject invalid cameras', () =>
   const broken = { ...frames.cube, camera: { ...frames.cube.camera, three_d: { ...frames.cube.camera.three_d, phi: NaN } } };
   assert.throws(() => renderer.render(broken), /Invalid 3D camera/);
 });
+
+test('text leaves are planar objects projected through the camera', () => {
+  const frame = frames.text_planes;
+  const [standing, flat] = renderer.projectThreeD(frame.mobjects, frame.camera.three_d);
+  // Seen from the front (phi = 90 degrees), text turned up into the XZ plane faces the
+  // camera, while text lying in the XY plane is seen edge-on, as in Manim 0.22.
+  standing.glyph_matrix.forEach((v, i) => assert.ok(Math.abs(v - [1, 0, 0, 1][i]) < 1e-6));
+  assert.ok(Math.abs(flat.glyph_matrix[0] - 1) < 1e-6);
+  assert.ok(Math.abs(flat.glyph_matrix[3]) < 1e-6);
+  assert.equal(standing.angle, 0);
+  assert.equal(standing.geometry_scale, 1);
+});
