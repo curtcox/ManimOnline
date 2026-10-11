@@ -784,3 +784,10 @@ rectangles/ellipses) use `_arc_similarity`: each point's arc is a similarity, so
 interpolation is exact. Other cases still use the point arcs in `_arc_geometry`. Rotated
 standalone circles/annuli bound their cubic points like other outlines (width counts
 handles). LaggedStartMap skips members already covered by an earlier shape's family.
+Arrow.scale follows Community's pop/scale/re-add: default pivots come from the logical
+endpoints, a zero factor collapses the shaft with put_start_and_end_on and turns tips to
+point along -x (zero-direction tips use angle PI), and the width resets from the shaft
+between tip bases (`_shaft_length`); put_start_and_end_on does the same. `_link_children`
+never relinks a member from a family that still contains it to a plain Group/VGroup/Mobject
+(get_tips() built such groups, which broke world calls on tips). `_place` distributes all
+three operations to the children of unposed container subclasses so world round trips stay exact.

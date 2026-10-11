@@ -81,7 +81,15 @@ _PINS = {}  # id(parent) -> [parent, count]: posed parents with a fixed pivot
 
 def _link_children(parent, children):
     ref = weakref.ref(parent)
+    plain = type(parent) in (Group, VGroup, Mobject)
     for child in children:
+        if plain:
+            # Plain groups never hold a pose: a member that is also in another family (e.g.
+            # get_tips() collecting an arrow's tips) stays in that family's frame.
+            old = _PARENTS.get(child)
+            old = old() if old is not None else None
+            if old is not None and old is not parent and any(c is child for c in old.children):
+                continue
         _PARENTS[child] = ref
 
 
@@ -113,6 +121,14 @@ def _world_frame(chain):
 def _place(mobject, frame, inverse=False):
     """Apply a world frame (or its inverse) to a mobject as a pure similarity."""
     scale, angle, offset = frame
+    if mobject._world_container():
+        # An unposed container subclass (e.g. a NumberLine) keeps rotations as its own pose
+        # but passes shifts and scales on, so entering and leaving the world would leave it
+        # posed. Placing its children keeps the round trip exact.
+        for child in mobject.children:
+            _place(child, frame, inverse)
+        mobject.__dict__.pop('_family_pivot_cache', None)
+        return mobject
     if inverse:
         if any(offset):
             Mobject.shift(mobject, -offset)
@@ -4808,7 +4824,7 @@ class TipableVMobject(VMobject):
         anchor = Vector(curve[0] if at_start else curve[-1])
         handle = Vector(curve[1] if at_start else curve[-2])
         vector = anchor-handle
-        angle = math.atan2(vector[1],vector[0]) if any(vector) else 0
+        angle = math.atan2(vector[1],vector[0]) if any(vector) else math.pi
         tip.rotate(angle-tip.tip_angle)
         tip.shift(anchor-tip.tip_point)
 
@@ -5530,7 +5546,7 @@ class Line(TipableVMobject):
 
     def _orient_tip(self, tip, at_start):
         vector = Vector(self.start)-Vector(self.end) if at_start else Vector(self.end)-Vector(self.start)
-        angle = math.atan2(vector[1],vector[0]) if any(vector) else 0
+        angle = math.atan2(vector[1],vector[0]) if any(vector) else math.pi
         tip.rotate(angle-tip.tip_angle)
         tip.shift(Vector(self.start if at_start else self.end)-tip.tip_point)
 
@@ -5848,20 +5864,50 @@ class Arrow(Line):
     def _set_stroke_width_from_length(self):
         self.stroke_width = min(self.initial_stroke_width,self.max_stroke_width_to_length_ratio*self.get_length())
 
+    def _shaft_length(self):
+        ends = []
+        for at_start in (True,False):
+            tip = self._tip(at_start)
+            ends.append(self._point_to_world(Vector(tip.base)) if tip is not None
+                        else self.get_start() if at_start else self.get_end())
+        return math.dist(*ends)
+
     def scale(self, factor, scale_tips=False, **kwargs):
         if not isinstance(scale_tips,bool):
             raise ValueError('scale_tips must be a boolean')
-        super().scale(factor,**kwargs)
-        if factor and not scale_tips:
-            for tip in self.get_tips().children:
-                tip.scale(1/abs(factor),about_point=tip.tip_point)
-            self._geometry_center()
-        self._set_stroke_width_from_length()
+        if self.get_length() == 0:
+            return self
+        if scale_tips or not self.get_tips().children:
+            super().scale(factor,**kwargs)
+            self._set_stroke_width_from_length()
+            return self
+        # Community pops the tips and scales the bare line (so default pivots come from
+        # its endpoints), then re-adds the tips, whose endpoint refit resets the width
+        # from the shaft between the tip bases.
+        about_point,about_edge = kwargs.pop('about_point',None),kwargs.pop('about_edge',None)
+        if about_point is not None and about_edge is not None:
+            raise ValueError('Pass about_point or about_edge, not both')
+        if about_point is None:
+            start,end = self.get_start_and_end()
+            edge = Vector(ORIGIN if about_edge is None else about_edge)
+            about_point = Vector((s+e)/2+(edge[i] > 0)*abs(e-s)/2-(edge[i] < 0)*abs(e-s)/2
+                                 for i,(s,e) in enumerate(zip(start,end)))
+        if factor == 0:
+            # The collapsed shaft has no direction: Community turns each tip to point along -x.
+            Line.put_start_and_end_on(self,about_point,about_point)
+            self.stroke_width = 0
+            return self
+        super().scale(factor,about_point=about_point,**kwargs)
+        for tip in self.get_tips().children:
+            tip.scale(1/abs(factor),about_point=tip.tip_point)
+        self._geometry_center()
+        self.stroke_width = min(self.initial_stroke_width,self.max_stroke_width_to_length_ratio*self._shaft_length())
         return self
 
     def put_start_and_end_on(self, start, end):
         super().put_start_and_end_on(start,end)
-        self._set_stroke_width_from_length()
+        length = self._shaft_length() if self.get_tips().children else self.get_length()
+        self.stroke_width = min(self.initial_stroke_width,self.max_stroke_width_to_length_ratio*length)
         return self
 
 

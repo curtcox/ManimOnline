@@ -656,6 +656,20 @@ class AnimationApiTests(unittest.TestCase):
             'result = [a.get_center(), a.width, a.get_start(), c.get_center(), c.get_start()]\n'),
             [[0.0, 1.0, 0.0], 1.8053, [0.9026, 1.2303, 0.0], [-0.116, 0.1038, 0.0], [0.8435, 0.1402, 0.0]])
 
+    def test_arrow_scaling_keeps_tips_and_resets_width_from_the_shaft(self):
+        self.assertEqual(scene_values(
+            'def b(m):\n'
+            '    return [m.get_left()[0], m.get_bottom()[1], m.get_right()[0], m.get_top()[1], m.get_stroke_width()]\n'
+            'r = [b(Arrow(LEFT, RIGHT * 2).scale(k)) for k in (0, 0.3, 0.001)]\n'
+            'a = Arrow(LEFT, RIGHT * 2).scale(0.3)\n'
+            'r.append([a.tip.width, a.get_tip().get_center()[0]])\n'
+            'r.append(b(Arrow(DL, UR * 2).scale(0.5, about_edge=UL)))\n'
+            'r.append(b(Arrow(LEFT, RIGHT).put_start_and_end_on(UP, UP + RIGHT * 0.5)))\n'
+            'result = r\n'),
+            [[0.5, -0.175, 0.85, 0.175, 0.0], [0.125, -0.175, 0.875, 0.175, 2.0],
+             [0.1512, -0.175, 0.5012, 0.175, 1.7375], [0.35, 0.7],
+             [-0.8232, 0.5, 0.5, 1.8232, 6.0], [0.0, 0.825, 0.5, 1.175, 0.75]])
+
     def test_lagged_start_map_animates_shapes_once_with_their_children(self):
         self.assertEqual(scene_values(
             'class S(Scene):\n'
