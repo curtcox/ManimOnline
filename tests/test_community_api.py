@@ -1165,6 +1165,19 @@ class AnimationApiTests(unittest.TestCase):
         self.assertEqual(frames[-1]['camera']['frame_center'], [2, 0, 0])
         self.assertEqual(scene_values('result = Scene().camera.frame_center\n'), [0.0, 0.0, 0.0])
 
+    def test_buff_equal_to_half_the_length_collapses_lines_and_arrows(self):
+        self.assertEqual(scene_values(
+            'a = Arrow(ORIGIN, RIGHT * 0.5)\n'
+            'result = [a.get_start(), a.get_end(), a.tip.length, a.get_stroke_width(),'
+            ' Line(ORIGIN, RIGHT * 0.5, buff=0.25).get_length(), DoubleArrow(ORIGIN, RIGHT * 0.5).width]\n'),
+            [[0.25, 0.0, 0.0], [0.25, 0.0, 0.0], 0.0, 0.0, 0.0, 0.0])
+
+    def test_parametric_function_scaling_maps_sample_inputs(self):
+        self.assertEqual(scene_values(
+            'g = ParametricFunction(lambda t: (math.log10(t), t / 50, 0), t_range=[0, 2, 0.5], scaling=LogBase())\n'
+            'result = [g.get_start(), g.get_end(), len(g.get_points())]\n'.replace('math.log10', '__import__("math").log10')),
+            [[0.0, 0.02, 0.0], [2.0, 2.0, 0.0], 16.0])
+
 
 if __name__ == '__main__':
     unittest.main()

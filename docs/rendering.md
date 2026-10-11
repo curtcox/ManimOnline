@@ -2387,3 +2387,8 @@ exports it with the frame, as Community's Cairo camera pans. `Axes` keep `x_leng
 and `y_length`, `Wait` keeps `duration`, and animations print as Community does
 (`FadeIn(Square)`, `AnimationGroup(Group)`). `UpdateFromFunc`/`UpdateFromAlphaFunc`
 call their function when driven by hand with `interpolate(alpha)`.
+A Line or Arrow whose length equals twice its `buff` collapses to its midpoint, as in
+Community (`>=`, not `>`), so its tip length and stroke width become zero.
+`ParametricFunction(scaling=...)` maps each sample input through `scaling.function`
+(LogBase plots sample 10^t). Riemann rectangle colors use `color_gradient` and
+`invert_color`, so negative cells match Community's truncated float inversion.

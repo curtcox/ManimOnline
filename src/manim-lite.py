@@ -4652,8 +4652,12 @@ def _cubic_length(curve, sample_points=10):
 
 class ParametricFunction(VMobject):
     """Finite XY samples with optional C2 smoothing and declared contour gaps."""
-    def __init__(self, function, t_range=(0,1), dt=1e-8, discontinuities=None,
+    _frame_excluded = ('scaling',)
+
+    def __init__(self, function, t_range=(0,1), scaling=None, dt=1e-8, discontinuities=None,
                  use_smoothing=True, use_vectorized=False, **kwargs):
+        if scaling is not None and not callable(getattr(scaling, 'function', None)):
+            raise TypeError('ParametricFunction scaling must provide a function, like LinearBase')
         if not callable(function):
             raise TypeError('ParametricFunction expects a callable returning an XY point')
         if not isinstance(use_smoothing,bool) or not isinstance(use_vectorized,bool):
@@ -4666,6 +4670,7 @@ class ParametricFunction(VMobject):
         self.t_min,self.t_max,self.t_step = values
         self.dt,self.discontinuities,self.use_smoothing = dt,discontinuities,use_smoothing
         self.use_vectorized = use_vectorized
+        self.scaling = LinearBase() if scaling is None else scaling
         self.generate_points()
 
     @staticmethod
@@ -4725,6 +4730,9 @@ class ParametricFunction(VMobject):
             # np.arange fills start + i * ((start + step) - start), as Community samples.
             delta = (start+self.t_step)-start
             times = [start+i*delta for i in range(count) if start+i*delta < end]+[end]
+            scaling = self.__dict__.get('scaling')
+            if scaling is not None and not isinstance(scaling, LinearBase):
+                times = [scaling.function(t) for t in times]
             anchors = (self._vectorized_points(times) if self.__dict__.get('use_vectorized') else
                        [self.get_point_from_function(t) for t in times])
             if len(anchors) == 1:
@@ -5586,7 +5594,7 @@ class Line(TipableVMobject):
         span = math.dist(start,end)
         if not math.isfinite(span):
             raise ValueError('Line length must be finite')
-        if span > 2*buff and buff:
+        if span >= 2*buff and buff:
             offset = (end-start)*(buff/span)
             start,end = start+offset,end-offset
         super().__init__(tip_length=tip_length,tip_style=tip_style,**kwargs)
@@ -5630,7 +5638,7 @@ class Line(TipableVMobject):
                 self.pointwise_become_partial(self, buff / length, 1 - buff / length)
             return self
         span = math.dist(start, end)
-        if buff and span > 2 * buff:
+        if buff and span >= 2 * buff:
             offset = (end - start) * (buff / span)
             start, end = start + offset, end - offset
         return self.put_start_and_end_on(start, end)
@@ -10057,8 +10065,11 @@ class Axes(VGroup, CoordinateSystem):
                 return [int(value[index:index+2],16) for index in (1,3,5)]
             except ValueError as error:
                 raise ValueError('Riemann colors must be six-digit hex colors') from error
-        stops = [channels(value) for value in palette]
+        for value in palette:
+            channels(value)
         channels(stroke_color)
+        # Community's color_gradient and float inversion (to_hex truncates channels).
+        gradient = color_gradient(palette,count)
         rectangles = VGroup()
         fraction = {'left':0,'center':.5,'right':1}[input_sample_type]
         for index in range(count):
@@ -10073,13 +10084,10 @@ class Axes(VGroup, CoordinateSystem):
             top = self.i2gc(sample,graph)[1]
             baseline = (self._origin_shift(self.y_range) if bounded_graph is None else
                         self.i2gc(x,bounded_graph)[1])
-            location = (len(stops)-1)*index/max(1,count-1)
-            stop = min(len(stops)-1,math.floor(location))
-            alpha = location-stop
-            rgb = [round(a+(b-a)*alpha) for a,b in zip(stops[stop],stops[min(stop+1,len(stops)-1)])]
+            fill = gradient[index]
             if show_signed_area and top < baseline:
-                rgb = [255-value for value in rgb]
-            fill = '#' + ''.join(f'{value:02X}' for value in rgb)
+                fill = invert_color(fill)
+            fill = fill.to_hex()
             bottom,upper = min(baseline,top),max(baseline,top)
             # Keep Rectangle identity but use four XY corners for transformed axes.
             outline = Polygon(self.c2p(right,upper),self.c2p(x,upper),
