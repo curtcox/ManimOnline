@@ -519,6 +519,10 @@ NumPy: validations use _REAL (numbers.Real) / numbers.Integral, never (int, floa
 so NumPy scalars work; Vector normalizes scalars and render_scene's JSON default
 handles leftovers. The worker loads NumPy only for sources mentioning np/numpy;
 OfflineAssets.optional caches the wheel without making it a readiness requirement.
+When NumPy is loaded, `_scene_call` returns Vector results to scene code as mutable float
+arrays (Community's type); without it scene code gets Vector (tolist/copy/shape only).
+Coordinate entry points accept arrays via `_listed`. Tests compare points through
+`PointTestCase`, which turns arrays into tuples.
 
 
 Read `examples/annotation_scene.py` for braces, Title, Tex, bullets and Variable.

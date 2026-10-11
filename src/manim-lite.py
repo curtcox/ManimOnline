@@ -233,7 +233,11 @@ def _scene_call(function, reference=False, live_points=False):
             if token is not None:
                 _exit_world(token)
         # Community's get_points returns the points buffer itself.
-        return _point_array([list(Vector(p)) for p in result], owner=self) if live_points else result
+        if live_points:
+            return _point_array([list(Vector(p)) for p in result], owner=self)
+        if type(result) is Vector and 'numpy' in sys.modules:
+            return sys.modules['numpy'].array(result, dtype=float)  # Mutable, like Community's points.
+        return result
     call._scene_call = True
     return call
 
@@ -295,6 +299,15 @@ def _plain_number(value):
     return int(value) if isinstance(value, numbers.Integral) else float(value)
 
 
+def _listed(value):
+    """NumPy arrays (or a list/tuple of them) as plain nested lists; other values unchanged."""
+    if hasattr(value, 'ndim'):
+        return value.tolist() if value.ndim else value.item()
+    if type(value) in (list, tuple) and value and hasattr(value[0], 'ndim'):
+        return [_listed(item) for item in value]
+    return value
+
+
 class Vector(tuple):
     def __new__(cls, values):
         if type(values) is cls:
@@ -333,6 +346,14 @@ class Vector(tuple):
 
     def __rsub__(self, other):
         return Vector(a - b for a, b in zip(Vector(other), self))
+
+    def tolist(self):
+        return list(self)
+
+    def copy(self):
+        return self
+
+    shape = (3,)
 
 
 UP, DOWN = Vector((0, 1, 0)), Vector((0, -1, 0))
@@ -8358,6 +8379,7 @@ class NumberLine(VGroup):
         return self.get_start() + self.get_vector()*alpha
 
     def number_to_point(self, number):
+        number = _listed(number)
         if isinstance(number,(list,tuple)):
             return [self.number_to_point(value) for value in self._numbers(number)]
         self._real(number,'NumberLine value')
@@ -8630,6 +8652,7 @@ class Axes(VGroup, CoordinateSystem):
         return self.point_to_polar(point)
 
     def coords_to_point(self, *coords):
+        coords = tuple(_listed(value) for value in coords)
         if len(coords) == 1 and isinstance(coords[0],(list,tuple)):
             coords = coords[0]
             if coords and isinstance(coords[0],(list,tuple)):
@@ -8680,6 +8703,7 @@ class Axes(VGroup, CoordinateSystem):
         return math.hypot(*self._basis()[1])
 
     def point_to_coords(self, point):
+        point = _listed(point)
         if isinstance(point,(list,tuple)) and point and isinstance(point[0],(list,tuple)):
             if len(point) > 1000:
                 raise ValueError('Axes coordinate batches are limited to 1000 points')
@@ -14606,6 +14630,7 @@ class ThreeDAxes(Axes):
         return self.z_axis
 
     def point_to_coords(self, point):
+        point = _listed(point)
         if isinstance(point, (list, tuple)) and point and isinstance(point[0], (list, tuple)):
             if len(point) > 1000:
                 raise ValueError('Axes coordinate batches are limited to 1000 points')

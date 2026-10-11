@@ -29,6 +29,25 @@ def point_list(mobject):
     return points.tolist() if hasattr(points, 'tolist') else points
 
 
+def plain_points(value):
+    """Point arrays (returned to scene code when NumPy is loaded) as tuples of coordinates."""
+    if hasattr(value, 'ndim'):
+        if value.ndim == 0:
+            return value.item()
+        return tuple(value.tolist()) if value.ndim == 1 else [plain_points(row) for row in value]
+    if type(value) in (tuple, list):
+        return type(value)(plain_points(item) for item in value)
+    return value
+
+
+class PointTestCase(unittest.TestCase):
+    def assertEqual(self, first, second, msg=None):
+        super().assertEqual(plain_points(first), plain_points(second), msg)
+
+    def assertNotEqual(self, first, second, msg=None):
+        super().assertNotEqual(plain_points(first), plain_points(second), msg)
+
+
 def run_scene(source):
     """Execute a scene class from source directly, returning the rendered instance."""
     lite.render_scene('from manim import *\nclass Empty(Scene):\n    pass\n')  # installs `manim`
@@ -45,7 +64,7 @@ def render_3d(body):
     return json.loads(lite.render_scene(source))
 
 
-class SceneTests(unittest.TestCase):
+class SceneTests(PointTestCase):
     def test_removing_a_zoomed_display_frame_removes_the_display_like_community(self):
         source = """from manim import *
 class Demo(ZoomedScene):
@@ -4407,7 +4426,7 @@ assert isinstance(t.get_value(), (int, float))""")
                 for actual,expected in zip(axes.p2c(point),coords):
                     self.assertAlmostEqual(actual,expected)
                 self.assertPointAlmostEqual(axes @ coords,point)
-                self.assertEqual(point @ axes,axes.p2c(point))
+                self.assertEqual(tuple(point) @ axes,axes.p2c(point))
             self.assertAlmostEqual(axes.get_x_unit_size(),2.6)
             self.assertAlmostEqual(axes.get_y_unit_size(),1.3)
             self.assertPointAlmostEqual(axes.get_origin(),axes.c2p(0,0))
@@ -8011,7 +8030,7 @@ class Demo(Scene):
         self.assertEqual(len(result['frames'][0]['mobjects']), 1)
 
 
-class ThreeDTests(unittest.TestCase):
+class ThreeDTests(PointTestCase):
     def test_text_rotated_out_of_the_plane_is_planar_like_community(self):
         # Manim 0.22: Tex('z').shift(RIGHT).rotate(PI/2, axis=RIGHT) has zero height and
         # spans z by half its glyph height.
@@ -8253,7 +8272,7 @@ self.wait(0.1)""")
                                                 'frame_height', 'background_color', 'three_d'})
 
 
-class ThreeDPrimitiveTests(unittest.TestCase):
+class ThreeDPrimitiveTests(PointTestCase):
     def assertPointAlmostEqual(self, actual, expected, places=6):
         self.assertEqual(len(actual), len(expected))
         for a, e in zip(actual, expected):
@@ -8466,7 +8485,7 @@ self.wait(0.1)""")
         self.assertTrue(all(node['type'] == 'bezierpath' for node in leaves))
 
 
-class CommunityDocExampleTests(unittest.TestCase):
+class CommunityDocExampleTests(PointTestCase):
     """APIs used by Manim Community's own docstring examples (values from Manim 0.22)."""
 
     def assertPointAlmostEqual(self, a, b, places=6):

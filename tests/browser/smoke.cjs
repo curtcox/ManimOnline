@@ -17,6 +17,18 @@ const MANIM = [
   '        self.play(Transform(square, Circle(color=GREEN)), run_time=0.5)',
   '',
 ].join('\n');
+const NUMPY = [
+  'from manim import *',
+  '',
+  'class Points(Scene):',
+  '    def construct(self):',
+  '        square = Square()',
+  '        top = square.get_top()',
+  '        top[1] += 0.5',
+  '        dots = VGroup(*[Dot(p) for p in np.array([top, square.get_bottom()])])',
+  '        self.play(Create(square), FadeIn(dots))',
+  '',
+].join('\n');
 
 async function open(browser, source) {
   const page = await browser.newPage();
@@ -37,8 +49,8 @@ async function checkDot(browser) {
   if (edges !== 3) throw new Error('DOT graph has ' + edges + ' edges');
 }
 
-async function checkManim(browser) {
-  const { page, errors } = await open(browser, MANIM);
+async function checkManim(browser, source) {
+  const { page, errors } = await open(browser, source);
   await page.waitForFunction(() => {
     const seek = document.querySelector('[aria-label="Animation position"]');
     return (seek && Number(seek.max) > 0) || document.querySelector('#review.error');
@@ -61,12 +73,12 @@ async function checkManim(browser) {
         }
       }
     }
-    return { frames: Number(seek.max) + 1, paths: preview ? preview.querySelectorAll('path').length : 0, codecs };
+    return { frames: Number(seek.max) + 1, paths: preview ? preview.querySelectorAll('path, circle, ellipse, polygon, polyline, rect, line').length : 0, codecs };
   });
   await page.close();
   if (state.error) throw new Error('Manim render failed: ' + state.error);
   if (errors.length) throw new Error('Page errors: ' + errors.join('; '));
-  if (state.paths < 2) throw new Error('Manim preview drew ' + state.paths + ' paths');
+  if (state.paths < 2) throw new Error('Manim preview drew ' + state.paths + ' shapes');
   return state;
 }
 
@@ -77,9 +89,11 @@ async function checkManim(browser) {
     try {
       browser = await playwright[name].launch();
       await checkDot(browser);
-      const manim = await checkManim(browser);
+      const manim = await checkManim(browser, MANIM);
+      const numpy = await checkManim(browser, NUMPY).catch(error => { throw new Error('NumPy scene: ' + error.message); });
       console.log(name + ': DOT ok; Manim ' + manim.frames + ' frames, ' + manim.paths +
-                  ' paths; video encoders ' + JSON.stringify(manim.codecs));
+                  ' shapes; NumPy scene ' + numpy.frames + ' frames, ' + numpy.paths +
+                  ' shapes; video encoders ' + JSON.stringify(manim.codecs));
     } catch (error) {
       failed = true;
       console.log(name + ': FAILED ' + error.message);

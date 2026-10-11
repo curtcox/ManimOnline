@@ -11,6 +11,12 @@ spec = importlib.util.spec_from_file_location('manim_lite_api', ROOT / 'src/mani
 lite = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(lite)
 
+try:
+    import numpy  # noqa: F401  (the browser loads NumPy only for sources that use it)
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
+
 
 def scene_values(body):
     """Run body as scene code (so mobject calls see world coordinates); return `result`."""
@@ -153,6 +159,26 @@ class MobjectUtilityTests(unittest.TestCase):
         self.assertEqual(result, [2, ['a', 'b', 'c'], 5, [1.0, 2.0], False, True, 1])
         with self.assertRaises(ValueError):
             scene_values('result = MathTex("a", "b").index_of_part(Square())\n')
+
+    def test_point_results_support_array_methods(self):
+        result = scene_values(
+            'd = Dot(UP)\n'
+            'p = d.get_center().copy()\n'
+            'result = [p.tolist(), d.get_top().tolist(), list(d.get_center().shape)]\n')
+        self.assertEqual(result, [[0.0, 1.0, 0.0], [0.0, 1.08, 0.0], [3.0]])
+
+    @unittest.skipUnless(HAS_NUMPY, 'scene code gets NumPy point arrays only when NumPy is loaded')
+    def test_point_results_are_mutable_arrays_with_numpy(self):
+        result = scene_values(
+            'd = Dot()\n'
+            'p = d.get_center()\n'
+            'p[1] = 2\n'
+            'ax = Axes([-2, 2], [-2, 2], x_length=4, y_length=8, tips=False)\n'
+            'pts = [ax.c2p(1, 3), ax.c2p(2, 4)]\n'
+            'result = [type(p).__name__, p, d.get_center(), ax.p2c(pts), ax.c2p(np.array([[1, 3], [2, 4]])),\n'
+            '          NumberLine().n2p(np.array([1, 2]))]\n')
+        self.assertEqual(result, ['ndarray', [0.0, 2.0, 0.0], [0.0, 0.0, 0.0], [[1.0, 3.0], [2.0, 4.0]],
+                                  [[1.0, 6.0, 0.0], [2.0, 8.0, 0.0]], [[1.0, 0.0, 0.0], [2.0, 0.0, 0.0]]])
 
 
 class AnimationApiTests(unittest.TestCase):

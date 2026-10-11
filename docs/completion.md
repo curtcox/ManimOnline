@@ -10,7 +10,7 @@ has been asked of the user; do not silently equate the current subset with eithe
 
 | Requirement | Current evidence | Remaining verification/work |
 | --- | --- | --- |
-| Basic shapes and animations | Python frame tests, SVG renderer tests, Pyodide browser playback; Playwright smoke test (`tests/browser/smoke.cjs`, CI job `browsers`) renders DOT and a Manim/MathTex scene in Chromium, Firefox and WebKit (Chromium and WebKit also verified locally on macOS, 2026-10-10) | Broader examples across the matrix; real Safari/Firefox releases rather than Playwright builds |
+| Basic shapes and animations | Python frame tests, SVG renderer tests, Pyodide browser playback; Playwright smoke test (`tests/browser/smoke.cjs`, CI job `browsers`) renders DOT, a Manim/MathTex scene and a NumPy scene in Chromium, Firefox and WebKit (all three pass on Ubuntu CI; Chromium and WebKit also verified locally on macOS, 2026-10-10) | Broader examples across the matrix; real Safari/Firefox releases rather than Playwright builds |
 | Worker execution and hard Python timeout | ManimClient deadline/cancellation tests; explicit cancel/retry controls; real in-app browser infinite-loop cancellation, 90-second timeout, valid-scene recovery and DOT switching | Repeat cancellation/timeout/recovery across browser matrix |
 | Automatic detection and edit debounce | Literal/comment filtering, manual renderer selector with URL aliases, detector/scheduler tests, browser override/reload/recovery/gallery checks | Live sharing-service checks; broader ambiguous-source coverage |
 | Scene selection and URL reload | Source-link snapshots, scene/type/DOT options, shortening failure/deadline/stale-response tests | Live shortening availability |
