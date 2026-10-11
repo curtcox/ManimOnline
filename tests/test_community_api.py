@@ -795,6 +795,24 @@ class AnimationApiTests(unittest.TestCase):
             [[-0.2125, -0.175, 1.4875, 0.175], [1.4, -0.175, 1.4875, 0.175], [1.75, 0.0, 0.0], 2.5,
              [-1.0, 0.0, 2.0, 0.0]])
 
+    def test_curved_arrows_morph_their_drawn_shaft_into_other_shapes(self):
+        self.assertEqual(scene_values(
+            'def b(m):\n'
+            '    return [m.get_left()[0], m.get_bottom()[1], m.get_right()[0], m.get_top()[1]]\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        m = CurvedArrow(LEFT, RIGHT)\n'
+            '        self.r = []\n'
+            '        self.add(m)\n'
+            '        self.add_updater(lambda dt: self.r.append(b(m)))\n'
+            '        self.play(Transform(m, Star().shift(RIGHT)))\n'
+            's = S(); s.render()\n'
+            'xs = [p[0] for f in s.frames for root in f["mobjects"] for c in [root] + root["children"]\n'
+            '      for curve in c.get("shaft_curves") or c.get("curves") or [] for p in curve]\n'
+            'result = [s.r[k] for k in (0, 4, 8, 12)] + [min(xs) > -1.01]\n'),
+            [[-1.0, -0.4979, 1.0, 0.0], [-0.8344, -0.5237, 1.0, 0.0828], [-0.3186, -0.6795, 1.2689, 0.5837],
+             [0.0125, -0.7962, 1.8834, 0.9587], True])
+
     def test_rotate_fixes_its_pivot_when_constructed(self):
         self.assertEqual(scene_values(
             's = Square()\n'

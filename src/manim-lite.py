@@ -10830,9 +10830,18 @@ def _align_path_snapshots(start, target):
         return None  # Matching primitives retain their analytical interpolation.
     # Align untrimmed curved-arrow geometry; capture fits it to sampled tips.
     start,target = _snapshot_copy(start),_snapshot_copy(target)
+    curved = [bool(snapshot.get('_curved_tip_path')) for snapshot in (start,target)]
     for snapshot in (start,target):
-        if snapshot.get('_curved_tip_path'):
-            snapshot.pop('shaft_curves',None)
+        if not snapshot.get('_curved_tip_path'):
+            continue
+        if curved[0] != curved[1]:
+            # Morphing into another shape, Community interpolates the drawn (tip-trimmed)
+            # shaft pointwise; refitting it to collapsing tips would diverge.
+            if 'shaft_curves' not in snapshot:
+                _refresh_tip_shafts(snapshot)  # A family's own snapshot keeps its fitted shaft.
+            snapshot['curves'] = snapshot['shaft_curves']
+            snapshot.pop('_curved_tip_path')
+        snapshot.pop('shaft_curves',None)
     paths1, paths2 = _path_subpaths(start), _path_subpaths(target)
     if not paths1 or not paths2:
         return None  # Empty geometry has no endpoint to align; retain the fade.
@@ -13675,6 +13684,8 @@ class Scene:
                     mobject.__dict__[key] = copy.deepcopy(value)
             mobject._type = snapshot['type']
             mobject._sampled_geometry_center = snapshot['geometry_center']
+            if '_curved_tip_path' not in snapshot:
+                mobject.__dict__.pop('_curved_tip_path', None)  # e.g. a curved arrow mid-morph
             progress = snapshot.get('draw_progress')
             shaft = None
             if (mobject.__dict__.get('_curved_tip_path') or snapshot['type'] == 'arrow' and snapshot['children']) and any(

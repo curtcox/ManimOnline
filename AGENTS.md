@@ -825,3 +825,7 @@ ShowPassingFlash accepts arrows: families with their own path cut every member w
 via pointwise_become_partial of `_own_outline` (a childless copy keeping the tip-trimmed
 shaft). pointwise_become_partial accepts arrows (they become bezierpath shafts), and Line
 endpoint getters stay tip-aware after that, so a collapsed arrow keeps Community's length.
+Morphing a curved-tip path into a shape without one aligns its drawn shaft (`shaft_curves`,
+already in a family's own snapshot) and drops `_curved_tip_path`, so frames interpolate
+pointwise like Community instead of refitting to collapsing tips (which diverged). Updater
+exposure drops a stale live `_curved_tip_path` when the sampled snapshot lacks it.
