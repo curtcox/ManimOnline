@@ -1879,7 +1879,8 @@ assert isinstance(t.get_value(), (int, float))""")
         with self.assertRaises(ValueError): rect.scale(2,about_point=lite.ORIGIN,about_edge=lite.UP)
         result=render('s = Square()\nself.play(Rotate(s,PI,about_edge=DL),run_time=1,rate_func=linear)')
         final=result['frames'][-1]['mobjects'][0]
-        self.assertPointAlmostEqual(final['position'],(-2,-2,0))
+        # Community's Rotate pivots on the center fixed at construction; about_edge is ignored.
+        self.assertPointAlmostEqual(final['position'],(0,0,0))
         result=render('s = Square().to_edge(LEFT)\nself.play(s.animate.to_edge(RIGHT).flip(),run_time=1)\nself.play(s.animate.center().match_width(Circle(radius=2)))')
         self.assertAlmostEqual(result['frames'][15]['mobjects'][0]['position'][0],lite.config.frame_width/2-1.5)
         self.assertPointAlmostEqual(result['frames'][-1]['mobjects'][0]['position'],lite.ORIGIN)
@@ -6579,8 +6580,7 @@ class Demo(Scene):
     def test_succession_conflicts_and_invalid_options_are_explicit(self):
         for body in ('s = Square()\nself.play(Succession(Create(s), Rotate(s)), FadeOut(s))',
                      's = Square()\nself.play(Succession(AnimationGroup(Create(s), Rotate(s)), FadeOut(s)))'):
-            with self.assertRaisesRegex(ValueError, 'one animation per object'):
-                render(body)
+            self.assertEqual(render(body)['frames'][-1]['mobjects'], [])
         with self.assertRaisesRegex(ValueError, 'Please add at least one subanimation'):
             lite.Succession().begin()
         with self.assertRaises(ValueError):
@@ -6856,8 +6856,6 @@ class Demo(Scene):
             lite.TransformFromCopy(source, source)
         with self.assertRaises(TypeError):
             lite.TransformFromCopy(source, 'target')
-        with self.assertRaises(ValueError):
-            lite.Scene().play(lite.TransformFromCopy(source, target), lite.FadeIn(target))
         lite.Scene().add(lite.VGroup(target.copy()).scale(2).rotate(1)).play(lite.TransformFromCopy(source, target))
         scene = lite.Scene().add(lite.VGroup(target))
         scene.play(lite.TransformFromCopy(source, target))
@@ -7375,12 +7373,13 @@ class Demo(Scene):
         self.assertEqual(square['position'], [1, 1, 0])
 
     def test_group_rejects_conflicts_invalid_timing_and_excess_duration(self):
+        # One object may be animated twice (Community); partly shared families may not.
+        with self.assertRaisesRegex(ValueError, 'one animation'):
+            render('d = Dot()\nself.play(FadeIn(VGroup(d)), FadeOut(d))')
         for body in ('d = Dot()\nself.play(LaggedStart(FadeIn(d), FadeOut(d), lag_ratio=1))',
                      'd = Dot()\nself.play(AnimationGroup(FadeIn(d)), FadeOut(d))',
-                     'd = Dot()\nself.play(FadeIn(VGroup(d)), FadeOut(d))',
                      'a, b = Dot(), Square()\nself.play(ReplacementTransform(a, b), FadeIn(b))'):
-            with self.assertRaisesRegex(ValueError, 'one animation'):
-                render(body)
+            self.assertEqual(len(render(body)['frames'][-1]['mobjects']), 1 if 'Replacement' in body else 0)
         # Members of an on-screen group animate inside it (Community semantics).
         frame = render('d = Dot()\nself.add(VGroup(d, Square()))\nself.play(FadeIn(d), rate_func=linear)')['frames'][7]['mobjects']
         self.assertEqual(len(frame), 1)

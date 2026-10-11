@@ -743,6 +743,41 @@ class AnimationApiTests(unittest.TestCase):
             [[-0.8873, 0.4225, 7.8176, 5.322], [7.4676, 4.972, 7.8176, 5.322],
              [-0.8873, 0.4225, 0.0], [1.0932, 0.4058, 0.0], [-0.8755, 0.4058, 0.0]])
 
+    def test_animations_of_one_object_begin_in_order_and_the_running_one_wins(self):
+        self.assertEqual(scene_values(
+            'def b(m):\n'
+            '    return [m.get_left()[0], m.get_bottom()[1], m.get_right()[0], m.get_top()[1]]\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        m = Square()\n'
+            '        self.r = []\n'
+            '        self.add_updater(lambda dt: self.r.append(b(m)))\n'
+            '        self.add(m)\n'
+            '        self.play(m.animate.shift(RIGHT), Rotate(m, PI / 4), run_time=0.5)\n'
+            '        self.play(AnimationGroup(Rotate(m, PI / 3, run_time=2), m.animate.shift(UP)), run_time=1)\n'
+            '        self.play(LaggedStart(FadeOut(m), FadeIn(m), lag_ratio=0.3), run_time=0.7)\n'
+            '        self.play(AnimationGroup(Create(m), Indicate(m), lag_ratio=0.5))\n'
+            's = S(); s.render()\n'
+            'result = [s.r[k] for k in (7, 13, 17, 22)] + [b(s.mobjects[0])]\n'),
+            [[-1.4142, -1.4142, 1.4142, 1.4142], [-1.4142, -0.5685, 1.4142, 2.26],
+             [-1.0164, -1.0164, 1.0164, 1.0164], [-1.22, -1.22, 1.22, 1.22], [0.0, 2.4142, 0.0, 2.4142]])
+
+    def test_rotate_fixes_its_pivot_when_constructed(self):
+        self.assertEqual(scene_values(
+            's = Square()\n'
+            'a = Rotate(s, PI / 2, about_edge=UR); a.begin(); a.interpolate(1)\n'
+            't = Square()\n'
+            'b = Rotating(t, angle=PI / 2, about_edge=UR); b.begin(); b.interpolate(1)\n'
+            'u = Square()\n'
+            'c = Rotate(u, PI)\n'
+            'u.shift(RIGHT)\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        self.play(c)\n'
+            'S().render()\n'
+            'result = [s.get_center(), t.get_center(), u.get_center()]\n'),
+            [[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [-1.0, 0.0, 0.0]])
+
     def test_lagged_start_map_animates_shapes_once_with_their_children(self):
         self.assertEqual(scene_values(
             'class S(Scene):\n'

@@ -810,3 +810,10 @@ shaft trimmed by their whole tips, computed before the tips themselves are expos
 SpiralIn saves, restores and moves each shape in world coordinates (`_in_world`), so an
 arrow's tip spirals with Community's path; get_center_of_mass uses family world points.
 Open: Community leaves an arrow's shaft in place when its tip moves alone; Lite refits it.
+Several animations may drive one object (Community): `Scene._prepare_in_order` applies each
+earlier animation's states(0) to the live object (`_sampled_copy(partial=True)` turns
+draw_progress into pointwise_become_partial geometry) before preparing the next, as
+Community's begin() runs interpolate(0). AnimationGroup.states lets only animations begun
+and not finished on the previous update override shared objects. Partly shared families are
+still rejected. Rotate fixes its pivot at the center when constructed and ignores about_edge;
+Rotating resolves about_edge at begin.

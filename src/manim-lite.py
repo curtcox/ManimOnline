@@ -12127,6 +12127,8 @@ class Indicate(Animation):
 
 class Rotate(Animation):
     """Sample a rigid rotation from the original object rather than its endpoints."""
+    _pivot_at_construction = True
+
     def __init__(self, mobject, angle=PI, axis=OUT, about_point=None, about_edge=None, **kwargs):
         super().__init__(mobject, **kwargs)
         if not math.isfinite(angle):
@@ -12134,8 +12136,12 @@ class Rotate(Animation):
         axis = Vector(axis)
         if not all(math.isfinite(v) for v in axis) or not any(axis):
             raise ValueError('Rotation axis must be finite and nonzero')
-        if about_point is not None and about_edge is not None:
-            raise ValueError('Pass about_point or about_edge, not both')
+        if about_point is None and self._pivot_at_construction:
+            # Community's Rotate fixes its pivot at the center when it is constructed, so
+            # an about_edge is ignored and later edits (or earlier animations) keep it.
+            about_point = _in_world(mobject, lambda m: m.get_center())
+        if about_point is not None:
+            about_edge = None  # Mobject.rotate prefers an explicit point.
         # In-plane axes rotate in 3D: each sample bakes the rigid rotation, which
         # is exactly Community's path_arc interpolation about that axis.
         self.axis = OUT if axis in (OUT, IN) else axis
@@ -12171,6 +12177,8 @@ class Rotate(Animation):
 
 
 class Rotating(Rotate):
+    _pivot_at_construction = False
+
     def __init__(self, mobject, angle=TAU, axis=OUT, about_point=None,
                  run_time=5, rate_func=linear, **kwargs):
         super().__init__(mobject, angle, axis, about_point,
@@ -12659,8 +12667,8 @@ class AnimationGroup:
         if not self.animations:
             self.begin()
         self._introduce_group(scene)
-        for animation in self.animations:
-            animation.prepare(scene)
+        self._states_time = None
+        scene._prepare_in_order(self.animations)
 
     def _introduce_group(self, scene):
         """Community's add_mobjects_from_animations adds a non-introducer group's Group of
@@ -12691,9 +12699,20 @@ class AnimationGroup:
         # Like Community, a member that ends before its group holds its final interpolated
         # state (e.g. a FadeOut's shifted copy) until the whole group finishes.
         holding = alpha < 1 or self.__dict__.get('_holding', False)
+        # Community only interpolates animations that have begun and were not already
+        # finished on the previous update; others leave a shared object as last drawn.
+        previous = self.__dict__.get('_states_time')
+        waiting = {}
         for animation, (start, duration) in zip(self.animations, self.timings):
             animation._holding = holding
-            result.update(animation.states((time - start) / duration if duration else (1 if time >= start else 0)))
+            states = animation.states((time - start) / duration if duration else (1 if time >= start else 0))
+            if alpha >= 1 or time >= start and (previous is None or previous <= start + duration):
+                result.update(states)
+            else:
+                waiting.update(states)
+        for mobject, states in waiting.items():
+            result.setdefault(mobject, states)
+        self._states_time = time
         return result
 
     def finish(self, scene=None):
@@ -13598,7 +13617,7 @@ class Scene:
                 # A curved arrow's shaft is trimmed by its whole tips (Community fixes its
                 # points), even while the tips themselves are exposed partially drawn.
                 try:
-                    shaft = mobject.get_points()
+                    shaft = _sampled_copy(mobject, [snapshot]).get_points()
                 except (TypeError, ValueError):
                     shaft = None
             children = []
@@ -13809,9 +13828,21 @@ class Scene:
         finally:
             self._exit_world_members(tokens)
 
-    def _play_frames(self, animations, durations, count):
-        for animation in animations:
+    def _prepare_in_order(self, animations):
+        """Community begins animations one at a time: begin() runs interpolate(0), so a later
+        animation of the same object starts from its predecessors' first frame."""
+        for index, animation in enumerate(animations):
+            shared = {id(m) for m in animation.objects()}
+            for earlier in animations[:index]:
+                if not shared & {id(m) for m in earlier.objects()}:
+                    continue
+                for mobject, states in earlier.states(0).items():
+                    if id(mobject) in shared and states:
+                        mobject.become(_sampled_copy(mobject, states, partial=True))
             animation.prepare(self)
+
+    def _play_frames(self, animations, durations, count):
+        self._prepare_in_order(animations)
         self._static_frames = ({} if not self._world_members and self._static_frames_safe(animations)
                                else None)
         try:
@@ -13835,7 +13866,8 @@ class Scene:
         self._update_mobjects(0, scene_updaters=False)
 
     def validate(self, *animations):
-        objects = [m for a in animations for m in a.objects()]
+        # Community lets several animations drive one object (the last one updated wins).
+        objects = list({id(m): m for a in animations for m in a.objects()}.values())
         def family(mobject):
             return [mobject] + [m for child in mobject.children for m in family(child)]
         # A member shared inside one family is allowed (Community de-duplicates
@@ -21096,6 +21128,13 @@ def _animation_state(animation, starting, alpha):
                   animation.states(min(alpha, 1 - 1e-9)).get(animation.mobject) or ()]
         if not states:
             return starting.copy()
+    return _sampled_copy(starting, states)
+
+
+def _sampled_copy(starting, states, partial=False):
+    """A copy of starting showing sampled snapshots (the most opaque one when split).
+    With partial, a partly drawn outline becomes Community's pointwise_become_partial
+    geometry instead of carrying the preview's draw_progress."""
     snapshot = max(states, key=lambda state: state['opacity'])
     result = starting.copy()
     def apply(target, node, inherited=1):
@@ -21128,6 +21167,14 @@ def _animation_state(animation, starting, alpha):
         c, s = target.geometry_scale * math.cos(target.angle), target.geometry_scale * math.sin(target.angle)
         target.position = list(Vector(target.position) + Vector((delta[0] - (c * delta[0] - s * delta[1]),
                                                                  delta[1] - (s * delta[0] + c * delta[1]), 0)))
+        progress = target.__dict__.pop('draw_progress', None) if partial else None
+        if progress is not None and progress < 1 and node['type'] in _PATH_TYPES and _is_a(target, VMobject):
+            source = copy.copy(target)
+            source.__dict__ = dict(target.__dict__, children=[])
+            try:
+                target.pointwise_become_partial(source, 0, max(0.0, progress))
+            except (TypeError, ValueError, NotImplementedError):
+                pass
     apply(result, snapshot)
     return result
 
