@@ -5396,6 +5396,17 @@ class Arrow(Line):
         self.add_tip(tip_shape=tip_shape)
         self._set_stroke_width_from_length()
 
+    def get_normal_vector(self):
+        p0, p1, p2 = (Vector(p) for p in list(self.tip.get_points())[0::4][:3])
+        a, b = p2 - p1, p1 - p0
+        cross = Vector((a[1]*b[2] - a[2]*b[1], a[2]*b[0] - a[0]*b[2], a[0]*b[1] - a[1]*b[0]))
+        norm = math.sqrt(sum(v * v for v in cross))
+        return _number_array(list(cross * (1 / norm)) if norm else list(cross))
+
+    def reset_normal_vector(self):
+        self.normal_vector = self.get_normal_vector()
+        return self
+
     def get_default_tip_length(self):
         return min(self.tip_length,self.max_tip_length_to_length_ratio*self.get_length())
 
@@ -11213,6 +11224,12 @@ class FadeTransform(Transform):
             raise ValueError('stretch must be a boolean')
         self.replacement, self.stretch, self.dim_to_match = target_mobject, stretch, dim_to_match
 
+    def ghost_to(self, source, target):
+        """Community's ghost: fit source over target (unless target is empty), then hide it."""
+        if target.get_num_points() or target.children:
+            self._fit(source, target)
+        source.set_opacity(0)
+
     def _fit(self, mobject, reference):
         try:
             return mobject.replace(reference, self.dim_to_match, self.stretch)
@@ -11552,6 +11569,12 @@ class ApplyMethod(Animate):
             setattr(self, key, value)
         self.operations.append((method.__name__, args, kwargs))
 
+    def check_validity_of_input(self, method):
+        if not callable(method) or getattr(method, '__self__', None) is None:
+            raise ValueError('Whoops, looks like you accidentally invoked the method you want to animate')
+        if not isinstance(method.__self__, Mobject):
+            raise AssertionError('ApplyMethod expects a method bound to a Mobject')
+
 
 class ScaleInPlace(ApplyMethod):
     def __init__(self, mobject, scale_factor, **kwargs):
@@ -11585,12 +11608,20 @@ class ApplyPointwiseFunctionToCenter(Animate):
 
 
 class ApplyMatrix(ApplyPointwiseFunction):
-    def __init__(self, matrix, mobject, about_point=ORIGIN, **kwargs):
-        rows = [list(row) for row in matrix]
+    @staticmethod
+    def _matrix_rows(matrix):
+        rows = [list(row) for row in (matrix.tolist() if hasattr(matrix, 'tolist') else matrix)]
         if [len(row) for row in rows] not in ([2, 2], [3, 3, 3]):
             raise ValueError('Matrix has bad dimensions')
         if len(rows) == 2:
             rows = [rows[0] + [0], rows[1] + [0], [0, 0, 1]]
+        return rows
+
+    def initialize_matrix(self, matrix):
+        return _number_array(self._matrix_rows(matrix))
+
+    def __init__(self, matrix, mobject, about_point=ORIGIN, **kwargs):
+        rows = self._matrix_rows(matrix)
         pivot = Vector(about_point)
         def function(point):
             p = Vector(point) - pivot
@@ -11636,6 +11667,12 @@ class Homotopy(Animation):
     def begin(self, scene):
         super().begin(scene)
         self.original = self.mobject.copy()
+
+    def function_at_time_t(self, t):
+        def mapping_function(point):
+            x, y, z = point
+            return _number_array(list(self.homotopy(x, y, z, t)))
+        return mapping_function
 
     def _at(self, t):
         current = self.original.copy()
@@ -12029,15 +12066,24 @@ class Flash(AnimationGroup):
         center = point.get_center() if isinstance(point, Mobject) else Mobject._xy_vector(point, 'Flash point')
         if isinstance(num_lines, bool) or not isinstance(num_lines, numbers.Integral) or not 1 <= num_lines <= 360:
             raise ValueError('num_lines must be an integer from 1 to 360')
+        self.point, self.color, self.line_length, self.num_lines = center, color, line_length, num_lines
+        self.flash_radius, self.line_stroke_width, self.time_width = flash_radius, line_stroke_width, time_width
+        self.animation_config = {key: kwargs.pop(key) for key in list(kwargs) if key in ('rate_func',)}
+        self.lines = self.create_lines()
+        self._flash_run_time = run_time
+        super().__init__(*self.create_line_anims(), **kwargs)
+
+    def create_lines(self):
         lines = VGroup()
-        for index in range(num_lines):
-            line = Line(center, center + RIGHT * line_length).shift(RIGHT * flash_radius)
-            lines.add(line.rotate(index * TAU / num_lines, about_point=center))
-        lines.set_color(color).set_stroke(width=line_stroke_width)
-        self.lines = lines
-        flash_options = {key: kwargs.pop(key) for key in list(kwargs) if key in ('rate_func',)}
-        super().__init__(*(ShowPassingFlash(line, time_width=time_width, run_time=run_time, **flash_options)
-                           for line in lines), **kwargs)
+        for index in range(self.num_lines):
+            line = Line(self.point, self.point + RIGHT * self.line_length).shift(RIGHT * self.flash_radius)
+            lines.add(line.rotate(index * TAU / self.num_lines, about_point=self.point))
+        return lines.set_color(self.color).set_stroke(width=self.line_stroke_width)
+
+    def create_line_anims(self):
+        run_time = self.__dict__.get('_flash_run_time', getattr(self, 'run_time', 1.0))
+        return [ShowPassingFlash(line, time_width=self.time_width, run_time=run_time, **self.animation_config)
+                for line in self.lines]
 
 
 class DefaultSectionType:
@@ -18107,6 +18153,9 @@ class ChangeSpeed(AnimationGroup):
             previous, init = node, final
         self.scaled_total_time = current
         super().__init__(anim, run_time=self.scaled_total_time * anim.run_time, **kwargs)
+
+    def get_scaled_total_time(self):
+        return self.scaled_total_time
         self._internal = True  # Community's ChangeSpeed is a plain Animation of anim's mobject.
         self._progress = 0.0
 

@@ -192,6 +192,21 @@ class AnimationApiTests(unittest.TestCase):
             '          w.get_stroke_color(Circle()), wg.get_scale_about_point(), wg.get_rotate_about_point()]\n')
         self.assertEqual(result, [3.0, 0.0, 3.0, '#FC6255', '#FC6255', [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]])
 
+    def test_animation_construction_helpers(self):
+        result = scene_values(
+            'f = Flash(ORIGIN, num_lines=4)\n'
+            'h = Homotopy(lambda x, y, z, t: (x + t, y, z), Square())\n'
+            'c = ChangeSpeed(Wait(1), speedinfo={0.5: 2})\n'
+            'a = ApplyMatrix([[1, 2], [3, 4]], Square())\n'
+            't = FadeTransform(Square(), Circle(radius=2)); g = Square(); t.ghost_to(g, Circle(radius=2))\n'
+            'result = [len(f.create_lines()), len(f.create_line_anims()), h.function_at_time_t(0.5)([1, 2, 0]),\n'
+            '          c.get_scaled_total_time(), a.initialize_matrix([[1, 2], [3, 4]]), g.width,\n'
+            '          g.get_fill_opacity(), g.get_stroke_opacity(), Arrow().get_normal_vector()[2]]\n')
+        self.assertEqual(result, [4, 4, [1.5, 2.0, 0.0], 0.5833, [[1.0, 2.0, 0.0], [3.0, 4.0, 0.0], [0.0, 0.0, 1.0]],
+                                  4.0, 0.0, 0.0, -1.0])
+        with self.assertRaises(ValueError):
+            scene_values('s = Square()\nresult = ApplyMethod(s.shift, UP).check_validity_of_input(s)\n')
+
     def test_pixel_images_are_reported_as_unsupported(self):
         with self.assertRaises(NotImplementedError):
             scene_values('result = Square().get_image()\n')
