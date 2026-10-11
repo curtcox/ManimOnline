@@ -11453,6 +11453,7 @@ class GrowFromCenter(GrowFromPoint):
 
 class ShrinkToCenter(GrowFromCenter):
     def __init__(self, mobject, remover=False, **kwargs):
+        kwargs.setdefault('introducer', False)  # Community's ScaleInPlace(mobject, 0)
         super().__init__(mobject, **kwargs)
         self.remover = remover
 
@@ -11494,6 +11495,7 @@ class ShowPassingFlash(Animation):
     """Move a temporary cubic-parameter window over supported vector outlines."""
     def __init__(self, mobject, time_width=.1, **kwargs):
         kwargs.setdefault('introducer', True)
+        kwargs.setdefault('remover', True)
         super().__init__(mobject, **kwargs)
         if (isinstance(time_width, bool) or not isinstance(time_width, _REAL)
                 or not math.isfinite(time_width) or time_width < 0):
@@ -11535,7 +11537,8 @@ class ShowPassingFlash(Animation):
 
 class Uncreate(Create):
     def __init__(self, mobject, reverse_rate_function=True, remover=True, **kwargs):
-        super().__init__(mobject, reverse_rate_function=reverse_rate_function, remover=remover, **kwargs)
+        super().__init__(mobject, reverse_rate_function=reverse_rate_function, introducer=False,
+                         remover=remover, **kwargs)
 
 
 class DrawBorderThenFill(Animation):
@@ -18999,7 +19002,8 @@ class ShowPassingFlashWithThinningStrokeWidth(AnimationGroup):
     def __init__(self, vmobject, n_segments=10, time_width=0.1, remover=True, **kwargs):
         if isinstance(n_segments, bool) or not isinstance(n_segments, numbers.Integral) or not 1 <= n_segments <= 100:
             raise ValueError('n_segments must be an integer from 1 to 100')
-        self.n_segments, self.time_width, self.remover = n_segments, time_width, remover
+        # Community stores remover, then AnimationGroup's initializer resets it to False.
+        self.n_segments, self.time_width = n_segments, time_width
         width = vmobject.get_stroke_width()
         space = lambda a, b: [a + (b - a) * i / (n_segments - 1) for i in range(n_segments)] if n_segments > 1 else [a]
         group_options = {key: kwargs.pop(key) for key in ('run_time', 'lag_ratio') if key in kwargs}

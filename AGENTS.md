@@ -772,3 +772,5 @@ and interpolate through `_animation_state` from `_manual_start`; snapshot colors
 `_paint`. AnimationGroup/Succession implement Community's manual interpolate. Transform calls
 an overridden create_target at begin. Constructor defaults can be diffed against Manim 0.22
 with `inspect.signature`; colors are PURE_YELLOW for Indicate/Flash/Circumscribe/FunctionGraph.
+Animation role flags follow Community: Uncreate and ShrinkToCenter are not introducers,
+ShowPassingFlash is an introducing remover, and the thinning-flash group is not a remover.

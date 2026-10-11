@@ -625,6 +625,13 @@ class AnimationApiTests(unittest.TestCase):
             'result = [g.anims_with_timings.tolist()[1][1:], half, s.get_stroke_opacity()]\n'),
             [[1.0, 2.0], 0.5, 1.0])
 
+    def test_animation_role_flags_match_community(self):
+        self.assertEqual(scene_values(
+            'result = [[a.introducer, a.remover] for a in (\n'
+            '    Uncreate(Square()), ShrinkToCenter(Square()), ShowPassingFlash(Square()),\n'
+            '    ShowPassingFlashWithThinningStrokeWidth(Square()), Create(Square()), FadeOut(Square()))]\n'),
+            [[False, True], [False, False], [True, True], [False, False], [True, False], [False, True]])
+
     def test_standalone_tips_match_community_construction(self):
         self.assertEqual(scene_values(
             'result = []\n'
