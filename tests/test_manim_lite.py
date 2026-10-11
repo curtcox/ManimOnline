@@ -3004,8 +3004,8 @@ assert isinstance(t.get_value(), (int, float))""")
     def test_shape_family_mutation_order_duplicates_and_atomic_validation(self):
         parent = lite.Circle()
         a,b = lite.Dot(),lite.Square()
-        parent.add(a,b,a)
-        self.assertEqual(parent.children,[a,b])
+        parent.add(a,b,a)  # Community keeps each member's last occurrence.
+        self.assertEqual(parent.children,[b,a])
         parent.add(a)
         self.assertEqual(parent.children,[b,a])
         parent.add_to_back(a)
@@ -5716,12 +5716,12 @@ self.wait(1)""")
 
     def test_group_construction_mutation_and_cycle_rejection_are_atomic(self):
         a,b,c = lite.Circle(),lite.Square(),lite.Triangle()
-        group = lite.VGroup(a,b,a)
-        self.assertEqual(group.children,[a,b])
+        group = lite.VGroup(a,b,a)  # Community keeps each member's last occurrence.
+        self.assertEqual(group.children,[b,a])
         group.add(c,a,a)
         self.assertEqual(group.children,[b,c,a])
         group.add_to_back(a,b,a)
-        self.assertEqual(group.children,[a,b,c])
+        self.assertEqual(group.children,[b,a,c])
         group.remove(b,b)
         self.assertEqual(group.children,[a,c])
         parent = lite.Group(group)

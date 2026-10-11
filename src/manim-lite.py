@@ -218,6 +218,26 @@ def _world_args(args, kwargs):
             {key: _world_view(value) for key, value in kwargs.items()})
 
 
+def _in_world(mobject, function, *args, **kwargs):
+    """function(mobject, ...) with mobject placed in world coordinates."""
+    token = _enter_world(mobject) if mobject in _PARENTS else None
+    try:
+        return function(mobject, *args, **kwargs)
+    finally:
+        if token is not None:
+            _exit_world(token)
+
+
+def _scene_dimension(stored, measure):
+    """Scene code reads Community's measured (family, world) size; library code reads the
+    analytical dimension that shapes keep under the same name."""
+    def get(self):
+        if sys._getframe(1).f_code.co_filename == _LIB_FILE:
+            return stored(self)
+        return _in_world(self, measure)
+    return get
+
+
 def _scene_call(function, reference=False, live_points=False):
     """Run a method called from scene code in Community's world coordinates."""
     @functools.wraps(function)
@@ -226,12 +246,7 @@ def _scene_call(function, reference=False, live_points=False):
             return function(self, *args, **kwargs)
         if reference:
             args, kwargs = _world_args(args, kwargs)
-        token = _enter_world(self) if self in _PARENTS else None
-        try:
-            result = function(self, *args, **kwargs)
-        finally:
-            if token is not None:
-                _exit_world(token)
+        result = _in_world(self, function, *args, **kwargs)
         # Community's get_points returns the points buffer itself.
         if live_points:
             return _point_array([list(Vector(p)) for p in result], owner=self)
@@ -867,6 +882,11 @@ class _CommunityTree(type):
 _VIRTUAL_BASES = {}  # Filled once the classes exist (see _install_scene_calls).
 
 
+def _last_unique(items):
+    """items without repeats, keeping each one's last occurrence (Community's remove_list_redundancies)."""
+    return list(dict.fromkeys(reversed(items)))[::-1]
+
+
 def _is_a(value, cls):
     """isinstance by real inheritance, ignoring _CommunityTree's virtual bases."""
     return type.__instancecheck__(cls, value)
@@ -898,9 +918,11 @@ class Mobject:
     def __init__(self, color=WHITE, fill_opacity=0, stroke_width=2,
                  fill_color=None, stroke_color=None, stroke_opacity=1, z_index=0,
                  shade_in_3d=False, joint_type=None, cap_style=None, sheen_factor=0,
-                 sheen_direction=None, **kwargs):
+                 sheen_direction=None, name=None, **kwargs):
         if kwargs:
             raise NotImplementedError('Unsupported options: ' + ', '.join(kwargs))
+        if name is not None:
+            self.name = name
         if joint_type is not None:
             self.joint_type = LineJointType(joint_type)
         if cap_style is not None:
@@ -927,6 +949,18 @@ class Mobject:
         self.updating_suspended = False
         self.set_z_index(z_index)
         self._type = 'mobject'
+
+    @property
+    def name(self):
+        """Community's mobject name: the class name unless one was given."""
+        return self.__dict__.get('_name', type(self).__name__)
+
+    @name.setter
+    def name(self, value):
+        self._name = value
+
+    def __repr__(self):
+        return str(self.name)
 
     def _validate_children(self, mobjects):
         if any(not isinstance(m, Mobject) for m in mobjects):
@@ -978,14 +1012,14 @@ class Mobject:
 
     def add(self, *mobjects):
         self._validate_children(mobjects)
-        unique = list(dict.fromkeys(mobjects))
+        unique = _last_unique(mobjects)
         self._adopt(unique)
         self._replace_children([m for m in self.children if m not in unique] + unique)
         return self
 
     def add_to_back(self, *mobjects):
         self._validate_children(mobjects)
-        unique = list(dict.fromkeys(mobjects))
+        unique = _last_unique(mobjects)
         self._adopt(unique)
         self._replace_children(unique + [m for m in self.children if m not in unique])
         if self._type in ('text', 'mathtex'):
@@ -1995,7 +2029,9 @@ class Mobject:
 
     def _is_pointless(self):
         """Community leaves members without points (empty text or groups) out of bounds."""
-        if self._type in ('mobject', 'vgroup', 'valuetracker'):
+        if (self._type in ('mobject', 'vgroup', 'valuetracker') or
+                self._type in ('polyline', 'polygon', 'bezierpath') and not self.__dict__.get('vertices')
+                and not self.__dict__.get('curves') or self._type == 'pointcloud' and not self.cloud):
             return all(child._is_pointless() for child in self.children)
         if self._type == 'text' and not self.children:
             return not self.text.strip()
@@ -3583,7 +3619,7 @@ class Mobject:
         center = self._geometry_center()
         result = _snapshot_copy({key: value for key, value in self.__dict__.items()
                                 if (key in _POINT_KEYS and type(value) is list or not _holds_mobject(value) and not callable(value)) and
-                                key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache', '_flow_points') and
+                                key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache', '_flow_points', '_name') and
                                 key not in self._frame_excluded})
         result['type'] = result.pop('_type')
         result['geometry_center'] = list(center)
@@ -4963,6 +4999,15 @@ class Square(Rectangle):
         super().__init__(width=side_length, height=side_length, **kwargs)
         del self.width, self.height
         self._type, self.side_length = 'square', side_length
+
+    # Stored analytically; scene code reads and assigns Community's measured side (see _MEASURED).
+    @property
+    def side_length(self):
+        return self.__dict__['side_length']
+
+    @side_length.setter
+    def side_length(self, value):
+        self.__dict__['side_length'] = value
 
 
 class RoundedRectangle(Rectangle):
@@ -20732,6 +20777,37 @@ _WORLD_PROPERTIES = frozenset(('points', 'width', 'height', 'length', 'tip_point
                                'tip_angle', 'font_size'))
 
 
+def _square_side(square):
+    vertices = square.get_vertices()
+    return math.dist(vertices[0], vertices[1]) if len(vertices) > 1 else 0
+
+
+def _scale_square_side(square, value):
+    current = _square_side(square)
+    if not current:
+        raise ValueError('Cannot resize a collapsed Square')
+    square.scale(NumberLine._real(value, 'side_length', positive=True) / current)
+
+
+# Properties whose scene-code value is measured (family bounds or vertices, in world
+# coordinates); the library keeps reading and writing the stored analytical dimension.
+_MEASURED = {
+    'width': (lambda m: m.get_width(), None),
+    'height': (lambda m: m.get_height(), None),
+    'side_length': (_square_side, _scale_square_side),
+}
+
+
+def _scene_dimension_setter(stored, rescale):
+    if rescale is None:
+        return stored and _scene_call(stored)
+    def set_(self, value):
+        if sys._getframe(1).f_code.co_filename == _LIB_FILE:
+            return stored(self, value)
+        return _in_world(self, rescale, value)
+    return set_
+
+
 def _install_scene_calls():
     """Wrap the public mobject API so scene code sees Community's world coordinates."""
     reference_classes = (Brace, BraceLabel, SurroundingRectangle, BackgroundRectangle, Cross,
@@ -20750,6 +20826,10 @@ def _install_scene_calls():
                 continue
             if isinstance(value, types.FunctionType) and not hasattr(value, '_scene_call'):
                 setattr(cls, name, _scene_call(value, name in _REFERENCE_METHODS, name == 'get_points'))
+            elif isinstance(value, property) and name in _MEASURED:
+                measure, rescale = _MEASURED[name]
+                setattr(cls, name, property(_scene_dimension(value.fget, measure),
+                                            _scene_dimension_setter(value.fset, rescale), value.fdel, value.__doc__))
             elif isinstance(value, property) and name in _WORLD_PROPERTIES:
                 fget = value.fget and _scene_call(value.fget)
                 fset = value.fset and _scene_call(value.fset)
