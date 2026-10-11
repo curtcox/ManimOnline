@@ -863,7 +863,20 @@ class PreviewConfig:
     # Community output options the preview accepts and stores but does not act on (except seed).
     _PASSIVE = {'seed': None, 'dry_run': False, 'quality': 'high_quality', 'disable_caching': False,
                 'write_to_movie': False, 'save_last_frame': False, 'preview': False,
-                'progress_bar': 'display', 'verbosity': 'INFO', 'media_dir': './media'}
+                'progress_bar': 'display', 'verbosity': 'INFO', 'media_dir': './media',
+                'video_dir': '{media_dir}/videos/{module_name}/{quality}',
+                'images_dir': '{media_dir}/images/{module_name}', 'text_dir': '{media_dir}/texts',
+                'tex_dir': '{media_dir}/Tex', 'log_dir': '{media_dir}/logs', 'assets_dir': './',
+                'partial_movie_dir': '{video_dir}/partial_movie_files/{scene_name}',
+                'input_file': '', 'output_file': '', 'scene_names': None, 'format': 'auto',
+                'transparent': False, 'background_opacity': 1.0, 'write_all': False,
+                'save_sections': False, 'from_animation_number': 0,
+                'upto_animation_number': float('inf'), 'max_files_cached': 100, 'log_to_file': False,
+                'media_embed': False, 'media_width': '60%', 'notify_outdated_version': True,
+                'plugins': (), 'preview_command': '', 'enable_wireframe': False, 'window_monitor': 0,
+                'fullscreen': False, 'zero_pad': 4, 'show_in_file_browser': False,
+                'no_latex_cleanup': False, 'gui_location': (0, 0), 'enable_gui': False,
+                'window_position': 'UR', 'window_size': 'default'}
 
     def __getattr__(self, name):
         if name in PreviewConfig._PASSIVE:
@@ -4155,14 +4168,41 @@ class VMobject(Mobject, metaclass=_CommunityTree):
         return [p for c in ca for p in c], [p for c in cb for p in c]
 
     def align_points(self, mobject):
-        """Give both paths the same number of cubic curves (Community's align_points)."""
+        """Community's align_points: pair subpaths in order and subdivide the shorter of each
+        pair; missing subpaths become null curves at the last point."""
         if not _is_a(mobject, VMobject):
             raise TypeError('align_points expects a VMobject')
-        a, b = self._aligned_point_lists(self, mobject)
-        if a and len(a) != len(self.get_points()):
-            self.set_points(a)
-        if b and len(b) != len(mobject.get_points()):
-            mobject.set_points(b)
+        a, b = [Vector(p) for p in self.get_points()], [Vector(p) for p in mobject.get_points()]
+        if len(a) == len(b):
+            return self
+        def subpaths(points, owner):
+            if not points:
+                points = [Vector(owner.get_center())]
+            if len(points) % 4 == 1:
+                points = points + [points[-1]] * 3
+            whole = len(points) - len(points) % 4
+            starts = [0] + [i for i in range(4, whole, 4)
+                            if not self.consider_points_equals_2d(points[i - 1], points[i])] + [whole]
+            return [points[i:j] for i, j in zip(starts, starts[1:]) if j - i >= 4]
+        def nth(paths, n):
+            if n >= len(paths):
+                return [paths[-1][-1] if paths else Vector(ORIGIN)] * 4
+            path = paths[n]
+            # Community drops trailing null curves (manim issue 1959) before pairing.
+            while len(path) > 4 and all(self.consider_points_equals(p, path[-5]) for p in path[-4:]):
+                path = path[:-4]
+            return path
+        first, second = subpaths(a, self), subpaths(b, mobject)
+        new_a, new_b = [], []
+        for n in range(max(len(first), len(second))):
+            sp1, sp2 = nth(first, n), nth(second, n)
+            for path, other, out in ((sp1, sp2, new_a), (sp2, sp1, new_b)):
+                extra = max(0, (len(other) - len(path)) // 4)
+                if extra:
+                    path = [Vector(p) for p in self.insert_n_curves_to_point_list(extra, path)]
+                out.extend(path)
+        self.set_points(new_a)
+        mobject.set_points(new_b)
         return self
 
     def interpolate(self, mobject1, mobject2, alpha, path_func=None):
@@ -8426,6 +8466,8 @@ class Angle(VMobject):
         self.quadrant, self.elbow, self.angle_value = tuple(quadrant), elbow, 0
         a,b = Line._endpoints(line1.get_start(),line1.get_end())
         c,d = Line._endpoints(line2.get_start(),line2.get_end())
+        if any(point[2] for point in (a, b, c, d)):
+            raise ValueError('Coords must be in the xy-plane.')
         u,v = line1.get_unit_vector(),line2.get_unit_vector()
         cross = u[0]*v[1]-u[1]*v[0]
         if cross == 0:
@@ -14113,6 +14155,8 @@ DEFAULT_LAGGED_START_LAG_RATIO = 0.05
 def line_intersection(line1, line2):
     """Community's XY intersection of two infinite lines, each given by two points."""
     (a, b), (c, d) = [[Vector(p) for p in line] for line in (line1, line2)]
+    if any(point[2] for point in (a, b, c, d)):
+        raise ValueError('Coords must be in the xy-plane.')
     denominator = (a[0] - b[0]) * (c[1] - d[1]) - (a[1] - b[1]) * (c[0] - d[0])
     if abs(denominator) < 1e-12:
         raise ValueError('The lines are parallel, there is no unique intersection point.')

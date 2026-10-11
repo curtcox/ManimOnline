@@ -528,6 +528,27 @@ class AnimationApiTests(unittest.TestCase):
             [['#FFFFFF'] * 3, ['#FC6255', '#FC6255', 0.0], ['#58C4DD', '#FC6255'],
              ['#58C4DD', '#83C167', '#83C167'], ['#F7D96F'] * 3, '#58C4DD', 16.0, 4.3176, 2.7548, 4.0])
 
+    def test_angles_need_xy_lines_and_passive_config_names_exist(self):
+        for body in ('Angle(Line([0, 0, 1], [1, 0, 1]), Line([0, 0, 1], [0, 1, 1]))',
+                     'line_intersection([ORIGIN, OUT], [ORIGIN, UP])'):
+            with self.assertRaisesRegex(ValueError, 'xy-plane'):
+                scene_values('result = %s\n' % body)
+        self.assertEqual(scene_values(
+            'result = [config["text_dir"], config.tex_dir, config.transparent, config.zero_pad,\n'
+            '          config.upto_animation_number > 1e9, Angle(Line(LEFT, RIGHT), Line(DOWN, UP)).get_value()]\n'),
+            ['{media_dir}/texts', '{media_dir}/Tex', False, 4.0, True, 1.5708])
+
+    def test_align_points_pairs_subpaths(self):
+        self.assertEqual(scene_values(
+            'o = VMobject(); o.start_new_path(ORIGIN); o.add_line_to(UP); o.add_line_to(UR); o.add_line_to(RIGHT)\n'
+            'o.start_new_path(2 * RIGHT); o.add_line_to(2 * RIGHT + UP)\n'
+            'p = VMobject(); p.start_new_path(ORIGIN); p.add_line_to(UP)\n'
+            'p.start_new_path(RIGHT); p.add_line_to(UR); p.add_line_to(RIGHT + 2 * UP)\n'
+            'o.align_points(p)\n'
+            'result = [[len(s) // 4 for s in o.get_subpaths()], [len(s) // 4 for s in p.get_subpaths()],\n'
+            '          o.get_subpaths()[1][3], p.get_subpaths()[0][3]]\n'),
+            [[3.0, 2.0], [3.0, 2.0], [2.0, 0.5, 0.0], [0.0, 0.3333, 0.0]])
+
     def test_dashed_arrows_keep_one_set_of_tips(self):
         self.assertEqual(scene_values(
             'd = DashedVMobject(Arrow(ORIGIN, 2 * UR, color=RED))\n'

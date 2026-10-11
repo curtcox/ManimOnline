@@ -753,3 +753,8 @@ Group/VGroup/Mobject ignores shift (Community moves points; it has none).
 assignment calls set_color/set_fill/set_stroke; library code reads and writes the stored
 value. Scene reads of `color` use Community's get_color (stroke color when the fill is
 transparent). Library code that needs the configured color must read `self.color` (stored).
+
+VMobject.align_points is Community's per-subpath pairing (trailing null curves dropped,
+missing subpaths become null curves at the last point); morph snapshots still use
+_aligned_point_lists. Angle and line_intersection reject nonzero z like Community.
+PreviewConfig._PASSIVE also lists Community's inert directory/window/flag settings.
