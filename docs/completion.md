@@ -411,3 +411,6 @@ Indicate, Flash, Circumscribe and FunctionGraph, now matched.
 A default-instance diff (color, stroke, fill, size and family of every Mobject class built
 with no arguments) then aligned standalone arrow tips with Community's construction, and
 manual groups accept mobject-free Wait members.
+A constructor-structure diff then gave NumberLine Community's scene view: own points are
+the shaft cut at the tip base, submobjects are the tip/ticks/labels, and the default tip
+is an ArrowTriangleFilledTip. The internal shaft child remains in `get_family`.

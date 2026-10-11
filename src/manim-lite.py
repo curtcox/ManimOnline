@@ -298,7 +298,8 @@ def _scene_call(function, reference=False, live_points=False):
             return function(self, *args, **kwargs)
         if reference:
             args, kwargs = _world_args(args, kwargs)
-        result = _in_world(self, function, *args, **kwargs)
+        # A class may present Community's structure to scene code with a _scene_<name> variant.
+        result = _in_world(self, getattr(type(self), '_scene_' + function.__name__, function), *args, **kwargs)
         # Community's get_points returns the points buffer itself.
         if live_points:
             return _point_array([list(Vector(p)) for p in result], owner=self)
@@ -9344,23 +9345,17 @@ class NumberLine(VGroup):
                      stroke_opacity=self.stroke_opacity).rotate(rotation)
         shaft._number_line_role = 'shaft'
         self.add(shaft)
-        if include_tip and tip_shape is not None and tip_shape is not ArrowTriangleFilledTip:
+        if include_tip:
             # Community's add_tip(tip_shape=...): the shape at the end, stroked like the line.
-            if not (isinstance(tip_shape, type) and issubclass(tip_shape, ArrowTip)):
+            shape = ArrowTriangleFilledTip if tip_shape is None else tip_shape
+            if not (isinstance(shape, type) and issubclass(shape, ArrowTip)):
                 raise TypeError('tip_shape must be an ArrowTip class')
-            tip = tip_shape(length=tip_height, fill_color=self.stroke_color, stroke_color=self.stroke_color)
-            tip.set_stroke(self.stroke_color, self.stroke_width)
-            shaft._orient_tip(tip, False)
-            tip._number_line_role = 'tip'
-            self.add(tip)
-        elif include_tip:
-            end = shaft.get_end()
+            size = {'width': tip_width} if shape is ArrowTriangleFilledTip else {}
+            tip = shape(length=tip_height, fill_color=self.stroke_color, stroke_color=self.stroke_color, **size)
+            tip.set_stroke(self.stroke_color, self.stroke_width, self.stroke_opacity)
             direction = shaft.get_unit_vector()
-            normal = Vector((-direction[1],direction[0],0))
-            base = end - direction*tip_height
-            tip = Polygon(end,base+normal*(tip_width/2),base-normal*(tip_width/2),
-                          color=self.stroke_color,fill_opacity=1,
-                          stroke_width=self.stroke_width,stroke_opacity=self.stroke_opacity)
+            tip.rotate(math.atan2(direction[1], direction[0]) - tip.tip_angle)
+            tip.shift(shaft.get_end() - tip.tip_point)
             tip._number_line_role = 'tip'
             self.add(tip)
         if include_ticks:
@@ -9405,6 +9400,68 @@ class NumberLine(VGroup):
             if child.__dict__.get('_number_line_role') == role:
                 return child
         raise ValueError('NumberLine has no ' + role)
+
+    # Scene code sees Community's structure: the shaft child stands for the line's own points,
+    # so the line has points and its submobjects are the tip, ticks and labels.
+    def _shaft_points(self):
+        """Community's own points: the shaft, ending at the tip bases (add_tip resets them)."""
+        shafts = [c for c in self.children if c.__dict__.get('_number_line_role') == 'shaft']
+        if not shafts:
+            return []
+        points = shafts[0].get_points()
+        ends = [Vector(points[0]), Vector(points[-1])]
+        for index, at_start in ((0, True), (1, False)):
+            tips = self._tips(at_start)
+            if tips and isinstance(tips[-1], ArrowTip):
+                ends[index] = Vector(tips[-1].base)
+        if ends != [Vector(points[0]), Vector(points[-1])]:
+            points = [ends[0] + (ends[1] - ends[0]) * (k / 3) for k in range(4)]
+        return self._points_to_world(points)
+
+    def _scene_get_points(self):
+        return self._shaft_points()
+
+    def _scene_get_num_points(self):
+        return len(self._shaft_points())
+
+    def _scene_has_points(self):
+        return bool(self._shaft_points())
+
+    def _scene_split(self):
+        return ([self] if self._shaft_points() else []) + self._layout_members()
+
+    def _scene_points(self):
+        return _point_array([list(Vector(p)) for p in self._shaft_points()], owner=self)
+
+    @property
+    def submobjects(self):
+        if sys._getframe(1).f_code.co_filename == _LIB_FILE:
+            return self.children
+        return self._layout_members()
+
+    @submobjects.setter
+    def submobjects(self, mobjects):
+        mobjects = list(mobjects)
+        if sys._getframe(1).f_code.co_filename != _LIB_FILE:
+            mobjects = [c for c in self.children if c.__dict__.get('_number_line_role') == 'shaft'
+                        and c not in mobjects] + mobjects
+        Mobject.submobjects.fset(self, mobjects)
+
+    def __iter__(self):
+        if sys._getframe(1).f_code.co_filename == _LIB_FILE:
+            return iter(self.split())
+        return iter(self._scene_split())
+
+    def __len__(self):
+        if sys._getframe(1).f_code.co_filename == _LIB_FILE:
+            return len(self.children) + int(self.has_points())
+        return len(self._scene_split())
+
+    def __getitem__(self, value):
+        members = self.split() if sys._getframe(1).f_code.co_filename == _LIB_FILE else self._scene_split()
+        if isinstance(value, slice):
+            return self.get_group_class()(*members[value])
+        return members[value]
 
     @property
     def ticks(self):

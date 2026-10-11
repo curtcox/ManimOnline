@@ -915,3 +915,9 @@ than the color palettes are classes, so missing ones raise ImportError.
 Analytic shapes follow point paths only through `_arc_similarity` blends (see
 `_CirclesPath.similarity_blend`); add a blend rather than moving just the center. prepare()
 runs a deep-copied terminal `_complete`, so it replaces instance `_on_finish` callbacks.
+
+Scene-view hooks: `_scene_call` runs `_scene_<name>` (when the class defines it) instead of
+`<name>` for scene-code calls, so a class can show Community's structure without changing
+library internals. NumberLine uses it: scene code sees own points (the shaft cut at the
+tip bases), `submobjects`/iteration/indexing without the shaft child, and Community's
+`nl[0] is nl`. Library code keeps using the real `children`, including the shaft.

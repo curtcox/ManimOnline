@@ -1371,6 +1371,21 @@ class AnimationApiTests(unittest.TestCase):
             '          [type(m).__name__ for m in line.labels], type(other.labels[0]).__name__]\n')
         self.assertEqual(values, [10, True, True, ['Tex', 'MathTex'], 'Typst'])
 
+    def test_number_line_scene_structure(self):
+        # Manim 0.22: the line owns the shaft points (cut at the tip base); submobjects
+        # are the tip and ticks, and indexing/iteration include the line itself.
+        values = scene_values(
+            'nl = NumberLine(x_range=[-3, 3, 1], length=6, include_tip=True)\n'
+            'ax = Axes(x_range=[-2, 2], y_range=[-1, 1], x_length=4, y_length=2)\n'
+            'result = [[type(m).__name__ for m in nl.submobjects], [type(m).__name__ for m in nl],\n'
+            '          len(nl.points), type(nl[0]).__name__, len(nl), nl.has_points(),\n'
+            '          [type(m).__name__ for m in ax.submobjects],\n'
+            '          [list(p) for p in nl.get_points()[:2]], nl.get_num_points()]\n')
+        self.assertEqual(plain(values), plain([
+            ['ArrowTriangleFilledTip', 'VGroup'], ['NumberLine', 'ArrowTriangleFilledTip', 'VGroup'],
+            4, 'NumberLine', 3, True, ['NumberLine', 'NumberLine'],
+            [[-3, 0, 0], [-1.1167, 0, 0]], 4]))
+
     def test_image_files_and_png_pixel_arrays(self):
         # Expected pixels come from Pillow, Community's image reader.
         import tempfile
