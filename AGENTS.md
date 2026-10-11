@@ -716,3 +716,12 @@ type dispatch that depends on lite's real inheritance must use `_is_a(x, VMobjec
 The arrow class is exposed as `Vector` via __name__. Stroke widths follow Community:
 DEFAULT_STROKE_WIDTH (4) for VMobjects/VGroups, 2 for NumberLine and Axes axes.
 `tests/test_community_api.py` checks these Community-measured values.
+
+Community module tests (`tests/module` of a Manim checkout, run with lite installed as
+`manim`) drove these behaviors: `_validate_children` uses Community's messages and only
+accepts (virtual) VMobjects under VMobject/VGroup parents; family cycles stay rejected.
+Mobject `__getattr__` provides Community's get_x/set_x compatibility layer, so hasattr
+on any `get_`/`set_` name is true. Plain Mobject/Group `set_points` stores bounds-only
+`_mobject_points` (never drawn, excluded from frames, disables `_world_container`).
+NumPy scene calls return lists of points as arrays; `c2p(xs, ys)` returns Community's
+transposed (3, n) array. Line graphs answer `input_to_graph_point` by binary search.

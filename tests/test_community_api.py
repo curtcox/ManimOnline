@@ -329,6 +329,38 @@ class AnimationApiTests(unittest.TestCase):
         self.assertAlmostEqual(camera['phi'], 70 * lite.DEGREES)
         self.assertAlmostEqual(camera['theta'], -110 * lite.DEGREES)
 
+    def test_coordinate_system_queries(self):
+        self.assertEqual(scene_values(
+            'ax = Axes()\n'
+            'g = ax.plot_line_graph([1, 3, 5], [-1, 2, -2], add_vertex_dots=False)["line_graph"]\n'
+            'log = Axes(x_range=[0, 3], y_range=[0, 1], tips=False, x_axis_config={"scaling": LogBase()})\n'
+            'lg = log.plot_line_graph([1, 10, 100, 1000], [0.5] * 4, add_vertex_dots=False)["line_graph"]\n'
+            'label = log.get_graph_label(lg, Dot(), x_val=100, dot=True)\n'
+            'result = [ax.input_to_graph_point(PI, g), [round(v, 3) for v in label.dot.get_center()]]\n'),
+            [[2.6928, 1.2876, 0.0], [2.0, 0.0, 0.0]])
+        self.assertEqual(scene_values(
+            'cs = CoordinateSystem()\n'
+            'result = [cs.x_range, cs.y_range, cs.dimension, Axes().dimension, ThreeDAxes().dimension]\n'),
+            [[-7.0, 7.0, 1.0], [-4.0, 4.0, 1.0], 2.0, 2.0, 3.0])
+        with self.assertRaises(NotImplementedError):
+            scene_values('result = CoordinateSystem().get_axes()\n')
+        self.assertEqual(scene_values(
+            'line = NumberLine([0, 7], length=12)\n'
+            'result = [line.unit_size, NumberLine([0, 4], unit_size=2).unit_size,'
+            ' line.p2n([line.n2p(1), line.n2p(2.5)])]\n'),
+            [1.7143, 2.0, [1.0, 2.5]])
+        self.assertEqual(scene_values(
+            'ax = ThreeDAxes(x_range=(3, 9, 1), y_range=(6, 12, 1), z_range=(2, 5, 1),'
+            ' x_axis_config={"scaling": LogBase()}, y_axis_config={"scaling": LogBase()},'
+            ' z_axis_config={"scaling": LogBase()})\n'
+            'result = [ax.c2p(1000, 1e6, 100), ax.z_axis.n2p(1000)]\n'),
+            [[-5.25, -5.25, 0.0], [-5.25, -5.25, 2.1667]])
+        self.assertEqual(scene_values(
+            'plane = NumberPlane(x_range=[2, 4])\n'
+            'result = [plane.c2p([[1, 0], [3, 4]]), plane.c2p([1, 3], [0, 4]), plane.c2p(1)]\n'),
+            [[[-2.0, 0.0, 0.0], [0.0, 4.0, 0.0]], [[-2.0, 0.0], [0.0, 4.0], [0.0, 0.0]],
+             [-2.0, 0.0, 0.0]])
+
     def test_opengl_and_pixel_camera_names_fail_clearly(self):
         for name in ('DotCloud', 'TrueDot', 'OpenGLPMobject', 'MappingCamera', 'SplitScreenCamera'):
             with self.assertRaisesRegex(NotImplementedError, name):

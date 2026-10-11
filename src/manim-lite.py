@@ -18,6 +18,7 @@ import struct
 import sys
 import types
 import typing
+import warnings
 import weakref
 
 FPS = 15
@@ -250,7 +251,8 @@ def _scene_call(function, reference=False, live_points=False):
         # Community's get_points returns the points buffer itself.
         if live_points:
             return _point_array([list(Vector(p)) for p in result], owner=self)
-        if type(result) is Vector and 'numpy' in sys.modules:
+        if 'numpy' in sys.modules and (type(result) is Vector or type(result) is list and result and
+                                       all(type(point) is Vector for point in result)):
             return sys.modules['numpy'].array(result, dtype=float)  # Mutable, like Community's points.
         return result
     call._scene_call = True
@@ -962,9 +964,36 @@ class Mobject:
     def __repr__(self):
         return str(self.name)
 
+    def __getattr__(self, attr):
+        # Community's compatibility layer: get_x()/set_x(value) read and write attribute x.
+        if attr.startswith('get_') and len(attr) > 4:
+            def getter(self):
+                warnings.warn('This method is not guaranteed to stay around. Please prefer '
+                              'getting the attribute normally.', DeprecationWarning, stacklevel=2)
+                return getattr(self, attr[4:])
+            return types.MethodType(getter, self)
+        if attr.startswith('set_') and len(attr) > 4:
+            def setter(self, value):
+                warnings.warn('This method is not guaranteed to stay around. Please prefer '
+                              'setting the attribute normally or with Mobject.set().',
+                              DeprecationWarning, stacklevel=2)
+                setattr(self, attr[4:], value)
+                return self
+            return types.MethodType(setter, self)
+        raise AttributeError(f"{type(self).__name__} object has no attribute '{attr}'")
+
     def _validate_children(self, mobjects):
-        if any(not isinstance(m, Mobject) for m in mobjects):
-            raise TypeError('Mobject children must be Mobjects')
+        kind = VMobject if isinstance(self, VMobject) else Mobject
+        for index, mobject in enumerate(mobjects):
+            if not isinstance(mobject, kind):
+                message = (f'Only values of type {kind.__name__} can be added as submobjects of '
+                           f'{type(self).__name__}, but the value {mobject} (at index {index}) '
+                           f'is of type {type(mobject).__name__}.')
+                if isinstance(mobject, Mobject):
+                    message += ' You can try adding this value into a Group instead.'
+                raise TypeError(message)
+            if mobject is self:
+                raise ValueError(f'Cannot add {type(self).__name__} as a submobject of itself (at index {index}).')
         if any(isinstance(member, CameraFrame) for m in mobjects for member in m.get_family()):
             raise ValueError('Camera frames cannot be children of a display family')
         if any(self in m.get_family() for m in mobjects):
@@ -1322,6 +1351,7 @@ class Mobject:
         # Pure containers pass rigid motions to their children, so children keep
         # Community's world-space coordinates instead of parent-local ones.
         return (self._type in ('vgroup', 'mobject') and self.children and self.angle == 0 and
+                not self.__dict__.get('_mobject_points') and
                 self.geometry_scale == 1 and not any(self.position) and
                 '_sampled_geometry_center' not in self.__dict__)
 
@@ -2013,6 +2043,8 @@ class Mobject:
         elif self._type == 'triangle':
             height = math.sqrt(3) / 2
             points = [(0, height * 2 / 3), (-0.5, -height / 3), (0.5, -height / 3)]
+        elif self.__dict__.get('_mobject_points'):
+            points = self._mobject_points
         elif self._type in ('text', 'mathtex'):
             # Text is centered on its estimated (Text) or measured (MathTex) ink box.
             width, height = self._glyph_size()
@@ -2029,6 +2061,8 @@ class Mobject:
 
     def _is_pointless(self):
         """Community leaves members without points (empty text or groups) out of bounds."""
+        if self.__dict__.get('_mobject_points'):
+            return False
         if (self._type in ('mobject', 'vgroup', 'valuetracker') or
                 self._type in ('polyline', 'polygon', 'bezierpath') and not self.__dict__.get('vertices')
                 and not self.__dict__.get('curves') or self._type == 'pointcloud' and not self.cloud):
@@ -2053,7 +2087,8 @@ class Mobject:
         bounds = [child._bounds() for child in self.children if not child._is_pointless()]
         if not bounds:
             return self._own_local_bounds()
-        has_outline = self._type not in ('mobject','vgroup','valuetracker')
+        has_outline = (self._type not in ('mobject','vgroup','valuetracker') or
+                       bool(self.__dict__.get('_mobject_points')))
         if self._type in ('polyline','polygon') and not self.vertices:
             has_outline = False
         if self._type == 'bezierpath' and not self.curves and not self.vertices:
@@ -2123,6 +2158,8 @@ class Mobject:
 
     def get_points(self):
         """Independent world-space anchors/handles for supported XY outlines."""
+        if self.__dict__.get('_mobject_points'):
+            return self._points_to_world(self._mobject_points)
         if self._type not in ('polyline', 'polygon', 'bezierpath', 'circle', 'arc', 'ellipse',
                               'square', 'rectangle', 'triangle', 'line', 'arrow', 'annulus'):
             return []
@@ -2143,6 +2180,23 @@ class Mobject:
 
     def has_points(self):
         return self.get_num_points() > 0
+
+    def set_points(self, points):
+        """Community's plain Mobject/Group points: they shape bounds but are never drawn."""
+        if isinstance(self, VMobject) or self._type not in ('mobject', 'vgroup'):
+            raise NotImplementedError(f'{type(self).__name__} points cannot be set directly')
+        rows = [list(Vector(point)) for point in _listed(points)]
+        if len(rows) > _POINT_CLOUD_LIMIT:
+            raise ValueError('Mobject points are limited to 100000')
+        if any(not all(math.isfinite(v) for v in row) for row in rows):
+            raise ValueError('Mobject points must be finite')
+        if self.angle or self.geometry_scale != 1 or any(self.position):
+            for child in self.children:
+                self._place_in_world(child)
+            self.position, self.angle, self.geometry_scale = [0, 0, 0], 0, 1
+        self._mobject_points = rows
+        self.__dict__.pop('_family_pivot_cache', None)
+        return self
 
     def has_no_points(self):
         return not self.has_points()
@@ -2310,6 +2364,7 @@ class Mobject:
         """Sample supported XY outlines by distance, then apply SVG geometry transforms."""
         if not math.isfinite(alpha) or not 0 <= alpha <= 1:
             raise ValueError('Path proportion must be finite and between 0 and 1')
+        self.throw_error_if_no_points('point_from_proportion')
         if self._type == 'bezierpath':
             if not self.curves:
                 if getattr(self, 'vertices', []):
@@ -2434,6 +2489,8 @@ class Mobject:
             curves = self._tip_shaft_curves()
             return ([p for curve in curves for p in curve] if _BOUNDS_WITH_HANDLES else
                     [p for curve in curves for p in (curve[0], curve[-1])]) + getattr(self, 'vertices', [])
+        if self.__dict__.get('_mobject_points'):
+            return self._mobject_points
         if self._type in ('square', 'rectangle', 'triangle'):
             return [curve[0] for curve in _path_curves(self.to_dict() if self._type == 'triangle' else
                     {'type': self._type, 'side_length': getattr(self, 'side_length', 0),
@@ -2522,6 +2579,8 @@ class Mobject:
             # Community multiplies each member's stroke width by the scale factor.
             for member in self.get_family():
                 member.stroke_width = abs(scale_factor) * member.stroke_width
+                if member.__dict__.get('background_stroke_width'):
+                    member.background_stroke_width = abs(scale_factor) * member.background_stroke_width
         return self
 
     def _scale(self, scale_factor, *, about_point=None, about_edge=None):
@@ -3237,8 +3296,16 @@ class Mobject:
 
     def insert(self, index, mobject):
         self._validate_children([mobject])
+        children, count = list(self.children), len(self.children)
+        index = min(max(index if index >= 0 else count + index, 0), count)
+        if any(children[j] is mobject for j in (index - 1, index) if 0 <= j < count):
+            return self
         self._adopt([mobject])
-        children = [m for m in self.children if m is not mobject]
+        if mobject in children:
+            # Community compensates for the list shifting after popping the old position.
+            old = children.index(mobject)
+            children.pop(old)
+            index = index if index < old else index - 1
         children.insert(index, mobject)
         self._replace_children(children)
         return self
@@ -3287,9 +3354,9 @@ class Mobject:
     def get_point_mobject(self, center=None):
         return VectorizedPoint(self.get_center() if center is None else center)
 
-    def throw_error_if_no_points(self):
+    def throw_error_if_no_points(self, caller=None):
         if self.has_no_points():
-            caller = sys._getframe(1).f_code.co_name
+            caller = caller or sys._getframe(1).f_code.co_name
             message = f'Cannot call {type(self).__name__}.{caller} because {self!r} has no points.'
             members = self.family_members_with_points()
             if members:
@@ -3499,6 +3566,8 @@ class Mobject:
         lengths = [_cubic_length(curve) for curve in curves]
         total, target = sum(lengths), 0
         for curve, length in zip(curves, lengths):
+            if self.consider_points_equals(Vector(point), curve[0]):
+                break  # Exactly the curve start, without root-finding noise.
             proportions = proportions_along_bezier_curve_for_point(point, curve)
             if len(proportions):
                 target += length * max(proportions)
@@ -3565,7 +3634,13 @@ class Mobject:
         return all(abs(a - b) <= self.tolerance_for_point_equality + 1e-5 * abs(b) for a, b in zip(p0, p1))
 
     def consider_points_equals_2d(self, p0, p1):
-        return self.consider_points_equals(list(p0)[:2], list(p1)[:2])
+        # Community's scalar test: equal infinities match; NaN and infinite differences do not.
+        for a, b in zip(list(p0)[:2], list(p1)[:2]):
+            if a != b:
+                diff = abs(a - b)
+                if not (diff <= self.tolerance_for_point_equality + 1e-5 * abs(b) and math.isfinite(diff)):
+                    return False
+        return True
 
     def _gen_subpaths_from_points(self, points, filter_func):
         splits = [0, *filter(filter_func, range(4, len(points), 4)), len(points)]
@@ -3619,7 +3694,7 @@ class Mobject:
         center = self._geometry_center()
         result = _snapshot_copy({key: value for key, value in self.__dict__.items()
                                 if (key in _POINT_KEYS and type(value) is list or not _holds_mobject(value) and not callable(value)) and
-                                key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache', '_flow_points', '_name') and
+                                key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache', '_flow_points', '_name', '_mobject_points') and
                                 key not in self._frame_excluded})
         result['type'] = result.pop('_type')
         result['geometry_center'] = list(center)
@@ -5972,6 +6047,9 @@ class Text(Mobject):
         if type(self) in (Text, MarkupText):
             self._fit_svg_size(height, width)
 
+    def __repr__(self):
+        return f"{'MarkupText' if isinstance(self, MarkupText) else 'Text'}({self.__dict__.get('text', '')!r})"
+
     def _fit_svg_size(self, height, width):
         """Community's SVGMobject sizing: scale to height, then to width (both uniform)."""
         if height is not None:
@@ -6613,6 +6691,9 @@ class MathTex(Text):
     def get_tex_string(self):
         return self.tex_string
 
+    def __repr__(self):
+        return f"{type(self).__name__}({self.__dict__.get('tex_string', self.__dict__.get('text', ''))!r})"
+
     def __init__(self, *tex_strings, arg_separator=' ', substrings_to_isolate=None, tex_to_color_map=None,
                  font_size=48, tex_environment='align*', tex_template=None, height=None, width=None, **kwargs):
         # MathJax typesets in the browser; LaTeX templates (preamble, fonts) cannot apply.
@@ -7114,20 +7195,30 @@ class VGroup(Group):
     """Container for the supported vector/text geometry in this runtime."""
     def add(self, *mobjects):
         # Community unpacks non-Mobject iterables (lists, generators) of members.
+        def invalid(value, parameter, index):
+            return (f'Only values of type VMobject can be added as submobjects of VGroup, but the value '
+                    f'{value!r} (at index {index} of parameter {parameter}) is of type {type(value).__name__}.')
         members = []
         for index, item in enumerate(mobjects):
-            if isinstance(item, Mobject):
+            if isinstance(item, VMobject):
                 members.append(item)
+            elif isinstance(item, Mobject):
+                raise TypeError(invalid(item, index, 0) + ' You can try adding this value into a Group instead.')
             elif isinstance(item, (str, bytes)) or not hasattr(item, '__iter__'):
-                raise TypeError(f'Only Mobjects can be added to a VGroup, but the value {item!r} '
-                                f'(at index {index}) is of type {type(item).__name__}.')
+                raise TypeError(invalid(item, index, 0))
             else:
                 for inner, member in enumerate(item):
-                    if not isinstance(member, Mobject):
-                        raise TypeError(f'Only Mobjects can be added to a VGroup, but the value {member!r} '
-                                        f'(at index {inner} of parameter {index}) is of type {type(member).__name__}.')
+                    if not isinstance(member, VMobject):
+                        raise TypeError(invalid(member, index, inner))
                     members.append(member)
         return super().add(*members)
+
+    def __repr__(self):
+        return f"{type(self).__name__}({', '.join(str(mobject) for mobject in self.children)})"
+
+    def __str__(self):
+        count = len(self.children)
+        return f"{type(self).__name__} of {count} submobject{'' if count == 1 else 's'}"
 
     def __add__(self, mobject):
         return VGroup(*self.children, mobject)
@@ -8068,6 +8159,13 @@ class DashedVMobject(VMobject,VGroup):
     """Independent exact cubic dashes, spaced by approximate length or parameter."""
     def __init__(self, vmobject, num_dashes=15, dashed_ratio=.5, dash_offset=0,
                  color=WHITE, equal_lengths=True, **kwargs):
+        tips = None
+        if isinstance(vmobject,TipableVMobject) and (vmobject.has_tip() or vmobject.has_start_tip()):
+            # Community dashes the shaft of a tipless copy, then re-adds the tips once.
+            styled, vmobject = vmobject, vmobject.copy()
+            tips = vmobject.pop_tips().children
+            if vmobject._type == 'arrow':
+                vmobject = Line(vmobject.get_start(),vmobject.get_end()).match_style(styled,family=False)
         if not isinstance(vmobject,Mobject) or vmobject._type not in (
                 'polyline','polygon','bezierpath','circle','arc','ellipse',
                 'square','rectangle','triangle','line','annulus'):
@@ -8088,6 +8186,8 @@ class DashedVMobject(VMobject,VGroup):
         for name in ('color','fill_color','stroke_color','fill_opacity','stroke_opacity','stroke_width'):
             setattr(self,name,copy.deepcopy(getattr(vmobject,name)))
         if not num_dashes:
+            if tips:
+                self.add(*tips)
             return
         source = vmobject.copy()
         closed = source.is_closed()
@@ -8137,6 +8237,8 @@ class DashedVMobject(VMobject,VGroup):
             child._dash_interval = [a,b]
             self.children.append(child)
         _link_children(self, self.children)
+        if tips:
+            self.add(*tips)
 
 
 class DashedLine(Line,VGroup):
@@ -8291,6 +8393,7 @@ class LogBase(_ScaleBase):
 
 class NumberLine(VGroup):
     """Linear XY coordinates, composed from a shaft, ticks and numeric labels."""
+    __array_ufunc__ = None  # ndarray @ line defers to __rmatmul__ instead of iterating the line.
     def __init__(self, x_range=None, length=None, unit_size=1, include_ticks=True,
                  tick_size=.1, numbers_with_elongated_ticks=None, longer_tick_multiple=2,
                  exclude_origin_tick=False, rotation=0, include_tip=False,
@@ -8328,6 +8431,7 @@ class NumberLine(VGroup):
         super().__init__(**kwargs)
         self.x_range = values[:]
         self.x_min,self.x_max,self.x_step = values
+        self.unit_size = length/(values[1]-values[0])
         self.tick_size,self.longer_tick_multiple = tick_size,longer_tick_multiple
         self.include_tip,self.exclude_origin_tick = include_tip,exclude_origin_tick
         self.font_size,self.label_direction = font_size,list(label_direction)
@@ -8375,7 +8479,7 @@ class NumberLine(VGroup):
             self.add_ticks()
         if include_numbers or self.numbers_to_include is not None:
             if self.scaling.custom_labels:
-                ticks = self.get_tick_range()
+                ticks = self._tick_values()
                 labels = self.scaling.get_custom_labels(ticks, unit_decimal_places=self.decimal_number_config.get('num_decimal_places', 0))
                 self.add_labels(dict(zip(ticks, labels)))
             else:
@@ -8478,6 +8582,11 @@ class NumberLine(VGroup):
         return self.rotate_about_number(0, angle, axis, **kwargs)
 
     def point_to_number(self, point):
+        point = _listed(point)
+        if isinstance(point, (list, tuple)) and point and isinstance(point[0], (list, tuple)):
+            if len(point) > 10000:
+                raise ValueError('NumberLine conversion batches are limited to 10000 points')
+            return _number_array([self.point_to_number(value) for value in point])
         point = Vector(point)
         if not all(math.isfinite(v) for v in point):
             raise ValueError('NumberLine point must be finite')
@@ -8500,6 +8609,9 @@ class NumberLine(VGroup):
         return self.p2n(point)
 
     def get_tick_range(self):
+        return _number_array(self._tick_values())
+
+    def _tick_values(self):
         span = (self.x_max-self.x_min)/self.x_step
         if not math.isfinite(span) or span > 999:
             raise ValueError('NumberLine supports at most 1000 ticks or labels per addition')
@@ -8537,7 +8649,7 @@ class NumberLine(VGroup):
     def add_ticks(self):
         ticks = VGroup(*(self.get_tick(value,self.tick_size*(self.longer_tick_multiple
                          if value in self.numbers_with_elongated_ticks else 1))
-                         for value in self.get_tick_range()))
+                         for value in self._tick_values()))
         return self._add_world_decoration(ticks,'ticks')
 
     def get_tick_marks(self):
@@ -8581,14 +8693,14 @@ class NumberLine(VGroup):
         group._number_line_role = 'labels'
 
     def add_numbers(self, x_values=None, excluding=None, font_size=None, **kwargs):
-        values = self.get_tick_range() if x_values is None else self._numbers(x_values)
+        values = self._tick_values() if x_values is None else self._numbers(x_values)
         excluding = self.numbers_to_exclude if excluding is None else self._numbers(excluding)
         labels = VGroup(*(self.get_number_mobject(value,font_size=font_size,**kwargs)
                           for value in values if value not in excluding))
         return self._add_world_decoration(labels,'numbers')
 
     def default_numbers_to_display(self):
-        return [value for value in self.get_tick_range() if value not in self.numbers_to_exclude]
+        return [value for value in self._tick_values() if value not in self.numbers_to_exclude]
 
     def get_number_mobjects(self, *numbers, **kwargs):
         numbers = numbers or self.default_numbers_to_display()
@@ -8614,12 +8726,39 @@ class NumberLine(VGroup):
 
 
 class CoordinateSystem:
-    """Marker base for Axes-like coordinate systems (Community's CoordinateSystem)."""
+    """Community's abstract CoordinateSystem: ranges and dimension; Axes supply the geometry."""
+    dimension = 2
+    __array_ufunc__ = None
+
+    def __init__(self, x_range=None, y_range=None, x_length=None, y_length=None, dimension=2):
+        self.dimension = dimension
+        ranges = []
+        for values, radius in ((x_range, config.frame_x_radius), (y_range, config.frame_y_radius)):
+            if values is None:
+                values = [round(-radius), round(radius), 1]
+            elif len(values) == 2:
+                values = [*values, 1]
+            ranges.append(values)
+        self.x_range, self.y_range = ranges
+        self.x_length, self.y_length = x_length, y_length
+        self.num_sampled_graph_points_per_tick = 10
+
+    def coords_to_point(self, *coords):
+        raise NotImplementedError()
+
+    def point_to_coords(self, point):
+        raise NotImplementedError()
+
+    def get_axes(self):
+        raise NotImplementedError()
+
+    def get_axis_labels(self):
+        raise NotImplementedError()
 
 
 class Axes(VGroup, CoordinateSystem):
     """Two linear NumberLines with transform-aware XY coordinate conversion."""
-    _frame_excluded = ('axis_config',)
+    _frame_excluded = ('axis_config', 'x_axis_config', 'y_axis_config')
     def __init__(self, x_range=None, y_range=None, x_length=None, y_length=None,
                  axis_config=None, x_axis_config=None, y_axis_config=None, tips=True, **kwargs):
         if not isinstance(tips,bool):
@@ -8633,6 +8772,7 @@ class Axes(VGroup, CoordinateSystem):
         self.axis_config = common
         x_options = merge(common,x_axis_config)
         y_options = merge(merge(common,dict(rotation=PI/2,label_direction=LEFT)),y_axis_config)
+        self.x_axis_config, self.y_axis_config = x_options, y_options
         for options in (x_options, y_options):
             # Community keeps the origin tick on scaled (e.g. LogBase) axes.
             options['exclude_origin_tick'] = isinstance(options.get('scaling') or LinearBase(), LinearBase)
@@ -8738,16 +8878,20 @@ class Axes(VGroup, CoordinateSystem):
             if coords and isinstance(coords[0],(list,tuple)):
                 if len(coords) > 1000:
                     raise ValueError('Axes coordinate batches are limited to 1000 points')
+                if len(coords) == 1:
+                    return self.coords_to_point(*coords[0])
                 return [self.coords_to_point(*point) for point in coords]
-        if len(coords) not in (2,3):
-            raise ValueError('Axes coordinates need x, y and optionally z')
+        if len(coords) not in (1,2,3):
+            raise ValueError('Axes coordinates need x and optionally y and z')
         sequences = [value for value in coords if isinstance(value,(list,tuple))]
         if sequences:
             count = len(sequences[0])
             if count > 1000 or any(len(value) != count for value in sequences):
                 raise ValueError('Axes coordinate arrays need equal lengths of at most 1000')
-            return [self.coords_to_point(*(value[i] if isinstance(value,(list,tuple)) else value
-                                          for value in coords)) for i in range(count)]
+            points = [self.coords_to_point(*(value[i] if isinstance(value,(list,tuple)) else value
+                                            for value in coords)) for i in range(count)]
+            # Community returns per-axis arrays transposed: one row per dimension.
+            return _number_array([[point[i] for point in points] for i in range(3)])
         for value in coords:
             NumberLine._real(value,'Axes coordinate')
         # Community sums each axis's offset from the origin; coordinates beyond
@@ -9068,6 +9212,15 @@ class Axes(VGroup, CoordinateSystem):
     i2gc = input_to_graph_coords
 
     def input_to_graph_point(self, x, graph):
+        if isinstance(graph, Mobject) and not callable(getattr(graph, 'underlying_function', None)):
+            # Community searches unplotted paths (line graphs) for the proportion reaching x.
+            NumberLine._real(x, 'Graph input')
+            point = lambda alpha: _in_world(graph, type(graph).point_from_proportion, alpha)
+            alpha = binary_search(lambda a: self.point_to_coords(point(a))[0], x, 0, 1)
+            if alpha is None:
+                raise ValueError(f'x={x} not located in the range of the graph '
+                                 f'([{self.p2c(point(0))[0]}, {self.p2c(point(1))[0]}])')
+            return point(alpha)
         return self.c2p(*self.input_to_graph_coords(x,graph))
 
     i2gp = input_to_graph_point
@@ -9484,7 +9637,7 @@ class PolarPlane(Axes):
 
     def get_coordinate_labels(self, r_values=None, a_values=None, **kwargs):
         if r_values is None:
-            r_values = [r for r in self.get_x_axis().get_tick_range() if r >= 0]
+            r_values = [r for r in self.get_x_axis()._tick_values() if r >= 0]
         if a_values is None:
             a_values = [i / self.azimuth_step for i in range(int(math.ceil(self.azimuth_step - 1e-9)))]
         r_mobs = self.get_x_axis().add_numbers(r_values)
@@ -9647,7 +9800,7 @@ class ComplexPlane(NumberPlane):
     p2n = point_to_number
 
     def _get_default_coordinate_values(self):
-        return self.x_axis.get_tick_range()+[complex(0,y) for y in self.y_axis.get_tick_range() if y != 0]
+        return self.x_axis._tick_values()+[complex(0,y) for y in self.y_axis._tick_values() if y != 0]
 
     @property
     def coordinate_labels(self):
@@ -14734,7 +14887,7 @@ class ThreeDAxes(Axes):
     itself gets zero stroke) so the 3D camera can depth-sort them against
     surfaces, as Community's Cairo renderer does. Sheen is not modelled."""
     _AXIS_ROLES = ('x', 'y', 'z')
-    _frame_excluded = ('axis_config', 'axis_labels')
+    _frame_excluded = ('axis_config', 'x_axis_config', 'y_axis_config', 'z_axis_config', 'axis_labels')
 
     def __init__(self, x_range=(-6, 6, 1), y_range=(-5, 5, 1), z_range=(-4, 4, 1),
                  x_length=8 + 2.5, y_length=8 + 2.5, z_length=8 - 1.5,
@@ -14755,13 +14908,14 @@ class ThreeDAxes(Axes):
         z_options = self._merge_axis_options(self.axis_config, z_axis_config)
         z_options['exclude_origin_tick'] = isinstance(z_options.get('scaling') or LinearBase(), LinearBase)
         z_options['length'] = z_length
+        self.z_axis_config = z_options
         z_axis = NumberLine(z_range, **z_options)
-        z_origin = self._origin_shift([z_axis.x_min, z_axis.x_max])
+        z_origin = self._axis_shift(z_axis)
         z_axis.shift(z_axis.n2p(z_origin) * -1)
         z_axis.rotate_about_number(z_origin, -PI / 2, UP)
         z_axis.rotate_about_number(z_origin, angle_of_vector(normal))
         z_axis.shift(z_axis.n2p(z_origin) * -1)
-        z_axis.shift(self.x_axis.n2p(self._origin_shift([self.x_axis.x_min, self.x_axis.x_max])))
+        z_axis.shift(self.x_axis.n2p(self._axis_shift(self.x_axis)))
         z_axis._axes_role = 'z'
         self.add(z_axis)
         self._add_3d_pieces()
@@ -14883,9 +15037,13 @@ class CurvesAsSubmobjects(VGroup):
     def point_from_proportion(self, alpha):
         if alpha < 0 or alpha > 1:
             raise ValueError(f'Alpha {alpha} not between 0 and 1.')
+        if not self.children:
+            raise ValueError('Cannot call CurvesAsSubmobjects. point_from_proportion for a '
+                             'CurvesAsSubmobject with no submobjects')
         parts = [part for part in self.children if not part.has_no_points()]
         if not parts:
-            raise ValueError('CurvesAsSubmobjects has no submobjects with points')
+            raise ValueError('Cannot call CurvesAsSubmobjects. point_from_proportion for a '
+                             'CurvesAsSubmobject whose submobjects have no points')
         if alpha == 1:
             return Vector(parts[-1].get_points()[-1])
         lengths = [part.get_arc_length() for part in parts]

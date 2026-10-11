@@ -4361,7 +4361,7 @@ assert isinstance(t.get_value(), (int, float))""")
         copied = graph.copy()
         self.assertIs(copied.underlying_function,function)
         json.dumps(copied.to_dict(),allow_nan=False)
-        with self.assertRaises(TypeError): axes.i2gp(0,lite.Circle())
+        with self.assertRaises(ValueError): axes.i2gp(0,lite.Circle())
         self.assertGreater(lite.FunctionGraph(function).get_num_curves(),0)
         axes.num_sampled_graph_points_per_tick = 5
         self.assertEqual(len(axes.plot(function).curves),20)
@@ -4437,8 +4437,9 @@ assert isinstance(t.get_value(), (int, float))""")
                          x_axis_config={'rotation':.3})
         expected = [axes.c2p(1,3),axes.c2p(2,4)]
         self.assertEqual(axes.c2p([[1,3],[2,4]]),expected)
-        self.assertEqual(axes.c2p([1,2],[3,4]),expected)
-        self.assertEqual(axes.c2p([1,2],3),[axes.c2p(1,3),axes.c2p(2,3)])
+        # Community returns per-axis inputs transposed, one row per dimension.
+        self.assertEqual([[float(v) for v in row] for row in axes.c2p([1,2],[3,4])],
+                         [[point[i] for point in expected] for i in range(3)])
         self.assertEqual(axes.c2p([1,3,0]),expected[0])
         for point,coord in zip(expected,((1,3),(2,4))):
             for actual,value in zip(axes.p2c(point),coord):
@@ -4482,7 +4483,8 @@ assert isinstance(t.get_value(), (int, float))""")
             with self.assertRaises(ValueError): lite.Axes(**kwargs)
         with self.assertRaises(TypeError): lite.Axes(axis_config=[])
         axes = lite.Axes(tips=False)
-        for coords in ((1,),([1,2],[1]),(True,1),(1,float('inf')),([0]*1001,[0]*1001)):
+        self.assertEqual(axes.c2p(1),axes.x_axis.n2p(1))
+        for coords in (([1,2],[1]),(True,1),(1,float('inf')),([0]*1001,[0]*1001)):
             with self.assertRaises(ValueError): axes.c2p(*coords)
         self.assertEqual(axes.c2p(1,2,3),axes.c2p(1,2))  # Community ignores z on 2D Axes
         with self.assertRaises(ValueError): axes.p2c([float('nan'),0])
@@ -4517,7 +4519,7 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertPointAlmostEqual(line.get_start(),(-4,0,0))
         self.assertPointAlmostEqual(line.get_end(),(4,0,0))
         self.assertEqual(line.get_unit_size(),2)
-        self.assertEqual(line.get_tick_range(),[-2,-1.5,-1,-.5,0,.5,1,1.5,2])
+        self.assertEqual(list(line.get_tick_range()),[-2,-1.5,-1,-.5,0,.5,1,1.5,2])
         self.assertEqual(len(line.get_tick_marks()),9)
         self.assertEqual([n.text for n in line.numbers],['-2.0','-1.5','-1.0','-0.5','0.5','1.0','1.5','2.0'])
         self.assertAlmostEqual(line.ticks[6].get_length(),.4)
@@ -4547,14 +4549,14 @@ assert isinstance(t.get_value(), (int, float))""")
 
     def test_number_line_ticks_anchor_origin_and_tip_preserves_end(self):
         line = lite.NumberLine([-1.2,2.2,.5],length=6,include_tip=True,exclude_origin_tick=True,rotation=lite.PI/2)
-        self.assertEqual(line.get_tick_range(),[-1,-.5,.5,1,1.5,2])
+        self.assertEqual(list(line.get_tick_range()),[-1,-.5,.5,1,1.5,2])
         self.assertPointAlmostEqual(line.tip.vertices[0],line.get_end())
         tick = line.get_tick(1)
         self.assertAlmostEqual(tick.get_length(),.2)
         self.assertAlmostEqual(tick.get_vector()[1],0)
         self.assertPointAlmostEqual(tick.get_center(),line.n2p(1))
-        self.assertEqual(lite.NumberLine([1,3,1],include_tip=True).get_tick_range(),[1,2])
-        self.assertEqual(lite.NumberLine([-3,-1,1]).get_tick_range(),[-3,-2,-1])
+        self.assertEqual(list(lite.NumberLine([1,3,1],include_tip=True).get_tick_range()),[1,2])
+        self.assertEqual(list(lite.NumberLine([-3,-1,1]).get_tick_range()),[-3,-2,-1])
         self.assertEqual(lite.NumberLine([0,2],include_ticks=False,numbers_to_include=[.25,1.5]).numbers[0].get_value(),.25)
 
     def test_number_line_decorations_preserve_transformed_existing_geometry(self):
@@ -5724,7 +5726,7 @@ self.wait(1)""")
         self.assertEqual(group.children,[b,a,c])
         group.remove(b,b)
         self.assertEqual(group.children,[a,c])
-        parent = lite.Group(group)
+        parent = lite.VGroup(group)
         for operation in (lambda: group.add(b,3),lambda: group.add(b,group),
                           lambda: group.add_to_back(b,parent),lambda: group.remove(a,3)):
             with self.assertRaises((TypeError,ValueError)):
@@ -7302,9 +7304,11 @@ class Demo(Scene):
         for path in (lite.Polygon(), lite.Polygon((0, 0))):
             with self.assertRaises(ValueError):
                 path.point_from_proportion(0.5)
-        for path in (lite.Text('x'), lite.VGroup(lite.Circle()), lite.Arrow()):
-            with self.assertRaises(NotImplementedError):
+        for path in (lite.Text('x'), lite.VGroup(lite.Circle())):
+            with self.assertRaisesRegex(ValueError, r'^Cannot call (Text|VGroup)\.point_from_proportion because .* has no points'):
                 path.point_from_proportion(0.5)
+        with self.assertRaises(NotImplementedError):
+            lite.Arrow().point_from_proportion(0.5)
         with self.assertRaises(TypeError):
             lite.MoveAlongPath(lite.Dot(), [(0, 0), (1, 0)])
         dot = lite.Dot()
