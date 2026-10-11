@@ -935,6 +935,9 @@ Arrow.scale) and re-aim tips at the restored endpoints. Cuts follow the ordered 
 array midpoint (`_tip_base`), which affine edits carry along; the public `base` is
 Community's length-weighted midpoint, which differs only for stretched tips, so
 Arrow.scale freezes at those bases (`_cut_shaft`). Tip getters never freeze.
+NumberLine shares the model: its shaft child reaches the tip points (n2p unchanged) until
+a tip edit, tip removal or layout freezes it at the tip bases; then `_logical_end` makes
+get_start/get_end (and so n2p) follow the tip points, or the cut end once a tip is gone.
 Mobject.__setattr__ records attribute names that scene code adds (`_scene_keys`, not in
 frames); become keeps them as Community does (its become copies only points and colors).
 Property setters that check their caller must use `_from_scene()`, which skips that frame.

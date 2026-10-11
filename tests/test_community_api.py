@@ -1479,6 +1479,24 @@ class AnimationApiTests(unittest.TestCase):
             [[0.6535, 0.4316], [0.7247, 0.3938], [0.682, 0.4215], [0.7769, 0.3518]],
             [[0.1004, 0.975], [0.5019, 0.6683]], [[0.4, 0.0], [0.4, 0.0]]]))
 
+    def test_number_line_tip_edits_keep_the_cut_shaft(self):
+        # A NumberLine's own points end at the tip base; after its tip is removed or moved,
+        # n2p follows get_end (the shaft end or the moved tip point), as in Community.
+        values = scene_values(
+            'R = lambda x: [round(float(v), 4) for v in x[:2]]\n'
+            'n = NumberLine(x_range=[-2, 2, 1], length=1.05, include_tip=True)\n'
+            'n.remove(n.submobjects[0]); r1 = [R(n.points[-1]), R(n.n2p(2)), R(n.get_right())]\n'
+            'm = NumberLine(x_range=[-2, 2, 1], length=1.05, include_tip=True)\n'
+            'm.submobjects[0].shift(UL * .93)\n'
+            'r2 = [R(m.n2p(2)), R(m.get_end()), R(m.get_center()), R(m.get_right())]\n'
+            'k = NumberLine(x_range=[-2, 2, 1], length=1.83, include_tip=True)\n'
+            'k.space_out_submobjects(1.33)\n'
+            'result = [r1, r2, [R(k.get_corner(UR)), R(k.get_center()), R(k.n2p(0))]]\n')
+        self.assertEqual(values, plain([
+            [[0.175, 0.0], [0.175, 0.0], [0.2625, 0.0]],
+            [[-0.405, 0.93], [-0.405, 0.93], [-0.2462, 0.5025], [0.2625, 0.5025]],
+            [[1.1592, 0.175], [-0.0289, 0.0], [-0.0289, 0.0]]]))
+
     def test_become_keeps_scene_attributes(self):
         # Community's become copies points and colors; attributes scene code added remain,
         # so a transformed label keeps its bookkeeping (LinearTransformationScene relies on it).

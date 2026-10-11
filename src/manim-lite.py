@@ -307,11 +307,13 @@ def _scene_call(function, reference=False, live_points=False):
             return function(self, *args, **kwargs)
         if reference:
             args, kwargs = _world_args(args, kwargs)
-        if '_tip_role' in self.__dict__ and not (function.__name__.startswith(('get_', 'has_', 'is_'))
-                                                 or function.__name__ in _WORLD_PROPERTIES):
+        if (('_tip_role' in self.__dict__ or self.__dict__.get('_number_line_role') == 'tip')
+                and not (function.__name__.startswith(('get_', 'has_', 'is_'))
+                         or function.__name__ in _WORLD_PROPERTIES)):
             owner = _PARENTS.get(self)
             owner = owner() if owner is not None else None
-            if isinstance(owner, TipableVMobject) and any(child is self for child in owner.children):
+            if (isinstance(owner, (TipableVMobject, NumberLine))
+                    and any(child is self for child in owner.children)):
                 owner._freeze_shaft()
         # A class may present Community's structure to scene code with a _scene_<name> variant.
         result = _in_world(self, getattr(type(self), '_scene_' + function.__name__, function), *args, **kwargs)
@@ -1368,7 +1370,7 @@ class Mobject:
     def _layout_targets(self):
         if self.geometry_scale == 0:
             raise NotImplementedError('Cannot arrange a collapsed family')
-        if isinstance(self, TipableVMobject):
+        if isinstance(self, (TipableVMobject, NumberLine)):
             self._freeze_shaft()  # Layout moves the tips, never Community's own points.
         self._geometry_center()
         targets = []
@@ -3662,7 +3664,7 @@ class Mobject:
 
     def space_out_submobjects(self, factor=1.5, **kwargs):
         self.scale(factor, **kwargs)
-        if isinstance(self, TipableVMobject):
+        if isinstance(self, (TipableVMobject, NumberLine)):
             self._freeze_shaft()
         for child in self._layout_members():
             # Each member shrinks about its world bounds center, which a posed parent's
@@ -9592,6 +9594,8 @@ class NumberLine(VGroup):
         if not shafts:
             return []
         points = shafts[0].get_points()
+        if self.__dict__.get('_shaft_fixed'):
+            return self._points_to_world(points)
         ends = [Vector(points[0]), Vector(points[-1])]
         for index, at_start in ((0, True), (1, False)):
             tips = self._tips(at_start)
@@ -9674,11 +9678,46 @@ class NumberLine(VGroup):
     def get_last_handle(self):
         return self._point_to_world(self._part('shaft').get_last_handle())
 
+    def _logical_end(self, at_start):
+        """Community's get_start/get_end: tip points, else the shaft. Lite's shaft reaches the
+        tip points until a tip edit freezes the cut (`_freeze_shaft`)."""
+        if self.__dict__.get('_shaft_fixed'):
+            tips = self._tips(at_start)
+            if tips:
+                return Vector(tips[-1].tip_point)
+        shaft = self._part('shaft')
+        return shaft.get_start() if at_start else shaft.get_end()
+
+    def _freeze_shaft(self):
+        if self.__dict__.get('_shaft_fixed') or not self._tips():
+            return
+        ends = [self._part('shaft').get_start(), self._part('shaft').get_end()]
+        for index, at_start in ((0, True), (1, False)):
+            tips = self._tips(at_start)
+            if tips and isinstance(tips[-1], ArrowTip):
+                ends[index] = Vector(tips[-1].base)
+        Line.put_start_and_end_on(self._part('shaft'), *ends)
+        self._shaft_fixed = True
+
+    def _unfreeze_shaft(self):
+        if not self.__dict__.get('_shaft_fixed'):
+            return
+        ends = [self._logical_end(True), self._logical_end(False)]
+        self.__dict__.pop('_shaft_fixed')
+        Line.put_start_and_end_on(self._part('shaft'), *ends)
+
+    def _scene_remove(self, *mobjects):
+        """Removing a tip directly leaves Community's shaft cut at its base."""
+        if any(m.__dict__.get('_number_line_role') == 'tip' and any(c is m for c in self.children)
+               for m in mobjects):
+            self._freeze_shaft()
+        return Mobject.remove(self, *mobjects)
+
     def get_start(self):
-        return self._point_to_world(self._part('shaft').get_start())
+        return self._point_to_world(self._logical_end(True))
 
     def get_end(self):
-        return self._point_to_world(self._part('shaft').get_end())
+        return self._point_to_world(self._logical_end(False))
 
     get_start_and_end = Line.get_start_and_end
     get_vector = Line.get_vector
@@ -9918,6 +9957,7 @@ class NumberLine(VGroup):
         """Community's add_tip; the shaft keeps its length, so number_to_point is unchanged."""
         if self.geometry_scale == 0:
             raise ValueError('Cannot add a tip to collapsed geometry')
+        self._unfreeze_shaft()
         if tip is None:
             tip = self.create_tip(tip_shape, tip_length, tip_width, at_start)
         else:
@@ -9944,6 +9984,7 @@ class NumberLine(VGroup):
         return self
 
     def pop_tips(self):
+        self._unfreeze_shaft()
         tips = self.get_tips()
         self.remove(*tips.children)
         return tips

@@ -442,4 +442,5 @@ world-size tips (Arrow.scale's fixed-size tips no longer apply to re-posing).
 Arrow shafts are now cut once, as in Community: moving, removing, arranging or spacing out
 tips leaves the shaft where it was cut, and add_tip, pop_tips, put_start_and_end_on and
 Arrow.scale re-cut it. A stretched tip's `base` is its length-weighted midpoint, as in
-Community. Remaining fuzz mismatches are mostly become structure and NumberLine tip edits.
+Community. NumberLine tip edits follow the same model, so n2p tracks a moved tip and a
+removed tip leaves the shaft cut. Remaining fuzz mismatches are mostly become structure.
