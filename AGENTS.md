@@ -692,3 +692,12 @@ Brace or Line) get world copies (`_world_view`). play() animates posed members i
 coordinates (`_world_members`) and `_root_states` re-poses their states into the parent
 frame; split posed members drawn as roots are posed into the world. Transform targets
 are world copies. Inside manim-lite.py, never assume a child query is world-space.
+The `Scene.mobjects` setter keeps every root's registered ancestors alive
+(`_root_ancestors`): the final capture runs after construct returns, when a split
+family's parent would otherwise be collected and its members drawn unposed.
+
+FadeTransform samples two aligned Transform plans (source → fitted ghost, fitted ghost →
+target) and returns `_SourceStates`, so updaters see the source half, not the more
+visible state. GrowArrow scales tips and shaft width from zero, as Community does.
+Tests must pass under plain `python3` without NumPy (the browser's default); use
+`point_list` and `HAS_NUMPY` in tests that touch points arrays.

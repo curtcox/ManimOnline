@@ -9349,6 +9349,11 @@ def _plan_members(plan):
     return 1
 
 
+class _SourceStates(list):
+    """Sampled states whose first entry is the animated mobject itself (the rest are
+    companion copies), so callbacks query it rather than the most visible state."""
+
+
 def _sample_transform(plan, alpha, path_arc=0, member_alpha=None):
     """Sample a plan; member_alpha() supplies successive lagged member alphas."""
     kind, start, target, children = plan
@@ -10412,16 +10417,30 @@ class FadeTransform(Transform):
 
     def begin(self, scene):
         Animation.begin(self, scene)
-        self.source_end = self._fit(self.mobject.copy(), self.replacement).to_dict()
-        self.target_start = self._fit(self.replacement.copy(), self.mobject).to_dict()
-        self.target_end = self.replacement.to_dict()
+        self._plan_pairs(self.mobject.copy(), self._fit(self.mobject.copy(), self.target),
+                         self._fit(self.target.copy(), self.mobject), self.target.copy())
+
+    def _plan_pairs(self, start, source_end, target_start, target_end):
+        """Community transforms Group(source, ghost target) into Group(ghost source, target):
+        each half morphs (aligned like Transform) while its opacity crosses over."""
+        def snapshots(first, last):
+            if any(m.__dict__.get('_stretch_baked') for m in first.get_family() + last.get_family()):
+                try:
+                    return [m.copy().stretch(1, 0).to_dict() for m in (first, last)]
+                except NotImplementedError:
+                    pass
+            return [first.to_dict(), last.to_dict()]
+        self._fade_plans = [_transform_plan(*snapshots(start, source_end)),
+                            _transform_plan(*snapshots(target_start, target_end))]
 
     def sample(self, alpha):
-        source = interpolate(self.start, self.source_end, alpha)
-        target = interpolate(self.target_start, self.target_end, alpha)
-        source['opacity'] *= 1 - alpha
-        target['opacity'] *= alpha
-        return [source, target]
+        source = _sample_transform(self._fade_plans[0], alpha)
+        target = _sample_transform(self._fade_plans[1], alpha)
+        for state in source:
+            state['opacity'] *= 1 - alpha
+        for state in target:
+            state['opacity'] *= alpha
+        return _SourceStates(source + target)
 
     def finish(self, scene):
         # Community: the mobject ends shaped like its target, which then takes its place
@@ -10920,6 +10939,16 @@ class GrowArrow(GrowFromPoint):
         self.point = Vector(self.mobject.get_start())
         super().begin(scene)
 
+    def sample(self, alpha):
+        current = self.original.copy()
+        if not isinstance(current, Arrow):
+            return super().sample(alpha)
+        # Community starts from scale(0, scale_tips=True), whose stroke width is zero, and
+        # interpolates points and the shaft width linearly toward the original.
+        current.scale(alpha, scale_tips=True, about_point=self.point)
+        current.stroke_width = alpha * self.original.stroke_width
+        return [self._tint(current, alpha).to_dict()]
+
 
 class SpinInFromNothing(GrowFromCenter):
     """Grow from the center along Community's spiral path (spiral_path(angle))."""
@@ -11188,6 +11217,24 @@ class Scene:
         self._static_frames = None
 
     @property
+    def mobjects(self):
+        return self.__dict__['_roots']
+
+    @mobjects.setter
+    def mobjects(self, roots):
+        # A split family member is drawn through its (weakly registered) ancestors' poses,
+        # so the scene keeps those ancestors alive, as Community's members keep their place.
+        held = self.__dict__.setdefault('_root_ancestors', {})
+        for node in roots:
+            while True:
+                ref = _PARENTS.get(node)
+                parent = ref() if ref is not None else None
+                if parent is None or id(parent) in held:
+                    break
+                held[id(parent)] = node = parent
+        self.__dict__['_roots'] = roots
+
+    @property
     def renderer(self):
         """Community's CairoRenderer view: its camera, scene time and frame count."""
         return types.SimpleNamespace(camera=self.camera, time=self.time, num_plays=len(self.sections),
@@ -11384,7 +11431,8 @@ class Scene:
                 if states:
                     # Crossfades have two visual objects; geometry queries use the
                     # more visible one. Continuous morphs have a single snapshot.
-                    expose(mobject, max(states, key=lambda state:state['opacity']))
+                    expose(mobject, states[0] if isinstance(states, _SourceStates)
+                           else max(states, key=lambda state:state['opacity']))
                     blocked.update(mobject.get_family())
             seen = set()
             def visit(mobject):
@@ -16884,11 +16932,10 @@ class FadeTransformPieces(FadeTransform):
         Animation.begin(self, scene)
         count = max(len(self.mobject.children) or 1, len(self.replacement.children) or 1)
         sources, targets = self._pieces(self.mobject, count), self._pieces(self.replacement, count)
-        snapshot = lambda pieces: Group(*pieces).to_dict()
-        self.start = snapshot([p.copy() for p in sources])
-        self.source_end = snapshot([self._fit(s.copy(), t) for s, t in zip(sources, targets)])
-        self.target_start = snapshot([self._fit(t.copy(), s) for s, t in zip(sources, targets)])
-        self.target_end = snapshot([t.copy() for t in targets])
+        self._plan_pairs(Group(*[p.copy() for p in sources]),
+                         Group(*[self._fit(s.copy(), t) for s, t in zip(sources, targets)]),
+                         Group(*[self._fit(t.copy(), s) for s, t in zip(sources, targets)]),
+                         Group(*[t.copy() for t in targets]))
 
 
 class _IsoPoint:
