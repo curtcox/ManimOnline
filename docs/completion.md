@@ -434,3 +434,6 @@ receivers and VMobject-to-Mobject targets. Community 0.22 also fails restore() o
 ValueTracker through the same path; Lite keeps restore working.
 become (and so Transform completion) keeps attributes that scene code added, fixing the
 LinearTransformationScene gallery example's second transformation of a labelled vector.
+shift takes several vectors, space_out_submobjects shrinks members about their world centers
+(rotated Axes), arrange_in_grid places cells up and right from the origin as Community does
+(visible for shapes with their own outline) and raises ZeroDivisionError with no members.

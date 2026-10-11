@@ -7634,7 +7634,8 @@ class Demo(Scene):
                 mutate()
             self.assertEqual(host.to_dict(),saved)
         empty = lite.Rectangle().shift(lite.RIGHT*2)
-        self.assertIs(empty.arrange_in_grid(),empty)
+        with self.assertRaises(ZeroDivisionError):  # Community sizes a grid for no members
+            empty.arrange_in_grid()
         self.assertEqual(empty.get_center(),lite.RIGHT*2)
         empty.arrange_submobjects()
         self.assertEqual(empty.get_center(),lite.ORIGIN)
@@ -7720,7 +7721,8 @@ class Demo(Scene):
             for child,(row,col) in zip(group,cells):
                 self.assertPointAlmostEqual(group._point_to_world(child.get_center()),(2+(col-1)*1.4,1+(.5-row)*1.8,0))
         empty = lite.Group().shift(lite.RIGHT)
-        self.assertIs(empty.arrange_in_grid(),empty)
+        with self.assertRaises(ZeroDivisionError):
+            empty.arrange_in_grid()
         self.assertEqual(empty.get_center(),lite.ORIGIN)
 
     def test_grid_inference_partial_cells_sizes_and_alignment(self):

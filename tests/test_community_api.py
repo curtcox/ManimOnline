@@ -1432,6 +1432,24 @@ class AnimationApiTests(unittest.TestCase):
             ['NumberLine', 'ArrowTriangleFilledTip', 'VGroup', 'Line', 'Line', 'Line', 'Line'], 27,
             ['NotImplementedError', 'AttributeError', 'NotImplementedError', 'ok']]))
 
+    def test_shift_vectors_spacing_and_grid_origin(self):
+        # Manim 0.22: shift sums its vectors; space_out shrinks members about their world
+        # centers; grid cells grow up and right from the origin before the family recenters.
+        values = scene_values(
+            'def r(m): return [round(float(x), 3) for x in (*m.get_corner(DL)[:2], *m.get_corner(UR)[:2])]\n'
+            'a = Axes(x_range=[-2, 2], y_range=[-1, 1], x_length=1.96, y_length=2).rotate(0.85)\n'
+            'a.space_out_submobjects(1.48)\n'
+            'c = Square().add(Circle(radius=0.3).shift(RIGHT * 2)); c.arrange_in_grid(buff=0.21)\n'
+            'd = Square().add(Circle(radius=0.3).shift(RIGHT * 2), Dot(UP * 2)).rotate(0.5); d.arrange_in_grid(buff=0.21)\n'
+            'try:\n'
+            '    VGroup().arrange_in_grid(); empty = "ok"\n'
+            'except ZeroDivisionError:\n'
+            '    empty = "error"\n'
+            'result = [list(Square().shift(UP, RIGHT * 2).get_center()), r(a), r(c[1]), [r(m) for m in d.submobjects], empty]\n')
+        self.assertEqual(values, plain([
+            [2, 1, 0], [-0.756, -0.802, 0.817, 0.736], [0.65, 0.0, 1.25, 0.6],
+            [[0.365, 0.26, 0.941, 0.836], [1.18, 0.471, 1.333, 0.624]], 'error']))
+
     def test_become_keeps_scene_attributes(self):
         # Community's become copies points and colors; attributes scene code added remain,
         # so a transformed label keeps its bookkeeping (LinearTransformationScene relies on it).

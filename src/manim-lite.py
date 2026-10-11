@@ -1434,6 +1434,8 @@ class Mobject:
         count = len(self._layout_members())
         rows,cols = dimensions
         if rows is None and cols is None:
+            if not count:
+                raise ZeroDivisionError('division by zero')  # Community: ceil(0 / ceil(sqrt(0)))
             cols = max(1,math.ceil(math.sqrt(count)))
         if rows is None:
             rows = max(1,math.ceil(count/cols))
@@ -1462,11 +1464,13 @@ class Mobject:
             widths[col] = max(widths[col],target.get_width())
         heights = [v if v is not None else measured for v,measured in zip(sizes[0] or [None]*rows,heights)]
         widths = [v if v is not None else measured for v,measured in zip(sizes[1] or [None]*cols,widths)]
-        xs,ys = [0.0],[0.0]
+        # Community fills cells rightwards and upwards from the origin (bottom row first);
+        # own geometry stays put, so the cell origin decides where members land.
+        xs,ys = [0.0],[heights[-1]]
         for width in widths[:-1]:
             xs.append(xs[-1]+width+gaps[0])
-        for height in heights[:-1]:
-            ys.append(ys[-1]-height-gaps[1])
+        for height in reversed(heights[:-1]):
+            ys.insert(0, ys[0]+gaps[1]+height)
         if any(not math.isfinite(v) for v in (*xs,*ys,*heights,*widths)):
             raise ValueError('Grid cell coordinates must be finite')
         for target,(row,col) in zip(targets,cells):
@@ -1629,7 +1633,10 @@ class Mobject:
                 self.geometry_scale == 1 and not any(self.position) and
                 '_sampled_geometry_center' not in self.__dict__)
 
-    def shift(self, direction):
+    def shift(self, *vectors):
+        # Community shifts by the sum of all the given vectors.
+        direction = vectors[0] if len(vectors) == 1 else functools.reduce(
+            lambda total, vector: total + Vector(vector), vectors[1:], Vector(vectors[0]))
         if self._world_container():
             direction = Vector(direction)
             for child in self.children:
@@ -3647,7 +3654,9 @@ class Mobject:
     def space_out_submobjects(self, factor=1.5, **kwargs):
         self.scale(factor, **kwargs)
         for child in self._layout_members():
-            child.scale(1 / factor)
+            # Each member shrinks about its world bounds center, which a posed parent's
+            # local frame does not preserve.
+            _in_world(child, lambda member: member.scale(1 / factor))
         return self
 
     def sort_submobjects(self, *args, **kwargs):
