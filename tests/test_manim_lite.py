@@ -2619,8 +2619,8 @@ assert isinstance(t.get_value(), (int, float))""")
     def test_circle_square_tip_anchors_styles_and_editable_geometry(self):
         import math
         for cls,filled,count,point,base,length in (
-            (lite.ArrowCircleTip,False,8,(-1,0,0),(1,0,0),2),
-            (lite.ArrowCircleFilledTip,True,8,(-1,0,0),(1,0,0),2),
+            (lite.ArrowCircleTip,False,8,(1,0,0),(-1,0,0),2),
+            (lite.ArrowCircleFilledTip,True,8,(1,0,0),(-1,0,0),2),
             (lite.ArrowSquareTip,False,4,(1,1,0),(-1,-1,0),math.sqrt(8)),
             (lite.ArrowSquareFilledTip,True,4,(1,1,0),(-1,-1,0),math.sqrt(8))):
             tip=cls(length=2)
@@ -7456,8 +7456,9 @@ class Demo(Scene):
 
     def test_tip_geometry_queries_transforms_and_styles(self):
         outline = lite.ArrowTriangleTip(length=2,width=1,color=lite.BLUE)
-        self.assertPointAlmostEqual(outline.tip_point,(-1,0,0))
-        self.assertPointAlmostEqual(outline.base,(1,0,0))
+        # Community resizes the triangle about its bounding-box center (-0.25, 0).
+        self.assertPointAlmostEqual(outline.tip_point,(-1.25,0,0))
+        self.assertPointAlmostEqual(outline.base,(.75,0,0))
         self.assertPointAlmostEqual(outline.vector,(-2,0,0))
         self.assertAlmostEqual(abs(outline.tip_angle),lite.PI)
         self.assertAlmostEqual(outline.length,2)
@@ -7468,12 +7469,12 @@ class Demo(Scene):
         self.assertEqual((filled.fill_opacity,filled.stroke_width),(1,0))
         for scale in (0,2,-1):
             tip = filled.copy().scale(scale).rotate(lite.PI/2).shift(lite.UP)
-            self.assertPointAlmostEqual(tip.tip_point,(0,1-scale,0))
-            self.assertPointAlmostEqual(tip.base,(0,1+scale,0))
+            self.assertPointAlmostEqual(tip.tip_point,(-.25,1-scale,0))
+            self.assertPointAlmostEqual(tip.base,(-.25,1+scale,0))
             self.assertAlmostEqual(tip.length,2*abs(scale))
         stealth = lite.StealthTip(length=1.6)
-        self.assertPointAlmostEqual(stealth.tip_point,(1,0,0))
-        self.assertPointAlmostEqual(stealth.base,lite.ORIGIN)
+        self.assertPointAlmostEqual(stealth.tip_point,(1.2,0,0))
+        self.assertPointAlmostEqual(stealth.base,(.2,0,0))
         self.assertAlmostEqual(stealth.length,1.6)
         self.assertEqual(stealth.get_num_curves(),4)
         self.assertTrue(stealth.is_closed())
@@ -7518,8 +7519,8 @@ class Demo(Scene):
             with self.assertRaises(ValueError):
                 lite.ArrowTriangleTip(width=value)
         tip = lite.ArrowTriangleTip(length=1,width=.5,start_angle=0)
-        self.assertPointAlmostEqual(tip.tip_point,(.5,0,0))
-        self.assertPointAlmostEqual(tip.base,(-.5,0,0))
+        self.assertPointAlmostEqual(tip.tip_point,(.75,0,0))
+        self.assertPointAlmostEqual(tip.base,(-.25,0,0))
         huge = lite.ArrowTriangleTip(start_angle=1e308)
         self.assertTrue(all(lite.math.isfinite(v) for point in huge.get_points() for v in point))
 

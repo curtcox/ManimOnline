@@ -616,6 +616,26 @@ class AnimationApiTests(unittest.TestCase):
             [[[1.0, 0.0, 0.0], 1.5], [2.0, 0.0, 0.0], 1.0, '#FFFF00', 2.4, [0.0701, 0.0, 0.0],
              [1.0, 0.0, 0.0], [[1.0, 0.0, 0.0], [0.0, 0.5, 0.0]], [0.0, 1.0, 0.0], '#FFFF00'])
 
+    def test_manual_groups_accept_mobject_free_waits(self):
+        self.assertEqual(scene_values(
+            's = Square()\n'
+            'g = AnimationGroup(Wait(), FadeIn(s), lag_ratio=1)\n'
+            'g.begin(); g.interpolate(0.75); half = s.get_stroke_opacity()\n'
+            'g.finish()\n'
+            'result = [g.anims_with_timings.tolist()[1][1:], half, s.get_stroke_opacity()]\n'),
+            [[1.0, 2.0], 0.5, 1.0])
+
+    def test_standalone_tips_match_community_construction(self):
+        self.assertEqual(scene_values(
+            'result = []\n'
+            'for cls in (ArrowTriangleTip, StealthTip, ArrowCircleTip, ArrowSquareTip):\n'
+            '    t = cls()\n'
+            '    result.append([t.get_color(), t.tip_point, t.base, t.get_center(), t.start_angle])\n'),
+            [['#58C4DD', [-0.425, 0.0, 0.0], [-0.075, 0.0, 0.0], [-0.25, 0.0, 0.0], 3.1416],
+             ['#FFFFFF', [0.4875, 0.0, 0.0], [0.3781, 0.0, 0.0], [0.4, 0.0, 0.0], 3.1416],
+             ['#FC6255', [0.175, 0.0, 0.0], [-0.175, 0.0, 0.0], [0.0, 0.0, 0.0], 0.0],
+             ['#FFFFFF', [0.175, 0.175, 0.0], [-0.175, -0.175, 0.0], [0.0, 0.0, 0.0], 3.1416]])
+
     def test_dashed_arrows_keep_one_set_of_tips(self):
         self.assertEqual(scene_values(
             'd = DashedVMobject(Arrow(ORIGIN, 2 * UR, color=RED))\n'

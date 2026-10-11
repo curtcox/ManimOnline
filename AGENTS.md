@@ -375,7 +375,11 @@ ArrowTriangleTip/ArrowTriangleFilledTip and StealthTip supply closed corner path
 Tip base queries use the midpoint of the ordered cubic array, not distance-based
 path sampling, and tip_point uses the first path point. Stealth length is 1.6
 times its base-to-tip span. Triangle angles are reduced to a stable trig phase
-before constructing distinct vertices. Arrow attachment is now implemented for straight Line/Arrow families.
+before constructing distinct vertices. Standalone tips follow Community's construction:
+triangles are BLUE and resized about their bounding-box center (center x = -0.25 for
+start_angle=PI); stealth tips scale about (0.4, 0). Attached tips are positioned by
+tip_point, so keep near-zero chords (closed paths) guarded with relative tolerances.
+Arrow attachment is now implemented for straight Line/Arrow families.
 
 
 Read `examples/arrow_tips_scene.py` for real tip children, fixed-size scaling,
@@ -390,8 +394,8 @@ general Arc/Circle tip attachment remains unfinished. NumberPlane vectors force 
 
 Read `examples/round_square_tips_scene.py` for circular and square tip attachment
 on animated arrows. Circle tips hold eight editable cubic segments; square tips
-hold four corner segments. Circle length sets diameter and start_angle sets its
-first anchor. Square length sets side length, inherited tip length measures the
+hold four corner segments. Circle length sets diameter; like Community, circle
+tips are RED and always start at angle 0 (start_angle becomes 0). Square length sets side length, inherited tip length measures the
 diagonal, and start_angle is metadata (native constructor does not pass it to
 Square). Preserve the anchor order: shaft bases use the ordered curve midpoint.
 Both filled/outline variants flow through existing family/path rendering.

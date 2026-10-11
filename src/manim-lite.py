@@ -4855,7 +4855,8 @@ class TipableVMobject(VMobject):
             moving = Vector(shaft[0][0] if at_start else shaft[-1][-1])
             base = Vector(tip.base)
             current, target = complex(*(moving - fixed)[:2]), complex(*(base - fixed)[:2])
-            if current and target:
+            # A closed path's ends coincide up to rounding; that span cannot be refit.
+            if target and abs(current) > 1e-9 * abs(target):
                 factor = target / current
                 other.scale(abs(factor), about_point=fixed)
                 other.rotate(cmath.phase(factor), about_point=fixed)
@@ -4900,7 +4901,7 @@ class TipableVMobject(VMobject):
         old_length,new_length = math.hypot(*old_vector),math.hypot(*new_vector)
         if not math.isfinite(new_length):
             raise ValueError('Curve endpoint span must be finite')
-        if not old_length:
+        if old_length <= 1e-12 * max(self.width, self.height):
             if new_length:
                 raise ValueError('Cannot expand a collapsed curve with endpoint fitting')
             return self.shift(start-old_start)
@@ -5724,13 +5725,15 @@ class ArrowTriangleTip(ArrowTip):
         self._tip_dimension(width,'width')
         if isinstance(start_angle,bool) or not isinstance(start_angle,_REAL) or not math.isfinite(start_angle):
             raise ValueError('Tip start_angle must be finite')
+        kwargs.setdefault('color', BLUE)  # Community's Triangle default
         super().__init__(fill_opacity=fill_opacity,stroke_width=stroke_width,**kwargs)
         phase = math.atan2(math.sin(start_angle),math.cos(start_angle))
         vertices = [Vector((math.cos(phase+i*TAU/3),math.sin(phase+i*TAU/3),0)) for i in range(3)]
         xs,ys = [v[0] for v in vertices],[v[1] for v in vertices]
         cx,cy = (min(xs)+max(xs))/2,(min(ys)+max(ys))/2
         sx,sy = max(xs)-min(xs),max(ys)-min(ys)
-        points = [Vector(((v[0]-cx)*length/sx,(v[1]-cy)*width/sy,0)) for v in vertices]
+        # Community resizes the circumcentred triangle about its bounding-box center.
+        points = [Vector((cx+(v[0]-cx)*length/sx,cy+(v[1]-cy)*width/sy,0)) for v in vertices]
         self.set_points_as_corners(points+[points[0]])
         self.start_angle = start_angle
 
@@ -5746,11 +5749,12 @@ class ArrowCircleTip(ArrowTip):
         self._tip_dimension(length,'length')
         if isinstance(start_angle,bool) or not isinstance(start_angle,_REAL) or not math.isfinite(start_angle):
             raise ValueError('Tip start_angle must be finite')
+        kwargs.setdefault('color', RED)  # Community's Circle default
         super().__init__(fill_opacity=fill_opacity,stroke_width=stroke_width,**kwargs)
-        phase = math.atan2(math.sin(start_angle),math.cos(start_angle))
-        curves = _path_curves({'type':'circle','radius':length/2,'start_angle':phase})
+        # Community's Circle resets start_angle to 0, so the outline always starts there.
+        curves = _path_curves({'type':'circle','radius':length/2,'start_angle':0})
         self.set_points([point for curve in curves for point in curve])
-        self.start_angle = start_angle
+        self.start_angle = 0
 
 
 class ArrowCircleFilledTip(ArrowCircleTip):
@@ -5785,7 +5789,8 @@ class StealthTip(ArrowTip):
             raise ValueError('Tip start_angle must be finite')
         super().__init__(fill_opacity=fill_opacity,stroke_width=stroke_width,**kwargs)
         factor = length/3.2
-        points = [Vector((x*factor,y*factor,0)) for x,y in ((2,0),(-1.2,1.6),(0,0),(-1.2,-1.6),(2,0))]
+        # Scaled about the outline's bounding-box center (0.4, 0), as Community's scale does.
+        points = [Vector((.4+(x-.4)*factor,y*factor,0)) for x,y in ((2,0),(-1.2,1.6),(0,0),(-1.2,-1.6),(2,0))]
         self.set_points_as_corners(points)
         self.start_angle = start_angle
 
@@ -11147,7 +11152,8 @@ class Animation(metaclass=_CommunityTree):
             # A built-in animation driven by hand (begin(), interpolate(alpha), finish()).
             self.mobject.become(_animation_state(self, start, alpha))
             return
-        self.interpolate_mobject(alpha)
+        if self.mobject is not None:
+            self.interpolate_mobject(alpha)
 
     def interpolate_mobject(self, alpha):
         families = list(self.get_all_families_zipped())
@@ -11209,6 +11215,8 @@ class Animation(metaclass=_CommunityTree):
         return copy.deepcopy(self)
 
     def _community_begin(self):
+        if self.mobject is None:
+            return  # Wait and other mobject-free animations have nothing to begin.
         if not self._community_style and isinstance(self.mobject, Mobject):
             self._manual_start = self.mobject.copy()
             self.__dict__.pop('_updater_ready', None)

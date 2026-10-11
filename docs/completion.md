@@ -407,3 +407,6 @@ now works without a scene for built-in animations, AnimationGroup (Community's b
 masks) and Succession, and Transform subclasses may override create_target (the target is
 optional). A constructor-default diff against Manim 0.22 found PURE_YELLOW defaults for
 Indicate, Flash, Circumscribe and FunctionGraph, now matched.
+A default-instance diff (color, stroke, fill, size and family of every Mobject class built
+with no arguments) then aligned standalone arrow tips with Community's construction, and
+manual groups accept mobject-free Wait members.
