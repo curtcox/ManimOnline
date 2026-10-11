@@ -423,3 +423,8 @@ A submodule import scan (every public class/function Community defines per modul
 finds only renderer, file-writer and interactive-scene internals missing.
 A signature scan (keyword parameters of every exported class, function and method) now
 differs only in three internal hooks (interpolate_submobject variants, MultiCamera).
+Plain Group/Mobject boundaries (critical points, centers, container scale/rotate pivots
+and next_to targets) include Bezier handles as in Community; VGroup keeps anchors.
+Fuzzing also found two deferred structural differences: Community cuts an arrow shaft
+once when its tip is attached (Lite refits it to the current tips), and become keeps
+extra degenerate children from submobject alignment (Lite replaces the family).

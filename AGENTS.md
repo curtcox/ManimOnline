@@ -534,8 +534,9 @@ Coordinate entry points accept arrays via `_listed`. Tests compare points throug
 Read `examples/annotation_scene.py` for braces, Title, Tex, bullets and Variable.
 Default frame height is 8 (Community). Renderer strokes are local-unit widths
 in scene units (they thicken under camera zoom, as in Cairo); keep inheritedScale threading in renderMobject.
-_BOUNDS_WITH_HANDLES is only set by get_width/get_height; pivots always use
-anchors. get_center may differ from _pivot_point for rotated outlines; use
+_BOUNDS_WITH_HANDLES is set by get_width/get_height and by _critical_point on
+non-VMobject families (Group/Mobject use all points, as in Community, so their
+centers and container pivots include handles); internal pivots use anchors. get_center may differ from _pivot_point for rotated outlines; use
 _pivot_point in transform math. Scenes see the arrow as `Vector`; internally
 `Vector` is the coordinate tuple — never shadow it. A Manim 0.22 reference venv
 can be built with pango/TeX packages to check geometry numerically.

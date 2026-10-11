@@ -1676,12 +1676,24 @@ class Mobject:
         return min(zs), max(zs)
 
     def _critical_point(self, direction):
+        global _BOUNDS_WITH_HANDLES
+        if self._all_points_boundary() and not _BOUNDS_WITH_HANDLES:
+            _BOUNDS_WITH_HANDLES = True
+            try:
+                return self._critical_point(direction)
+            finally:
+                _BOUNDS_WITH_HANDLES = False
         left, bottom, right, top = self._bounds()
         low, high = self._z_extent()
         x, y, z = direction
         return Vector((right if x > 0 else left if x < 0 else (left + right) / 2,
                        top if y > 0 else bottom if y < 0 else (bottom + top) / 2,
                        high if z > 0 else low if z < 0 else (low + high) / 2))
+
+    def _all_points_boundary(self):
+        """Community's plain Mobject/Group boundary uses all points, handles included;
+        VMobjects (VGroup too) use anchors."""
+        return not isinstance(self, VMobject) and bool(self.children)
 
     @_bounds_query
     def get_critical_point(self, direction):
@@ -2434,6 +2446,8 @@ class Mobject:
         # Community's center is the bounds center; it differs from the pivot only
         # for rotated point-based outlines, whose bounds use rotated points.
         z = sum(self._z_extent()) / 2
+        if self._all_points_boundary():
+            return self.get_critical_point(ORIGIN)
         if (math.sin(2 * self.angle) and not self.children and
                 (self._own_bound_points() or self._type in ('arc', 'ellipse')
                  or self._type == 'circle' and 'num_components' in self.__dict__)) or (self.children and self._rotated_family()):
@@ -10439,7 +10453,7 @@ class Axes(VGroup, CoordinateSystem):
         area.vertices = [list(point) for point in points]
         return area.set_opacity(opacity).set_color(palette if len(palette)>1 else palette[0])
 
-    def get_secant_slope_group(self, x, graph, dx=None, dx_line_color=YELLOW,
+    def get_secant_slope_group(self, x, graph, dx=None, dx_line_color=PURE_YELLOW,
                                 dy_line_color=None, dx_label=None, dy_label=None,
                                 include_secant_line=True, secant_line_color=GREEN,
                                 secant_line_length=10):

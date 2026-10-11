@@ -1390,6 +1390,24 @@ class AnimationApiTests(unittest.TestCase):
             2.0135, 2.0342, [0.0203, 0, 0], [-0.0173, 0.9961, 0], 4.0349,
             [-0.3095, 0.9509, 0], [0.587, 0.8096, 0], 44, ['error', 2]]))
 
+    def test_plain_group_boundary_includes_handles(self):
+        # Manim 0.22: Mobject/Group critical points (and so centers, pivots and next_to)
+        # use all points, handles included; VGroup uses anchors.
+        values = scene_values(
+            'def r(v): return [round(float(x), 4) for x in v[:2]]\n'
+            'g = Group(Square(), Circle().shift(UP * 2).rotate(0.4))\n'
+            'v = VGroup(Square(), Circle().shift(UP * 2).rotate(0.4))\n'
+            'm = Mobject().add(Circle().rotate(0.4))\n'
+            'g2 = Group(Square(), Circle().shift(UP * 2).rotate(0.4)).scale(2)\n'
+            'g3 = Group(Circle().rotate(0.4)); g3.rotate(0.5)\n'
+            'd = Dot().next_to(Group(Circle().rotate(0.4)), RIGHT, buff=0)\n'
+            'result = [r(g.get_center()), r(g.get_top()), r(g.get_right()), r(v.get_center()), r(v.get_right()),\n'
+            '          r(m.get_right()), r(g2.get_center()), r(g2.get_right()), r(g3.get_right()), r(d.get_center()),\n'
+            '          round(g.width, 4), round(v.width, 4)]\n')
+        self.assertEqual(values, plain([
+            [0, 1.0132], [0, 3.0264], [1.0264, 1.0132], [0, 0.9633], [1.0, 0.9633], [1.0264, 0],
+            [0, 1.0132], [2.0527, 1.0132], [1.0238, 0], [1.1064, 0], 2.0527, 2.0527]))
+
     def test_point_equality_rejects_non_finite_differences(self):
         # np.allclose semantics (Manim 0.22): infinities match only themselves; NaN never matches.
         values = scene_values(
