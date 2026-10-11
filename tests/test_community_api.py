@@ -1425,6 +1425,23 @@ class AnimationApiTests(unittest.TestCase):
             '          DictAsObject({"a": 1}).a, issubclass(StreamLine, VMobject), hasattr(manim, "MethodWithArgs")]\n')
         self.assertEqual(values, [True, True, True, True, 1, True, False])
 
+    def test_community_keyword_parameter_names(self):
+        # Manim 0.22 parameter names, usable as keywords.
+        values = scene_values(
+            'a = Arrow(LEFT, RIGHT)\n'
+            'd = Dot().move_to(point_or_mobject=a.tip)\n'
+            's = Square().match_style(vmobject=Circle(fill_opacity=0.5))\n'
+            'v = VDict(mapping_or_iterable=[("x", Dot())]); v.add(mapping_or_iterable={"y": Square()})\n'
+            'keys = list(v.submob_dict); v.remove(key="x")\n'
+            'g = FunctionGraph(lambda x: x * x)\n'
+            'with tempconfig(temp={"background_color": RED}):\n'
+            '    rate = str(config.background_color)\n'
+            'result = [list(d.get_center()) == list(a.tip.get_center()), s.get_fill_opacity(), keys,\n'
+            '          list(v.submob_dict), list(g.get_point_from_function(x=2)), rate,\n'
+            '          ImageMobject(np.zeros((2, 2, 3), dtype=np.uint8)).set_color(RED, alpha=0.5) is not None\n'
+            '          if "np" in globals() else True]\n')
+        self.assertEqual(values, [True, 0.5, ['x', 'y'], ['y'], [2, 4, 0], '#FC6255', True])
+
     def test_number_line_scene_structure(self):
         # Manim 0.22: the line owns the shaft points (cut at the tip base); submobjects
         # are the tip and ticks, and indexing/iteration include the line itself.

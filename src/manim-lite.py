@@ -1620,7 +1620,8 @@ class Mobject:
         self.position = list(Vector(self.position) + direction)
         return self
 
-    def move_to(self, point, aligned_edge=ORIGIN, coor_mask=(1, 1, 1)):
+    def move_to(self, point_or_mobject, aligned_edge=ORIGIN, coor_mask=(1, 1, 1)):
+        point = point_or_mobject
         aligned_edge, mask = Vector(aligned_edge), Vector(coor_mask)
         if not all(math.isfinite(v) for v in (*aligned_edge, *mask)):
             raise ValueError('Alignment edge and coordinate mask must be finite')
@@ -2977,7 +2978,7 @@ class Mobject:
         if not math.isfinite(width) or width < 0:
             raise ValueError('Stroke width must be nonnegative and finite')
 
-    def set_color(self, color=_NO_COLOR, family=True):
+    def set_color(self, color=_NO_COLOR, family=True, *, alpha=None):
         if color is _NO_COLOR:
             if isinstance(self, VMobject):
                 raise TypeError("VMobject.set_color() missing 1 required positional argument: 'color'")
@@ -3309,7 +3310,8 @@ class Mobject:
             raise TypeError('Color matching expects a Mobject')
         return self.set_color(mobject.get_color())
 
-    def match_style(self, mobject, family=True):
+    def match_style(self, vmobject, family=True):
+        mobject = vmobject
         if not isinstance(mobject, Mobject):
             raise TypeError('Style matching expects a Mobject')
         self.color = mobject.color
@@ -4294,9 +4296,10 @@ class VMobject(Mobject, metaclass=_CommunityTree):
             cb = _subdivide_curves(cb, len(ca))
         return [p for c in ca for p in c], [p for c in cb for p in c]
 
-    def align_points(self, mobject):
+    def align_points(self, vmobject):
         """Community's align_points: pair subpaths in order and subdivide the shorter of each
         pair; missing subpaths become null curves at the last point."""
+        mobject = vmobject
         if not _is_a(mobject, VMobject):
             raise TypeError('align_points expects a VMobject')
         a, b = [Vector(p) for p in self.get_points()], [Vector(p) for p in mobject.get_points()]
@@ -4827,6 +4830,9 @@ class FunctionGraph(ParametricFunction):
 
     def get_function(self):
         return self.underlying_function
+
+    def get_point_from_function(self, x):
+        return super().get_point_from_function(x)
 
 
 class TracedPath(VMobject):
@@ -15071,7 +15077,7 @@ class Scene:
     def tear_down(self):
         pass
 
-    def render(self):
+    def render(self, preview=False):
         self.setup()
         self.construct()
         self.tear_down()
@@ -17234,8 +17240,10 @@ class VDict(VGroup):
     def __repr__(self):
         return f'{type(self).__name__}({self.submob_dict!r})'
 
-    def add(self, *mappings):
+    def add(self, *mappings, mapping_or_iterable=None):
         # Group internals may still add plain children; keyed additions use mappings.
+        if mapping_or_iterable is not None:
+            mappings = (*mappings, mapping_or_iterable)
         if all(isinstance(m, Mobject) for m in mappings):
             return super().add(*mappings) if mappings else self
         if len(mappings) != 1:
@@ -17244,7 +17252,9 @@ class VDict(VGroup):
             self.add_key_value_pair(key, value)
         return self
 
-    def remove(self, *keys):
+    def remove(self, *keys, key=_NO_COLOR):
+        if key is not _NO_COLOR:
+            keys = (*keys, key)
         if keys and all(isinstance(k, Mobject) for k in keys):
             for mobject in keys:
                 for key in [k for k, v in self.submob_dict.items() if v is mobject]:
@@ -22732,8 +22742,8 @@ def update_dict_recursively(current_dict, *others):
 
 class tempconfig:
     """Community's tempconfig: temporarily override preview configuration values."""
-    def __init__(self, temp_config):
-        self.changes = dict(temp_config.items() if hasattr(temp_config, 'items') else temp_config)
+    def __init__(self, temp):
+        self.changes = dict(temp.items() if hasattr(temp, 'items') else temp)
 
     def __enter__(self):
         self.saved = {name: getattr(config, name) for name in self.changes}

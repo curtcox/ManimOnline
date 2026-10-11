@@ -421,3 +421,5 @@ Point equality follows np.allclose for non-finite coordinates, and importing
 `manim.utils.rate_functions` exposes the easing functions kept only in that module.
 A submodule import scan (every public class/function Community defines per module) now
 finds only renderer, file-writer and interactive-scene internals missing.
+A signature scan (keyword parameters of every exported class, function and method) now
+differs only in three internal hooks (interpolate_submobject variants, MultiCamera).
