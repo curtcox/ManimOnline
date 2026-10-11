@@ -10990,12 +10990,14 @@ class _SourceStates(list):
     companion copies), so callbacks query it rather than the most visible state."""
 
 
-def _sample_transform(plan, alpha, path_arc=0, member_alpha=None):
-    """Sample a plan; member_alpha() supplies successive lagged member alphas."""
+def _sample_transform(plan, alpha, path_arc=0, member_alpha=None, frames=None):
+    """Sample a plan; member_alpha() supplies successive lagged member alphas. frames are the
+    parent-to-world similarities of the start, target and sampled parents (None: the world)."""
     kind, start, target, children = plan
     if kind == 'family':
-        own = _sample_transform(children[0],alpha,path_arc,member_alpha)
-        members = _sample_transform(children[1],alpha,path_arc,member_alpha)[0]['children']
+        own = _sample_transform(children[0],alpha,path_arc,member_alpha,frames)
+        inner = _child_frames(frames, children[0][1], children[0][2], own[0], path_arc, alpha)
+        members = _sample_transform(children[1],alpha,path_arc,member_alpha,inner)[0]['children']
         own[0]['children'] = members
         return own
     if member_alpha is not None and kind != 'group':
@@ -11022,11 +11024,48 @@ def _sample_transform(plan, alpha, path_arc=0, member_alpha=None):
     if _pose_turns(start, target) and 'position' in result:
         _lerp_pose(result, start, target, alpha)
     if kind == 'group':
+        inner = _child_frames(frames, start, target, result, path_arc, alpha)
         result['children'] = [snapshot for child in children
-                              for snapshot in _sample_transform(child, alpha, path_arc, member_alpha)]
+                              for snapshot in _sample_transform(child, alpha, path_arc, member_alpha, inner)]
     elif (isinstance(path_arc, _PointPath) or abs(path_arc) >= STRAIGHT_PATH_THRESHOLD) and 0 < alpha < 1:
-        _arc_geometry(result, start, target, alpha, path_arc)
+        _arc_geometry(result, start, target, alpha, path_arc, frames)
     return [result]
+
+
+def _child_frames(frames, start, target, result, path_arc, alpha):
+    """Frames for a sampled parent's members. Paths other than straight lines act on world
+    points, so members need the world placement of both endpoint parents."""
+    if not ((isinstance(path_arc, _PointPath) or abs(path_arc) >= STRAIGHT_PATH_THRESHOLD) and 0 < alpha < 1):
+        return None
+    outer = frames or (_IDENTITY_FRAME,) * 3
+    return tuple(_compose_frames(frame, _pose_frame(node)) for frame, node in zip(outer, (start, target, result)))
+
+
+_IDENTITY_FRAME = (1, 0, 1, 0)
+
+
+def _pose_frame(node):
+    """A snapshot pose as a similarity (A, T, sz, tz): XY to A*(x+iy)+T and z to sz*z+tz."""
+    px, py, pz = (list(node['position']) + [0, 0, 0])[:3]
+    gx, gy, gz = (list(node.get('geometry_center', ORIGIN)) + [0, 0, 0])[:3]
+    scale = node['geometry_scale']
+    a = cmath.rect(scale, node['angle']) if scale >= 0 else -cmath.rect(-scale, node['angle'])
+    center = complex(gx, gy)
+    return (a, complex(px, py) + center - a * center, scale, pz + gz - gz * scale)
+
+
+def _compose_frames(outer, inner):
+    return (outer[0] * inner[0], outer[0] * inner[1] + outer[1], outer[2] * inner[2], outer[2] * inner[3] + outer[3])
+
+
+def _frame_point(frame, p, inverse=False):
+    a, t, sz, tz = frame
+    z = p[2] if len(p) > 2 else 0
+    if inverse:
+        w = (complex(p[0], p[1]) - t) / a
+        return [w.real, w.imag, (z - tz) / sz]
+    w = a * complex(p[0], p[1]) + t
+    return [w.real, w.imag, sz * z + tz]
 
 
 STRAIGHT_PATH_THRESHOLD = 0.01
@@ -11050,7 +11089,7 @@ def _snapshot_pose(node):
     return forward, inverse
 
 
-def _arc_similarity(result, start, target, factor):
+def _arc_similarity(result, start, target, factor, frames=None):
     """Every point p + m (q - p) of a scaled, posed unit shape (world = B + Z * size * u)
     is again such a shape: Z * size and B take the same complex weight m. Applies to
     squares, circles and rectangles/ellipses of one aspect ratio."""
@@ -11068,13 +11107,16 @@ def _arc_similarity(result, start, target, factor):
     size = result[keys[0]]
     if not size:
         return False
-    def pose(node):
-        z = cmath.rect(node.get('geometry_scale', 1), node.get('angle', 0))
-        p, c = node['position'], node.get('geometry_center', ORIGIN)
-        return z * node[keys[0]], complex(p[0] + c[0], p[1] + c[1]) - z * complex(c[0], c[1])
-    (w0, b0), (w1, b1) = pose(start), pose(target)
-    z = (w0 + factor * (w1 - w0)) / size
-    offset = b0 + factor * (b1 - b0)
+    outer = frames or (_IDENTITY_FRAME,) * 3
+    if not outer[2][0]:
+        return False
+    def pose(node, frame):
+        a, t = _compose_frames(frame, _pose_frame(node))[:2]
+        return a * node[keys[0]], t
+    (w0, b0), (w1, b1) = pose(start, outer[0]), pose(target, outer[1])
+    # The sampled world similarity, expressed in the sampled parent's frame.
+    z = (w0 + factor * (w1 - w0)) / size / outer[2][0]
+    offset = (b0 + factor * (b1 - b0) - outer[2][1]) / outer[2][0]
     c = result.get('geometry_center', ORIGIN)
     moved = offset - complex(c[0], c[1]) + z * complex(c[0], c[1])
     result['position'] = [moved.real, moved.imag, result['position'][2]]
@@ -11082,7 +11124,7 @@ def _arc_similarity(result, start, target, factor):
     return True
 
 
-def _arc_geometry(result, start, target, alpha, path_arc):
+def _arc_geometry(result, start, target, alpha, path_arc, frames=None):
     """Community's path functions: every point follows its path (an arc, or a _PointPath
     such as path_along_circles or a user function) in the parent frame."""
     if isinstance(path_arc, _PointPath):
@@ -11099,16 +11141,30 @@ def _arc_geometry(result, start, target, alpha, path_arc):
     fields = {'bezierpath': ('curves', 'vertices'), 'polygon': ('vertices',), 'polyline': ('vertices',),
               'line': ('start', 'end'), 'arrow': ('start', 'end')}.get(kind)
     if fields is None or start['type'] != kind or target['type'] != kind:
-        if not isinstance(path_arc, _PointPath) and _arc_similarity(result, start, target, factor):
+        if not isinstance(path_arc, _PointPath) and _arc_similarity(result, start, target, factor, frames):
             return
         # Analytical shapes, text and images: the center follows the path.
         centers = [Vector(data['position']) + Vector(data.get('geometry_center', ORIGIN)) for data in (start, target)]
-        offset = Vector(move(list(centers[0]), list(centers[1]))) - (centers[0] + (centers[1] - centers[0]) * alpha)
+        if frames is None:
+            moved = Vector(move(list(centers[0]), list(centers[1])))
+        elif frames[2][0] and frames[2][2]:
+            moved = Vector(_frame_point(frames[2], move(_frame_point(frames[0], centers[0]),
+                                                        _frame_point(frames[1], centers[1])), True))
+        else:
+            return
+        offset = moved - (centers[0] + (centers[1] - centers[0]) * alpha)
         result['position'] = list(Vector(result['position']) + offset)
         return
     first, last, (_, inverse) = _snapshot_pose(start)[0], _snapshot_pose(target)[0], _snapshot_pose(result)
     if inverse is None:
         return
+    if frames is not None:
+        if not (frames[2][0] and frames[2][2]):
+            return
+        local_first, local_last, local_inverse = first, last, inverse
+        first = lambda p: _frame_point(frames[0], local_first(p))
+        last = lambda p: _frame_point(frames[1], local_last(p))
+        inverse = lambda p: local_inverse(_frame_point(frames[2], p, True))
     def arc(a, b):
         p, q = first(a), last(b)
         if len(p) < 3 or len(q) < 3:
@@ -11520,8 +11576,22 @@ class GrowFromPoint(Animation):
             raise NotImplementedError('Growth supports only the XY plane')
         super().begin(scene)
         self.original = self.mobject.copy()
+        self._growth_plan = None
+
+    def _fixed_tips(self):
+        # Arrows keep their tip size when scaled, so Community's pointwise interpolation from
+        # the collapsed copy is not a uniform scale about the point.
+        return any(isinstance(m, Arrow) and m.get_tips().children for m in self.original.get_family())
 
     def sample(self, alpha):
+        if self._fixed_tips():
+            if self.__dict__.get('_growth_plan') is None:
+                start = self.original.copy().scale(0)
+                start.move_to(self.point)
+                if self.point_color:
+                    start.set_color(self.point_color)
+                self._growth_plan = _transform_plan(start.to_dict(), self.original.to_dict())
+            return _sample_transform(self._growth_plan, alpha)
         current = self.original.copy().scale(alpha, about_point=self.point)
         return [self._tint(current, alpha).to_dict()]
 
@@ -11558,6 +11628,10 @@ class ShrinkToCenter(GrowFromCenter):
         self.remover = remover
 
     def sample(self, alpha):
+        if self._fixed_tips():
+            if self.__dict__.get('_growth_plan') is None:
+                self._growth_plan = _transform_plan(self.original.to_dict(), self.original.copy().scale(0).to_dict())
+            return _sample_transform(self._growth_plan, alpha)
         return super().sample(1 - alpha)
 
     def finish(self, scene):
@@ -12966,6 +13040,9 @@ class SpinInFromNothing(GrowFromCenter):
         self.angle = NumberLine._real(angle, 'Spin angle')
 
     def sample(self, alpha):
+        if self._fixed_tips():
+            super().sample(0)
+            return _sample_transform(self._growth_plan, alpha, spiral_path(self.angle))
         # Community's spiral_path(angle): every point is p + alpha * R((alpha - 1) * angle)(q - p),
         # starting from the collapsed center p: a scale by alpha and a turn by (alpha - 1) * angle.
         current = self.original.copy().scale(alpha, about_point=self.point)

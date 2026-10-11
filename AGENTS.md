@@ -791,3 +791,9 @@ between tip bases (`_shaft_length`); put_start_and_end_on does the same. `_link_
 never relinks a member from a family that still contains it to a plain Group/VGroup/Mobject
 (get_tips() built such groups, which broke world calls on tips). `_place` distributes all
 three operations to the children of unposed container subclasses so world round trips stay exact.
+Non-straight paths (path_arc, spiral_path and other _PointPath functions) act on world points:
+_sample_transform passes members `_child_frames` (parent-to-world similarities of the start,
+target and sampled parents as `_pose_frame` tuples), and _arc_geometry/_arc_similarity map
+through them, so tips of moving arrows follow Community. Straight paths pass no frames.
+Growth animations on families with fixed-size arrow tips sample a Transform plan from
+copy().scale(0).move_to(point) (ShrinkToCenter: toward copy().scale(0)) instead of scaling.

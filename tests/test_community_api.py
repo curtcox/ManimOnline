@@ -670,6 +670,22 @@ class AnimationApiTests(unittest.TestCase):
              [0.1512, -0.175, 0.5012, 0.175, 1.7375], [0.35, 0.7],
              [-0.8232, 0.5, 0.5, 1.8232, 6.0], [0.0, 0.825, 0.5, 1.175, 0.75]])
 
+    def test_arrow_growth_and_arc_paths_move_tips_pointwise_in_world_space(self):
+        self.assertEqual(scene_values(
+            'def b(m):\n'
+            '    return [m.get_left()[0], m.get_bottom()[1], m.get_right()[0], m.get_top()[1]]\n'
+            'r = []\n'
+            'for anim, alpha in ((GrowFromCenter, 0.3), (SpinInFromNothing, 0.4), (ShrinkToCenter, 0.7)):\n'
+            '    m = Arrow(LEFT, RIGHT * 2)\n'
+            '    a = anim(m); a.begin(); a.interpolate(alpha)\n'
+            '    r.append(b(m))\n'
+            'm = Arrow(LEFT, RIGHT); t = Arrow(UP * 2, UP * 2 + RIGHT * 3).rotate(0.5)\n'
+            'a = Transform(m, t, path_arc=-2); a.begin(); a.interpolate(0.4)\n'
+            'r.append(b(m.tip))\n'
+            'result = r\n'),
+            [[0.2024, -0.1351, 0.7577, 0.1351], [0.2091, -0.3462, 0.8382, 0.2612],
+             [0.3575, -0.1351, 0.9127, 0.1351], [0.3144, 0.8063, 0.6344, 1.1113]])
+
     def test_lagged_start_map_animates_shapes_once_with_their_children(self):
         self.assertEqual(scene_values(
             'class S(Scene):\n'
