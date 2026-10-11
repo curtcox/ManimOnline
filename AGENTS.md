@@ -804,3 +804,6 @@ When a family's own pose turns or scales between start and target (`_turning_pos
 members are planned in the parent frame ('group_world' plans, or a 'world' marker on
 'family' plans) and `_members_into` re-poses each sample into the sampled parent frame: a
 lerped parent pose composed with lerped member poses would curve Community's straight paths.
+VMobject.set_points drops `_curved_tip_path`: explicit points are the drawn shaft and tips no
+longer refit them (Community). Exposed draw_progress samples cut curved arrows from the
+shaft trimmed by their whole tips, computed before the tips themselves are exposed partially.

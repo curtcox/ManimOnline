@@ -4176,6 +4176,8 @@ class VMobject(Mobject, metaclass=_CommunityTree):
         self.position, self.angle, self.geometry_scale = list(ORIGIN), 0, 1
         self.__dict__.pop('_sampled_geometry_center', None)
         self.__dict__.pop('subpath_lengths', None)
+        # Explicit points are the drawn shaft, as in Community: tips no longer refit it.
+        self.__dict__.pop('_curved_tip_path', None)
         return self
 
     @staticmethod
@@ -13588,20 +13590,35 @@ class Scene:
                     mobject.__dict__[key] = copy.deepcopy(value)
             mobject._type = snapshot['type']
             mobject._sampled_geometry_center = snapshot['geometry_center']
+            progress = snapshot.get('draw_progress')
+            shaft = None
+            if mobject.__dict__.get('_curved_tip_path') and any(
+                    (state.get('draw_progress') is not None and state['draw_progress'] < 1)
+                    for state in [snapshot] + list(snapshot['children'])):
+                # A curved arrow's shaft is trimmed by its whole tips (Community fixes its
+                # points), even while the tips themselves are exposed partially drawn.
+                try:
+                    shaft = mobject.get_points()
+                except (TypeError, ValueError):
+                    shaft = None
             children = []
             for index, child in enumerate(snapshot['children']):
                 member = mobject.children[index] if index < len(mobject.children) else Mobject()
                 expose(member, child)
                 children.append(member)
             mobject.children = children
-            progress = snapshot.get('draw_progress')
+            if shaft is not None and not (progress is not None and progress < 1):
+                VMobject.set_points(mobject, shaft)
             if progress is not None and progress < 1 and snapshot['type'] in _PATH_TYPES and \
                     _is_a(mobject, VMobject):
                 # Community traces outlines by pointwise_become_partial: queries such as
                 # get_end() follow the drawn part.
                 try:
-                    source = copy.copy(mobject)
-                    source.__dict__ = dict(mobject.__dict__, children=[])
+                    if shaft is not None:
+                        source = VMobject().set_points(shaft)
+                    else:
+                        source = copy.copy(mobject)
+                        source.__dict__ = dict(mobject.__dict__, children=[])
                     mobject.pointwise_become_partial(source, 0, max(0.0, progress))
                 except (TypeError, ValueError, NotImplementedError):
                     pass

@@ -709,6 +709,26 @@ class AnimationApiTests(unittest.TestCase):
             'result = r\n'),
             [[-0.6854, -0.1912, 2.217, 0.1912], [-1.6819, -0.3516, 2.2135, 0.3516]])
 
+    def test_curved_arrows_draw_partially_along_their_trimmed_shaft(self):
+        self.assertEqual(scene_values(
+            'r = []\n'
+            'for t in (0.1, 0.4, 0.6):\n'
+            '    m = CurvedArrow(LEFT, RIGHT)\n'
+            '    m.pointwise_become_partial(m.copy(), 0, t)\n'
+            '    p = m.get_points()\n'
+            '    r.append([min(q[1] for q in p), p[-1], len(p)])\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        m = CurvedArrow(LEFT, RIGHT)\n'
+            '        self.bottoms = []\n'
+            '        self.add_updater(lambda dt: self.bottoms.append(m.get_bottom()[1]))\n'
+            '        self.play(Create(m))\n'
+            's = S(); s.render()\n'
+            'r.append([s.bottoms[k] for k in (3, 4, 8, 11)])\n'
+            'result = r\n'),
+            [[-0.1472, [-0.87, -0.1472, 0.0], 4.0], [-0.4441, [-0.3667, -0.4441, 0.0], 16.0],
+             [-0.4999, [0.021, -0.4988, 0.0], 20.0], [-0.3409, -0.4989, -0.497, -0.497]])
+
     def test_lagged_start_map_animates_shapes_once_with_their_children(self):
         self.assertEqual(scene_values(
             'class S(Scene):\n'
