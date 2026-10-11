@@ -633,6 +633,14 @@ class AnimationApiTests(unittest.TestCase):
             '          Arrow(LEFT, UP * 2).point_from_proportion(0.25), DoubleArrow().point_from_proportion(0.5)]\n'),
             [0.0, 0.0, 1.0, [-0.7332, 0.5335, 0.0], [0.0, 0.0, 0.0]])
 
+    def test_curved_arrows_sample_their_trimmed_shaft(self):
+        self.assertEqual(scene_values(
+            'a = CurvedArrow(LEFT, RIGHT)\n'
+            'result = [a.point_from_proportion(0.5), a.point_from_proportion(1),\n'
+            '          CurvedDoubleArrow(LEFT * 2, UP, angle=-1).point_from_proportion(0.3),\n'
+            '          Arc().add_tip().point_from_proportion(0.5)]\n'),
+            [[-0.175, -0.4867, 0.0], [0.7525, -0.2475, 0.0], [-1.4589, 0.6824, 0.0], [0.8821, 0.6346, 0.0]])
+
     def test_text_glyphs_are_leaves(self):
         self.assertEqual(scene_values(
             'def depth(m):\n'

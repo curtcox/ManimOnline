@@ -2537,16 +2537,18 @@ class Mobject:
             raise ValueError('Path proportion must be finite and between 0 and 1')
         self.throw_error_if_no_points('point_from_proportion')
         if self._type == 'bezierpath':
-            if not self.curves:
+            # Curved arrows sample the shaft that ends at their tip bases, as in Community.
+            curves = self._tip_shaft_curves()
+            if not curves:
                 if getattr(self, 'vertices', []):
                     return self._point_to_world(Vector(self.vertices[0]))
                 raise ValueError('The path has no points')
             if alpha in (0, 1):
-                return self._point_to_world(Vector(self.curves[0][0] if alpha == 0 else self.curves[-1][-1]))
+                return self._point_to_world(Vector(curves[0][0] if alpha == 0 else curves[-1][-1]))
             lengths = []
             # Baked 3D paths keep z; flat paths use the faster XY sampler.
-            bez = _bez3 if any(len(p) > 2 and p[2] for curve in self.curves for p in curve) else _bez
-            for curve in self.curves:
+            bez = _bez3 if any(len(p) > 2 and p[2] for curve in curves for p in curve) else _bez
+            for curve in curves:
                 # Plain-tuple sampling (_bez); Vector arithmetic here dominated MoveAlongPath.
                 samples = [bez(curve, i / 20) for i in range(21)]
                 lengths.append(sum(math.dist(a, b) for a, b in zip(samples, samples[1:])))
@@ -2554,12 +2556,12 @@ class Mobject:
             if not math.isfinite(total):
                 raise ValueError('Path length must be finite')
             remaining = alpha * total
-            for curve, length in zip(self.curves, lengths):
+            for curve, length in zip(curves, lengths):
                 if remaining <= length:
                     point = bez(curve, remaining / length if length else 0)
                     return self._point_to_world(Vector((*point, 0)[:3]))
                 remaining -= length
-            return self._point_to_world(Vector(self.curves[-1][-1]))
+            return self._point_to_world(Vector(curves[-1][-1]))
         if self._type == 'annulus':
             # Traverse each contour independently; no radial connector is drawn.
             total = self.outer_radius + self.inner_radius
