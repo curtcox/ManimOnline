@@ -582,6 +582,17 @@ class AnimationApiTests(unittest.TestCase):
             'result = [weights[0].name, weights[-1].value, len(g), g[7].weight, manimpango.Style.ITALIC.value]\n'),
             ['THIN', 1000.0, 11.0, 'BOLD', 2.0])
 
+    def test_bulleted_list_and_title_tex_queries(self):
+        self.assertEqual(scene_values(
+            'b = BulletedList("Item 1", "Item 2", "Item 3", height=2, width=2)\n'
+            'b.set_color_by_tex("Item 1", RED)\n'
+            'b.set_opacity_by_tex("Item 3", 0.2, remaining_opacity=0.9)\n'
+            't = Title("Hello World").set_color_by_tex("Hello World", BLUE)\n'
+            'result = [b.index_of_part(b.get_part_by_tex("Item 2")), b[0].get_color(), b[1].get_color(),\n'
+            '          b[2].get_fill_opacity(), b[0].get_fill_opacity(), b.tex_strings, t[0][0].get_color(),\n'
+            '          t.font_size, t.get_tex_string()]\n'),
+            [1.0, '#FC6255', '#FFFFFF', 0.2, 0.9, ['Item 1', 'Item 2', 'Item 3'], '#58C4DD', 48.0, 'Hello World'])
+
     def test_dashed_arrows_keep_one_set_of_tips(self):
         self.assertEqual(scene_values(
             'd = DashedVMobject(Arrow(ORIGIN, 2 * UR, color=RED))\n'

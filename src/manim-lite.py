@@ -7866,15 +7866,79 @@ class Title(VGroup):
             self.underline = underline
             self.add(underline)
 
+    @property
+    def font_size(self):
+        return self.text.font_size
+
+    @property
+    def tex_string(self):
+        return self.text.tex_string
+
+
+def _title_text_method(name):
+    """Community's Title is a Tex: part queries and coloring act on the title text."""
+    def method(self, *args, **kwargs):
+        result = getattr(self.text, name)(*args, **kwargs)
+        return self if result is self.text else result
+    method.__name__ = name
+    return method
+
+
+for _method in ('get_part_by_tex', 'get_parts_by_tex', 'set_color_by_tex', 'set_color_by_tex_to_color_map',
+                'set_opacity_by_tex', 'index_of_part', 'index_of_part_by_tex', 'sort_alphabetically',
+                'get_tex_string'):
+    setattr(Title, _method, _title_text_method(_method))
+del _method
+
 
 class BulletedList(VGroup):
     """Tex items with bullet dots, arranged downward and left-aligned."""
+    # Community's items are Tex parts that include their bullet: queries match item text
+    # and return the whole bulleted row.
+    def get_parts_by_tex(self, tex, substring=True, case_sensitive=True):
+        def matches(text):
+            if not case_sensitive:
+                text, wanted = text.lower(), tex.lower()
+            else:
+                wanted = tex
+            return wanted in text if substring else wanted == text
+        return VGroup(*(row for row in self.children if matches(row[1].tex_string)))
+
+    def get_part_by_tex(self, tex, **kwargs):
+        parts = self.get_parts_by_tex(tex, **kwargs)
+        return parts[0] if len(parts) else None
+
     def set_color_by_tex(self, tex, color, **kwargs):
-        # Community's items are Tex parts that include their bullet.
-        for row in self.children:
-            if tex in row[1].tex_string:
-                row.set_color(color)
+        for row in self.get_parts_by_tex(tex, **kwargs):
+            row.set_color(color)
         return self
+
+    def set_color_by_tex_to_color_map(self, texts_to_color_map, **kwargs):
+        for tex, color in texts_to_color_map.items():
+            self.set_color_by_tex(tex, color, **kwargs)
+        return self
+
+    def set_opacity_by_tex(self, tex, opacity=0.5, remaining_opacity=None, **kwargs):
+        if remaining_opacity is not None:
+            self.set_opacity(remaining_opacity)
+        for row in self.get_parts_by_tex(tex, **kwargs):
+            row.set_opacity(opacity)
+        return self
+
+    def index_of_part(self, part):
+        if part not in self.children:
+            raise ValueError('Trying to get index of part not in BulletedList')
+        return self.children.index(part)
+
+    def index_of_part_by_tex(self, tex, **kwargs):
+        return self.index_of_part(self.get_part_by_tex(tex, **kwargs))
+
+    @property
+    def tex_strings(self):
+        return [row[1].tex_string for row in self.children]
+
+    def get_tex_string(self):
+        return ' '.join(self.tex_strings)
 
     def __init__(self, *items, buff=MED_LARGE_BUFF, dot_scale_factor=2, tex_environment=None,
                  height=None, width=None, **kwargs):
