@@ -863,6 +863,25 @@ class AnimationApiTests(unittest.TestCase):
             [[14.2222, 10.0, 5.0, -7.0, 14.2222, 8.0], [200.0, 400.0, 200.0, 112.5],
              [1080.0, 8.0, 14.2222, 14.2222]])
 
+    def test_animation_copies_and_targets_keep_updating(self):
+        # Expected values from Manim 0.22 at frame_rate = 15.
+        result = scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        a = Square(); a.add_updater(lambda x, dt: x.shift(RIGHT*dt))\n'
+            '        self.play(FadeIn(a, shift=UP))\n'
+            '        b = Circle(); b.add_updater(lambda x, dt: x.rotate(dt))\n'
+            '        self.play(Create(b))\n'
+            '        c = Square(); d = Circle().shift(UP); d.add_updater(lambda x, dt: x.shift(LEFT*dt))\n'
+            '        self.add(c); self.play(ReplacementTransform(c, d))\n'
+            '        t = ValueTracker(0); t.add_updater(lambda x, dt: x.increment_value(dt)); self.add(t)\n'
+            '        before = self.renderer.time\n'
+            '        self.wait_until(lambda: t.get_value() > 0.5)\n'
+            '        self.r = [a.get_center(), b.width, d.get_center(), round(self.renderer.time - before, 4)]\n'
+            's = S(); s.render()\n'
+            'result = s.r\n')
+        self.assertEqual(result, [[3.3333, 0.0, 0.0], 2.0213, [-1.4667, 1.0, 0.0], 0.6])
+
     def test_frame_updaters_run_only_once_the_frame_is_in_the_scene(self):
         result = scene_values(
             'class S(MovingCameraScene):\n'

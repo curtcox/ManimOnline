@@ -11666,6 +11666,9 @@ class Animation(metaclass=_CommunityTree):
             self.finish()
             self.clean_up_from_scene(scene)
             return
+        live = self.__dict__.get('_live_start')
+        if live is not None and self._start_follows_updaters and not self.remover:
+            self.mobject.become(live)
         if _takes_argument(self.finish):
             self.finish(scene)
         else:
@@ -11754,6 +11757,7 @@ def _faded_group(mobjects, name):
 class FadeIn(Animation):
     """Fade in, optionally from a shift, a starting position and a scale."""
     _fading_in = True
+    _start_follows_updaters = True
 
     def __init__(self, *mobjects, shift=None, target_position=None, scale=1, **kwargs):
         if self._fading_in:
@@ -11779,15 +11783,28 @@ class FadeIn(Animation):
             moved.shift(self.shift_vector * (-1 if self._fading_in else 1))
         if self.scale_factor != 1:
             moved.scale(self.scale_factor)
-        return moved.to_dict()
+        return moved
 
     def begin(self, scene):
         super().begin(scene)
         self.moved = (self.shift_vector is not None or self.target_position is not None
                       or self.scale_factor != 1)
-        away = self._faded() if self.moved else self.start
+        away = self._faded() if self.moved else None
+        self._live_away = away if self.__dict__.get('_live_start') is not None else None
+        self._pair(away.to_dict() if away is not None else self.start)
+
+    def _pair(self, away):
         self.first, self.last = (away, self.start) if self._fading_in else (self.start, away)
         self._lerp = _snapshot_lerp(self.first, self.last)
+
+    def _advance_copies(self, dt):
+        if self.__dict__.get('_live_start') is None:
+            return
+        super()._advance_copies(dt)
+        away = self.__dict__.get('_live_away')
+        if away is not None:
+            away.update(dt)
+        self._pair(away.to_dict() if away is not None else self.start)
 
     def _visibility(self, opacity, alpha):
         return opacity * (alpha if self._fading_in else 1 - alpha)
@@ -12161,6 +12178,7 @@ class Transform(Animation):
         self._path = point_path or (path_arc if Vector(path_arc_axis) == OUT else -path_arc)
         # Targets are world-placed; play() animates posed members in world coordinates.
         self.target = _world_copy(target_mobject)
+        self._target_source = target_mobject
 
     @property
     def target_mobject(self):
@@ -12259,6 +12277,12 @@ class Transform(Animation):
             self.target.update(dt)
             self.__dict__.pop('_path_target', None)
             self._transform_plan = None
+        # Community also updates the target mobject itself (not just its copy).
+        source = self.__dict__.get('_target_source')
+        if (source is not None and source is not self.target and source is not self.mobject
+                and any(m.updaters for m in source.get_family())
+                and source not in self.mobject.get_family()):
+            source.update(dt)
 
     def sample(self, alpha):
         if self._transform_plan is None:
@@ -12299,7 +12323,8 @@ class TransformFromCopy(Transform):
         if mobject is target_mobject:
             raise ValueError('TransformFromCopy source and target must be different objects')
         super().__init__(target_mobject, target_mobject, **kwargs)
-        self.source = mobject
+        # Community's TransformFromCopy targets the source, so its updaters also run here.
+        self.source = self._target_source = mobject
 
     def begin(self, scene):
         # Only the target is animated/added. The source is a read-only snapshot,
@@ -12732,10 +12757,18 @@ class Animate(Transform):
     _ANIMATION_OPTIONS = ('run_time', 'rate_func', 'lag_ratio', 'remover', 'introducer', 'name', 'path_arc',
                           'reverse_rate_function', 'suspend_mobject_updating')
 
+    # Community's _AnimationBuilder fixes its target when created; ApplyMethod-style
+    # subclasses build theirs from the mobject when the stage begins.
+    _builder = True
+
     def __init__(self, mobject):
+        if self._builder and isinstance(mobject, Mobject):
+            mobject.target = None  # Community's generate_target: do not copy an earlier target.
         super().__init__(mobject, mobject)
         self.operations = []
         self._overridden, self._anim_args = None, {}
+        if self._builder:
+            mobject.target = self.target
 
     def build(self):
         """Community's _AnimationBuilder.build: the animation itself (or an overriding
@@ -12745,7 +12778,11 @@ class Animate(Transform):
             for key, value in self._anim_args.items():
                 setattr(overridden, key, value)
             return overridden
-        self.mobject.target = self.target
+        # Community's MoveToTarget reads mobject.target when built, so a later builder
+        # for the same mobject (e.g. in one Succession) supplies both targets.
+        target = self.mobject.__dict__.get('target')
+        if self._builder and isinstance(target, Mobject):
+            self.target = target
         return self
 
     def __call__(self, **kwargs):
@@ -12767,10 +12804,13 @@ class Animate(Transform):
         return self
 
     def begin(self, scene):
-        # Relative method chains resolve against the state at this stage's start.
-        self.target = self.mobject.copy()
-        for name, args, kwargs in self.operations:
-            getattr(self.target, name)(*args, **kwargs)
+        if self._builder:
+            # Community's target_copy; the (shared) target itself also keeps updating.
+            self._target_source, self.target = self.target, self.target.copy()
+        else:
+            self.target = self.mobject.copy()
+            for name, args, kwargs in self.operations:
+                getattr(self.target, name)(*args, **kwargs)
         super().begin(scene)
 
     def __getattr__(self, name):
@@ -13128,6 +13168,7 @@ class Succession(AnimationGroup):
 
 class ApplyMethod(Animate):
     """Animate a bound Mobject method, applied to a copy when the stage begins."""
+    _builder = False
     def __init__(self, method, *args, **kwargs):
         mobject = getattr(method, '__self__', None)
         if not isinstance(mobject, Mobject) or not callable(method):
@@ -13164,6 +13205,7 @@ class ApplyPointwiseFunction(ApplyMethod):
 
 
 class ApplyPointwiseFunctionToCenter(Animate):
+    _builder = False
     def __init__(self, function, mobject, run_time=3.0, **kwargs):
         if not callable(function):
             raise TypeError('ApplyPointwiseFunctionToCenter expects a point function')
@@ -14234,11 +14276,11 @@ class Scene:
         try:
             for frame in range(count):
                 self._update_mobjects(0 if frame == 0 else 1 / FPS)
-                if stop_condition is not None and stop_condition():
-                    break
                 if len(self.frames) >= MAX_FRAMES - 1:
                     raise ValueError('Preview exceeds 60 seconds / 900 frames. Shorten the scene.')
                 self.capture()
+                if stop_condition is not None and stop_condition():
+                    break
         finally:
             self._static_frames = None
         if count:

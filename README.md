@@ -197,9 +197,12 @@ duration is the sum of its children; `run_time` rescales that timeline. Repeated
 objects are allowed across stages. Each stage begins from the previous stage's
 finished geometry and visibility, so two `Rotate` steps accumulate, a replacement
 can be animated next, and future introductions stay hidden until their stage.
-Nested sequences and independent groups are supported. Relative `.animate`
-method chains resolve against the object and layout references at stage start;
-explicit `Transform` targets remain snapshots made when constructed.
+Nested sequences and independent groups are supported. As in Manim, `.animate`
+targets are computed when the builder is created and stored as `mobject.target`, so
+two builders for one object inside a single `Succession` both move to the later
+target; play them separately for consecutive relative steps. `ApplyMethod` targets
+resolve at stage start; explicit `Transform` targets are snapshots made when
+constructed. Animation copies and the real target keep running their updaters.
 
 Sequences prepare against a copied scene and commit live changes in stage order
 at completion. A sequence cannot share animated objects with a simultaneous

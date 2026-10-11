@@ -5320,7 +5320,8 @@ self.wait(1)""")
         result = render("""number = DecimalNumber(0).save_state()
 self.add(number)
 self.play(number.animate.set_value(4), run_time=2, rate_func=linear)
-self.play(Succession(number.animate.increment_value(1), number.animate.increment_value(1)))
+self.play(number.animate.increment_value(1))
+self.play(number.animate.increment_value(1))
 self.play(Restore(number), run_time=2, rate_func=linear)""")
         self.assertEqual(result['frames'][15]['mobjects'][0]['text'], '2.00')
         self.assertEqual(result['frames'][60]['mobjects'][0]['text'], '6.00')
@@ -5451,7 +5452,7 @@ self.wait(1)""")
         tracker.copy().increment_value(9)
         self.assertEqual(tracker.get_value(), 1)
 
-    def test_value_tracker_animation_drives_followers_and_relative_succession(self):
+    def test_value_tracker_animation_drives_followers_and_relative_increments(self):
         scene = lite.Scene()
         tracker = lite.ValueTracker(0)
         dot = lite.Dot().add_updater(lambda m:m.move_to(lite.RIGHT*tracker.get_value()))
@@ -5460,7 +5461,8 @@ self.wait(1)""")
         self.assertEqual(scene.frames[15]['mobjects'][0]['position'], [2,0,0])
         self.assertTrue(all(len(f['mobjects'])==1 for f in scene.frames))
         self.assertEqual(tracker.get_value(), 4)
-        scene.play(lite.Succession(tracker.animate.increment_value(2),tracker.animate.increment_value(2)),rate_func=lite.linear)
+        scene.play(tracker.animate.increment_value(2),rate_func=lite.linear)
+        scene.play(tracker.animate.increment_value(2),rate_func=lite.linear)
         self.assertEqual(scene.frames[45]['mobjects'][0]['position'], [6,0,0])
         self.assertEqual(dot.get_center(), lite.RIGHT*8)
         scene.play(lite.Restore(tracker.save_state().increment_value(2)))
@@ -5582,18 +5584,19 @@ self.wait(1)""")
 
     def test_transform_updates_target_copy_and_copied_source_every_frame(self):
         # Community updates Transform's starting and target copies with each frame's dt
-        # (14 nonzero steps in a 15-frame second); the real target stays put.
+        # (14 nonzero steps in a 15-frame second), and the real target too.
         scene = lite.Scene()
         circle = lite.Circle()
         target = lite.Square().add_updater(lambda m,dt:m.shift(lite.RIGHT*dt))
         scene.add(circle).play(lite.Transform(circle,target),rate_func=lite.linear)
         self.assertAlmostEqual(circle.get_center()[0], 14/15)
-        self.assertEqual(target.get_center(), lite.ORIGIN)
+        self.assertAlmostEqual(target.get_center()[0], 14/15)
         scene = lite.Scene()
         source = lite.Circle().add_updater(lambda m,dt:m.shift(lite.UP*dt))
         destination = lite.Square().shift(lite.RIGHT*3)
         scene.add(source).play(lite.TransformFromCopy(source,destination))
-        self.assertAlmostEqual(source.get_center()[1], 14/15)
+        # TransformFromCopy targets the source, so the scene and the animation both update it.
+        self.assertAlmostEqual(source.get_center()[1], 28/15)
         self.assertEqual(destination.get_center(), (3,0,0))
 
     def test_auto_zoom_fits_wide_and_tall_bounds_without_eager_animation(self):
@@ -5673,13 +5676,14 @@ self.wait(1)""")
         scene=lite.MovingCameraScene()
         frame=scene.camera.frame
         scene.play(lite.Succession(frame.animate.shift(lite.RIGHT), frame.animate.shift(lite.RIGHT)),rate_func=lite.linear)
+        # Both builders share the frame's latest target, as in Manim 0.22.
         self.assertEqual(scene.frames[15]['camera']['frame_center'],[1,0,0])
-        self.assertEqual(frame.get_center(),lite.RIGHT*2)
+        self.assertEqual(frame.get_center(),lite.RIGHT)
         scene.play(frame.animate.scale(.5),lite.Create(lite.Circle(),run_time=2),rate_func=lite.linear)
         self.assertAlmostEqual(scene.frames[45]['camera']['frame_width'],64/9)
         self.assertEqual(len(scene.frames[45]['mobjects']),1)
         scene.clear().wait(1)
-        self.assertEqual(scene.frames[-1]['camera']['frame_center'],[2,0,0])
+        self.assertEqual(scene.frames[-1]['camera']['frame_center'],[1,0,0])
 
     def test_camera_frame_validation_and_dimension_setters(self):
         scene=lite.MovingCameraScene(camera_config={'pixel_width':600,'pixel_height':600,'frame_height':8})
@@ -6621,19 +6625,21 @@ class Demo(Scene):
             self.assertEqual(len(result['frames'][15]['mobjects']), 1)
             self.assertEqual(len(result['frames'][44]['mobjects']), 1)
 
-    def test_succession_relative_animate_chains_accumulate_from_stage_starts(self):
+    def test_succession_animate_builders_share_the_latest_target(self):
+        # Manim 0.22: each .animate regenerates mobject.target and MoveToTarget reads it when
+        # the Succession is built, so both stages move to the last builder's target.
         result = render('s = Square().save_state()\nself.play(Succession(s.animate.shift(RIGHT * 2), s.animate.shift(UP * 2).scale(2)))\nself.play(s.animate.restore())')
-        self.assertEqual(result['frames'][15]['mobjects'][0]['position'], [2, 0, 0])
-        self.assertEqual(result['frames'][22]['mobjects'][0]['position'][0], 2)
-        self.assertEqual(result['frames'][30]['mobjects'][0]['position'], [2, 2, 0])
-        self.assertEqual(result['frames'][30]['mobjects'][0]['geometry_scale'], 2)
+        for frame in (15, 22, 29):
+            self.assertEqual(result['frames'][frame]['mobjects'][0]['position'], [0, 2, 0])
+            self.assertEqual(result['frames'][frame]['mobjects'][0]['geometry_scale'], 2)
         self.assertEqual(result['frames'][-1]['mobjects'][0]['position'], [0, 0, 0])
         self.assertEqual(result['frames'][-1]['mobjects'][0]['geometry_scale'], 1)
 
     def test_delayed_animate_methods_resolve_current_layout_reference(self):
         result = render('a = Square()\nb = Square().shift(RIGHT * 3)\nself.play(Succession(b.animate.shift(UP * 2), a.animate.next_to(b, LEFT)))')
         self.assertEqual(result['frames'][-1]['mobjects'][0]['position'], [3, 2, 0])
-        self.assertEqual(result['frames'][-1]['mobjects'][1]['position'], [0.75, 2, 0])
+        # Manim 0.22 builds the next_to target when the builder is created.
+        self.assertEqual(result['frames'][-1]['mobjects'][1]['position'], [0.75, 0, 0])
 
     def test_succession_gallery_example_completes_all_steps(self):
         result = json.loads(lite.render_scene((ROOT / 'examples/succession_scene.py').read_text()))

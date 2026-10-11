@@ -874,3 +874,10 @@ Community. Polyhedron/Graph updaters return early once become() removed their st
 MovingCameraScene frame updaters run only when the frame is a scene root (added
 explicitly or by animating it), as in Community's update_mobjects; never append the
 frame to update or static-wait roots implicitly.
+
+`.animate` follows Community's _AnimationBuilder: creation sets mobject.target (clearing
+the old one first), build() reads mobject.target, begin copies it. ApplyMethod-style
+subclasses (`_builder = False`) still build at begin. Transform also updates its real
+target (`_target_source`; TransformFromCopy's is the source). Animations with
+`_start_follows_updaters` (Create, FadeIn...) finish as their updated live copy.
+wait_until captures the frame before testing stop_condition.

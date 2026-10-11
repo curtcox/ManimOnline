@@ -181,8 +181,9 @@ between stages, while parallel conflicts still fail. Later introductions stay
 hidden; replacement targets and removals are visible at the appropriate stage.
 Live geometry/checkpoints remain untouched during preparation and final changes
 commit in order. Nested groups/sequences and duration rescaling are tested.
-Relative animate chains resolve at stage start; explicit Transform targets stay
-construction-time snapshots. Root insertion order remains fixed during sampled frames; animated z_index values determine paint order
+Animate targets are fixed when the builder is created (Community's shared
+mobject.target); ApplyMethod resolves at stage start; explicit Transform targets
+stay construction-time snapshots. Root insertion order remains fixed during sampled frames; animated z_index values determine paint order
 within a play call, and external read-only references do not follow simultaneous
 animations. Only lag_ratio=1 is supported; family restructuring remains open.
 
@@ -600,7 +601,7 @@ renderer handling also omits trackers nested in a Group. Scene-added trackers ca
 run timed callbacks, ordered before later dependents. Copy/checkpoints remain
 independent. Complex values, point arrays and glyph-level numeric text semantics remain open.
 Tests cover arithmetic/validation without partial updates, hidden output, timed
-callbacks, copy/restoration, relative succession and connector endpoints.
+callbacks, copy/restoration, consecutive relative increments and connector endpoints.
 
 Local Pyodide playback verified value=1 at three seconds: dot at (1,-1), square
 at (-1,1), and matching connector endpoints. Consecutive decrements ended with
@@ -646,7 +647,7 @@ zero suppresses the minus sign. Precision is bounded to 0–12 and unit strings 
 256 characters; invalid values fail before changing an existing label.
 
 Numeric snapshots interpolate the real value and regenerate formatted text,
-keeping formatting settings discrete. Direct animate, relative Succession and
+keeping formatting settings discrete. Direct animate, consecutive increments and
 Restore therefore show intermediate numbers. Tracker-driven callbacks update
 labels at sampled positions while preserving styling and earlier frame snapshots.
 Labels can become plain Text or other supported geometry without stale numeric
