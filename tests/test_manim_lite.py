@@ -235,7 +235,7 @@ class Demo(VectorScene):
         close(lite.clockwise_path()([[1, 0, 0]], [[-1, 0, 0]], 0.5)[0], [0, -1, 0])
         self.assertEqual(lite.make_even([1, 2], [1, 2, 3, 4, 5]), ([1, 1, 1, 2, 2], [1, 2, 3, 4, 5]))
         self.assertEqual(lite.remove_list_redundancies([1, 2, 1, 3, 2]), [1, 3, 2])
-        self.assertEqual(lite.color_to_int_rgb(lite.BLUE), [88, 196, 221])
+        self.assertEqual(list(lite.color_to_int_rgb(lite.BLUE)), [88, 196, 221])
         with lite.tempconfig({'background_color': lite.WHITE}):
             self.assertEqual(lite.config.background_color, lite.WHITE)
         self.assertEqual(lite.config.background_color, lite.BLACK)
@@ -903,7 +903,7 @@ self.play(UntypeWithCursor(text, cursor))""")['frames']
 
     def test_manim_color_matches_community(self):
         red=lite.ManimColor('#FF0000')
-        self.assertEqual((red,red.to_hex(),red.to_rgb(),red.to_int_rgb(),repr(red)),('#FF0000','#FF0000',[1,0,0],[255,0,0],"ManimColor('#FF0000')"))
+        self.assertEqual((red,red.to_hex(),list(red.to_rgb()),list(red.to_int_rgb()),repr(red)),('#FF0000','#FF0000',[1,0,0],[255,0,0],"ManimColor('#FF0000')"))
         # Parsing and method results measured with Manim Community 0.22.
         for value,expected in (('red','#FC6255FF'),('RED','#FC6255FF'),('#f00','#FF0000FF'),('#ff000080','#FF000080'),
                                ((1,0,0),'#010000FF'),((255,0,0),'#FF0000FF'),([.5,.5,.5,.5],'#7F7F7F7F'),(0xFF00FF,'#FF00FFFF')):
@@ -1893,7 +1893,8 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertEqual(lite.color_gradient([lite.PURE_RED,lite.PURE_BLUE],3),['#FF0000','#7F007F','#0000FF'])
         self.assertEqual(lite.color_gradient([lite.PURE_RED,lite.PURE_BLUE],1),['#0000FF'])
         self.assertEqual(lite.average_color(lite.PURE_RED,lite.PURE_GREEN),'#7F7F00')
-        self.assertEqual(lite.rgb_to_color((1,.5,0)),'#FF7F00')
+        self.assertEqual(lite.rgb_to_color((1.,.5,0.)),'#FF7F00')
+        self.assertEqual(lite.rgb_to_color((1,.5,0)),'#010000')
         self.assertEqual(lite.rgb_to_color((255,128,0)),'#FF8000')
         self.assertPointAlmostEqual(lite.color_to_rgb('#ff0000'),(1,0,0))
         # Community parses palette names, so 'red' is its RED (#FC6255).

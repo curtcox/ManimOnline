@@ -436,15 +436,19 @@ class ManimColor(str):
             return value._rgba
         if isinstance(value, str):
             text = value.strip()
-            if text.upper() in _PALETTE and not text.startswith('#'):
-                return _PALETTE[text.upper()]._rgba
-            digits = text[1:] if text.startswith('#') else text[2:] if text.lower().startswith('0x') else None
-            if digits is not None and re.fullmatch(r'[0-9a-fA-F]+', digits) and len(digits) in (3, 4, 6, 8):
-                if len(digits) in (3, 4):
-                    digits = ''.join(c * 2 for c in digits)
-                values = [int(digits[i:i + 2], 16) / 255 for i in range(0, len(digits), 2)]
-                return tuple(values) if len(values) == 4 else tuple(values) + (alpha,)
-            raise ValueError(f'Unsupported color: {text[:40]}')
+            match = re.search(r'((?<=#)|(?<=0x))[A-F0-9]{3,8}', text, re.IGNORECASE)
+            if match is None:
+                if text.upper() not in _PALETTE:
+                    raise ValueError(f'Color {text} not found')
+                return _PALETTE[text.upper()]._rgba[:3] + (alpha,)
+            digits = match.group()
+            if len(digits) in (3, 4):
+                digits = ''.join(c * 2 for c in digits)
+            if len(digits) not in (6, 8):
+                raise ValueError('Hex colors must be specified with either 0x or # as prefix and '
+                                 'contain 6 or 8 hexadecimal numbers')
+            values = [int(digits[i:i + 2], 16) / 255 for i in range(0, len(digits), 2)]
+            return tuple(values) if len(values) == 4 else tuple(values) + (alpha,)
         if isinstance(value, bool):
             raise ValueError('Colors cannot be booleans')
         if isinstance(value, numbers.Integral):
@@ -452,15 +456,20 @@ class ManimColor(str):
             if not 0 <= value <= 0xFFFFFF:
                 raise ValueError('Integer colors must be 0x000000 to 0xFFFFFF')
             return ((value >> 16 & 255) / 255, (value >> 8 & 255) / 255, (value & 255) / 255, alpha)
-        try:
-            values = [_plain_number(v) for v in value]
-        except TypeError:
-            raise ValueError(f'Unsupported color: {value!r}') from None
-        if len(values) not in (3, 4) or any(isinstance(v, bool) or not isinstance(v, _REAL) or not math.isfinite(v) for v in values):
+        if not isinstance(value, (list, tuple)) and type(value).__name__ != 'ndarray':
+            if callable(getattr(value, 'get_hex', None)):
+                return ManimColor._parse(value.get_hex(), alpha)
+            raise TypeError('ManimColor only accepts int, str, list[int, int, int], list[int, int, int, int], '
+                            f'list[float, float, float], list[float, float, float, float], not {type(value)}')
+        raw = list(value)
+        if len(raw) not in (3, 4):
+            raise ValueError(f'ManimColor only accepts lists/tuples/arrays of length 3 or 4, not {len(raw)}')
+        values = [_plain_number(v) for v in raw]
+        if any(isinstance(v, bool) or not isinstance(v, _REAL) or not math.isfinite(v) for v in values):
             raise ValueError('Color tuples need three or four finite components')
-        if isinstance(values[0], numbers.Integral):
-            # Community reads integer tuples as 0-255 channels (truncating any floats).
-            values = [int(v) / 255 for v in values]
+        if not all(isinstance(v, float) for v in raw):
+            # Community reads any non-float tuple as 0-255 channels.
+            values = [v / 255 for v in values]
         values = [float(v) for v in values]
         return tuple(values) if len(values) == 4 else tuple(values) + (alpha,)
 
@@ -471,7 +480,7 @@ class ManimColor(str):
         return cls(color, alpha)
 
     def __repr__(self):
-        return f"ManimColor('{self.to_hex(self._rgba[3] != 1)}')"
+        return f"{type(self).__name__}('{self.to_hex()}')"
 
     def __reduce__(self):
         return (ManimColor, (self.to_hex(True),))
@@ -479,48 +488,145 @@ class ManimColor(str):
     def __deepcopy__(self, memo):
         return self  # Immutable.
 
+    @property
+    def _internal_value(self):
+        return _number_array(list(self._rgba))
+
+    _internal_space = _internal_value
+
+    def __eq__(self, other):
+        if isinstance(other, ManimColor):
+            return all(abs(a - b) <= 1e-8 + 1e-5 * abs(b) for a, b in zip(self._rgba, other._rgba))
+        return str.__eq__(self, other)
+
+    def __ne__(self, other):
+        return not self == other
+
+    def __hash__(self):
+        return hash(self.to_hex(with_alpha=True))
+
+    def _combine(self, other, operation):
+        values = other._rgba if isinstance(other, ManimColor) else (other,) * 4
+        return ManimColor(tuple(float(operation(a, b)) for a, b in zip(self._rgba, values)))
+
+    def __add__(self, other):
+        if isinstance(other, str) and not isinstance(other, ManimColor):
+            return str.__add__(self, other)
+        return self._combine(other, operator.add)
+
+    def __radd__(self, other):
+        if isinstance(other, str):
+            return other + str(self)
+        return self._combine(other, operator.add)
+
+    def __sub__(self, other):
+        return self._combine(other, operator.sub)
+
+    def __rsub__(self, other):
+        return self._combine(other, operator.sub)
+
+    def __mul__(self, other):
+        return self._combine(other, operator.mul)
+
+    __rmul__ = __mul__
+
+    def __truediv__(self, other):
+        return self._combine(other, operator.truediv)
+
+    __rtruediv__ = __truediv__
+
+    def __floordiv__(self, other):
+        return self._combine(other, operator.floordiv)
+
+    __rfloordiv__ = __floordiv__
+
+    def __mod__(self, other):
+        if not isinstance(other, (_REAL, ManimColor)):
+            return str.__mod__(self, other)
+        return self._combine(other, operator.mod)
+
+    def __rmod__(self, other):
+        if isinstance(other, str):
+            return other % str(self)
+        return self._combine(other, operator.mod)
+
+    def __pow__(self, other):
+        return self._combine(other, operator.pow)
+
+    __rpow__ = __pow__
+
+    def __invert__(self):
+        return self.invert()
+
+    def __int__(self):
+        return self.to_integer()
+
+    def __index__(self):
+        return self.to_integer()
+
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            return str.__getitem__(self, index)
+        return self._internal_value[index]
+
+    def __iter__(self):
+        return iter(self._rgba)
+
+    def _bitwise(self, other, operation):
+        value = operation(self.to_integer(), int(other))
+        return ManimColor(((value >> 16 & 255) / 255, (value >> 8 & 255) / 255, (value & 255) / 255, 1.0))
+
+    def __and__(self, other):
+        return self._bitwise(other, operator.and_)
+
+    def __or__(self, other):
+        return self._bitwise(other, operator.or_)
+
+    def __xor__(self, other):
+        return self._bitwise(other, operator.xor)
+
     def to_hex(self, with_alpha=False):
         values = self._rgba if with_alpha else self._rgba[:3]
         return '#' + ''.join('%02X' % int(min(1, max(0, v)) * 255) for v in values)
 
     def to_rgb(self):
-        return list(self._rgba[:3])
+        return _number_array(list(self._rgba[:3]))
 
     def to_rgba(self):
-        return list(self._rgba)
+        return _number_array(list(self._rgba))
 
     def to_int_rgb(self):
-        return [int(v * 255) for v in self._rgba[:3]]
+        return _int_array([int(v * 255) for v in self._rgba[:3]])
 
     def to_int_rgba(self):
-        return [int(v * 255) for v in self._rgba]
+        return _int_array([int(v * 255) for v in self._rgba])
 
     def to_rgba_with_alpha(self, alpha):
-        return list(self._rgba[:3]) + [alpha]
+        return _number_array(list(self._rgba[:3]) + [alpha])
 
     def to_int_rgba_with_alpha(self, alpha):
-        return [int(v * 255) for v in self._rgba[:3]] + [int(alpha * 255)]
+        return _int_array([int(v * 255) for v in self._rgba[:3]] + [int(alpha * 255)])
 
     def to_integer(self):
-        r, g, b = self.to_int_rgb()
+        r, g, b = [int(v * 255) for v in self._rgba[:3]]
         return r << 16 | g << 8 | b
 
     def to_hsv(self):
         import colorsys
-        return list(colorsys.rgb_to_hsv(*self._rgba[:3]))
+        return _number_array(list(colorsys.rgb_to_hsv(*self._rgba[:3])))
 
     def to_hsl(self):
         import colorsys
         h, l, s = colorsys.rgb_to_hls(*self._rgba[:3])
-        return [h, s, l]
+        return _number_array([h, s, l])
 
     @classmethod
     def from_rgb(cls, rgb, alpha=1.0):
-        return cls(tuple(rgb), alpha)
+        return cls(rgb if type(rgb).__name__ == 'ndarray' else tuple(rgb), alpha)
 
     @classmethod
     def from_rgba(cls, rgba):
-        return cls(tuple(rgba))
+        return cls(rgba if type(rgba).__name__ == 'ndarray' else tuple(rgba))
 
     @classmethod
     def from_hex(cls, hex_str, alpha=1.0):
@@ -586,15 +692,23 @@ class HSV(ManimColor):
 
     @property
     def hue(self):
-        return self.to_hsv()[0]
+        return float(self.to_hsv()[0])
 
     @property
     def saturation(self):
-        return self.to_hsv()[1]
+        return float(self.to_hsv()[1])
 
     @property
     def value(self):
-        return self.to_hsv()[2]
+        return float(self.to_hsv()[2])
+
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            return str.__getitem__(self, index)
+        return (*self.to_hsv(), self._rgba[3])[index]
+
+    def __iter__(self):
+        return iter((*self.to_hsv(), self._rgba[3]))
 
 
 ManimColorDType = float
@@ -654,7 +768,7 @@ def random_color():
 
 
 def random_bright_color():
-    return ManimColor(tuple(.5 + v / 2 for v in random_color().to_rgb()))
+    return ManimColor(tuple(.5 + float(v) / 2 for v in random_color().to_rgb()))
 
 
 def _paint(value):
@@ -677,7 +791,7 @@ def _color_rgb(color):
         return list(color._rgba[:3])
     if isinstance(color, (tuple, list)) or (isinstance(color, str) and color.upper() in _PALETTE):
         return list(ManimColor(color)._rgba[:3])
-    if (not isinstance(color, str) or len(color) != 7 or color[0] != '#' or
+    if (not isinstance(color, str) or len(color) != 7 or not color.startswith('#') or
             any(c not in '0123456789abcdefABCDEF' for c in color[1:])):
         raise ValueError('Colors must be six-digit hex strings such as #58C4DD')
     return [int(color[i:i+2], 16) / 255 for i in (1, 3, 5)]
@@ -689,38 +803,36 @@ def _rgb_color(rgb):
 
 
 def color_to_rgb(color):
-    return _color_rgb(color)
+    return ManimColor(color).to_rgb()
 
 
 def rgb_to_color(rgb):
-    rgb = list(rgb)
-    if len(rgb) != 3 or any(isinstance(v, bool) or not isinstance(v, _REAL) or
-                            not math.isfinite(v) for v in rgb):
-        raise ValueError('RGB colors need three finite components')
-    if any(v > 1 for v in rgb):
-        rgb = [v / 255 for v in rgb]
-    return _rgb_color(rgb)
+    return ManimColor.from_rgb(rgb)
 
 
-rgb_to_hex, hex_to_rgb = rgb_to_color, color_to_rgb
+def rgb_to_hex(rgb):
+    return ManimColor.from_rgb(rgb).to_hex()
+
+
+def hex_to_rgb(hex_code):
+    return ManimColor(hex_code).to_rgb()
 
 
 def interpolate_color(color1, color2, alpha):
     if isinstance(alpha, bool) or not isinstance(alpha, _REAL) or not math.isfinite(alpha):
         raise ValueError('Color interpolation alpha must be finite')
-    a, b = _color_rgb(color1), _color_rgb(color2)
-    return _rgb_color([x * (1 - alpha) + y * alpha for x, y in zip(a, b)])
+    return ManimColor(color1).interpolate(color2, alpha)
 
 
 def color_gradient(reference_colors, length_of_output):
     colors = list(reference_colors)
     if isinstance(length_of_output, bool) or not isinstance(length_of_output, numbers.Integral) or not 0 <= length_of_output <= 10000:
         raise ValueError('Gradient length must be an integer from 0 to 10000')
-    if not colors:
-        raise ValueError('A color gradient needs at least one color')
-    rgbs = [_color_rgb(color) for color in colors]
     if length_of_output == 0:
         return []
+    if not colors:
+        raise ValueError('Expected 1 or more reference colors. Got 0 colors.')
+    rgbs = [_color_rgb(color) for color in colors]
     if len(rgbs) == 1:
         return [_rgb_color(rgbs[0])] * length_of_output
     result = []
@@ -742,7 +854,7 @@ def average_color(*colors):
 
 
 def invert_color(color):
-    return _rgb_color([1 - v for v in _color_rgb(color)])
+    return ManimColor(color).invert()
 
 
 class PreviewConfig:
@@ -819,7 +931,7 @@ class PreviewConfig:
             if isinstance(value, bool) or not isinstance(value, _REAL) or not math.isfinite(value) or value <= 0:
                 raise ValueError('Frame dimensions must be positive and finite')
         elif name == 'background_color':
-            if not isinstance(value, str) or len(value) != 7 or value[0] != '#' or any(c not in '0123456789abcdefABCDEF' for c in value[1:]):
+            if not isinstance(value, str) or len(value) != 7 or not value.startswith('#') or any(c not in '0123456789abcdefABCDEF' for c in value[1:]):
                 raise ValueError('Background color must be a six-digit hex color')
         elif name not in ('frame_x_radius', 'frame_y_radius'):
             raise NotImplementedError('Unsupported preview configuration: ' + name)
@@ -3731,6 +3843,14 @@ class Mobject:
         if ox or oy:
             cx, cy = (left + right) / 2, (bottom + top) / 2
             result['gradient_points'] = [[cx - ox, cy - oy], [cx + ox, cy + oy]]
+
+
+def _int_array(values):
+    try:
+        import numpy
+    except ImportError:
+        return values
+    return numpy.array(values, dtype=int)
 
 
 def _number_array(values):
@@ -9309,7 +9429,7 @@ class Axes(VGroup, CoordinateSystem):
         if not palette or len(palette) > 64:
             raise ValueError('Riemann colors need between 1 and 64 colors')
         def channels(value):
-            if not isinstance(value,str) or len(value) != 7 or value[0] != '#':
+            if not isinstance(value,str) or len(value) != 7 or not value.startswith('#'):
                 raise ValueError('Riemann colors must be six-digit hex colors')
             try:
                 return [int(value[index:index+2],16) for index in (1,3,5)]
@@ -9364,7 +9484,7 @@ class Axes(VGroup, CoordinateSystem):
         Mobject._validate_opacity(opacity)
         palette = list(color) if isinstance(color,(list,tuple)) else [color]
         if not 1 <= len(palette) <= 64 or any(
-                not isinstance(value,str) or len(value) != 7 or value[0] != '#' or
+                not isinstance(value,str) or len(value) != 7 or not value.startswith('#') or
                 any(char not in '0123456789abcdefABCDEF' for char in value[1:])
                 for value in palette):
             raise ValueError('Area colors need 1 to 64 six-digit hex colors')
@@ -19862,12 +19982,19 @@ def concatenate_lists(*list_of_lists):
     return [item for items in list_of_lists for item in items]
 
 
-def list_update(l1, l2):
-    return [e for e in l1 if e not in l2] + list(l2)
+def list_update(l1, l2, *, key=None):
+    if not isinstance(l2, list):
+        l2 = list(l2)
+    return list_difference_update(l1, l2, key=key) + l2
 
 
-def list_difference_update(l1, l2):
-    return [e for e in l1 if e not in l2]
+def list_difference_update(l1, l2, *, key=None):
+    if key is None:
+        if not isinstance(l2, (set, dict, frozenset)):
+            l2 = set(l2)
+        return [e for e in l1 if e not in l2]
+    l2_keys = {key(e) for e in l2}
+    return [e for e in l1 if key(e) not in l2_keys]
 
 
 def listify(obj):
@@ -19952,21 +20079,20 @@ def binary_search(function, target, lower_bound, upper_bound, tolerance=1e-4):
     return mh
 
 
-def color_to_rgba(color, alpha=1):
-    return list(ManimColor(color, alpha)._rgba[:3]) + [alpha]
+def color_to_rgba(color, alpha=1.0):
+    return ManimColor(color).to_rgba_with_alpha(alpha)
 
 
 def rgba_to_color(rgba):
-    rgba = list(rgba)
-    return ManimColor(rgba[:3], rgba[3] if len(rgba) > 3 else 1.0)
+    return ManimColor.from_rgba(rgba)
 
 
 def color_to_int_rgb(color):
-    return [int(v * 255) for v in ManimColor(color)._rgba[:3]]
+    return ManimColor(color).to_int_rgb()
 
 
-def color_to_int_rgba(color, opacity=1.0):
-    return color_to_int_rgb(color) + [int(opacity * 255)]
+def color_to_int_rgba(color, alpha=1.0):
+    return ManimColor(color).to_int_rgba_with_alpha(alpha)
 
 
 def merge_dicts_recursively(*dicts):

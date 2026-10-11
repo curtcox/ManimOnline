@@ -729,3 +729,8 @@ transposed (3, n) array. Line graphs answer `input_to_graph_point` by binary sea
 also sets `mobject.target`). Scene play/wait/pause/wait_until validate run times with
 Community's messages (sub-frame values warn and clamp); empty AnimationGroups construct,
 are not `_instant`, and raise only when begun. Overrides may define `finish(self, scene)`.
+ManimColor stays a hex `str` but follows Community values: equality between colors is
+RGBA closeness (plain strings still compare as text), hash is the hex with alpha, and
+arithmetic/bitwise operators work on RGBA. Integer indices return float channels while
+slices keep str behavior (internal hex parsing slices); check hex with startswith, not
+`value[0]`. Non-float tuples are 0-255 channels; to_rgb and the helpers return arrays.
