@@ -740,3 +740,7 @@ derives it from height); setting it rescales. Text/MathTex `submobjects` expand 
 parts on access (internal code uses `children`). Tex typesets arg_separator inside the
 preceding part and collapses whitespace runs as TeX does. PreviewConfig `_PASSIVE` keys
 (seed, dry_run, quality, ...) are stored but only seed affects the preview.
+`manim.utils.unit` (Pixels, Percent, Degrees, Munits) reads the live config; Pixels use a
+1080-pixel-high reference until the scene sets pixel dimensions (`_pixels_explicit`), so
+the 800 × 450 preview keeps Community's default pixel sizes. ThreeDCamera's fixed-mobject
+collections hold mobjects (dict/set), with orientation callbacks kept by id.

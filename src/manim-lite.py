@@ -873,8 +873,16 @@ class PreviewConfig:
         # Community's default frame: 8 units tall, 16:9 (14.22 units wide).
         self.pixel_width, self.pixel_height = 800, 450
         self.frame_height, self.background_color = 8, BLACK
+        object.__setattr__(self, '_pixels_explicit', False)
         for name, value in kwargs.items():
             setattr(self, name, value)
+
+    def _unit_pixel_width(self):
+        """Pixel width for unit conversions: the preview's 800 × 450 default stands in for
+        Community's 1080p default, so Pixels keep their size until pixels are configured."""
+        if self._pixels_explicit:
+            return self.pixel_width
+        return 1080 * self.pixel_width / self.pixel_height
 
     @property
     def frame_width(self):
@@ -937,6 +945,8 @@ class PreviewConfig:
         if name in ('pixel_width', 'pixel_height'):
             if isinstance(value, bool) or not isinstance(value, numbers.Integral) or not 1 <= value <= 4096:
                 raise ValueError('Pixel dimensions must be integers from 1 to 4096')
+            if '_pixels_explicit' in self.__dict__:
+                object.__setattr__(self, '_pixels_explicit', True)
         elif name in ('frame_width', 'frame_height'):
             if isinstance(value, bool) or not isinstance(value, _REAL) or not math.isfinite(value) or value <= 0:
                 raise ValueError('Frame dimensions must be positive and finite')
@@ -7845,8 +7855,8 @@ class Table(VGroup):
             raise ValueError('Not all rows in table have the same length.')
         if len(data) * len(data[0]) > 400:
             raise ValueError('Tables are limited to 400 entries in this preview')
-        self.row_labels = list(row_labels) if row_labels else None
-        self.col_labels = list(col_labels) if col_labels else None
+        self.row_labels = list(row_labels) or None if row_labels is not None else None
+        self.col_labels = list(col_labels) or None if col_labels is not None else None
         self.top_left_entry = top_left_entry
         self.row_dim, self.col_dim = len(data), len(data[0])
         self.v_buff, self.h_buff = v_buff, h_buff
@@ -14127,7 +14137,7 @@ class ThreeDCamera(PreviewConfig):
                     'phi_tracker', 'theta_tracker', 'gamma_tracker', 'zoom_tracker',
                     'focal_distance_tracker', 'rotation_matrix', 'fixed_orientation_mobjects',
                     'fixed_in_frame_mobjects', '_frame_center', '_orientation_key_count',
-                    '_custom_orientation_centers'}
+                    '_custom_orientation_centers', '_orientation_funcs'}
 
     def __init__(self, focal_distance=20.0, shading_factor=0.2, default_distance=5.0,
                  light_source_start_point=9 * DOWN + 7 * LEFT + 10 * OUT,
@@ -14153,7 +14163,9 @@ class ThreeDCamera(PreviewConfig):
                                 gamma_tracker=self.gamma, zoom_tracker=self.zoom).items():
             object.__setattr__(self, name, ValueTracker(value))
         # id(member) -> callable returning the orientation reference center.
+        # Community's collections hold mobjects; capture looks centers up by id.
         object.__setattr__(self, 'fixed_orientation_mobjects', {})
+        object.__setattr__(self, '_orientation_funcs', {})
         object.__setattr__(self, 'fixed_in_frame_mobjects', set())
         self.reset_rotation_matrix()
 
@@ -14253,14 +14265,16 @@ class ThreeDCamera(PreviewConfig):
             else:
                 func = mobject.get_center
             for member in mobject.get_family():
-                self.fixed_orientation_mobjects[id(member)] = func
+                self.fixed_orientation_mobjects[member] = func
+                self._orientation_funcs[id(member)] = func
                 member._fixed_orientation = True
                 member._fixed_orientation_key = id(member)
 
     def remove_fixed_orientation_mobjects(self, *mobjects):
         for mobject in mobjects:
             for member in mobject.get_family():
-                self.fixed_orientation_mobjects.pop(id(member), None)
+                self.fixed_orientation_mobjects.pop(member, None)
+                self._orientation_funcs.pop(id(member), None)
                 member.__dict__.pop('_fixed_orientation', None)
                 member.__dict__.pop('_fixed_orientation_key', None)
 
@@ -14269,13 +14283,13 @@ class ThreeDCamera(PreviewConfig):
             if not isinstance(mobject, Mobject):
                 raise TypeError('Fixed-in-frame registration expects Mobjects')
             for member in mobject.get_family():
-                self.fixed_in_frame_mobjects.add(id(member))
+                self.fixed_in_frame_mobjects.add(member)
                 member._fixed_in_frame = True
 
     def remove_fixed_in_frame_mobjects(self, *mobjects):
         for mobject in mobjects:
             for member in mobject.get_family():
-                self.fixed_in_frame_mobjects.discard(id(member))
+                self.fixed_in_frame_mobjects.discard(member)
                 member.__dict__.pop('_fixed_in_frame', None)
 
 
@@ -14450,7 +14464,7 @@ class ThreeDScene(Scene):
         def orientation_center(node, points):
             if node.get('_fixed_center') is not None:
                 return [float(v) for v in node['_fixed_center']]
-            func = camera.fixed_orientation_mobjects.get(node.get('_fixed_orientation_key'))
+            func = camera._orientation_funcs.get(node.get('_fixed_orientation_key'))
             if func is not None:
                 return [float(v) for v in func()]
             return list(_bbox_center(points)) if points else [0.0, 0.0, 0.0]
@@ -20250,6 +20264,7 @@ class tempconfig:
 
     def __enter__(self):
         self.saved = {name: getattr(config, name) for name in self.changes}
+        self.saved_explicit = config._pixels_explicit
         for name, value in self.changes.items():
             setattr(config, name, value)
         return config
@@ -20257,6 +20272,7 @@ class tempconfig:
     def __exit__(self, *exc):
         for name, value in self.saved.items():
             setattr(config, name, value)
+        object.__setattr__(config, '_pixels_explicit', self.saved_explicit)
         return False
 
 
@@ -20266,6 +20282,34 @@ def override_animate(method):
         method._override_animate = animation_method
         return animation_method
     return decorator
+
+
+class _PixelUnits:
+    """manim.utils.unit.Pixels: pixel counts as frame units."""
+    def __mul__(self, val):
+        return val * config.frame_width / config._unit_pixel_width()
+
+    __rmul__ = __mul__
+
+
+class Percent:
+    """manim.utils.unit.Percent: percentages of the frame width or height."""
+    def __init__(self, axis):
+        axis = [float(v) for v in axis]
+        if axis == [1, 0, 0]:
+            self.length = config.frame_width
+        if axis == [0, 1, 0]:
+            self.length = config.frame_height
+        if axis == [0, 0, 1]:
+            raise NotImplementedError('length of Z axis is undefined')
+
+    def __mul__(self, val):
+        return val / 100 * self.length
+
+    __rmul__ = __mul__
+
+
+Pixels, Degrees, Munits = _PixelUnits(), math.pi / 180, 1
 
 
 class EndSceneEarlyException(Exception):
@@ -21252,7 +21296,7 @@ _SUBMODULE_NAMES = frozenset((
 
 # Public in Community's submodules but not in its star import.
 _SUBMODULE_ONLY = ('path_along_circles', 'spiral_path', 'EndSceneEarlyException', 'RerunSceneException',
-                   'MultiAnimationOverrideException', '_layouts')
+                   'MultiAnimationOverrideException', '_layouts', 'Pixels', 'Percent', 'Degrees', 'Munits')
 
 
 class _ModuleNamespace(types.ModuleType):

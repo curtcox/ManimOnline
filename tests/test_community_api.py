@@ -478,6 +478,20 @@ class AnimationApiTests(unittest.TestCase):
              [1.0, 2.0, 3.0], '(', ')', 1.0, '2.7', True, ['#FF862F', '#236B8E', '#699C52'],
              [['a', 0.0, 1.0], ['b', 1.5, 3.0]]])
 
+    def test_units_table_labels_and_fixed_mobjects(self):
+        self.assertEqual(scene_values(
+            'from manim.utils.unit import Pixels, Percent, Degrees, Munits\n'
+            't = Table([["A", "B"], ["C", "D"]], row_labels=iter(()), col_labels=[Text("x"), Text("y")])\n'
+            's = ThreeDScene(); sq = Square()\n'
+            's.add_fixed_in_frame_mobjects(sq); s.add_fixed_orientation_mobjects(Circle())\n'
+            'a = [Percent(X_AXIS) * 50, Percent(Y_AXIS) * 25, 960 * Pixels, 90 * Degrees, 3 * Munits]\n'
+            'with tempconfig({"pixel_width": 1000}) as c:\n'
+            '    a.append(10 * Pixels == 10 * c.frame_width / 1000)\n'
+            'result = a + [960 * Pixels, len(t.get_row_labels()), len(t.get_col_labels()),\n'
+            '              sq in s.renderer.camera.fixed_in_frame_mobjects,\n'
+            '              type(s.renderer.camera.fixed_orientation_mobjects).__name__]\n'),
+            [7.1111, 2.0, 7.1111, 1.5708, 3.0, True, 7.1111, 0.0, 2.0, True, 'dict'])
+
     def test_dashed_arrows_keep_one_set_of_tips(self):
         self.assertEqual(scene_values(
             'd = DashedVMobject(Arrow(ORIGIN, 2 * UR, color=RED))\n'
