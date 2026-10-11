@@ -753,6 +753,8 @@ class HSV(ManimColor):
     def value(self):
         return float(self.to_hsv()[2])
 
+    h, s, v = hue, saturation, value
+
     def __getitem__(self, index):
         if isinstance(index, slice):
             return str.__getitem__(self, index)
@@ -4929,6 +4931,24 @@ class TipableVMobject(VMobject):
     def get_tips(self):
         return VGroup(*(tip for tip in (self._tip(),self._tip(True)) if tip is not None))
 
+    def assign_tip_attr(self, tip, at_start):
+        """Mark tip as the start/end tip; tip queries find it once it is one of the children."""
+        role = 'start' if at_start else 'end'
+        previous = self._tip(at_start)
+        if previous is not None and previous is not tip:
+            previous.__dict__.pop('_tip_role', None)
+        tip._tip_role = role
+        return self
+
+    def reset_endpoints_based_on_tip(self, tip, at_start):
+        if tip in self.children or self.get_length() == 0:
+            return self  # Attached tips already refit the shaft to their bases.
+        if at_start:
+            self.put_start_and_end_on(tip.base, self.get_end())
+        else:
+            self.put_start_and_end_on(self.get_start(), tip.base)
+        return self
+
     def get_default_tip_length(self):
         return getattr(self,'tip_length',.35)
 
@@ -5936,6 +5956,15 @@ class ArrowSquareTip(ArrowTip):
                                    (-half,-half,0),(half,-half,0),(half,half,0)])
         # Native Square uses its default corner ordering; this is metadata.
         self.start_angle = start_angle
+
+    @property
+    def side_length(self):
+        first, second = self.get_vertices()[:2]
+        return float(math.dist(first, second))
+
+    @side_length.setter
+    def side_length(self, value):
+        self.scale(value / self.side_length)
 
 
 class ArrowSquareFilledTip(ArrowSquareTip):
@@ -7248,18 +7277,53 @@ def _texcode_for_environment(environment):
 
 
 class _TemplateNamespace:
-    """Named templates (TexTemplateLibrary, TexFontTemplates); each is a plain TexTemplate."""
-    def __init__(self, names):
-        self._names = names
+    """Named templates (TexTemplateLibrary, TexFontTemplates); each is a plain TexTemplate
+    with Community's description (MathJax ignores the preamble and fonts)."""
+    def __init__(self, descriptions):
+        self._descriptions = descriptions
 
     def __getattr__(self, name):
-        if name.startswith('_') or (self._names and name not in self._names):
+        if name.startswith('_') or name not in self._descriptions:
             raise AttributeError(name)
-        return TexTemplate(description=name)
+        return TexTemplate(description=self._descriptions[name])
+
+    def __dir__(self):
+        return sorted(self._descriptions)
 
 
-TexTemplateLibrary = _TemplateNamespace(('default', 'threeb1b', 'ctex'))
-TexFontTemplates = _TemplateNamespace(())
+TexTemplateLibrary = _TemplateNamespace(dict.fromkeys(('ctex', 'default', 'simple', 'threeb1b'), ''))
+TexFontTemplates = _TemplateNamespace({
+    'american_typewriter': 'American Typewriter',
+    'antykwa': 'Antykwa Półtawskiego (TX Fonts for Greek and math symbols)',
+    'apple_chancery': 'Apple Chancery', 'auriocus_kalligraphicus': 'Auriocus Kalligraphicus (Symbol Greek)',
+    'baskervald_adf_fourier': 'Baskervald ADF with Fourier', 'baskerville_it': 'Baskerville (Italic)',
+    'biolinum': 'Biolinum', 'brushscriptx': 'BrushScriptX-Italic (PX math and Greek)',
+    'chalkboard_se': 'Chalkboard SE', 'chalkduster': 'Chalkduster', 'comfortaa': 'Comfortaa',
+    'comic_sans': 'Comic Sans MS', 'droid_sans': 'Droid Sans', 'droid_sans_it': 'Droid Sans (Italic)',
+    'droid_serif': 'Droid Serif', 'droid_serif_px_it': 'Droid Serif (PX math symbols) (Italic)',
+    'ecf_augie': 'ECF Augie (Euler Greek)', 'ecf_jd': 'ECF JD (with TX fonts)',
+    'ecf_skeetch': 'ECF Skeetch (CM Greek)', 'ecf_tall_paul': 'ECF Tall Paul (with Symbol font)',
+    'ecf_webster': 'ECF Webster (with TX fonts)', 'electrum_adf': 'Electrum ADF (CM Greek)',
+    'epigrafica': 'Epigrafica', 'fourier_utopia': 'Fourier Utopia (Fourier upright Greek)',
+    'french_cursive': 'French Cursive (Euler Greek)', 'gfs_bodoni': 'GFS Bodoni',
+    'gfs_didot': 'GFS Didot (Italic)', 'gfs_neoHellenic': 'GFS NeoHellenic',
+    'gnu_freesans_tx': 'GNU FreeSerif (and TX fonts symbols)',
+    'gnu_freeserif_freesans': 'GNU FreeSerif and FreeSans',
+    'helvetica_fourier_it': 'Helvetica with Fourier (Italic)',
+    'latin_modern_tw': 'Latin Modern Typewriter Proportional',
+    'latin_modern_tw_it': 'Latin Modern Typewriter Proportional (CM Greek) (Italic)',
+    'libertine': 'Libertine', 'libris_adf_fourier': 'Libris ADF with Fourier',
+    'minion_pro_myriad_pro': 'Minion Pro and Myriad Pro (and TX fonts symbols)',
+    'minion_pro_tx': 'Minion Pro (and TX fonts symbols)',
+    'new_century_schoolbook': 'New Century Schoolbook (Symbol Greek)',
+    'new_century_schoolbook_px': 'New Century Schoolbook (Symbol Greek, PX math symbols)',
+    'noteworthy_light': 'Noteworthy Light', 'palatino': 'Palatino (Symbol Greek)', 'papyrus': 'Papyrus',
+    'romande_adf_fourier_it': 'Romande ADF with Fourier (Italic)', 'slitex': 'SliTeX (Euler Greek)',
+    'times_fourier_it': 'Times with Fourier (Italic)', 'urw_avant_garde': 'URW Avant Garde (Symbol Greek)',
+    'urw_zapf_chancery': 'URW Zapf Chancery (CM Greek)',
+    'venturis_adf_fourier_it': 'Venturis ADF with Fourier (Italic)', 'verdana_it': 'Verdana (Italic)',
+    'vollkorn': 'Vollkorn (TX fonts for Greek and math symbols)',
+    'vollkorn_fourier_it': 'Vollkorn with Fourier (Italic)', 'zapf_chancery': 'Zapf Chancery'})
 
 
 class MathTex(Text):
@@ -12011,6 +12075,9 @@ class _PathOptions:
             point_path = _AxisArcPath(path_arc, path_arc_axis)
         self._path = point_path or (path_arc if Vector(path_arc_axis) == OUT else -path_arc)
 
+    def create_target(self):
+        return self.mobject
+
     @staticmethod
     def _path_kwargs(kwargs):
         return {key: kwargs.pop(key) for key in _PATH_OPTIONS if key in kwargs}
@@ -12682,9 +12749,12 @@ class Indicate(_PathOptions, Animation):
             raise ValueError('Indicate scale_factor must be nonnegative and finite')
         self.scale_factor, self.color = scale_factor, color
 
+    def create_target(self):
+        return self.mobject.copy().scale(self.scale_factor).set_color(self.color)
+
     def begin(self, scene):
         super().begin(scene)
-        highlight = self.mobject.copy().scale(self.scale_factor).set_color(self.color)
+        highlight = self.create_target()
         self.highlight = highlight.to_dict()
         self._lerp = _path_lerp(self.start, self.highlight, self._path)
         self._live_morph = (_LiveMorph(self.mobject.copy(), highlight, self._path)
@@ -12729,6 +12799,10 @@ class Rotate(_PathOptions, Animation):
         self.about_point = Vector(about_point) if about_point is not None else None
         self.about_edge = None if about_edge is None else Mobject._xy_vector(about_edge, 'Pivot edge')
         self._arc, self.path_arc_axis = self.angle, self.axis
+
+    def create_target(self):
+        return self.mobject.copy().rotate(self.angle, self.axis, about_point=self.about_point,
+                                          about_edge=self.about_edge)
 
     def begin(self, scene):
         super().begin(scene)
@@ -20821,6 +20895,23 @@ class PMobject(Mobject):
         self.cloud, self.cloud_colors, self.cloud_opacities = [], [], []
         return self
 
+    def align_points_with_larger(self, larger_mobject):
+        count = len(larger_mobject.cloud)
+        self.cloud, self.cloud_colors, self.cloud_opacities = (
+            stretch_array_to_length(values, count) if values else values
+            for values in (self.cloud, self.cloud_colors, self.cloud_opacities))
+        return self
+
+    def match_colors(self, mobject):
+        if not isinstance(mobject, PMobject):
+            raise TypeError('match_colors expects a point cloud')
+        if len(self.cloud) < len(mobject.cloud):
+            self.align_points_with_larger(mobject)
+        elif len(mobject.cloud) < len(self.cloud):
+            mobject.align_points_with_larger(self)
+        self.cloud_colors, self.cloud_opacities = list(mobject.cloud_colors), list(mobject.cloud_opacities)
+        return self
+
     def add_points(self, points, rgbas=None, color=None, alpha=1.0):
         points = [Vector(p) for p in points]
         if len(self.cloud) + len(points) > _POINT_CLOUD_LIMIT:
@@ -23517,6 +23608,16 @@ class Section:
 
     def is_empty(self):
         return not self.partial_movie_files
+
+    def get_clean_partial_movie_files(self):
+        return [name for name in self.partial_movie_files if name is not None]
+
+    def get_dict(self, sections_dir=None):
+        """The section index entry, without the video metadata the preview never writes."""
+        if self.video is None:
+            raise ValueError(f"Section '{self.name}' cannot be exported as dict, it does not have a video path "
+                             'assigned to it')
+        return {'name': self.name, 'type': self.type_, 'video': self.video}
 
     def __repr__(self):
         return f"<Section '{self.name}' stored in '{self.video}'>"

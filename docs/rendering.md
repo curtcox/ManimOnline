@@ -2442,3 +2442,5 @@ Path options (path_arc, path_arc_axis, path_func, path_arc_centers) are shared b
 FadeIn/FadeOut, GrowFromPoint/GrowArrow, Indicate and Rotate, as Community's keyword
 forwarding allows. A single-center path_arc_centers moves posed analytic shapes exactly.
 Every Animation and AnimationGroup accepts _on_finish, run once before removal.
+TexFontTemplates and TexTemplateLibrary list Community's template names and descriptions;
+their preambles and fonts are not applied by MathJax.

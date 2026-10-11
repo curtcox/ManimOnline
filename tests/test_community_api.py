@@ -1347,6 +1347,13 @@ class AnimationApiTests(unittest.TestCase):
             [[0.5, 3.0, 0.0], [0.7071, 3.5, 0.0]], [[0.5, 0.5, 0.0], [1.0, 1.0, 0.0]],
             [[-0.75, 0.0, 0.0], 0.0], [[-0.375, -0.1628, 0.0], 0.75], [2, True], [1.0, 0.0, 0.0]])
 
+    def test_template_names_color_components_tip_and_section_helpers(self):
+        # Values from Manim Community 0.22.
+        src = open(Path(__file__).with_name('fixtures') / 'api_members.py').read()
+        self.assertEqual(plain(scene_values(src)), [
+            True, 'Comic Sans MS', '', [0.25, 0.5, 0.8], 0.5, 1.0, [3.175, 0.0, 0.0], True, True,
+            [1.0, -1.0, 0.0], 2.4, 0.16, ['a', 'b'], 'intro'])
+
     def test_subdivision_matrices_skia_path_stand_in_and_files(self):
         import tempfile
         values = scene_values(
