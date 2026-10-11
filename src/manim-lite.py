@@ -6537,16 +6537,26 @@ class MarkupText(Text):
         text, colors = self._extract_manim_tags(text, 'color', ('col',))
         self.justify = bool(justify)
         plain, styles, stack, at = '', [], [{}], 0
-        for match in re.finditer(r'<(/?)(\w+)([^>]*)>|([^<]+)', str(text)):
-            closing, tag, attributes, content = match.groups()
+        names = []
+        invalid = ValueError(f'Pango cannot parse your markup in {text}. Please check for typos, '
+                             'unmatched tags or unescaped special chars like < and &.')
+        for match in re.finditer(r'<(/?)(\w+)([^>]*)>|([^<]+)|(<)', str(text)):
+            closing, tag, attributes, content, stray = match.groups()
+            if stray is not None:
+                raise invalid
             if content is not None:
                 content = html.unescape(content)
                 styles.extend([dict(stack[-1])] * len(content))
                 plain += content
+            elif tag.lower() not in ('markup', 'span', 'b', 'bold', 'big', 'i', 'italic', 's', 'sub', 'sup',
+                                     'small', 'tt', 'u'):
+                raise invalid
             elif closing:
-                if len(stack) > 1:
-                    stack.pop()
+                if not names or names.pop() != tag.lower():
+                    raise invalid
+                stack.pop()
             else:
+                names.append(tag.lower())
                 style = dict(stack[-1])
                 tag = tag.lower()
                 if tag in ('b', 'bold'):
@@ -6563,9 +6573,9 @@ class MarkupText(Text):
                             style['slant'] = value.upper()
                         elif name in ('font', 'font_family', 'face'):
                             style['font'] = value
-                elif tag not in ('u', 'small', 'big', 's', 'tt', 'sub', 'sup'):
-                    raise NotImplementedError(f'MarkupText does not support <{tag}> in this preview')
                 stack.append(style)
+        if names:
+            raise invalid
         # Community lays markup out in a Pango box 500 px wide: 25 scene units at any size.
         self._wrap_width = 25.0
         super().__init__(plain, **kwargs)

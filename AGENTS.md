@@ -847,3 +847,5 @@ Config frame_width/frame_height are independent values (Community); `_camera_dic
 scene's camera the configured width with height fitted to the pixel aspect, and cameras (flag
 `_camera`) keep width/height coupled. Square pixels therefore give a 14.22 × 14.22 frame unless
 frame_width is set, as examples/camera_scene.py does. `frame_size` sets both pixel dimensions.
+MarkupText validates like Pango: only Pango tags, matched nesting and no stray `<`; failures
+raise ValueError with Community's message.
