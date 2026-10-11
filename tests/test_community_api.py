@@ -361,6 +361,63 @@ class AnimationApiTests(unittest.TestCase):
             [[[-2.0, 0.0, 0.0], [0.0, 4.0, 0.0]], [[-2.0, 0.0], [0.0, 4.0], [0.0, 0.0]],
              [-2.0, 0.0, 0.0]])
 
+    def test_submobject_validation_and_strings(self):
+        self.assertEqual(scene_values(
+            'result = []\n'
+            'for build in (lambda: VGroup().add(Mobject()), lambda: VGroup([VMobject(), 3])):\n'
+            '    try:\n'
+            '        build()\n'
+            '    except TypeError as error:\n'
+            '        result.append(str(error))\n'), [
+            'Only values of type VMobject can be added as submobjects of VGroup, but the value '
+            'Mobject (at index 0 of parameter 0) is of type Mobject. You can try adding this '
+            'value into a Group instead.',
+            'Only values of type VMobject can be added as submobjects of VGroup, but the value '
+            '3 (at index 1 of parameter 0) is of type int.'])
+        with self.assertRaisesRegex(TypeError, 'of type VMobject can be added as submobjects of VMobject'):
+            scene_values('result = VMobject().add(3)\n')
+        self.assertEqual(scene_values(
+            'result = [str(VGroup()), str(VGroup(Circle())), repr(VGroup(Circle(), Text("a"))),'
+            ' str(VGroup(Square(), Square()))]\n'),
+            ['VGroup of 0 submobjects', 'VGroup of 1 submobject', "VGroup(Circle, Text('a'))",
+             'VGroup of 2 submobjects'])
+        self.assertEqual(scene_values(
+            'm1, m2, m3, m4 = Mobject(), Mobject(), Mobject(), Mobject()\n'
+            'obj = Mobject().add(m1)\n'
+            'obj.insert(0, m2); obj.insert(-1, m3); obj.insert(10, m4); obj.insert(4, m1)\n'
+            'names = {m1: "m1", m2: "m2", m3: "m3", m4: "m4"}\n'
+            'result = [names[m] for m in obj.submobjects]\n'), ['m2', 'm3', 'm4', 'm1'])
+
+    def test_plain_mobject_points_and_compat_accessors(self):
+        self.assertEqual(scene_values(
+            'm = Mobject()\n'
+            'm.points = [[-1, -2, -3], [1, 3, 5]]\n'
+            'g = Group(m, Square().shift(RIGHT * 4))\n'
+            'result = [m.width, m.height, m.depth, m.get_center(), g.width, m.shift(UP).get_center()]\n'),
+            [2.0, 5.0, 8.0, [0.0, 0.5, 1.0], 6.0, [0.0, 1.5, 1.0]])
+        self.assertEqual(scene_values(
+            'm = Mobject(); m.test = 3\n'
+            'result = [m.get_test(), m.set_test(5).test, hasattr(m, "get_anything")]\n'), [3.0, 5.0, True])
+        self.assertEqual(scene_values(
+            'v = VMobject()\n'
+            'result = [v.consider_points_equals_2d([float("inf"), 0], [float("inf"), 0]),'
+            ' v.consider_points_equals_2d([float("nan"), 0], [float("nan"), 0]),'
+            ' v.consider_points_equals_2d([float("inf"), 0], [0, 0])]\n'), [True, False, False])
+        self.assertEqual(scene_values(
+            'a = VMobject(); a.set_stroke(width=50, background=True); a.scale(0.5, scale_stroke=True)\n'
+            'p = Polygon(UP * 3 ** 0.5, LEFT, RIGHT).shift(LEFT).scale(0.8)\n'
+            'result = [a.get_stroke_width(background=True),'
+            ' [p.proportion_from_point(v) for v in p.get_vertices()]]\n'), [25.0, [0.0, 0.3333, 0.6667]])
+
+    def test_dashed_arrows_keep_one_set_of_tips(self):
+        self.assertEqual(scene_values(
+            'd = DashedVMobject(Arrow(ORIGIN, 2 * UR, color=RED))\n'
+            'two = DashedVMobject(Arrow(ORIGIN, 2 * UR).add_tip(at_start=True), num_dashes=5)\n'
+            'result = [len(d.submobjects), d.submobjects[0].get_start(), d.submobjects[-2].get_end(),'
+            ' type(d.submobjects[-1]).__name__, d.get_center(), d.width, len(two.submobjects), two.width]\n'),
+            [16.0, [0.1768, 0.1768, 0.0], [1.8232, 1.8232, 0.0], 'ArrowTriangleFilledTip',
+             [1.0, 1.0, 0.0], 1.6464, 7.0, 1.6464])
+
     def test_opengl_and_pixel_camera_names_fail_clearly(self):
         for name in ('DotCloud', 'TrueDot', 'OpenGLPMobject', 'MappingCamera', 'SplitScreenCamera'):
             with self.assertRaisesRegex(NotImplementedError, name):
