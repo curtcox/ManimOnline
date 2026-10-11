@@ -863,6 +863,27 @@ class AnimationApiTests(unittest.TestCase):
             [[14.2222, 10.0, 5.0, -7.0, 14.2222, 8.0], [200.0, 400.0, 200.0, 112.5],
              [1080.0, 8.0, 14.2222, 14.2222]])
 
+    def test_depth_layout_stretch_and_polyhedron_become(self):
+        result = scene_values(
+            'c = Cube(side_length=1).next_to(Dot3D([0, 0, 2]), OUT)\n'
+            's = Square().next_to(Cube(side_length=1).shift(UP), IN, buff=0.5, aligned_edge=LEFT)\n'
+            'g = VGroup(Square(0.5), Circle(0.3), Triangle().scale(0.3)).arrange(OUT, buff=0.4)\n'
+            'h = VGroup(Cube(side_length=0.5), Cube(side_length=0.6)).arrange(IN + RIGHT)\n'
+            'd = Dot3D([1, 1, 1]).stretch(1.5, 0)\n'
+            'e = Cube(side_length=1).shift(RIGHT + OUT).stretch(2, 2)\n'
+            'class S(ThreeDScene):\n'
+            '    def construct(self):\n'
+            '        t = Tetrahedron()\n'
+            '        self.add(t)\n'
+            '        self.play(t.animate.become(Cube(side_length=0.5).shift(LEFT)), run_time=0.5)\n'
+            '        self.final = t.get_center()\n'
+            'scene = S(); scene.render()\n'
+            'result = [c.get_center(), s.get_center(), [m.get_center() for m in g], [m.get_center() for m in h],\n'
+            '          d.get_center(), d.width, e.get_center(), e.depth, scene.final]\n')
+        self.assertEqual(result, [
+            [0.0, 0.0, 2.83], [0.5, 1.0, -1.0], [[0.0, 0.0, -0.4], [0.0, 0.0, 0.0], [0.0, 0.0, 0.4]],
+            [[-0.425, 0.0, 0.425], [0.375, 0.0, -0.375]], [1.0, 1.0, 1.0], 0.24, [1.0, 0.0, 1.0], 2.0, [-1.0, 0.0, 0.0]])
+
     def test_out_of_plane_fades_growth_and_indicate(self):
         result = scene_values(
             'class S(ThreeDScene):\n'

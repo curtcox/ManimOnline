@@ -1298,6 +1298,8 @@ class Mobject:
             target.position = list(center_point-pivot)
             target.angle += self.angle
             target.geometry_scale *= self.geometry_scale
+            # Pivots of world containers stay in the XY plane; depth moves by the z extent.
+            target._layout_depth = sum(target._z_extent())/2
             targets.append(target)
         return targets
 
@@ -1306,8 +1308,10 @@ class Mobject:
         shifts = []
         for child,target in zip(self.children,targets):
             delta = target._pivot_point()-self._point_to_world(child._pivot_point())
+            depth = sum(target._z_extent())/2-target.__dict__.get('_layout_depth', 0)
             shifts.append(Vector((delta[0]*math.cos(self.angle)+delta[1]*math.sin(self.angle),
-                                  -delta[0]*math.sin(self.angle)+delta[1]*math.cos(self.angle),0))*(1/self.geometry_scale))
+                                  -delta[0]*math.sin(self.angle)+delta[1]*math.cos(self.angle),
+                                  depth))*(1/self.geometry_scale))
         if any(not math.isfinite(value) for delta in shifts for value in delta):
             raise ValueError('Layout translations must be finite')
         for child,delta in zip(self.children,shifts):
@@ -1319,8 +1323,6 @@ class Mobject:
         direction, aligned_edge = Vector(direction), Vector(aligned_edge)
         if not all(math.isfinite(v) for v in (*direction,*aligned_edge,buff)):
             raise ValueError('Layout coordinates and buffer must be finite')
-        if direction[2] or aligned_edge[2]:
-            raise NotImplementedError('Layout supports only the XY plane')
         if direction == ORIGIN:
             raise ValueError('Layout direction must be nonzero')
         targets = self._layout_targets()
@@ -1691,7 +1693,9 @@ class Mobject:
             values[dim] *= factor
             return values
         if dim == 2 or self._is_3d():
-            # Scaling z (or stretching a 3D family at all) bakes the points.
+            # Scaling z (or stretching a 3D family at all) bakes the points about the center.
+            if about_point is None and about_edge is None:
+                about_point = self.get_center()
             return self._map_points_3d(function, about_point, about_edge)
         return self._apply_xy_map(function,about_point,about_edge,linear=True)
 
@@ -2048,8 +2052,6 @@ class Mobject:
         direction, aligned_edge = Vector(direction), Vector(aligned_edge)
         if not all(math.isfinite(v) for v in (*direction, *aligned_edge, buff)):
             raise ValueError('Layout coordinates and buffer must be finite')
-        if direction[2] or aligned_edge[2]:
-            raise NotImplementedError('Layout supports only XY directions')
         if not any(direction):
             raise ValueError('Layout direction must be nonzero')
         target = (mobject_or_point._critical_point(aligned_edge + direction)
@@ -16066,6 +16068,8 @@ class Polyhedron(VGroup):
         return VGroup(*(Polygon(*face, **self.faces_config) for face in face_coords))
 
     def update_faces(self, m):
+        if getattr(self, 'faces', None) is None or getattr(self, 'graph', None) is None:
+            return self  # become() replaced the polyhedron with another structure.
         self.faces.match_points(self.create_faces(self.extract_face_coords()))
         return self
 
@@ -18023,6 +18027,8 @@ class Graph(GenericGraph):
         return edge_type(start=self[u].get_center(), end=self[v].get_center(), z_index=-1, **config)
 
     def update_edges(self, graph):
+        if not isinstance(getattr(graph, 'edges', None), dict):
+            return self  # become() replaced the graph with another structure.
         centers = {}  # Edges never move vertices, so each center is measured once.
         def center(vertex):
             if vertex not in centers:
@@ -18049,6 +18055,8 @@ class DiGraph(GenericGraph):
         return edge
 
     def update_edges(self, graph):
+        if not isinstance(getattr(graph, 'edges', None), dict):
+            return self  # become() replaced the graph with another structure.
         for (u, v), edge in graph.edges.items():
             tip = edge.pop_tips()[0]
             edge.set_points_by_ends(graph[u], graph[v], buff=0, path_arc=0)

@@ -7813,9 +7813,9 @@ class Demo(Scene):
             with self.assertRaises(ValueError):
                 group.arrange(**options)
             self.assertEqual(group.to_dict(),saved)
-        with self.assertRaises(NotImplementedError):
-            group.arrange(lite.OUT)
-        self.assertEqual(group.to_dict(),saved)
+        # Manim 0.22 stacks along z: centers at z = -0.125 and 0.125.
+        group.arrange(lite.OUT)
+        self.assertEqual([round(m.get_center()[2], 6) + 0 for m in group], [-0.125, 0.125])
         # Unrotated groups scale their children, so collapsed members arrange natively.
         collapsed = lite.VGroup(lite.Square(),lite.Circle()).scale(0).arrange(buff=1)
         self.assertAlmostEqual(collapsed[1].get_center()[0]-collapsed[0].get_center()[0],1)
@@ -7860,8 +7860,7 @@ class Demo(Scene):
         for direction in (lite.ORIGIN, (float('nan'), 0, 0)):
             with self.assertRaises(ValueError):
                 lite.Square().next_to(lite.ORIGIN, direction)
-        with self.assertRaises(NotImplementedError):
-            lite.Dot().next_to(lite.ORIGIN, lite.OUT)
+        self.assertEqual(lite.Dot().next_to(lite.ORIGIN, lite.OUT).get_center()[2], 0.25)
         with self.assertRaises(ValueError):
             lite.Dot().next_to(lite.ORIGIN, buff=float('inf'))
         with self.assertRaises(ValueError):

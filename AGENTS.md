@@ -866,3 +866,7 @@ Community pairs points in order, so `_align_path_snapshots` cuts both at the uni
 their boundaries (e.g. reverse_points on a Cutout). Scaling a planar outline with z != 0
 bakes it to a bezierpath; Indicate/FadeIn interpolate through `_snapshot_lerp`, which
 plans an alignment when snapshot shapes differ. Fade shifts and growth points accept z.
+next_to/arrange accept z directions. World containers (Cube, VGroup) keep XY pivots, so
+`_layout_targets` records each target's z-extent midpoint (`_layout_depth`) and
+`_apply_layout_targets` shifts by its change. 3D stretch defaults to the center, as
+Community. Polyhedron/Graph updaters return early once become() removed their structure.
