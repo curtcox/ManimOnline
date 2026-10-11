@@ -856,3 +856,8 @@ the drawn PNG is scaled to 8 bits.
 Reshaping a curved arrow (reverse_points, or morphing to/from a non-curved path) aligns
 the drawn `shaft_curves` pointwise, as Community does, instead of refitting the shaft to
 interpolated tips; plain pose changes of curved arrows keep the tip-fitted refit.
+DashedLine tips are children tagged `_tip_role`; `_dashes()` excludes them. add_tip refits the
+dashes (and an opposite tip) by a similarity about the far end, pop_tips stretches them back
+and put_start_and_end_on carries tips along. Endpoints are tip points (Community's quirky
+start-tip get_start/get_end are not reproduced). BackgroundRectangle frames carry
+`_fill_partial`: Create/DrawBorderThenFill/ShowPassingFlash fade its fill instead of tracing.

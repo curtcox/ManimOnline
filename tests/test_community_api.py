@@ -863,6 +863,42 @@ class AnimationApiTests(unittest.TestCase):
             [[14.2222, 10.0, 5.0, -7.0, 14.2222, 8.0], [200.0, 400.0, 200.0, 112.5],
              [1080.0, 8.0, 14.2222, 14.2222]])
 
+    def test_dashed_line_tips_refit_the_dashes(self):
+        result = scene_values(
+            'def bounds(m):\n'
+            '    return [m.get_left()[0], m.get_right()[0], m.get_top()[1], m.get_bottom()[1]]\n'
+            'm = DashedLine(LEFT*2, RIGHT*2, dash_length=0.2).add_tip()\n'
+            'a = [len(m.submobjects), bounds(m), m.get_end(), m.submobjects[-2].get_end()]\n'
+            'm3 = DashedLine(LEFT*2, RIGHT*2, dash_length=0.2).add_tip().add_tip(at_start=True, tip_length=0.5)\n'
+            'b = [m3.submobjects[0].get_start(), m3.submobjects[-3].get_end()]\n'
+            'm4 = DashedLine(LEFT, UR*2, dash_length=0.3).rotate(0.4).shift(DOWN).add_tip(tip_shape=StealthTip)\n'
+            'm5 = DashedLine(LEFT*2, RIGHT*2, dash_length=0.2).add_tip()\n'
+            'm5.put_start_and_end_on(DOWN, UP*2)\n'
+            'm6 = DashedLine(LEFT*2, RIGHT*2, dash_length=0.2).add_tip()\n'
+            'tips = m6.pop_tips()\n'
+            'result = [a, b, bounds(m4), m4.get_end(), bounds(m5), m5.submobjects[-1].get_center(),\n'
+            '          len(m6.submobjects), len(tips), m6.get_end()]\n')
+        self.assertEqual(result, [
+            [11.0, [-2.0, 2.0, 0.175, -0.175], [2.0, 0.0, 0.0], [1.65, 0.0, 0.0]],
+            [[-1.5, 0.0, 0.0], [1.6938, 0.0, 0.0]],
+            [-0.4922, 1.4922, 1.5052, -1.5052], [1.4922, 1.5052, 0.0],
+            [-0.1313, 0.1312, 2.0, -1.0], [0.0, 1.8687, 0.0], 10.0, 1.0, [2.0, 0.0, 0.0]])
+
+    def test_background_rectangles_fade_in_instead_of_tracing(self):
+        frames = json.loads(lite.render_scene(
+            'from manim import *\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        self.play(Create(BackgroundRectangle(Circle(), fill_opacity=0.5)))\n'))['frames']
+        shape = frames[len(frames) // 2]['mobjects'][0]
+        self.assertNotIn('draw_progress', shape)
+        self.assertGreater(shape['fill_opacity'], 0)
+        self.assertLess(shape['fill_opacity'], 0.5)
+        self.assertEqual(scene_values(
+            'r = BackgroundRectangle(Square(), fill_opacity=0.6)\n'
+            'r.pointwise_become_partial(r.copy(), 0, 0.5)\n'
+            'result = [r.get_fill_opacity(), r.width]\n'), [0.3, 2.0])
+
     def test_reshaped_curved_arrows_move_their_drawn_shaft_pointwise(self):
         self.assertEqual(scene_values(
             'def b(m):\n'

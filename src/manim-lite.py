@@ -7737,6 +7737,12 @@ class BackgroundRectangle(SurroundingRectangle):
                          stroke_width=stroke_width, stroke_opacity=stroke_opacity,
                          fill_opacity=fill_opacity, buff=buff, **kwargs)
         self.original_fill_opacity = self.fill_opacity
+        # Community's partial drawing keeps the whole rectangle and fades its fill in.
+        self._fill_partial = True
+
+    def pointwise_become_partial(self, mobject, a, b):
+        self.set_fill(opacity=b*self.original_fill_opacity)
+        return self
 
     def set_style(self, fill_opacity, **kwargs):
         # Community keeps the black, stroke-free style and only changes fill opacity.
@@ -8807,19 +8813,89 @@ class DashedLine(Line,VGroup):
             self.children.append(child)
         _link_children(self, self.children)
 
+    def _dashes(self):
+        return [child for child in self.children if '_tip_role' not in child.__dict__]
+
+    def _local_ends(self):
+        dashes = self._dashes()
+        return dashes[0].get_start(), dashes[-1].get_end()
+
     def get_start(self):
-        return self._point_to_world(self.children[0].get_start()) if self.children else Line.get_start(self)
+        tip = self._tip(True)
+        if tip is not None:
+            return self._point_to_world(tip.tip_point)
+        return self._point_to_world(self._local_ends()[0]) if self._dashes() else Line.get_start(self)
 
     def get_end(self):
-        return self._point_to_world(self.children[-1].get_end()) if self.children else Line.get_end(self)
+        tip = self._tip()
+        if tip is not None:
+            return self._point_to_world(tip.tip_point)
+        return self._point_to_world(self._local_ends()[1]) if self._dashes() else Line.get_end(self)
 
     def get_first_handle(self):
-        child = self.children[0]
+        child = self._dashes()[0]
         return self._point_to_world(child.get_start()+child.get_vector()*(1/3))
 
     def get_last_handle(self):
-        child = self.children[-1]
+        child = self._dashes()[-1]
         return self._point_to_world(child.get_end()-child.get_vector()*(1/3))
+
+    def _orient_tip(self, tip, at_start):
+        dashes = self._dashes()
+        if not dashes:
+            raise ValueError('The dashed line has no dashes')
+        dash = dashes[0] if at_start else dashes[-1]
+        anchor, vector = ((dash.get_start(), dash.get_start()-dash.get_end()) if at_start
+                          else (dash.get_end(), dash.get_end()-dash.get_start()))
+        tip.rotate((math.atan2(vector[1],vector[0]) if any(vector) else math.pi)-tip.tip_angle)
+        tip.shift(anchor-tip.tip_point)
+
+    def _map_family(self, fixed, moving, target, members):
+        """Community's put_start_and_end_on on the family: a similarity about the fixed end."""
+        current, wanted = complex(*(moving-fixed)[:2]), complex(*(target-fixed)[:2])
+        if not current:
+            return
+        factor = wanted/current
+        for member in members:
+            if isinstance(member, Line) and '_tip_role' not in member.__dict__:
+                ends = []
+                for point in member.get_start_and_end():
+                    z = complex(*(point-fixed)[:2])*factor
+                    ends.append(fixed+Vector((z.real,z.imag,0)))
+                member.put_start_and_end_on(*ends)
+            else:
+                member.rotate(cmath.phase(factor), about_point=fixed)
+                member.scale(abs(factor), about_point=fixed)
+
+    def add_tip(self, tip=None, tip_shape=None, tip_length=None, tip_width=None, at_start=False):
+        if not isinstance(at_start,bool):
+            raise ValueError('at_start must be a boolean')
+        if self.geometry_scale == 0:
+            raise ValueError('Cannot add a tip to collapsed geometry')
+        if tip is not None and tip not in self.children and self.geometry_scale != 1:
+            tip.scale(1/abs(self.geometry_scale))
+        tip = (self.create_tip(tip_shape,tip_length,tip_width,at_start) if tip is None
+               else self.position_tip(tip,at_start))
+        role = 'start' if at_start else 'end'
+        old, other = self._tip(at_start), self._tip(not at_start)
+        # Community's reset_endpoints_based_on_tip fits the dashes (and an existing opposite
+        # tip) between the far end and the new tip's base.
+        first, last = self._local_ends()
+        far = Vector(other.tip_point) if other is not None else (last if at_start else first)
+        members = [child for child in self.children if child is not old and child is not tip]
+        self._map_family(far, first if at_start else last, Vector(tip.base), members)
+        tip._tip_role = role
+        self._replace_children(members+[tip])
+        self.explicit_tips = True
+        return self
+
+    def pop_tips(self):
+        # Community restores the endpoints: the dashes stretch back to the tip points.
+        ends = self.get_start_and_end()
+        tips = TipableVMobject.pop_tips(self)
+        if tips.children:
+            self.put_start_and_end_on(*ends)
+        return tips
 
     def _calculate_num_dashes(self):
         count = self.get_length()/self.dash_length*self.dashed_ratio
@@ -8834,8 +8910,11 @@ class DashedLine(Line,VGroup):
         old_length,new_length = math.dist(old_start,old_end),math.dist(start,end)
         if not all(math.isfinite(value) for value in (old_length,new_length)):
             raise ValueError('DashedLine endpoint spans must be finite')
-        if any(not isinstance(child,Line) for child in self.children):
+        dashes = self._dashes()
+        if not dashes or any(not isinstance(child,Line) for child in dashes):
             raise TypeError('DashedLine endpoint changes require Line children')
+        tips = [child for child in self.children if child not in dashes]
+        before = self._local_ends()
         if old_length:
             old_unit = Vector(value/old_length for value in old_end-old_start)
             new_unit = Vector(value/new_length for value in end-start) if new_length else ORIGIN
@@ -8847,18 +8926,29 @@ class DashedLine(Line,VGroup):
                 along = sum(a*b for a,b in zip(delta,old_unit))*ratio
                 across = sum(a*b for a,b in zip(delta,old_normal))*ratio
                 return start+new_unit*along+new_normal*across
-            endpoints = [(mapped(child.get_start()),mapped(child.get_end())) for child in self.children]
+            endpoints = [(mapped(child.get_start()),mapped(child.get_end())) for child in dashes]
         else:
             endpoints = [(start+(end-start)*child._dash_interval[0],
-                          start+(end-start)*child._dash_interval[1]) for child in self.children]
+                          start+(end-start)*child._dash_interval[1]) for child in dashes]
         center,scale = (start+end)*.5,self.geometry_scale or 1
         def local(point):
             dx,dy,_ = point-center
             return Vector(((dx*math.cos(self.angle)+dy*math.sin(self.angle))/scale,
                            (-dx*math.sin(self.angle)+dy*math.cos(self.angle))/scale,0))
         endpoints = [Line._endpoints(local(a),local(b)) for a,b in endpoints]
-        for child,(a,b) in zip(self.children,endpoints):
+        for child,(a,b) in zip(dashes,endpoints):
             child.put_start_and_end_on(a,b)
+        if tips and old_length:
+            # Tips follow the family's similarity, which in local terms maps the old dash
+            # span onto the new one.
+            after = self._local_ends()
+            old_span, new_span = complex(*(before[1]-before[0])[:2]), complex(*(after[1]-after[0])[:2])
+            if old_span:
+                factor = new_span/old_span
+                for tip in tips:
+                    tip.rotate(cmath.phase(factor), about_point=before[0])
+                    tip.scale(abs(factor), about_point=before[0])
+                    tip.shift(after[0]-before[0])
         self.start,self.end = list(local(start)),list(local(end))
         self.geometry_scale = scale
         pivot = self._geometry_center()
@@ -11809,6 +11899,8 @@ class Create(Animation):
     def _reveal(node, progress):
         if node['type'] in ('text', 'mathtex'):
             node['opacity'] *= progress
+        elif node.get('_fill_partial'):
+            node['fill_opacity'] = node['original_fill_opacity'] * progress
         else:
             node['draw_progress'] = progress
             node['fill_opacity'] *= progress
@@ -11860,6 +11952,8 @@ class ShowPassingFlash(Animation):
                                       zip(source.children, snapshot['children'])]
                 # Keep the original group pivot even as child bounds shrink.
                 return result
+            if source.__dict__.get('_fill_partial'):
+                return dict(snapshot, fill_opacity=source.original_fill_opacity * upper)
             if not source.children:
                 return source.get_subcurve(lower, upper).to_dict()
             # A family with its own path (an arrow and its tips): Community's ShowPartial
@@ -11936,7 +12030,7 @@ class DrawBorderThenFill(Animation):
             node['stroke_color'] = color
             if glyph:
                 node['opacity'] *= sub
-            else:
+            elif not node.get('_fill_partial'):
                 node['draw_progress'] = sub
         else:
             node['fill_opacity'] = fill * sub
