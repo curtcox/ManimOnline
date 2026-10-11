@@ -2720,7 +2720,8 @@ class Mobject:
         own = None
         if math.sin(2 * self.angle) and not self.children:
             own = self._own_bound_points()
-            if own is None and self._type in ('arc', 'ellipse'):
+            if own is None and self._type in ('arc', 'ellipse', 'circle', 'annulus'):
+                # Community bounds the turned cubic points (handles for widths), not a disc.
                 own = self._family_bound_points()
                 return (min(p[0] for p in own), min(p[1] for p in own),
                         max(p[0] for p in own), max(p[1] for p in own))
@@ -11003,6 +11004,38 @@ def _snapshot_pose(node):
     return forward, inverse
 
 
+def _arc_similarity(result, start, target, factor):
+    """Every point p + m (q - p) of a scaled, posed unit shape (world = B + Z * size * u)
+    is again such a shape: Z * size and B take the same complex weight m. Applies to
+    squares, circles and rectangles/ellipses of one aspect ratio."""
+    kind = result['type']
+    if start['type'] != kind or target['type'] != kind:
+        return False
+    keys = {'square': ('side_length',), 'circle': ('radius',),
+            'rectangle': ('width', 'height'), 'ellipse': ('width', 'height')}.get(kind)
+    if keys is None or any(not isinstance(node.get(key), _REAL) for node in (start, target, result) for key in keys):
+        return False
+    if len(keys) == 2:
+        ratios = [node['height'] * other['width'] for node, other in ((start, target), (target, start))]
+        if abs(ratios[0] - ratios[1]) > 1e-9 * max(1, abs(ratios[0])):
+            return False
+    size = result[keys[0]]
+    if not size:
+        return False
+    def pose(node):
+        z = cmath.rect(node.get('geometry_scale', 1), node.get('angle', 0))
+        p, c = node['position'], node.get('geometry_center', ORIGIN)
+        return z * node[keys[0]], complex(p[0] + c[0], p[1] + c[1]) - z * complex(c[0], c[1])
+    (w0, b0), (w1, b1) = pose(start), pose(target)
+    z = (w0 + factor * (w1 - w0)) / size
+    offset = b0 + factor * (b1 - b0)
+    c = result.get('geometry_center', ORIGIN)
+    moved = offset - complex(c[0], c[1]) + z * complex(c[0], c[1])
+    result['position'] = [moved.real, moved.imag, result['position'][2]]
+    result['geometry_scale'], result['angle'] = abs(z), (cmath.phase(z) if z else 0.0)
+    return True
+
+
 def _arc_geometry(result, start, target, alpha, path_arc):
     """Community's path functions: every point follows its path (an arc, or a _PointPath
     such as path_along_circles or a user function) in the parent frame."""
@@ -11020,6 +11053,8 @@ def _arc_geometry(result, start, target, alpha, path_arc):
     fields = {'bezierpath': ('curves', 'vertices'), 'polygon': ('vertices',), 'polyline': ('vertices',),
               'line': ('start', 'end'), 'arrow': ('start', 'end')}.get(kind)
     if fields is None or start['type'] != kind or target['type'] != kind:
+        if not isinstance(path_arc, _PointPath) and _arc_similarity(result, start, target, factor):
+            return
         # Analytical shapes, text and images: the center follows the path.
         centers = [Vector(data['position']) + Vector(data.get('geometry_center', ORIGIN)) for data in (start, target)]
         offset = Vector(move(list(centers[0]), list(centers[1]))) - (centers[0] + (centers[1] - centers[0]) * alpha)
@@ -15940,6 +15975,13 @@ class LaggedStartMap(LaggedStart):
         kwargs.pop('lag_ratio', None)
         # A leaf (e.g. a whole Tex without glyph members here) maps as one member.
         members = list(mobject) or [mobject]
+        # Iterating a shape with children yields the shape, then its children (e.g. an Arrow
+        # and its tip). The shape's animation already covers them; one animation per member.
+        covered = set()
+        for submob in members:
+            if id(submob) not in covered and isinstance(submob, Mobject):
+                covered.update(id(m) for m in submob.get_family()[1:])
+        members = [m for m in members if id(m) not in covered]
         animations = [animation_class(*arg_creator(submob), **kwargs) for submob in members]
         super().__init__(*animations, run_time=run_time, lag_ratio=lag_ratio)
 

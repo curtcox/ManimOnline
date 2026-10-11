@@ -778,3 +778,9 @@ ShowPassingFlash is an introducing remover, and the thinning-flash group is not 
 Mobject.get_subpaths covers containers (none) and set_points accepts an empty list on a
 pointless container. Unsupported outline types fall back to sampling their own world cubic
 points in point_from_proportion (an Arrow samples its shaft, as in Community).
+
+Arc transforms (path_arc) between similar analytical shapes (squares, circles, equal-aspect
+rectangles/ellipses) use `_arc_similarity`: each point's arc is a similarity, so pose
+interpolation is exact. Other cases still use the point arcs in `_arc_geometry`. Rotated
+standalone circles/annuli bound their cubic points like other outlines (width counts
+handles). LaggedStartMap skips members already covered by an earlier shape's family.

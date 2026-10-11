@@ -641,6 +641,34 @@ class AnimationApiTests(unittest.TestCase):
             '          Arc().add_tip().point_from_proportion(0.5)]\n'),
             [[-0.175, -0.4867, 0.0], [0.7525, -0.2475, 0.0], [-1.4589, 0.6824, 0.0], [0.8821, 0.6346, 0.0]])
 
+    def test_rotated_circles_bound_their_cubic_points(self):
+        self.assertEqual(scene_values(
+            'result = [Circle().rotate(a).width for a in (0.3, 0.7, PI / 8)] + '
+            '[Circle().rotate(0.3).get_critical_point(UR)[0]]\n'),
+            [2.0674, 2.038, 2.0507, 0.9553])
+
+    def test_arc_transforms_between_similar_shapes_match_community(self):
+        self.assertEqual(scene_values(
+            'a = Square(); b = Square(0.5).shift(UR).rotate(0.4)\n'
+            't = Transform(a, b, path_arc=-PI); t.begin(); t.interpolate(0.5)\n'
+            'c = Circle(); d = Circle(radius=0.3).shift(LEFT * 2)\n'
+            'u = Transform(c, d, path_arc=PI / 2); u.begin(); u.interpolate(0.25)\n'
+            'result = [a.get_center(), a.width, a.get_start(), c.get_center(), c.get_start()]\n'),
+            [[0.0, 1.0, 0.0], 1.8053, [0.9026, 1.2303, 0.0], [-0.116, 0.1038, 0.0], [0.8435, 0.1402, 0.0]])
+
+    def test_lagged_start_map_animates_shapes_once_with_their_children(self):
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        a = Arrow(LEFT, RIGHT)\n'
+            '        self.add(a)\n'
+            '        g = LaggedStartMap(FadeOut, a)\n'
+            '        self.play(g)\n'
+            '        self.count = [len(g.animations), len(self.mobjects)]\n'
+            's = S(); s.render()\n'
+            'result = s.count\n'),
+            [1.0, 0.0])
+
     def test_text_glyphs_are_leaves(self):
         self.assertEqual(scene_values(
             'def depth(m):\n'
