@@ -763,3 +763,8 @@ the other children toward the tip base like Community but leaves the shaft (and 
 Generic get_<world property>() calls from scene code run through _in_world.
 render_scene installs a `manimpango` stand-in (Weight/Style/Variant/Alignment enums,
 list_fonts = Text.font_list) only when the real module is not importable.
+Manual protocol: built-in animations accept begin()/finish() without a scene (`_scene_optional`)
+and interpolate through `_animation_state` from `_manual_start`; snapshot colors go through
+`_paint`. AnimationGroup/Succession implement Community's manual interpolate. Transform calls
+an overridden create_target at begin. Constructor defaults can be diffed against Manim 0.22
+with `inspect.signature`; colors are PURE_YELLOW for Indicate/Flash/Circumscribe/FunctionGraph.

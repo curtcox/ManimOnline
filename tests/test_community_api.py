@@ -593,6 +593,29 @@ class AnimationApiTests(unittest.TestCase):
             '          t.font_size, t.get_tex_string()]\n'),
             [1.0, '#FC6255', '#FFFFFF', 0.2, 0.9, ['Item 1', 'Item 2', 'Item 3'], '#58C4DD', 48.0, 'Hello World'])
 
+    def test_manual_animation_protocol_and_custom_targets(self):
+        self.assertEqual(scene_values(
+            'class ToRight(Transform):\n'
+            '    def create_target(self):\n'
+            '        return self.mobject.copy().shift(2 * RIGHT).scale(0.5)\n'
+            's = Square()\n'
+            'a = ToRight(s)\n'
+            'a.begin(); a.interpolate(0.5); mid = [s.get_center(), s.width]\n'
+            'a.interpolate(1); a.finish()\n'
+            'i = Square(); ind = Indicate(i); ind.begin(); ind.interpolate(0.5)\n'
+            'q, c = Square(), Circle()\n'
+            'g = AnimationGroup(FadeIn(q), c.animate.shift(RIGHT), lag_ratio=0.5)\n'
+            'g.begin(); g.interpolate(0.5); half = c.get_center()\n'
+            'g.finish()\n'
+            'u, v = Square(), Circle()\n'
+            'w = Succession(u.animate.shift(RIGHT), v.animate.shift(UP))\n'
+            'w.begin(); w.interpolate(0.75); stage = [u.get_center(), v.get_center()]\n'
+            'w.finish()\n'
+            'result = [mid, s.get_center(), s.width, i.get_color(), i.width, half, c.get_center(),\n'
+            '          stage, v.get_center(), FunctionGraph(lambda x: x).get_color()]\n'),
+            [[[1.0, 0.0, 0.0], 1.5], [2.0, 0.0, 0.0], 1.0, '#FFFF00', 2.4, [0.0701, 0.0, 0.0],
+             [1.0, 0.0, 0.0], [[1.0, 0.0, 0.0], [0.0, 0.5, 0.0]], [0.0, 1.0, 0.0], '#FFFF00'])
+
     def test_dashed_arrows_keep_one_set_of_tips(self):
         self.assertEqual(scene_values(
             'd = DashedVMobject(Arrow(ORIGIN, 2 * UR, color=RED))\n'

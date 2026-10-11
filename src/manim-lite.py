@@ -4660,7 +4660,7 @@ class ParametricFunction(VMobject):
 
 
 class FunctionGraph(ParametricFunction):
-    def __init__(self, function, x_range=None, color=YELLOW, **kwargs):
+    def __init__(self, function, x_range=None, color=PURE_YELLOW, **kwargs):
         if not callable(function):
             raise TypeError('FunctionGraph expects a scalar function')
         values = (-config.frame_width/2,config.frame_width/2) if x_range is None else x_range
@@ -11074,9 +11074,30 @@ def _takes_argument(method):
     return any(p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD, p.VAR_POSITIONAL) for p in parameters)
 
 
+def _scene_optional(method, name):
+    """Let begin()/finish() run without a scene: Community's manual protocol."""
+    @functools.wraps(method)
+    def wrapper(self, scene=None, *args, **kwargs):
+        if scene is None and not args and not kwargs:
+            return getattr(Animation, name)(self)
+        return method(self, scene, *args, **kwargs)
+    wrapper._scene_optional = True
+    return wrapper
+
+
 class Animation(metaclass=_CommunityTree):
     _instant = False  # Only Add may have a zero run_time.
     set_default = classmethod(_set_default)
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        for name in ('begin', 'finish'):
+            method = cls.__dict__.get(name)
+            if method is None or getattr(method, '_scene_optional', False):
+                continue
+            params = list(inspect.signature(method).parameters.values())[1:2]
+            if params and params[0].name == 'scene' and params[0].default is inspect.Parameter.empty:
+                setattr(cls, name, _scene_optional(method, name))
 
     def __new__(cls, *args, use_override=True, **kwargs):
         mobject = args[0] if args else kwargs.get('mobject')
@@ -11121,6 +11142,11 @@ class Animation(metaclass=_CommunityTree):
         return any(getattr(cls, name) is not getattr(Animation, name) for name in self._COMMUNITY_HOOKS)
 
     def interpolate(self, alpha):
+        start = self.__dict__.get('_manual_start')
+        if start is not None and not self._community_style:
+            # A built-in animation driven by hand (begin(), interpolate(alpha), finish()).
+            self.mobject.become(_animation_state(self, start, alpha))
+            return
         self.interpolate_mobject(alpha)
 
     def interpolate_mobject(self, alpha):
@@ -11183,6 +11209,9 @@ class Animation(metaclass=_CommunityTree):
         return copy.deepcopy(self)
 
     def _community_begin(self):
+        if not self._community_style and isinstance(self.mobject, Mobject):
+            self._manual_start = self.mobject.copy()
+            self.__dict__.pop('_updater_ready', None)
         self.starting_mobject = self.create_starting_mobject()
         if self.suspend_mobject_updating:
             self.mobject.suspend_updating()
@@ -11630,7 +11659,7 @@ def _arc_factor(alpha, path_arc):
 
 
 class Transform(Animation):
-    def __init__(self, mobject, target_mobject, path_arc=0, path_arc_axis=OUT, path_func=None,
+    def __init__(self, mobject, target_mobject=None, path_arc=0, path_arc_axis=OUT, path_func=None,
                  path_arc_centers=None, **kwargs):
         super().__init__(mobject, **kwargs)
         point_path, self._arc = None, path_arc
@@ -11646,6 +11675,8 @@ class Transform(Animation):
                 point_path = _FunctionPath(path_func)
             else:
                 raise TypeError('path_func must be a path function')
+        if target_mobject is None:
+            target_mobject = Mobject()
         if not isinstance(target_mobject, Mobject):
             raise TypeError('Transform expects a target Mobject')
         NumberLine._real(path_arc, 'path_arc')
@@ -11699,6 +11730,12 @@ class Transform(Animation):
             raise TypeError('path_func must be a path function')
 
     def begin(self, scene):
+        if type(self).create_target is not Transform.create_target:
+            # Community subclasses build their target when the animation begins.
+            target = self.create_target()
+            if not isinstance(target, Mobject):
+                raise TypeError('create_target must return a Mobject')
+            self.target = _world_copy(target)
         super().begin(scene)
         self._transform_plan = None
         self._canonical = None
@@ -11820,7 +11857,7 @@ class Restore(Transform):
 
 class Indicate(Animation):
     """Temporarily scale and recolor a snapshot without changing live state."""
-    def __init__(self, mobject, scale_factor=1.2, color=YELLOW,
+    def __init__(self, mobject, scale_factor=1.2, color=PURE_YELLOW,
                  rate_func=there_and_back, **kwargs):
         super().__init__(mobject, rate_func=rate_func, **kwargs)
         if not math.isfinite(scale_factor) or scale_factor < 0:
@@ -12287,6 +12324,30 @@ class AnimationGroup:
         self.build_animations_with_timings()
         if scene is not None:
             self.prepare(scene)
+            return
+        # Community's manual protocol: begin(); interpolate(alpha); finish().
+        self._group_time, self._begun, self._finished = 0.0, None, None
+        for animation in self.animations:
+            animation.begin()
+
+    def interpolate(self, alpha):
+        """Community's manual update: only animations begun or still running interpolate."""
+        time = self.rate_func(alpha) * self.max_end_time
+        back = time < self.__dict__.get('_group_time', 0.0)
+        begun = [time >= start for _, start, _ in self.anims_with_timings]
+        finished = [time > end for _, _, end in self.anims_with_timings]
+        old_begun = self.__dict__.get('_begun') or [False] * len(begun)
+        old_finished = self.__dict__.get('_finished') or [False] * len(begun)
+        for i, (animation, start, end) in enumerate(self.anims_with_timings):
+            if not ((old_begun[i] or begun[i]) and (not old_finished[i] or not finished[i])):
+                continue
+            if end == start:
+                sub = 0 if back else 1
+            else:
+                sub = (time - start) / (end - start)
+                sub = max(sub, 0) if back else min(sub, 1)
+            animation.interpolate(sub)
+        self._group_time, self._begun, self._finished = time, begun, finished
 
     def get_run_time(self):
         return self.run_time
@@ -12384,7 +12445,12 @@ class AnimationGroup:
             result.update(animation.states((time - start) / duration if duration else (1 if time >= start else 0)))
         return result
 
-    def finish(self, scene):
+    def finish(self, scene=None):
+        if scene is None:
+            for animation in self.animations:
+                animation.finish()
+            self._begun = self._finished = [True] * len(self.animations)
+            return
         for animation in self.animations:
             animation.__dict__.pop('_holding', None)
             if self.remover:
@@ -12457,7 +12523,35 @@ class Succession(AnimationGroup):
             min(1, max(0, (time - start) / duration)) if duration else 1))
         return result
 
-    def finish(self, scene):
+    def begin(self, scene=None):
+        if scene is not None or not self.animations:
+            return super().begin(scene)
+        self.build_animations_with_timings()
+        self._manual_index = -1
+        self._next_stage()
+
+    def _next_stage(self):
+        index = self._manual_index
+        if 0 <= index < len(self.animations):
+            self.animations[index].finish()
+        self._manual_index = index = index + 1
+        if index < len(self.animations):
+            self.animations[index].begin()
+
+    def interpolate(self, alpha):
+        time = self.rate_func(alpha) * self.max_end_time
+        while (self._manual_index < len(self.animations)
+               and time >= self.anims_with_timings[self._manual_index][2]):
+            self._next_stage()
+        if self._manual_index < len(self.animations):
+            animation, start, _ = self.anims_with_timings[self._manual_index]
+            animation.interpolate((time - start) / animation.run_time if animation.run_time else 1)
+
+    def finish(self, scene=None):
+        if scene is None:
+            while self.__dict__.get('_manual_index', len(self.animations)) < len(self.animations):
+                self._next_stage()
+            return
         self._advance(len(self.animations) - 1)
         if self.remover:
             self.animations[-1].remover = True
@@ -12951,7 +13045,7 @@ class RemoveTextLetterByLetter(AddTextLetterByLetter):
 class Circumscribe(Succession):
     """Draw a temporary surrounding rectangle or circle around a mobject."""
     def __init__(self, mobject, shape=None, fade_in=False, fade_out=False, time_width=0.3,
-                 buff=SMALL_BUFF, color=YELLOW, run_time=1, stroke_width=DEFAULT_STROKE_WIDTH, **kwargs):
+                 buff=SMALL_BUFF, color=PURE_YELLOW, run_time=1, stroke_width=DEFAULT_STROKE_WIDTH, **kwargs):
         shape = Rectangle if shape is None else shape
         if shape is Rectangle:
             frame = SurroundingRectangle(mobject, color=color, buff=buff, stroke_width=stroke_width)
@@ -12977,7 +13071,7 @@ class Circumscribe(Succession):
 class Flash(AnimationGroup):
     """Short lines flashing outward from a point."""
     def __init__(self, point, line_length=0.2, num_lines=12, flash_radius=0.1, line_stroke_width=3,
-                 color=YELLOW, time_width=1, run_time=1.0, **kwargs):
+                 color=PURE_YELLOW, time_width=1, run_time=1.0, **kwargs):
         center = point.get_center() if isinstance(point, Mobject) else Mobject._xy_vector(point, 'Flash point')
         if isinstance(num_lines, bool) or not isinstance(num_lines, numbers.Integral) or not 1 <= num_lines <= 360:
             raise ValueError('num_lines must be an integer from 1 to 360')
@@ -20710,15 +20804,36 @@ def _animation_state(animation, starting, alpha):
         animation.mobject.become(starting)
         animation.prepare(Scene())
         animation._updater_ready = True
-    states = animation.states(alpha)[animation.mobject]
+    states = animation.states(alpha).get(animation.mobject)
+    if not states:
+        # A fading remover draws nothing at its end; Community leaves it fully transparent.
+        states = [dict(state, opacity=0) for state in
+                  animation.states(min(alpha, 1 - 1e-9)).get(animation.mobject) or ()]
+        if not states:
+            return starting.copy()
     snapshot = max(states, key=lambda state: state['opacity'])
     result = starting.copy()
-    def apply(target, node):
+    def apply(target, node, inherited=1):
+        # Sampled fades use a group opacity; live mobjects carry it in their own
+        # fill/stroke opacities, as Community's fades leave them.
+        factor = inherited * node.get('opacity', 1)
         for child, state in zip(target.children, node.get('children', [])):
-            apply(child, state)
+            apply(child, state, factor)
         for key, value in node.items():
             if key not in ('type', 'children', 'geometry_center'):
-                target.__dict__[key] = _snapshot_copy(value)
+                value = _snapshot_copy(value)
+                if (key == 'color' or key.endswith('_color')) and (
+                        isinstance(value, str) or isinstance(value, list) and value and isinstance(value[0], str)):
+                    value = _paint(value)
+                target.__dict__[key] = value
+        if factor != 1:
+            target.__dict__['opacity'] = 1
+            for key in ('fill_opacity', 'stroke_opacity'):
+                value = target.__dict__.get(key)
+                if isinstance(value, list):
+                    target.__dict__[key] = [v * factor for v in value]
+                elif isinstance(value, _REAL):
+                    target.__dict__[key] = value * factor
         target._type = node['type']
         target.__dict__.pop('_family_pivot_cache', None)
         # Keep the sampled pose exactly although the pivot is recomputed:

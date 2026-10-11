@@ -401,3 +401,9 @@ Munits), manim.typing aliases, get_quadratic_approximation_of_cubic and empty co
 that ignore shifts. Later passes added Community's per-subpath align_points, NumberLine
 add_tip/pop_tips (the family squeezes toward the tip base as in Community), xy-plane
 Angle checks, Scene.restructure_mobjects and inert config names.
+
+Manual animation protocol (2026-10-10): `anim.begin(); anim.interpolate(alpha); anim.finish()`
+now works without a scene for built-in animations, AnimationGroup (Community's begun/finished
+masks) and Succession, and Transform subclasses may override create_target (the target is
+optional). A constructor-default diff against Manim 0.22 found PURE_YELLOW defaults for
+Indicate, Flash, Circumscribe and FunctionGraph, now matched.

@@ -4348,7 +4348,7 @@ assert isinstance(t.get_value(), (int, float))""")
         function = lambda x:x*x
         standalone = lite.FunctionGraph(function,x_range=[-1,1,.5])
         self.assertIs(standalone.get_function(),function)
-        self.assertEqual(standalone.color,lite.YELLOW)
+        self.assertEqual(standalone.color,lite.PURE_YELLOW)
         axes = lite.Axes([-2,2,1],[-1,3],x_length=6,y_length=4).rotate(.4).shift(lite.UP)
         graph = axes.plot(function)
         self.assertEqual(len(graph.curves),40)
@@ -6885,7 +6885,7 @@ class Demo(Scene):
         scene.play(lite.Indicate(shape, scale_factor=1.5), run_time=4)
         peak = scene.frames[30]['mobjects'][0]
         self.assertEqual(peak['geometry_scale'], 3)
-        self.assertEqual((peak['fill_color'], peak['stroke_color']), (lite.YELLOW.lower(), lite.YELLOW.lower()))
+        self.assertEqual((peak['fill_color'], peak['stroke_color']), (lite.PURE_YELLOW.lower(), lite.PURE_YELLOW.lower()))
         self.assertEqual(peak['fill_opacity'], original['fill_opacity'])
         # Community scales about the bounds center, which stays fixed.
         self.assertPointAlmostEqual(lite.Vector(peak['position']) + lite.Vector(peak['geometry_center']) +
