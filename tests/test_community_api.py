@@ -863,6 +863,23 @@ class AnimationApiTests(unittest.TestCase):
             [[14.2222, 10.0, 5.0, -7.0, 14.2222, 8.0], [200.0, 400.0, 200.0, 112.5],
              [1080.0, 8.0, 14.2222, 14.2222]])
 
+    def test_succession_stages_updater_time_and_image_depths(self):
+        self.assertEqual(scene_values(
+            'line = Line()\n'
+            's = Succession(FadeIn(line, run_time=1), FadeOut(line, run_time=4))\n'
+            'before = hasattr(s, "active_animation")\n'
+            's._setup_scene(None); s.begin()\n'
+            'stages = []\n'
+            'for alpha in (0.1, 0.2, 1.0):\n'
+            '    s.interpolate(alpha); stages.append(s.active_index)\n'
+            'a = FadeIn(Circle(), run_time=0)\n'
+            'turn_animation_into_updater(a)\n'
+            'a.mobject.update(0.1)\n'
+            'image = ImageMobject([[[1000, 2000, 65535, 7]]], pixel_array_dtype="uint16", invert=True)\n'
+            'result = [before, stages, s.active_animation is None, a.total_time >= 0, len(a.mobject.updaters),\n'
+            '          [list(map(int, p)) for p in image.get_pixel_array()[0]]]\n'),
+            [False, [0, 1, 2], True, True, 0, [[64535, 63535, 0, 7]]])
+
     def test_animation_updaters_draw_partial_outlines(self):
         self.assertEqual(scene_values(
             'def b(m):\n'

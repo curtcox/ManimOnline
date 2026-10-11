@@ -849,3 +849,7 @@ scene's camera the configured width with height fitted to the pixel aspect, and 
 frame_width is set, as examples/camera_scene.py does. `frame_size` sets both pixel dimensions.
 MarkupText validates like Pango: only Pango tags, matched nesting and no stray `<`; failures
 raise ValueError with Community's message.
+Community animation internals: Animation/AnimationGroup._setup_scene, Succession.active_index/
+active_animation (absent before begin), and animation.total_time as turn_animation_into_updater's
+clock. ImageMobject keeps uint8/uint16 pixel arrays (pixel_array_dtype, inverted at that depth);
+the drawn PNG is scaled to 8 bits.

@@ -11505,6 +11505,11 @@ class Animation(metaclass=_CommunityTree):
     def is_remover(self):
         return self.remover
 
+    def _setup_scene(self, scene):
+        # Community: an introducer adds its mobject to the scene before beginning.
+        if scene is not None and self.is_introducer() and self.mobject not in scene.get_mobject_family_members():
+            scene.add(self.mobject)
+
     def is_introducer(self):
         return self.introducer
 
@@ -12776,6 +12781,10 @@ class AnimationGroup:
     def is_remover(self):
         return self.remover
 
+    def _setup_scene(self, scene):
+        for animation in self.animations:
+            animation._setup_scene(scene)
+
     def is_introducer(self):
         return self.introducer
 
@@ -12946,6 +12955,17 @@ class Succession(AnimationGroup):
         self.build_animations_with_timings()
         self._manual_index = -1
         self._next_stage()
+
+    @property
+    def active_index(self):
+        if '_manual_index' not in self.__dict__:
+            raise AttributeError('active_index is set when the succession begins')
+        return self._manual_index
+
+    @property
+    def active_animation(self):
+        index = self.active_index
+        return self.animations[index] if 0 <= index < len(self.animations) else None
 
     def _next_stage(self):
         index = self._manual_index
@@ -19199,8 +19219,8 @@ RESAMPLING_ALGORITHMS = {'nearest': 0, 'none': 0, 'lanczos': 1, 'antialias': 1, 
                          'bicubic': 3, 'cubic': 3, 'box': 4, 'hamming': 5}
 
 
-def _rgba_rows(pixels):
-    """Rows of RGBA byte tuples from a NumPy array or nested lists (2D gray, RGB or RGBA)."""
+def _rgba_rows(pixels, limit=255):
+    """Rows of RGBA tuples (channels 0..limit) from a NumPy array or nested lists (2D gray, RGB or RGBA)."""
     if hasattr(pixels, 'tolist'):
         pixels = pixels.tolist()
     rows = [list(row) for row in pixels]
@@ -19214,20 +19234,20 @@ def _rgba_rows(pixels):
     def channel(value):
         if isinstance(value, bool) or not isinstance(value, _REAL) or not math.isfinite(value):
             raise ValueError('Image pixel values must be finite numbers')
-        return max(0, min(255, int(value)))
+        return max(0, min(limit, int(value)))
     result = []
     for row in rows:
         out = []
         for pixel in row:
             if isinstance(pixel, _REAL):
                 gray = channel(pixel)
-                out.append((gray, gray, gray, 255))
+                out.append((gray, gray, gray, limit))
             else:
                 values = [channel(v) for v in pixel]
                 if len(values) == 1:
-                    values = values * 3 + [255]
+                    values = values * 3 + [limit]
                 elif len(values) == 3:
-                    values.append(255)
+                    values.append(limit)
                 elif len(values) != 4:
                     raise ValueError('Image pixels need 1, 3 or 4 channels')
                 out.append(tuple(values))
@@ -19281,8 +19301,14 @@ class ImageMobject(Mobject):
     def __init__(self, filename_or_array, scale_to_resolution=1080, invert=False, image_mode='RGBA', **kwargs):
         kwargs.setdefault('fill_opacity', 1)
         kwargs.setdefault('stroke_width', 0)
+        dtype = kwargs.pop('pixel_array_dtype', 'uint8')
+        dtype = getattr(dtype, '__name__', None) or str(dtype)
+        if dtype not in ('uint8', 'uint16'):
+            raise NotImplementedError('ImageMobject supports uint8 and uint16 pixel arrays')
+        limit = 255 if dtype == 'uint8' else 65535
         super().__init__(**kwargs)
         self._type = 'image'
+        self.pixel_array_dtype = dtype
         if isinstance(filename_or_array, str):
             if invert:
                 raise NotImplementedError('invert needs a pixel array in the browser preview')
@@ -19290,12 +19316,13 @@ class ImageMobject(Mobject):
             self.href = filename_or_array.strip()
             self._pixels = None
         else:
-            rows = _rgba_rows(filename_or_array)
+            rows = _rgba_rows(filename_or_array, limit)
             if invert:
-                rows = [[(255 - r, 255 - g, 255 - b, a) for r, g, b, a in row] for row in rows]
+                rows = [[(limit - r, limit - g, limit - b, a) for r, g, b, a in row] for row in rows]
             self._pixels = rows
             self.pixel_height, self.pixel_width = len(rows), len(rows[0])
-            self.href = _png_data_uri(rows)
+            self.href = _png_data_uri(rows if limit == 255 else
+                                      [[tuple(v * 255 // limit for v in pixel) for pixel in row] for row in rows])
         if not self.pixel_width or not self.pixel_height:
             raise ValueError('ImageMobject needs a nonempty image')
         NumberLine._real(scale_to_resolution, 'scale_to_resolution', positive=True)
@@ -19311,7 +19338,11 @@ class ImageMobject(Mobject):
             import numpy
         except ImportError:
             return [[list(pixel) for pixel in row] for row in self._pixels]
-        return numpy.array(self._pixels, dtype=numpy.uint8)
+        return numpy.array(self._pixels, dtype=self.pixel_array_dtype)
+
+    @property
+    def pixel_array(self):
+        return self.get_pixel_array()
 
     def set_resampling_algorithm(self, resampling_algorithm):
         names = {0: 'nearest', 1: 'lanczos', 2: 'bilinear', 3: 'bicubic', 4: 'box', 5: 'hamming'}
@@ -21245,18 +21276,18 @@ def turn_animation_into_updater(animation, cycle=False, delay=0, **kwargs):
     """Drive an animation from an updater instead of Scene.play (Community)."""
     mobject = animation.mobject
     animation.suspend_mobject_updating = False
-    elapsed = [-delay]
+    animation.total_time = -delay
     starting = mobject.copy()
     animation_copy = [None]
     def update(m, dt):
-        if elapsed[0] < 0:
-            elapsed[0] += dt
+        if animation.total_time < 0:
+            animation.total_time += dt
             return
         if animation_copy[0] is None:
             m.become(starting)
             animation_copy[0] = True
         run_time = animation.run_time
-        time_ratio = elapsed[0] / run_time if run_time else 1
+        time_ratio = animation.total_time / run_time if run_time else 1
         if cycle:
             alpha = time_ratio % 1
         else:
@@ -21266,7 +21297,7 @@ def turn_animation_into_updater(animation, cycle=False, delay=0, **kwargs):
                 m.remove_updater(update)
                 return
         m.become(_animation_state(animation, starting, alpha))
-        elapsed[0] += dt
+        animation.total_time += dt
     mobject.add_updater(update)
     return mobject
 
