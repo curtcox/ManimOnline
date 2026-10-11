@@ -821,3 +821,7 @@ TransformMatching*: unmatched targets fade in as a real `_arrivals` VGroup intro
 (Community's FadeIn copy) with one group snapshot; unmatched sources fade out by one shared
 shift. When every piece is a childless leaf under identity-pose containers, pieces are folded
 back into one snapshot of the source tree so updaters see the whole family.
+ShowPassingFlash accepts arrows: families with their own path cut every member with points
+via pointwise_become_partial of `_own_outline` (a childless copy keeping the tip-trimmed
+shaft). pointwise_become_partial accepts arrows (they become bezierpath shafts), and Line
+endpoint getters stay tip-aware after that, so a collapsed arrow keeps Community's length.

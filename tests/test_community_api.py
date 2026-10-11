@@ -780,6 +780,21 @@ class AnimationApiTests(unittest.TestCase):
             [[-1.0, -2.125, 2.0, 2.5], [-1.0414, -2.125, 1.9586, 2.4689], [-1.2918, -2.125, 1.7082, 2.2811],
              [-1.4794, -2.125, 1.5206, 2.1405], 1])
 
+    def test_passing_flash_cuts_arrow_shafts_and_tips(self):
+        self.assertEqual(scene_values(
+            'def b(m):\n'
+            '    return [m.get_left()[0], m.get_bottom()[1], m.get_right()[0], m.get_top()[1]]\n'
+            'a = Arrow(LEFT, RIGHT * 2)\n'
+            'f = ShowPassingFlash(a, time_width=0.5, rate_func=linear); f.begin(); f.interpolate(0.5)\n'
+            'c = Arrow(LEFT, RIGHT * 2)\n'
+            'for m in c.family_members_with_points():\n'
+            '    m.pointwise_become_partial(m.copy(), 0, 0)\n'
+            'r = [b(a), b(a.tip), c.get_end(), c.get_length()]\n'
+            'c.scale(1.2)\n'
+            'result = r + [b(c)]\n'),
+            [[-0.2125, -0.175, 1.4875, 0.175], [1.4, -0.175, 1.4875, 0.175], [1.75, 0.0, 0.0], 2.5,
+             [-1.0, 0.0, 2.0, 0.0]])
+
     def test_rotate_fixes_its_pivot_when_constructed(self):
         self.assertEqual(scene_values(
             's = Square()\n'

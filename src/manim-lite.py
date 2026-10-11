@@ -2485,7 +2485,7 @@ class Mobject:
     def pointwise_become_partial(self, vmobject, a, b):
         if not isinstance(vmobject, Mobject) or vmobject._type not in (
                 'polyline', 'polygon', 'bezierpath', 'circle', 'arc', 'ellipse',
-                'square', 'rectangle', 'triangle', 'line', 'annulus'):
+                'square', 'rectangle', 'triangle', 'line', 'annulus', 'arrow'):
             raise TypeError('Partial geometry expects a supported vector outline')
         if any(isinstance(v,bool) or not isinstance(v,_REAL) or not math.isfinite(v)
                for v in (a,b)):
@@ -5596,13 +5596,15 @@ class Line(TipableVMobject):
 
     def get_start(self):
         if self._type not in ('line','arrow','vgroup'):
-            return Mobject.get_start(self)
+            # A line given explicit points (e.g. a partial arrow) still ends at its tips.
+            return (TipableVMobject if self._tip(True) is not None else Mobject).get_start(self)
         self._endpoints(self.start, self.end)
         return self._point_to_world(Vector(self.start))
 
     def get_end(self):
         if self._type not in ('line','arrow','vgroup'):
-            return Mobject.get_end(self)
+            # A line given explicit points (e.g. a partial arrow) still ends at its tips.
+            return (TipableVMobject if self._tip() is not None else Mobject).get_end(self)
         self._endpoints(self.start, self.end)
         return self._point_to_world(Vector(self.end))
 
@@ -11751,8 +11753,11 @@ class ShowPassingFlash(Animation):
                     validate(child)
             elif mobject._type not in ('polyline', 'polygon', 'bezierpath', 'circle',
                                       'arc', 'ellipse', 'square', 'rectangle',
-                                      'triangle', 'line', 'annulus'):
-                raise TypeError('ShowPassingFlash expects supported vector outlines; glyphs and arrows are unsupported')
+                                      'triangle', 'line', 'annulus', 'arrow'):
+                raise TypeError('ShowPassingFlash expects supported vector outlines; glyphs are unsupported')
+            else:
+                for child in mobject.children:
+                    validate(child)
         validate(self.mobject)
         self.original = self.mobject.copy()
         super().begin(scene)
@@ -11767,7 +11772,14 @@ class ShowPassingFlash(Animation):
                                       zip(source.children, snapshot['children'])]
                 # Keep the original group pivot even as child bounds shrink.
                 return result
-            return source.get_subcurve(lower, upper).to_dict()
+            if not source.children:
+                return source.get_subcurve(lower, upper).to_dict()
+            # A family with its own path (an arrow and its tips): Community's ShowPartial
+            # cuts every member with points.
+            piece = source.copy()
+            for member in piece.family_members_with_points():
+                member.pointwise_become_partial(_own_outline(member), lower, upper)
+            return piece.to_dict()
         return [clip(self.original, self.start)]
 
     def finish(self, scene):
@@ -13665,7 +13677,7 @@ class Scene:
             mobject._sampled_geometry_center = snapshot['geometry_center']
             progress = snapshot.get('draw_progress')
             shaft = None
-            if mobject.__dict__.get('_curved_tip_path') and any(
+            if (mobject.__dict__.get('_curved_tip_path') or snapshot['type'] == 'arrow' and snapshot['children']) and any(
                     (state.get('draw_progress') is not None and state['draw_progress'] < 1)
                     for state in [snapshot] + list(snapshot['children'])):
                 # A curved arrow's shaft is trimmed by its whole tips (Community fixes its
@@ -21183,6 +21195,17 @@ def _animation_state(animation, starting, alpha):
         if not states:
             return starting.copy()
     return _sampled_copy(starting, states)
+
+
+def _own_outline(mobject):
+    """A childless copy holding the member's own drawn points (an arrow's shaft stops at
+    its tips' bases, which a childless arrow would no longer know)."""
+    points = mobject.get_points()
+    outline = copy.copy(mobject)
+    outline.__dict__ = dict(mobject.__dict__, children=[])
+    if mobject.children:
+        VMobject.set_points(outline, points)
+    return outline
 
 
 def _sampled_copy(starting, states, partial=False):

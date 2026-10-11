@@ -4704,7 +4704,7 @@ assert isinstance(t.get_value(), (int, float))""")
                 self.assertTrue(all(p == middle['curves'][0][0] for p in middle['curves'][0]))
             else:
                 self.assertEqual(middle,source.get_subcurve(0,1).to_dict())
-        for source in (lite.Text('unsupported'),lite.Arrow(),lite.VGroup(lite.Circle(),lite.Text('unsupported'))):
+        for source in (lite.Text('unsupported'),lite.VGroup(lite.Circle(),lite.Text('unsupported'))):
             scene = lite.Scene()
             with self.assertRaises(TypeError): lite.ShowPassingFlash(source).prepare(scene)
             self.assertEqual(scene.mobjects,[])
