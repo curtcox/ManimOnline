@@ -21048,6 +21048,35 @@ class _SubmoduleFinder:
         pass
 
 
+def _manimpango_module():
+    """Community's Pango binding as scenes import it: the enums and font queries. The browser
+    has no Pango; text layout uses the measured fonts in Text.font_list()."""
+    module = types.ModuleType('manimpango')
+    module.Weight = enum.Enum('Weight', [('NORMAL', 400), ('BOLD', 700), ('THIN', 100), ('ULTRALIGHT', 200),
+                                         ('LIGHT', 300), ('BOOK', 380), ('MEDIUM', 500), ('SEMIBOLD', 600),
+                                         ('ULTRABOLD', 800), ('HEAVY', 900), ('ULTRAHEAVY', 1000)])
+    module.Style = enum.Enum('Style', [('NORMAL', 0), ('ITALIC', 2), ('OBLIQUE', 1)])
+    module.Variant = enum.Enum('Variant', [('NORMAL', 0), ('SMALL_CAPS', 1)])
+    module.Alignment = enum.Enum('Alignment', [('LEFT', 0), ('CENTER', 1), ('RIGHT', 2)])
+    module.list_fonts = Text.font_list
+    module.registered_fonts = set()
+    def register_font(font_path):
+        raise NotImplementedError('Font files cannot be registered in the browser preview')
+    module.register_font = module.fc_register_font = register_font
+    module.unregister_font = module.fc_unregister_font = lambda font_path: False
+    module.pango_version = lambda: 'unavailable'
+    module.cairo_version = lambda: 'unavailable'
+    return module
+
+
+def _install_manimpango():
+    if 'manimpango' in sys.modules:
+        return
+    import importlib.util
+    if importlib.util.find_spec('manimpango') is None:
+        sys.modules['manimpango'] = _manimpango_module()
+
+
 # Community's color libraries (manim.utils.color.AS2700, BS381, DVIPSNAMES, SVGNAMES, X11, XKCD),
 # as "NAME:RRGGBB" lists parsed on first use.
 _COLOR_LIBRARIES = {
@@ -21754,6 +21783,7 @@ def _render_scene(source, scene_name=None, compact=False):
         del sys.modules[name]
     if not any(isinstance(finder, _SubmoduleFinder) for finder in sys.meta_path):
         sys.meta_path.insert(0, _SubmoduleFinder())
+    _install_manimpango()
     namespace = {'__name__': '__scene__'}
     exec(compile(source, '<scene>', 'exec'), namespace)
     scenes = {name: cls for name, cls in namespace.items()

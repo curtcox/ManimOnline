@@ -761,3 +761,5 @@ PreviewConfig._PASSIVE also lists Community's inert directory/window/flag settin
 NumberLine tips are role-tagged children (`_tip_at_start` marks start tips); add_tip scales
 the other children toward the tip base like Community but leaves the shaft (and n2p) alone.
 Generic get_<world property>() calls from scene code run through _in_world.
+render_scene installs a `manimpango` stand-in (Weight/Style/Variant/Alignment enums,
+list_fonts = Text.font_list) only when the real module is not importable.

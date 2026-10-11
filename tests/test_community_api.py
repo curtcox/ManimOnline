@@ -574,6 +574,14 @@ class AnimationApiTests(unittest.TestCase):
             'result = [[type(m).__name__ for m in scene.mobjects], listed == [g], "monospace" in Text.font_list()]\n'),
             [['Circle', 'Dot'], True, True])
 
+    def test_manimpango_enums_drive_text_weights(self):
+        self.assertEqual(scene_values(
+            'import manimpango\n'
+            'weights = sorted(manimpango.Weight, key=lambda w: w.value)\n'
+            'g = VGroup(*(Text(w.name, weight=w.name) for w in weights))\n'
+            'result = [weights[0].name, weights[-1].value, len(g), g[7].weight, manimpango.Style.ITALIC.value]\n'),
+            ['THIN', 1000.0, 11.0, 'BOLD', 2.0])
+
     def test_dashed_arrows_keep_one_set_of_tips(self):
         self.assertEqual(scene_values(
             'd = DashedVMobject(Arrow(ORIGIN, 2 * UR, color=RED))\n'
