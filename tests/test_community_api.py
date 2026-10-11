@@ -1354,6 +1354,23 @@ class AnimationApiTests(unittest.TestCase):
             True, 'Comic Sans MS', '', [0.25, 0.5, 0.8], 0.5, 1.0, [3.175, 0.0, 0.0], True, True,
             [1.0, -1.0, 0.0], 2.4, 0.16, ['a', 'b'], 'intro'])
 
+    def test_text_chars_label_types_and_number_line_label_modes(self):
+        values = scene_values(
+            'text = Text("ab", disable_ligatures=True)\n'
+            'chars = len(Text("fl ligature")._gen_chars())\n'
+            'text.submobjects = text.submobjects[:1]\n'
+            'try:\n'
+            '    text._gen_chars(); error = None\n'
+            'except ValueError as e:\n'
+            '    error = "glyph" in str(e)\n'
+            'typst = Typst("hello")\n'
+            'line = NumberLine(x_range=[-1, 1])\n'
+            'line.add_labels({0: "origin", 1: 2.5}, label_constructor=MathTex)\n'
+            'other = NumberLine(x_range=[-1, 1]).add_labels({0: "x"}, label_constructor=MathTypst)\n'
+            'result = [chars, error, Label(typst).rendered_label is typst,\n'
+            '          [type(m).__name__ for m in line.labels], type(other.labels[0]).__name__]\n')
+        self.assertEqual(values, [10, True, True, ['Tex', 'MathTex'], 'Typst'])
+
     def test_subdivision_matrices_skia_path_stand_in_and_files(self):
         import tempfile
         values = scene_values(

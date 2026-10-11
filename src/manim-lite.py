@@ -6648,6 +6648,29 @@ class Text(Mobject):
     def chars(self):
         return self[:]
 
+    def _gen_chars(self):
+        """Community's per-character group: glyphs, with invisible dots standing in for spaces."""
+        glyphs = self.submobjects
+        source = self.__dict__.get('_original_text', self.__dict__.get('text', ''))
+        text = source.replace('\t', ' ').replace(' ', '').replace('\n', '')
+        chars, index = VGroup(), 0
+        for char_index, char in enumerate(text):
+            if char.isspace():
+                space = Dot(radius=0, fill_opacity=0, stroke_opacity=0)
+                if glyphs:
+                    space.move_to(glyphs[index if char_index == 0 else index - 1].get_center())
+                chars.add(space)
+                continue
+            if index >= len(glyphs):
+                raise ValueError(f'Text {source!r} rendered fewer glyph(s) than its non-space characters even with '
+                                 'disable_ligatures=True. This usually means the chosen font implements some of '
+                                 "its ligatures through an OpenType feature that isn't disabled (e.g. 'calt'), so "
+                                 'characters and glyphs no longer correspond one-to-one. Try a different font to '
+                                 'work around this.')
+            chars.add(glyphs[index])
+            index += 1
+        return chars
+
     def _show_children(self):
         self._explode()
 
@@ -8724,10 +8747,10 @@ class Label(VGroup):
         frame_config = {'color': WHITE, 'buff': 0.05, 'stroke_width': 0.5} | dict(frame_config or {})
         if isinstance(label, str):
             self.rendered_label = MathTex(label, **label_config)
-        elif isinstance(label, Text):
+        elif isinstance(label, (Text, Typst)):
             self.rendered_label = label
         else:
-            raise TypeError('Unsupported label type. Must be MathTex, Tex or Text.')
+            raise TypeError('Unsupported label type. Must be MathTex, Tex, Text, Typst, or MathTypst.')
         self.background_rect = BackgroundRectangle(self.rendered_label, **box_config)
         self.frame = SurroundingRectangle(self.rendered_label, **frame_config)
         self.add(self.background_rect, self.rendered_label, self.frame)
@@ -9569,11 +9592,14 @@ class NumberLine(VGroup):
         buff = self.line_to_number_buff if buff is None else buff
         constructor = self.label_constructor if label_constructor is None else label_constructor
         labels = []
+        size = self.font_size if font_size is None else font_size
         for x, label in dict(dict_values).items():
             if isinstance(label, str):
-                label = constructor(label, font_size=self.font_size if font_size is None else font_size)
+                # Community sets strings for an explicit MathTex/MathTypst in text mode.
+                maker = {MathTex: Tex, MathTypst: Typst}.get(label_constructor, constructor)
+                label = maker(label, font_size=size)
             elif not isinstance(label, Mobject):
-                raise TypeError('NumberLine labels must be strings or Mobjects')
+                label = constructor(str(label), font_size=size)
             labels.append(label.next_to(self.n2p(x), direction=direction, buff=buff))
         return self._add_world_decoration(VGroup(*labels), 'labels')
 
