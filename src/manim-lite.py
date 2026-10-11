@@ -10826,8 +10826,17 @@ def _align_path_snapshots(start, target):
         return None
     if start['type'] not in path_types or target['type'] not in path_types:
         return None
+    pointwise = False
     if start['type'] == target['type'] and start['type'] not in ('polyline', 'polygon', 'bezierpath'):
-        return None  # Matching primitives retain their analytical interpolation.
+        # Matching primitives retain their analytical interpolation, unless both the local
+        # geometry and the pose's scale or turn change: lerping each separately is not
+        # Community's pointwise straight path (e.g. radius 1 at scale 0.7 into radius 0.5).
+        pointwise = (start['type'] != 'arrow' and
+                     (start.get('geometry_scale', 1), start.get('angle', 0)) !=
+                     (target.get('geometry_scale', 1), target.get('angle', 0)) and
+                     _path_curves(start) != _path_curves(target))
+        if not pointwise:
+            return None
     # Align untrimmed curved-arrow geometry; capture fits it to sampled tips.
     start,target = _snapshot_copy(start),_snapshot_copy(target)
     curved = [bool(snapshot.get('_curved_tip_path')) for snapshot in (start,target)]
@@ -10845,7 +10854,7 @@ def _align_path_snapshots(start, target):
     paths1, paths2 = _path_subpaths(start), _path_subpaths(target)
     if not paths1 or not paths2:
         return None  # Empty geometry has no endpoint to align; retain the fade.
-    if (start['type'] == target['type'] and
+    if (start['type'] == target['type'] and not pointwise and
             (len(paths1) == len(paths2) == 1 and len(paths1[0]) == len(paths2[0]) if start['type'] == 'bezierpath'
              else len(start['vertices']) == len(target['vertices']))):
         return None
@@ -11490,8 +11499,16 @@ class Animation(metaclass=_CommunityTree):
         """Apply member(node, sub_alpha) to drawable members with Community's lag timing."""
         paths = _painted_paths(data, nested=nested)
         if self.__dict__.get('_inverted_members'):
-            # Community's invert(recursive=True): siblings reversed at every level.
-            paths.sort(key=lambda path: tuple(-index for index in path))
+            # Community's invert(recursive=True): siblings reversed at every level. A
+            # NumberLine's shaft is Community's own points, which stay first.
+            def key(path):
+                node = data
+                for index in path:
+                    node = node['children'][index]
+                if path and node.get('_number_line_role') == 'shaft':
+                    path = path[:-1]
+                return tuple(-index for index in path)
+            paths.sort(key=key)
         full = (len(paths) - 1) * self.lag_ratio + 1 if paths else 1
         order = {path: index for index, path in enumerate(paths)}
         def visit(node, path):

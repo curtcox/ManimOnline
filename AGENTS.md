@@ -832,3 +832,8 @@ exposure drops a stale live `_curved_tip_path` when the sampled snapshot lacks i
 `_own_shaft` hoists a NumberLine's identity-posed shaft child into the root snapshot (type
 line, ticks as children) when it morphs into a family that is not number-line shaped, so
 alignment follows Community's NumberLine (own line points, ticks submobjects).
+
+Same-type primitives keep analytical interpolation unless both their local geometry and
+their pose scale/turn differ; then `_align_path_snapshots` aligns them pointwise (Community's
+straight path), since lerping radius and scale separately is not linear in the points.
+Recursive inversion (`_member_states`) keeps a NumberLine's shaft child first, as its own points.

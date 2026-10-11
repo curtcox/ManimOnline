@@ -829,6 +829,23 @@ class AnimationApiTests(unittest.TestCase):
             [[-1.5373, -0.1248, 1.8458, 0.1542], [-0.7511, -0.3368, 1.5837, 0.4163],
              [-0.1437, -0.6842, 1.8352, 0.8458]])
 
+    def test_number_line_unwrite_and_scaled_circle_morphs_follow_community(self):
+        self.assertEqual(scene_values(
+            'def b(m):\n'
+            '    return [m.get_left()[0], m.get_bottom()[1], m.get_right()[0], m.get_top()[1]]\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        m = NumberLine(x_range=[0, 4, 1], length=4)\n'
+            '        self.r = []\n'
+            '        self.add(m)\n'
+            '        self.add_updater(lambda dt: self.r.append(b(m)[3]))\n'
+            '        self.play(Unwrite(m, rate_func=linear))\n'
+            's = S(); s.render()\n'
+            'c = Circle().rotate(1).scale(0.5)\n'
+            'a = Transform(c, Circle(2).shift(UP), rate_func=linear); a.begin(); a.interpolate(0.25)\n'
+            'result = [s.r[len(s.r) * k // 10] for k in (7, 8)] + [b(c)]\n'),
+            [0.1, 0.06, [-0.72, -0.47, 0.72, 0.97]])
+
     def test_rotate_fixes_its_pivot_when_constructed(self):
         self.assertEqual(scene_values(
             's = Square()\n'
