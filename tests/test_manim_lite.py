@@ -847,6 +847,9 @@ self.play(d[2].animate.shift(UP*2))""")
         plain=lite.SVGMobject('<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"\n "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">'
                               '<svg><rect width="2" height="1"/></svg>')
         self.assertEqual(len(plain), 1)
+        tinted=lite.SVGMobject('<svg><rect width="2" height="1" fill="#0f0"/></svg>', color=lite.RED)
+        self.assertEqual((tinted.color.to_hex(), tinted.get_fill_color().to_hex(), tinted[0].get_fill_color().to_hex()),
+                         ('#FC6255', '#FC6255', '#00FF00'))
 
     def test_svg_arcs_follow_svgelements_quadratics(self):
         shape=lite.SVGMobject('<svg width="100" height="100"><path d="M 0 50 L 10 50 A 30 20, 0, 0 0, 90 50 L 100 50"/></svg>')

@@ -18606,6 +18606,8 @@ class SVGMobject(VGroup):
         super().__init__(**kwargs)
         if not isinstance(file_name, str):
             raise ValueError('Must specify file for SVGMobject')
+        if color is not None:
+            self.set_color(color)  # Community colors the still-empty group, not the parsed shapes.
         markup = file_name.strip()
         if not markup.startswith('<'):
             raise NotImplementedError('The browser preview has no file system; pass SVG markup '

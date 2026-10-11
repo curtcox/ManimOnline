@@ -842,3 +842,4 @@ partly drawn outlines become pointwise partial geometry, so live bounds follow C
 SVG arcs follow svgelements (`_svg_arc_cubics`): parameter slices of at most 36 degrees as
 quadratics with the (4 - cos(step)) / 3 control push, raised to cubics. A DOCTYPE without an
 internal subset is stripped before parsing; ENTITY/internal subsets stay rejected.
+SVGMobject(color=...) colors only the still-empty group (Community); parsed shapes keep SVG paint.
