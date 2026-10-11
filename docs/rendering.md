@@ -2422,3 +2422,7 @@ braces around pointless mobjects, the ConvertToOpenGL metaclass (classes stay Ca
 QuickHull (NumPy only), XKCD/X11/... palette submodule imports, and manim.config staying
 the live config after a render. Imports of missing capitalized names now raise ImportError
 instead of producing an empty module.
+The utilities module tests added normalize for vectors of any length, earclip_triangulation
+(Community's ring bridging followed by an ear-clipping pass, since mapbox_earcut is native:
+same triangles and area, possibly in another order) and the deprecated/deprecated_params
+decorators from manim.utils.deprecation.

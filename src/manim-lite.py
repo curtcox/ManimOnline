@@ -21324,6 +21324,14 @@ def midpoint(point1, point2):
 
 
 def normalize(vect, fall_back=None):
+    values = list(vect.tolist() if hasattr(vect, 'tolist') else vect)
+    if len(values) != 3:
+        # Community normalizes vectors of any length.
+        norm = math.sqrt(sum(float(v) ** 2 for v in values))
+        if norm <= 0 and fall_back is not None:
+            return fall_back
+        result = [float(v) / norm if norm > 0 else 0.0 for v in values]
+        return sys.modules['numpy'].array(result) if 'numpy' in sys.modules else result
     vector = _point(vect, 'Vector')
     norm = _norm(vector)
     if norm > 0:
@@ -21502,6 +21510,78 @@ def perpendicular_bisector(line, norm_vector=OUT):
     direction = _cross(p1 - p2, _point(norm_vector))
     middle = midpoint(p1, p2)
     return [middle + direction, middle - direction]
+
+
+def _ear_clip(polygon):
+    """Flat triangle index list for a simple XY polygon (bridged holes allowed)."""
+    n = len(polygon)
+    if n < 3:
+        return []
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+    area = sum(polygon[k - 1][0] * polygon[k][1] - polygon[k][0] * polygon[k - 1][1] for k in range(n))
+    order = list(range(n)) if area >= 0 else list(range(n))[::-1]
+    def inside(p, a, b, c):
+        return cross(a, b, p) > 0 and cross(b, c, p) > 0 and cross(c, a, p) > 0
+    triangles = []
+    while len(order) > 3:
+        for k in range(len(order)):
+            a, b, c = order[k - 1], order[k], order[(k + 1) % len(order)]
+            pa, pb, pc = polygon[a], polygon[b], polygon[c]
+            if cross(pa, pb, pc) <= 0:
+                continue
+            if any(inside(polygon[m], pa, pb, pc) for m in order
+                   if m not in (a, b, c) and polygon[m] not in (pa, pb, pc)):
+                continue
+            break
+        else:
+            k = 0  # Degenerate remainder: clip anyway rather than loop forever.
+        triangles += [order[k - 1], order[k], order[(k + 1) % len(order)]]
+        order.pop(k)
+    return triangles + order
+
+
+def earclip_triangulation(verts, ring_ends):
+    """Community's triangulation of rings (an outline and its holes): rings are bridged at
+    nearby points into one polygon, which is then ear-clipped. Community uses mapbox_earcut,
+    so triangles are valid but may be listed in a different order."""
+    points = [tuple(float(c) for c in (p.tolist() if hasattr(p, 'tolist') else p))[:2] for p in verts]
+    ends = [int(e) for e in ring_ends]
+    rings = [list(range(e0, e1)) for e0, e1 in zip([0, *ends], ends)]
+    attached, detached, connections = rings[:1], rings[1:], {}
+    def distance(p, q):
+        return (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2
+    while detached:
+        i_range = [i for ring in attached for i in ring if i not in connections]
+        j_range = [j for ring in detached for j in ring if j not in connections]
+        first, middle = points[j_range[0]], points[j_range[len(j_range) // 2]]
+        estimate = ((first[0] + middle[0]) / 2, (first[1] + middle[1]) / 2)
+        i = min(i_range, key=lambda i: distance(points[i], estimate))
+        j = min(j_range, key=lambda j: distance(points[i], points[j]))
+        i = min(i_range, key=lambda i: distance(points[i], points[j]))
+        connections[i], connections[j] = j, i
+        ring = next((ring for ring in detached if ring[0] <= j <= ring[-1]), None)
+        if ring is None:
+            raise Exception('Could not find a ring to attach')
+        detached.remove(ring)
+        attached.append(ring)
+    after, end0 = [], 0
+    for end1 in ends:
+        after.extend(range(end0 + 1, end1))
+        after.append(end0)
+        end0 = end1
+    indices, i = [], 0
+    for _ in range(len(points) + len(ends) - 1):
+        if i in connections:
+            j = connections[i]
+            indices.extend([i, j])
+            i = after[j]
+        else:
+            indices.append(i)
+            i = after[i]
+        if i == 0:
+            break
+    return [indices[k] for k in _ear_clip([points[i] for i in indices])]
 
 
 def cartesian_to_spherical(vec):
@@ -21890,6 +21970,95 @@ def remove_list_redundancies(lst):
             result.append(item)
             seen.add(item)
     return result[::-1]
+
+
+def _callable_info(callable_):
+    what, name = type(callable_).__name__, callable_.__qualname__
+    if what == 'function' and '.' in name:
+        what = 'method'
+    elif what != 'function':
+        what = 'class'
+    return what, name
+
+
+def _deprecation_text(since=None, until=None, message=None):
+    since = f'since {since} ' if since else ''
+    until = f'is expected to be removed after {until}' if until else 'may be removed in a later version'
+    message = ' ' + message if message else ''
+    return f'deprecated {since}and {until}.{message}'
+
+
+def deprecated(func=None, since=None, until=None, replacement=None, message=''):
+    """Community's manim.utils.deprecation.deprecated: log a warning on each call (or
+    instantiation) of a function, method or class."""
+    if func is None:
+        return lambda func: deprecated(func, since, until, replacement, message)
+    what, name = _callable_info(func)
+    def warning_msg(for_docs=False):
+        text = message
+        if replacement is not None:
+            repl = replacement
+            if for_docs:
+                repl = f":{ {'class': 'class', 'method': 'meth', 'function': 'func'}[what]}:`~.{replacement}`"
+            text = f"Use {repl} instead.{' ' + message if message else ''}"
+        return f'The {what} {name} has been {_deprecation_text(since, until, text)}'
+    def deprecate_docs(target):
+        target.__doc__ = f'{target.__doc__ or ""}\n\n.. attention:: Deprecated\n  {warning_msg(True)}'
+    def wrap(original):
+        @functools.wraps(original)
+        def wrapper(*args, **kwargs):
+            logging.getLogger('manim').warning(warning_msg())
+            return original(*args, **kwargs)
+        return wrapper
+    if type(func).__name__ != 'function':
+        deprecate_docs(func)
+        func.__init__ = wrap(func.__init__)
+        return func
+    func = wrap(func)
+    deprecate_docs(func)
+    return func
+
+
+def deprecated_params(params=None, since=None, until=None, message='', redirections=None):
+    """Community's deprecated_params: warn about (and optionally redirect) keyword arguments."""
+    if callable(params):
+        raise ValueError('deprecate_parameters requires arguments to be specified.')
+    params = [] if params is None else (re.split(r'[,\s]+', params) if isinstance(params, str) else list(params))
+    redirections = list(redirections or [])
+    for redirector in redirections:
+        if isinstance(redirector, tuple):
+            params.append(redirector[0])
+        else:
+            params.extend(inspect.signature(redirector).parameters)
+    params = list(dict.fromkeys(params))
+    if not all(re.match(r'^[^\d\W]\w*\Z', param) for param in params):
+        raise ValueError('Given parameter values are invalid.')
+    def warning_msg(func, used):
+        what, name = _callable_info(func)
+        plural = len(used) > 1
+        names = ', '.join(used[:-1]) + ' and ' + used[-1] if plural else used[0]
+        return (f"The parameter{'s' if plural else ''} {names} of {what} {name} "
+                f"{'have been' if plural else 'has been'} {_deprecation_text(since, until, message)}")
+    def redirect(kwargs, used):
+        for redirector in redirections:
+            if isinstance(redirector, tuple):
+                old, new = redirector
+                if old in used:
+                    kwargs[new] = kwargs.pop(old)
+            else:
+                taken = {p: kwargs.pop(p) for p in inspect.signature(redirector).parameters if p in used}
+                if taken:
+                    kwargs.update(redirector(**taken))
+    def decorate(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            used = [param for param in params if param in kwargs]
+            if used:
+                logging.getLogger('manim').warning(warning_msg(func, used))
+                redirect(kwargs, used)
+            return func(*args, **kwargs)
+        return wrapper
+    return decorate
 
 
 def extract_mobject_family_members(mobjects, use_z_index=False, only_those_with_points=False):
@@ -22456,7 +22625,7 @@ EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'ZoomedScene', 'VectorScene',
            'SEMILIGHT', 'BOOK', 'MEDIUM', 'SEMIBOLD', 'ULTRABOLD', 'HEAVY', 'ULTRAHEAVY']
 EXPORTS += [name for name in _PALETTE if name not in EXPORTS]
 # Community utilities (manim.utils.*).
-EXPORTS += ['ManimBanner', 'MANIM_SVG_PATHS', 'SampleSpace', 'TransformAnimations', 'X_AXIS', 'Y_AXIS', 'Z_AXIS', 'DEFAULT_DASH_LENGTH', 'DEFAULT_POINTWISE_FUNCTION_RUN_TIME', 'DEFAULT_WAIT_TIME', 'SCALE_FACTOR_PER_FONT_POINT', 'START_X', 'START_Y', 'integer_interpolate', 'mid', 'inverse_interpolate', 'match_interpolate', 'midpoint', 'normalize', 'rotation_about_z', 'rotation_matrix', 'rotate_vector', 'z_to_vector', 'get_unit_normal', 'get_shaded_rgb', 'compass_directions', 'regular_vertices', 'complex_to_R3', 'R3_to_complex', 'complex_func_to_R3_func', 'center_of_mass', 'cross2d', 'shoelace', 'shoelace_direction', 'get_3d_vmob_start_corner_index', 'get_3d_vmob_end_corner_index', 'get_3d_vmob_start_corner', 'get_3d_vmob_end_corner', 'get_3d_vmob_gradient_start_and_end_points', 'get_3d_vmob_unit_normal', 'get_3d_vmob_start_corner_unit_normal', 'get_3d_vmob_end_corner_unit_normal', 'perpendicular_bisector', 'cartesian_to_spherical', 'spherical_to_cartesian', 'find_intersection', 'get_winding_number', 'thick_diagonal', 'bezier', 'split_bezier', 'partial_bezier_points', 'subdivide_bezier', 'bezier_remap', 'point_lies_on_bezier', 'proportions_along_bezier_curve_for_point', 'get_smooth_cubic_bezier_handle_points', 'is_closed', 'straight_path', 'path_along_arc', 'clockwise_path', 'counterclockwise_path', 'adjacent_n_tuples', 'adjacent_pairs', 'all_elements_are_instances', 'concatenate_lists', 'list_update', 'list_difference_update', 'listify', 'make_even', 'make_even_by_cycling', 'remove_list_redundancies', 'remove_nones', 'stretch_array_to_length', 'tuplify', 'choose', 'clip', 'binary_search', 'color_to_rgba', 'rgba_to_color', 'color_to_int_rgb', 'color_to_int_rgba', 'merge_dicts_recursively', 'update_dict_recursively', 'tempconfig', 'override_animate', 'override_animation', 'index_labels', 'print_family', 'assert_is_mobject_method', 'turn_animation_into_updater', 'cycle_animation']
+EXPORTS += ['ManimBanner', 'MANIM_SVG_PATHS', 'SampleSpace', 'TransformAnimations', 'X_AXIS', 'Y_AXIS', 'Z_AXIS', 'DEFAULT_DASH_LENGTH', 'DEFAULT_POINTWISE_FUNCTION_RUN_TIME', 'DEFAULT_WAIT_TIME', 'SCALE_FACTOR_PER_FONT_POINT', 'START_X', 'START_Y', 'integer_interpolate', 'mid', 'inverse_interpolate', 'match_interpolate', 'midpoint', 'normalize', 'rotation_about_z', 'rotation_matrix', 'rotate_vector', 'z_to_vector', 'get_unit_normal', 'get_shaded_rgb', 'compass_directions', 'regular_vertices', 'complex_to_R3', 'R3_to_complex', 'complex_func_to_R3_func', 'center_of_mass', 'cross2d', 'shoelace', 'shoelace_direction', 'get_3d_vmob_start_corner_index', 'get_3d_vmob_end_corner_index', 'get_3d_vmob_start_corner', 'get_3d_vmob_end_corner', 'get_3d_vmob_gradient_start_and_end_points', 'get_3d_vmob_unit_normal', 'get_3d_vmob_start_corner_unit_normal', 'get_3d_vmob_end_corner_unit_normal', 'perpendicular_bisector', 'earclip_triangulation', 'cartesian_to_spherical', 'spherical_to_cartesian', 'find_intersection', 'get_winding_number', 'thick_diagonal', 'bezier', 'split_bezier', 'partial_bezier_points', 'subdivide_bezier', 'bezier_remap', 'point_lies_on_bezier', 'proportions_along_bezier_curve_for_point', 'get_smooth_cubic_bezier_handle_points', 'is_closed', 'straight_path', 'path_along_arc', 'clockwise_path', 'counterclockwise_path', 'adjacent_n_tuples', 'adjacent_pairs', 'all_elements_are_instances', 'concatenate_lists', 'list_update', 'list_difference_update', 'listify', 'make_even', 'make_even_by_cycling', 'remove_list_redundancies', 'remove_nones', 'stretch_array_to_length', 'tuplify', 'choose', 'clip', 'binary_search', 'color_to_rgba', 'rgba_to_color', 'color_to_int_rgb', 'color_to_int_rgba', 'merge_dicts_recursively', 'update_dict_recursively', 'tempconfig', 'override_animate', 'override_animation', 'index_labels', 'print_family', 'assert_is_mobject_method', 'turn_animation_into_updater', 'cycle_animation']
 EXPORTS += ['LineJointType', 'CapStyleType', 'register_font', 'Typst', 'MathTypst',
             'AS2700', 'BS381', 'DVIPSNAMES', 'SVGNAMES', 'X11', 'XKCD', 'quaternion_mult',
             'quaternion_from_angle_axis', 'angle_axis_from_quaternion', 'quaternion_conjugate', 'RendererType',
@@ -23161,7 +23330,7 @@ _SUBMODULE_ONLY = ('path_along_circles', 'spiral_path', 'EndSceneEarlyException'
                    'MultiAnimationOverrideException', '_layouts', 'Pixels', 'Percent', 'Degrees', 'Munits',
                    '_texcode_for_environment', 'get_quadratic_approximation_of_cubic',
                    'extract_mobject_family_members', 'ConvertToOpenGL', 'QuickHull', 'QuickHullPoint',
-                   'SubFacet', 'Facet', 'Horizon')
+                   'SubFacet', 'Facet', 'Horizon', 'deprecated', 'deprecated_params')
 
 
 class _ModuleNamespace(types.ModuleType):

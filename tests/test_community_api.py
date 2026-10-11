@@ -1282,6 +1282,38 @@ class AnimationApiTests(unittest.TestCase):
                 'h = QuickHull(); h.build(np.array([[0, 0], [2, 0], [0, 2], [2, 2], [1, 1]], dtype=float))\n'
                 'result = len(set(h.facets) - h.removed)\n'), 4)
 
+    def test_earclip_triangulation_and_any_length_normalize(self):
+        values = scene_values(
+            'v = [[-2,-2,0],[2,-2,0],[2,2,0],[-2,2,0],[-1.5,-1.5,0],[-1.5,-0.5,0],[-0.5,-0.5,0],[-0.5,-1.5,0]]\n'
+            't = earclip_triangulation(v, [4, 8])\n'
+            'def area(i, j, k):\n'
+            '    (a, b, c) = (v[i], v[j], v[k])\n'
+            '    return abs((b[0]-a[0])*(c[1]-a[1]) - (b[1]-a[1])*(c[0]-a[0])) / 2\n'
+            'u = [[0,0,0],[2,0,0],[2,1,0],[1,0.5,0],[0,1,0]]\n'
+            'w = earclip_triangulation(u, [5])\n'
+            'result = [len(t), sum(area(*t[k:k+3]) for k in range(0, len(t), 3)), len(w),'
+            ' list(normalize([3, 4])), list(normalize([0, 0, 0, 0])), normalize([0, 0], fall_back=(1, 2)),'
+            ' normalize((0.1, 0.1, 0))]\n')
+        self.assertEqual(values, [24, 15.0, 9, [0.6, 0.8], [0.0, 0.0, 0.0, 0.0], [1, 2],
+                                  [0.7071, 0.7071, 0.0]])
+
+    def test_deprecation_decorators_warn_and_redirect(self):
+        with self.assertLogs('manim', level='WARNING') as logs:
+            values = scene_values(
+                'from manim.utils.deprecation import deprecated, deprecated_params\n'
+                '@deprecated(since="0.7.0", replacement="new_area")\n'
+                'def area(r):\n'
+                '    return 3 * r * r\n'
+                '@deprecated_params(redirections=[("radius", "r")])\n'
+                'def size(r=1):\n'
+                '    return r\n'
+                'result = [area(2), size(radius=5)]\n')
+        self.assertEqual(values, [12, 5])
+        self.assertEqual([record.getMessage() for record in logs.records], [
+            'The function area has been deprecated since 0.7.0 and may be removed in a later version. '
+            'Use new_area instead.',
+            'The parameter radius of function size has been deprecated and may be removed in a later version.'])
+
 
 if __name__ == '__main__':
     unittest.main()
