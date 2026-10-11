@@ -797,3 +797,6 @@ target and sampled parents as `_pose_frame` tuples), and _arc_geometry/_arc_simi
 through them, so tips of moving arrows follow Community. Straight paths pass no frames.
 Growth animations on families with fixed-size arrow tips sample a Transform plan from
 copy().scale(0).move_to(point) (ShrinkToCenter: toward copy().scale(0)) instead of scaling.
+Family plans (own geometry plus members): a childless side is padded like Community's
+get_point_mobject, with collapsed transparent copies at its own center, and each side's
+members are re-posed into the frame of the aligned own snapshot (alignment may bake poses).

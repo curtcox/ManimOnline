@@ -686,6 +686,18 @@ class AnimationApiTests(unittest.TestCase):
             [[0.2024, -0.1351, 0.7577, 0.1351], [0.2091, -0.3462, 0.8382, 0.2612],
              [0.3575, -0.1351, 0.9127, 0.1351], [0.3144, 0.8063, 0.6344, 1.1113]])
 
+    def test_members_of_a_family_collapse_into_a_childless_target_center(self):
+        self.assertEqual(scene_values(
+            'def b(m):\n'
+            '    return [m.get_left()[0], m.get_bottom()[1], m.get_right()[0], m.get_top()[1]]\n'
+            'r = []\n'
+            'for alpha in (0.2, 0.5, 0.9):\n'
+            '    m = Arrow(LEFT, RIGHT * 2)\n'
+            '    a = Transform(m, Star().shift(RIGHT)); a.begin(); a.interpolate(alpha)\n'
+            '    r.append(b(m.submobjects[0]))\n'
+            'result = r\n'),
+            [[1.3835, -0.1638, 1.719, 0.1717], [1.2, -0.0398, 1.375, 0.1352], [1.0046, 0.0924, 1.0086, 0.0964]])
+
     def test_lagged_start_map_animates_shapes_once_with_their_children(self):
         self.assertEqual(scene_values(
             'class S(Scene):\n'

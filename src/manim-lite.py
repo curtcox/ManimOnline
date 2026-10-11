@@ -10929,6 +10929,20 @@ def _transform_plan(start, target):
         own_start['children'],own_target['children'] = [],[]
         first,last = VGroup().to_dict(),VGroup().to_dict()
         first['children'],last['children'] = start['children'],target['children']
+        for empty,full,own in ((first,last,start),(last,first,target)):
+            if not empty['children'] and full['children'] and own.get('type') in _PATH_TYPES:
+                # Community pads a childless family with point mobjects at its center
+                # (get_point_mobject): the other family's members collapse into it.
+                center = own.get('geometry_center', ORIGIN)
+                points = []
+                for child in full['children']:
+                    point = _snapshot_copy(child)
+                    pivot = point.get('geometry_center', ORIGIN)
+                    point['position'] = [center[0]-pivot[0],center[1]-pivot[1],point['position'][2]]
+                    point['geometry_scale'],point['opacity'] = 0,0
+                    point.pop('children',None)
+                    points.append(point)
+                empty['children'] = points
         if start.get('_arc_polygon_outline') or target.get('_arc_polygon_outline'):
             def outline(snapshot):
                 source = Mobject()
@@ -10944,8 +10958,19 @@ def _transform_plan(start, target):
                 return result
             first['children'] = [outline(child) for child in first['children']]
             last['children'] = [outline(child) for child in last['children']]
-        return ('family' ,start,target,[_transform_plan(own_start,own_target),
-                                      _transform_plan(first,last)])
+        own_plan = _transform_plan(own_start,own_target)
+        # Members are sampled in the frame of the sampled own geometry. Aligned outlines are
+        # re-posed (often baked into the parent frame), so move the members along with them.
+        for group,source,aligned in ((first,own_start,own_plan[1]),(last,own_target,own_plan[2])):
+            keys = ('position','angle','geometry_scale','geometry_center')
+            if all(source.get(key) == aligned.get(key) for key in keys) or not aligned.get('geometry_scale'):
+                continue
+            def frame(node):
+                _, offset, _, z = _pose_frame(node)
+                return node['geometry_scale'], node['angle'], [offset.real, offset.imag, z]
+            group['children'] = [_pose_snapshot(_pose_snapshot(child, frame(source), False), frame(aligned))
+                                 for child in group['children']]
+        return ('family' ,start,target,[own_plan,_transform_plan(first,last)])
     aligned = _align_path_snapshots(start, target)
     if aligned:
         return ('interpolate', *aligned, [])
