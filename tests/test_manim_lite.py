@@ -2619,10 +2619,8 @@ assert isinstance(t.get_value(), (int, float))""")
                 host._type=arrow['type']
                 host.children=[]
                 host._sampled_geometry_center=lite.Vector(arrow['geometry_center'])
-                for offset,expected in enumerate(host.get_start_and_end()):
-                    marker=marker_group['children'][index*2+offset]
-                    self.assertPointAlmostEqual(parent._point_to_world(lite.Vector(marker['position'])),expected)
                 self.assertEqual({child['_tip_role'] for child in arrow['children']},{'start','end'})
+                tips=[]
                 for child in arrow['children']:
                     tip=lite.ArrowTriangleFilledTip()
                     tip.__dict__.update(child)
@@ -2630,6 +2628,11 @@ assert isinstance(t.get_value(), (int, float))""")
                     tip.children=[]
                     tip._sampled_geometry_center=lite.Vector(child['geometry_center'])
                     self.assertPointAlmostEqual(arrow['shaft_'+child['_tip_role']],tip.base)
+                    tips.append(tip)
+                host.children=tips
+                for offset,expected in enumerate(host.get_start_and_end()):
+                    marker=marker_group['children'][index*2+offset]
+                    self.assertPointAlmostEqual(parent._point_to_world(lite.Vector(marker['position'])),expected)
         for a,b in zip(result['frames'][30]['mobjects'][:2],result['frames'][105]['mobjects'][:2]):
             for key in ('position','angle','geometry_scale','start','end'):
                 self.assertEqual(a[key],b[key])
@@ -2704,7 +2707,7 @@ assert isinstance(t.get_value(), (int, float))""")
                 host._type=arrow['type']
                 host.children=[]
                 host._sampled_geometry_center=lite.Vector(arrow['geometry_center'])
-                self.assertPointAlmostEqual(host.get_end(),frame['mobjects'][index+2]['position'])
+                tips=[]
                 for child in arrow['children']:
                     tip=lite.ArrowCircleTip()
                     tip.__dict__.update(child)
@@ -2712,6 +2715,9 @@ assert isinstance(t.get_value(), (int, float))""")
                     tip.children=[]
                     tip._sampled_geometry_center=lite.Vector(child['geometry_center'])
                     self.assertPointAlmostEqual(arrow['shaft_'+child['_tip_role']],tip.base)
+                    tips.append(tip)
+                host.children=tips
+                self.assertPointAlmostEqual(host.get_end(),frame['mobjects'][index+2]['position'])
         for a,b in zip(result['frames'][30]['mobjects'][:2],result['frames'][105]['mobjects'][:2]):
             for key in ('position','angle','geometry_scale','start','end'):
                 self.assertEqual(a[key],b[key])
@@ -2795,6 +2801,7 @@ assert isinstance(t.get_value(), (int, float))""")
             restored._type=arrow['type']
             restored.children=[]
             restored._sampled_geometry_center=lite.Vector(arrow['geometry_center'])
+            tips=[]
             for child in arrow['children']:
                 role=child['_tip_role']
                 tip=lite.ArrowTriangleFilledTip()
@@ -2803,6 +2810,9 @@ assert isinstance(t.get_value(), (int, float))""")
                 tip.children=[]
                 tip._sampled_geometry_center=lite.Vector(child['geometry_center'])
                 self.assertPointAlmostEqual(arrow['shaft_'+role],tip.base)
+                tips.append(tip)
+            # As in Manim, the end is the sampled tip's point.
+            restored.children=tips
             self.assertPointAlmostEqual(frame['mobjects'][1]['position'],restored.get_end())
         first,last=result['frames'][30]['mobjects'][0],result['frames'][120]['mobjects'][0]
         for key in ('start','end','position','geometry_scale','angle'):
@@ -4278,6 +4288,11 @@ assert isinstance(t.get_value(), (int, float))""")
         arrow = lite.Arrow(); data = middle[3]
         for attr in ('position','angle','geometry_scale','start','end'):
             setattr(arrow,attr,data[attr])
+        tip = lite.ArrowTriangleFilledTip()
+        tip.__dict__.update(data['children'][0])
+        tip._type, tip.children = data['children'][0]['type'], []
+        tip._sampled_geometry_center = lite.Vector(data['children'][0]['geometry_center'])
+        arrow.children = [tip]
         self.assertPointAlmostEqual(arrow.get_end(),middle[2]['position'])
         final = result['frames'][-1]['mobjects']
         self.assertEqual(len(final),2)

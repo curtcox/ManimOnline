@@ -885,3 +885,6 @@ Rotate/Grow*/SpinIn/Indicate keep a `_LiveMorph` (Community's starting and targe
 only when the family has updaters; Grow/SpinIn/Rotate sample it with their exact path
 formulas, because generic point paths do not act on analytical pose-only shapes.
 MoveAlongPath defaults to suspend_mobject_updating=False: its live copy moves, then updates.
+Layout helpers (arrange, arrange_in_grid, space_out_submobjects) move `_layout_members()`:
+a NumberLine shaft stands for Community's own points and stays with the parent. Line and
+Arrow get_start/get_end ask an attached tip (its tip_point), never stale endpoint metadata.

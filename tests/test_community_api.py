@@ -904,6 +904,16 @@ class AnimationApiTests(unittest.TestCase):
         self.assertEqual(result, [[0.9333, 0.0, 0.0]] * 3 + [[1.9333, 0.0, 0.0], [0.9333, 0.0, 0.0],
                                                              [1.0, -0.0, 0.0], 2.7975])
 
+    def test_number_line_layout_keeps_the_shaft_and_arrow_ends_follow_tips(self):
+        result = scene_values(
+            'n = NumberLine(x_range=[0, 4, 1], length=4).space_out_submobjects(1.5)\n'
+            'm = NumberLine(x_range=[0, 4, 1], length=4, include_tip=True).arrange(DOWN)\n'
+            'a = Arrow(LEFT, RIGHT*2).space_out_submobjects(1.5)\n'
+            'result = [round(n.width, 4), round(n.height, 4), [round(v, 4) for v in m.get_center()],\n'
+            '          round(m.height, 4), a.get_end()]\n')
+        self.assertEqual(result[:4], [6.0, 0.2, [0.0, 0.0, 0.0], 0.8])
+        self.assertEqual([abs(v) for v in result[4]], [2.3167, 0.0, 0.0])
+
     def test_frame_updaters_run_only_once_the_frame_is_in_the_scene(self):
         result = scene_values(
             'class S(MovingCameraScene):\n'

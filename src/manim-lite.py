@@ -1286,12 +1286,17 @@ class Mobject:
                                   delta[0]*math.sin(self.angle)+delta[1]*math.cos(self.angle),0))*self.geometry_scale
             self.shift(transformed-delta)
 
+    def _layout_members(self):
+        """Children that layout helpers move: a NumberLine shaft stands for Community's own
+        points, which arrange/space_out leave with the parent."""
+        return [child for child in self.children if child.__dict__.get('_number_line_role') != 'shaft']
+
     def _layout_targets(self):
         if self.geometry_scale == 0:
             raise NotImplementedError('Cannot arrange a collapsed family')
         self._geometry_center()
         targets = []
-        for child in self.children:
+        for child in self._layout_members():
             target = child.copy()
             pivot = target._geometry_center()
             center_point = self._point_to_world(child._pivot_point())
@@ -1306,7 +1311,8 @@ class Mobject:
     def _apply_layout_targets(self, targets):
         # Invert translations only; keep the parent pose for animated layouts.
         shifts = []
-        for child,target in zip(self.children,targets):
+        members = self._layout_members()
+        for child,target in zip(members,targets):
             delta = target._pivot_point()-self._point_to_world(child._pivot_point())
             depth = sum(target._z_extent())/2-target.__dict__.get('_layout_depth', 0)
             shifts.append(Vector((delta[0]*math.cos(self.angle)+delta[1]*math.sin(self.angle),
@@ -1314,7 +1320,7 @@ class Mobject:
                                   depth))*(1/self.geometry_scale))
         if any(not math.isfinite(value) for delta in shifts for value in delta):
             raise ValueError('Layout translations must be finite')
-        for child,delta in zip(self.children,shifts):
+        for child,delta in zip(members,shifts):
             child.shift(delta)
         self._geometry_center()
         return self
@@ -1357,7 +1363,7 @@ class Mobject:
                 dimensions[i] = len(aligns[i]) if aligns[i] is not None else len(sizes[i]) if sizes[i] is not None else None
             if dimensions[i] is not None and (isinstance(dimensions[i],bool) or not isinstance(dimensions[i], numbers.Integral) or not 1 <= dimensions[i] <= 1000):
                 raise ValueError('Grid dimensions must be integers from 1 to 1000')
-        count = len(self.children)
+        count = len(self._layout_members())
         rows,cols = dimensions
         if rows is None and cols is None:
             cols = max(1,math.ceil(math.sqrt(count)))
@@ -3515,7 +3521,7 @@ class Mobject:
 
     def space_out_submobjects(self, factor=1.5, **kwargs):
         self.scale(factor, **kwargs)
-        for child in self.children:
+        for child in self._layout_members():
             child.scale(1 / factor)
         return self
 
@@ -5622,6 +5628,8 @@ class Line(TipableVMobject):
         if self._type not in ('line','arrow','vgroup'):
             # A line given explicit points (e.g. a partial arrow) still ends at its tips.
             return (TipableVMobject if self._tip(True) is not None else Mobject).get_start(self)
+        if self._tip(True) is not None:
+            return TipableVMobject.get_start(self)  # Community asks the tip, wherever it moved.
         self._endpoints(self.start, self.end)
         return self._point_to_world(Vector(self.start))
 
@@ -5629,6 +5637,8 @@ class Line(TipableVMobject):
         if self._type not in ('line','arrow','vgroup'):
             # A line given explicit points (e.g. a partial arrow) still ends at its tips.
             return (TipableVMobject if self._tip() is not None else Mobject).get_end(self)
+        if self._tip() is not None:
+            return TipableVMobject.get_end(self)
         self._endpoints(self.start, self.end)
         return self._point_to_world(Vector(self.end))
 
