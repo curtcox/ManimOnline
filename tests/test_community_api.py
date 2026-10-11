@@ -698,6 +698,17 @@ class AnimationApiTests(unittest.TestCase):
             'result = r\n'),
             [[1.3835, -0.1638, 1.719, 0.1717], [1.2, -0.0398, 1.375, 0.1352], [1.0046, 0.0924, 1.0086, 0.0964]])
 
+    def test_turning_posed_families_move_members_in_straight_lines(self):
+        self.assertEqual(scene_values(
+            'def b(m):\n'
+            '    return [m.get_left()[0], m.get_bottom()[1], m.get_right()[0], m.get_top()[1]]\n'
+            'r = []\n'
+            'for m in (DashedLine(LEFT, RIGHT * 2), NumberLine(x_range=[0, 4, 1], length=4)):\n'
+            '    a = Transform(m, m.copy().shift(RIGHT).rotate(0.5)); a.begin(); a.interpolate(0.4)\n'
+            '    r.append(b(m))\n'
+            'result = r\n'),
+            [[-0.6854, -0.1912, 2.217, 0.1912], [-1.6819, -0.3516, 2.2135, 0.3516]])
+
     def test_lagged_start_map_animates_shapes_once_with_their_children(self):
         self.assertEqual(scene_values(
             'class S(Scene):\n'

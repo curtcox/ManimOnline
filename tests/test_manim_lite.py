@@ -2695,9 +2695,12 @@ assert isinstance(t.get_value(), (int, float))""")
             for key in ('position','angle','geometry_scale','start','end'):
                 self.assertEqual(a[key],b[key])
             for c,d in zip(a['children'],b['children']):
-                for key in ('position','angle','geometry_scale'):
-                    self.assertEqual(c[key],d[key])
-                self.assertEqual(lite._path_curves(c),lite._path_curves(d))
+                self.assertPointAlmostEqual(c['position'],d['position'])
+                self.assertAlmostEqual(c['angle'],d['angle'])
+                self.assertAlmostEqual(c['geometry_scale'],d['geometry_scale'])
+                for x,y in zip(lite._path_curves(c),lite._path_curves(d)):
+                    for p,q in zip(x,y):
+                        self.assertPointAlmostEqual(p,q)
         self.assertEqual(result['frames'][-1]['mobjects'],[])
 
     def test_arrow_real_tips_trim_shaft_and_manage_children(self):

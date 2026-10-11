@@ -800,3 +800,7 @@ copy().scale(0).move_to(point) (ShrinkToCenter: toward copy().scale(0)) instead 
 Family plans (own geometry plus members): a childless side is padded like Community's
 get_point_mobject, with collapsed transparent copies at its own center, and each side's
 members are re-posed into the frame of the aligned own snapshot (alignment may bake poses).
+When a family's own pose turns or scales between start and target (`_turning_pose`), its
+members are planned in the parent frame ('group_world' plans, or a 'world' marker on
+'family' plans) and `_members_into` re-poses each sample into the sampled parent frame: a
+lerped parent pose composed with lerped member poses would curve Community's straight paths.

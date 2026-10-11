@@ -10919,11 +10919,15 @@ def _transform_plan(start, target):
                 result.append(child)
             return result
         first, last = start['children'], target['children']
+        world = _turning_pose(start, target)
+        if world:
+            first = [_pose_snapshot(child, _snapshot_frame(start), False) for child in first]
+            last = [_pose_snapshot(child, _snapshot_frame(target), False) for child in last]
         children = [_transform_plan(a, b) for a, b in
                     zip(expand(first, last), expand(last, first))]
         start.pop('children')
         target.pop('children')
-        return ('group', start, target, children)
+        return ('group_world' if world else 'group', start, target, children)
     if start.get('children') or target.get('children'):
         own_start,own_target = _snapshot_copy(start),_snapshot_copy(target)
         own_start['children'],own_target['children'] = [],[]
@@ -10961,16 +10965,20 @@ def _transform_plan(start, target):
         own_plan = _transform_plan(own_start,own_target)
         # Members are sampled in the frame of the sampled own geometry. Aligned outlines are
         # re-posed (often baked into the parent frame), so move the members along with them.
+        # When the own pose turns or scales, members move in the parent frame instead (see
+        # _turning_pose) and are re-posed into each sampled own frame.
+        world = _turning_pose(own_plan[1],own_plan[2])
         for group,source,aligned in ((first,own_start,own_plan[1]),(last,own_target,own_plan[2])):
             keys = ('position','angle','geometry_scale','geometry_center')
+            if world:
+                group['children'] = [_pose_snapshot(child, _snapshot_frame(source), False)
+                                     for child in group['children']]
+                continue
             if all(source.get(key) == aligned.get(key) for key in keys) or not aligned.get('geometry_scale'):
                 continue
-            def frame(node):
-                _, offset, _, z = _pose_frame(node)
-                return node['geometry_scale'], node['angle'], [offset.real, offset.imag, z]
-            group['children'] = [_pose_snapshot(_pose_snapshot(child, frame(source), False), frame(aligned))
-                                 for child in group['children']]
-        return ('family' ,start,target,[own_plan,_transform_plan(first,last)])
+            group['children'] = [_pose_snapshot(_pose_snapshot(child, _snapshot_frame(source), False),
+                                                _snapshot_frame(aligned)) for child in group['children']]
+        return ('family' ,start,target,[own_plan,_transform_plan(first,last)]+(['world'] if world else []))
     aligned = _align_path_snapshots(start, target)
     if aligned:
         return ('interpolate', *aligned, [])
@@ -11005,7 +11013,7 @@ def _plan_members(plan):
     kind, _, _, children = plan
     if kind == 'family':
         return _plan_members(children[0]) + _plan_members(children[1])
-    if kind == 'group':
+    if kind in ('group', 'group_world'):
         return sum((_plan_members(child) for child in children), 0)
     return 1
 
@@ -11021,11 +11029,15 @@ def _sample_transform(plan, alpha, path_arc=0, member_alpha=None, frames=None):
     kind, start, target, children = plan
     if kind == 'family':
         own = _sample_transform(children[0],alpha,path_arc,member_alpha,frames)
+        if len(children) > 2:
+            members = _sample_transform(children[1],alpha,path_arc,member_alpha,frames)[0]['children']
+            own[0]['children'] = _members_into(members, own[0])
+            return own
         inner = _child_frames(frames, children[0][1], children[0][2], own[0], path_arc, alpha)
         members = _sample_transform(children[1],alpha,path_arc,member_alpha,inner)[0]['children']
         own[0]['children'] = members
         return own
-    if member_alpha is not None and kind != 'group':
+    if member_alpha is not None and kind not in ('group', 'group_world'):
         alpha = member_alpha()
     if kind == 'fade' and {start['type'], target['type']} <= {'text', 'mathtex'}:
         # Different glyphs: each slides and scales onto the other's place while they
@@ -11052,6 +11064,9 @@ def _sample_transform(plan, alpha, path_arc=0, member_alpha=None, frames=None):
         inner = _child_frames(frames, start, target, result, path_arc, alpha)
         result['children'] = [snapshot for child in children
                               for snapshot in _sample_transform(child, alpha, path_arc, member_alpha, inner)]
+    elif kind == 'group_world':
+        result['children'] = _members_into([snapshot for child in children for snapshot in
+                                            _sample_transform(child, alpha, path_arc, member_alpha, frames)], result)
     elif (isinstance(path_arc, _PointPath) or abs(path_arc) >= STRAIGHT_PATH_THRESHOLD) and 0 < alpha < 1:
         _arc_geometry(result, start, target, alpha, path_arc, frames)
     return [result]
@@ -11067,6 +11082,30 @@ def _child_frames(frames, start, target, result, path_arc, alpha):
 
 
 _IDENTITY_FRAME = (1, 0, 1, 0)
+
+
+def _turning_pose(start, target):
+    """Whether two parent poses differ in scale or rotation. A lerped pose then composes
+    with lerped member poses into a curved path, while Community moves every point straight,
+    so plans move such members in the parent frame."""
+    if 'position' not in start or 'position' not in target:
+        return False
+    a, b = _pose_frame(start)[0], _pose_frame(target)[0]
+    return bool(a and b and abs(a - b) > 1e-12 * max(1, abs(a)))
+
+
+def _snapshot_frame(node):
+    """A snapshot pose as _pose_snapshot's (scale, angle, offset) frame."""
+    _, offset, _, z = _pose_frame(node)
+    return node['geometry_scale'], node['angle'], [offset.real, offset.imag, z]
+
+
+def _members_into(members, node):
+    """Re-pose parent-frame member samples into a sampled parent's frame."""
+    if not node.get('geometry_scale'):
+        return members
+    frame = _snapshot_frame(node)
+    return [_pose_snapshot(member, frame) for member in members]
 
 
 def _pose_frame(node):
