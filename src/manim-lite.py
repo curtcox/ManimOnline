@@ -69,6 +69,27 @@ def _bounds_query(method):
     return query
 
 
+def _curves_proportion(curves, alpha):
+    """Community's point_from_proportion over cubic curves: sampled lengths choose the
+    curve, and the remaining length maps linearly to its parameter."""
+    lengths = []
+    # Baked 3D paths keep z; flat paths use the faster XY sampler.
+    bez = _bez3 if any(len(p) > 2 and p[2] for curve in curves for p in curve) else _bez
+    for curve in curves:
+        # Community's 10 samples per curve; plain tuples (_bez) keep MoveAlongPath fast.
+        samples = [bez(curve, i / 9) for i in range(10)]
+        lengths.append(sum(math.dist(a, b) for a, b in zip(samples, samples[1:])))
+    total = sum(lengths)
+    if not math.isfinite(total):
+        raise ValueError('Path length must be finite')
+    remaining = alpha * total
+    for curve, length in zip(curves, lengths):
+        if remaining <= length:
+            return Vector((*bez(curve, remaining / length if length else 0), 0)[:3])
+        remaining -= length
+    return Vector(curves[-1][-1])
+
+
 def _memo_query(memo, function, *args):
     """Run one geometry query with a bounds memo shared across a batch of queries (plot
     samples): the caller guarantees nothing moves between them."""
@@ -1636,6 +1657,8 @@ class Mobject:
             zs.extend(pivot_z + ((point[2] if len(point) > 2 else 0) - center_z) * scale
                       for point in own)
         for child in self.children:
+            if child._is_pointless():
+                continue
             low, high = child._z_extent()
             zs.extend(pivot_z + (z - center_z) * scale for z in (low, high))
         depth = self.__dict__.get('glyph_depth') if self._type in ('text', 'mathtex') else None
@@ -2641,23 +2664,7 @@ class Mobject:
                 raise ValueError('The path has no points')
             if alpha in (0, 1):
                 return self._point_to_world(Vector(curves[0][0] if alpha == 0 else curves[-1][-1]))
-            lengths = []
-            # Baked 3D paths keep z; flat paths use the faster XY sampler.
-            bez = _bez3 if any(len(p) > 2 and p[2] for curve in curves for p in curve) else _bez
-            for curve in curves:
-                # Plain-tuple sampling (_bez); Vector arithmetic here dominated MoveAlongPath.
-                samples = [bez(curve, i / 20) for i in range(21)]
-                lengths.append(sum(math.dist(a, b) for a, b in zip(samples, samples[1:])))
-            total = sum(lengths)
-            if not math.isfinite(total):
-                raise ValueError('Path length must be finite')
-            remaining = alpha * total
-            for curve, length in zip(curves, lengths):
-                if remaining <= length:
-                    point = bez(curve, remaining / length if length else 0)
-                    return self._point_to_world(Vector((*point, 0)[:3]))
-                remaining -= length
-            return self._point_to_world(Vector(curves[-1][-1]))
+            return self._point_to_world(_curves_proportion(curves, alpha))
         if self._type == 'annulus':
             # Traverse each contour independently; no radial connector is drawn.
             total = self.outer_radius + self.inner_radius
@@ -2671,8 +2678,9 @@ class Mobject:
                 angle = -TAU * (distance - self.outer_radius) / radius if radius else 0
             point = Vector((radius * math.cos(angle), radius * math.sin(angle), 0))
         elif self._type == 'ellipse':
-            angle = TAU * alpha
-            point = Vector((self.width / 2 * math.cos(angle), self.height / 2 * math.sin(angle), 0))
+            # Community samples the cubic outline: length picks the curve, then t is linear.
+            point = _curves_proportion(_path_curves({'type': 'ellipse', 'width': self.width,
+                                                     'height': self.height}), alpha)
         elif self._type in ('circle', 'arc'):
             if not math.isfinite(self.radius) or self.radius < 0:
                 raise ValueError('Path radius must be nonnegative and finite')
@@ -4443,16 +4451,24 @@ class VMobject(Mobject, metaclass=_CommunityTree):
             self.add_line_to(paths[-1][0][0])
         return self
 
-    def _materialize_path(self):
+    def _materialize_path(self, bake=False):
         # Analytical/closed outlines continue from Community's stored points.
         if self._type not in ('polyline', 'bezierpath'):
             VMobject.set_points(self, self.get_points())
+        elif bake and (self.angle or self.geometry_scale != 1 or any(self.position)):
+            # Bake the pose so appended points, given in world coordinates, join the path.
+            vertices = self._points_to_world(self.vertices) if self.vertices else []
+            curves = [self._points_to_world(curve) for curve in self.__dict__.get('curves', [])]
+            self._clear_pose()
+            self.vertices = [list(v) for v in vertices]
+            if self._type == 'bezierpath':
+                self.curves = [[list(p) for p in curve] for curve in curves]
         return self
 
     def add_points_as_corners(self, points):
         vertices = self._corners(points)
         if vertices:
-            self._materialize_path()
+            self._materialize_path(bake=True)
         if self._type == 'bezierpath':
             if not vertices:
                 return self
@@ -4494,7 +4510,7 @@ class VMobject(Mobject, metaclass=_CommunityTree):
 
     def add_cubic_bezier_curve_to(self, handle1, handle2, anchor):
         points = self._corners([handle1, handle2, anchor])
-        self._materialize_path()
+        self._materialize_path(bake=True)
         if self._type != 'bezierpath':
             if not self.vertices:
                 raise ValueError('Start the path with a corner before adding a cubic curve')

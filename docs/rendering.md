@@ -2410,3 +2410,7 @@ VMobjects, empty ArcPolygon, and PMobject rgbas/ingest_submobjects.
 A second pass called methods with sample arguments on posed shapes: Arc bounds now come from
 Community's cubic points (anchors for edges, handles for sizes) instead of the exact circle,
 and set_points_as_corners/set_points_smoothly take world coordinates on transformed shapes.
+Ellipse and path proportions sample each cubic at Community's 10 points (so tangents and
+MoveAlongPath on ellipses follow the cubic approximation, not the analytic ellipse);
+add_points_as_corners/add_cubic_bezier_curve_to on posed paths append world points; and
+pointless members (NumberPlane's empty groups) no longer affect z extents.

@@ -3393,11 +3393,9 @@ assert isinstance(t.get_value(), (int, float))""")
         ellipse = lite.Ellipse(width=4,height=2).rotate(.4).scale(.7).shift(lite.UP)
         alpha = .2
         tangent = lite.TangentLine(ellipse,alpha,length=2)
-        dx,dy = -2*lite.math.sin(alpha*lite.TAU),lite.math.cos(alpha*lite.TAU)
-        vector = lite.Vector((dx*lite.math.cos(.4)-dy*lite.math.sin(.4),
-                              dx*lite.math.sin(.4)+dy*lite.math.cos(.4),0))
-        unit = vector*(1/lite.math.hypot(*vector))
-        self.assertPointAlmostEqual(tangent.get_unit_vector(),unit)
+        # Community samples the ellipse's cubic outline (measured with Manim 0.22).
+        for actual, expected in zip(tangent.get_unit_vector(), (-0.9646, -0.2636, 0)):
+            self.assertAlmostEqual(actual, expected, places=4)
         curve = lite.CubicBezier((0,0,0),(1,3,0),(2,-2,0),(4,1,0))
         cubic = lite.TangentLine(curve,.4,d_alpha=.01,length=3)
         chord = lite.Line(curve.point_from_proportion(.39),curve.point_from_proportion(.41))

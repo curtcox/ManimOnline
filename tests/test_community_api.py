@@ -1236,6 +1236,19 @@ class AnimationApiTests(unittest.TestCase):
              2.8273, [-0.9979, 1.1048, 0.0], 1.0034, [0.0, 0.5, 0.0], 1.0, [-1.0, 0.0, 0.0],
              [0.0, 0.5, 0.0], 2.0, 1.0])
 
+    def test_posed_path_appends_ellipse_proportions_and_empty_member_depth(self):
+        self.assertEqual(scene_values(
+            'e = Elbow(width=0.5, angle=0.3); e.add_line_to(UP)\n'
+            'q = RoundedRectangle(corner_radius=0.3, width=3, height=2).rotate(0.2)\n'
+            'q.add_quadratic_bezier_curve_to(RIGHT * 2, UP)\n'
+            'o = Ellipse(width=3, height=1).rotate(0.5).shift(DOWN)\n'
+            'p = NumberPlane(); p.shift(OUT * 0.5)\n'
+            'result = [e.get_center(), e.width, e.height, e.get_points()[-1], q.width, q.get_points()[-1],'
+            ' Ellipse(width=3, height=1).point_from_proportion(0.3), o.point_from_proportion(0.08),'
+            ' p.get_z()]\n'),
+            [[0.165, 0.5739, 0.0], 0.6254, 0.8522, [0.0, 1.0, 0.0], 3.4191, [0.0, 1.0, 0.0],
+             [-0.3636, 0.4851, 0.0], [0.8477, -0.1679, 0.0], 0.5])
+
 
 if __name__ == '__main__':
     unittest.main()
