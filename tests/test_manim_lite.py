@@ -267,7 +267,7 @@ class Demo(Scene):
         banner = ManimBanner()
         self.play(banner.create())
         self.play(banner.expand())
-        self.result = [banner.get_width(), type(Sq().animate.grow(2)).__name__,
+        self.result = [banner.get_width(), type(Sq().animate.grow(2).build()).__name__,
                        type(FadeIn(Sq())).__name__, type(FadeIn(Sq(), use_override=False)).__name__]
         self.play(Unwrite(banner))
         square = Square()
@@ -6292,7 +6292,8 @@ self.wait(1)""")
 
     def test_scene_clock_uses_sampled_max_duration_and_clear_does_not_reset_it(self):
         scene = lite.Scene()
-        scene.wait(0)
+        with self.assertRaisesRegex(ValueError, r'Scene\.wait\(\) has a duration of 0 <= 0 seconds'):
+            scene.wait(0)
         self.assertEqual(scene.time, 0)
         scene.play(lite.AnimationGroup(lite.Create(lite.Circle(), run_time=0.3), lite.Create(lite.Dot(), run_time=1.1)))
         self.assertEqual(scene.time, 17/15)
@@ -6576,8 +6577,8 @@ class Demo(Scene):
                      's = Square()\nself.play(Succession(AnimationGroup(Create(s), Rotate(s)), FadeOut(s)))'):
             with self.assertRaisesRegex(ValueError, 'one animation per object'):
                 render(body)
-        with self.assertRaises(TypeError):
-            lite.Succession()
+        with self.assertRaisesRegex(ValueError, 'Please add at least one subanimation'):
+            lite.Succession().begin()
         with self.assertRaises(ValueError):
             lite.Succession(lite.Create(lite.Dot()), run_time=float('inf'))
 
@@ -7387,8 +7388,12 @@ class Demo(Scene):
         for kwargs in ({'lag_ratio': -1}, {'lag_ratio': float('inf')}, {'run_time': 0}):
             with self.assertRaises(ValueError):
                 lite.AnimationGroup(lite.FadeIn(lite.Dot()), **kwargs)
+        with self.assertRaisesRegex(ValueError, 'Please add at least one subanimation'):
+            lite.AnimationGroup().begin()
+        with self.assertRaisesRegex(ValueError, 'total run_time of 0 <= 0 seconds'):
+            lite.Scene().play(lite.AnimationGroup())
         with self.assertRaises(TypeError):
-            lite.AnimationGroup()
+            lite.AnimationGroup(lite.Dot())
         with self.assertRaisesRegex(ValueError, 'timeline duration'):
             lite.AnimationGroup(lite.FadeIn(lite.Dot(), run_time=2),
                                 lite.FadeIn(lite.Dot()), lag_ratio=1e308, run_time=1)

@@ -725,3 +725,7 @@ on any `get_`/`set_` name is true. Plain Mobject/Group `set_points` stores bound
 `_mobject_points` (never drawn, excluded from frames, disables `_world_container`).
 NumPy scene calls return lists of points as arrays; `c2p(xs, ys)` returns Community's
 transposed (3, n) array. Line graphs answer `input_to_graph_point` by binary search.
+`.animate` returns an Animate builder (`_built` converts it in play/groups; `.build()`
+also sets `mobject.target`). Scene play/wait/pause/wait_until validate run times with
+Community's messages (sub-frame values warn and clamp); empty AnimationGroups construct,
+are not `_instant`, and raise only when begun. Overrides may define `finish(self, scene)`.

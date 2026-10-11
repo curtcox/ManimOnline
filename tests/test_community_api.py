@@ -203,6 +203,40 @@ class AnimationApiTests(unittest.TestCase):
         middle = clockwise[len(clockwise) // 2]
         self.assertGreater(middle['mobjects'][0]['position'][1], 0.5)
 
+    def test_animate_builder_and_timing_validation(self):
+        def error(body):
+            return scene_values('try:\n' + ''.join('    ' + line + '\n' for line in body.splitlines()) +
+                                '    result = None\nexcept Exception as e:\n    result = [type(e).__name__, str(e)]\n')
+        self.assertEqual(scene_values('s = Square(); a = s.animate.shift(RIGHT)\n'
+                                      'result = [isinstance(a.build(), Animation), s.target is not None]\n'),
+                         [True, True])
+        self.assertEqual(error('Square().animate(run_time=2)(run_time=3)'),
+                         ['ValueError', 'Animation arguments must be passed before accessing methods '
+                          'and can only be passed once'])
+        self.assertEqual(error('Scene().wait(0)'),
+                         ['ValueError', 'Scene.wait() has a duration of 0 <= 0 seconds which Manim cannot '
+                          'render. The duration must be a positive number.'])
+        self.assertEqual(error('Scene().play(AnimationGroup())'),
+                         ['ValueError', 'Scene.play() has a total run_time of 0 <= 0 seconds which Manim '
+                          'cannot render. The total run_time must be a positive number.'])
+        self.assertEqual(scene_values('g = AnimationGroup()\nresult = [g.run_time, len(g.animations)]\n'),
+                         [0.0, 0.0])
+        self.assertEqual(error('FadeIn(Square(), run_time=-1)')[1][:39],
+                         'The run_time of FadeIn cannot be negati')
+        self.assertEqual(error("AddTextLetterByLetter(Text(''))"),
+                         ['ValueError', "The text mobject Text('') does not seem to contain any characters."])
+        self.assertEqual(error(
+            'class Spin(Square):\n'
+            '    @override_animation(FadeIn)\n'
+            '    def _a(self, **kw):\n'
+            '        return Rotate(self, PI)\n'
+            'class Spin2(Spin):\n'
+            '    @override_animation(FadeIn)\n'
+            '    def _b(self, **kw):\n'
+            '        return Rotate(self, PI)'),
+            ['MultiAnimationOverrideException',
+             'The animation FadeIn for Spin2 is overridden by more than one method: Spin._a and Spin2._b.'])
+
     def test_animation_group_accessors(self):
         result = scene_values(
             'g = AnimationGroup(FadeIn(Square()), FadeIn(Circle(), run_time=2), lag_ratio=0.5)\n'

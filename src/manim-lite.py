@@ -3241,10 +3241,12 @@ class Mobject:
         super().__init_subclass__(**kwargs)
         cls.animation_overrides = {}
         for name in dir(cls):
+            if name.startswith('__'):
+                continue
             value = getattr(cls, name, None)
             target = getattr(value, '_override_animation', None)
             if target is not None:
-                cls.animation_overrides.setdefault(target, value)
+                cls.add_animation_override(target, value)
 
     @classmethod
     def animation_override_for(cls, animation_class):
@@ -3253,8 +3255,10 @@ class Mobject:
     @classmethod
     def add_animation_override(cls, animation_class, override_func):
         if animation_class in cls.animation_overrides:
-            raise ValueError(f'The animation {animation_class.__name__} has already been overridden '
-                             f'for the mobject type {cls.__name__}')
+            raise MultiAnimationOverrideException(
+                f'The animation {animation_class.__name__} for {cls.__name__} is overridden by more '
+                f'than one method: {cls.animation_overrides[animation_class].__qualname__} and '
+                f'{override_func.__qualname__}.')
         if 'animation_overrides' not in cls.__dict__:
             cls.animation_overrides = dict(cls.animation_overrides)
         cls.animation_overrides[animation_class] = override_func
@@ -10547,6 +10551,15 @@ def _painted_paths(data, path=(), nested=True):
     return result
 
 
+def _takes_argument(method):
+    """Whether a bound method accepts a positional argument (lite hooks take the scene)."""
+    try:
+        parameters = inspect.signature(method).parameters.values()
+    except (TypeError, ValueError):
+        return True
+    return any(p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD, p.VAR_POSITIONAL) for p in parameters)
+
+
 class Animation(metaclass=_CommunityTree):
     _instant = False  # Only Add may have a zero run_time.
     set_default = classmethod(_set_default)
@@ -10571,6 +10584,17 @@ class Animation(metaclass=_CommunityTree):
         self.mobject, self.run_time, self.rate_func = mobject, run_time, rate_func
         self.lag_ratio, self.remover, self.introducer, self.name = lag_ratio, bool(remover), introducer, name
         self.suspend_mobject_updating = suspend_mobject_updating
+
+    @property
+    def run_time(self):
+        return self.__dict__.get('_run_time', 1)
+
+    @run_time.setter
+    def run_time(self, value):
+        if isinstance(value, _REAL) and value < 0:
+            raise ValueError(f'The run_time of {type(self).__name__} cannot be negative. '
+                             f'The given value was {value}.')
+        self._run_time = value
 
     # Community's custom-animation protocol. A subclass overriding one of these hooks
     # runs live like Community: begin(), interpolate(alpha) on each frame, finish(),
@@ -10674,7 +10698,10 @@ class Animation(metaclass=_CommunityTree):
             self.finish()
             self.clean_up_from_scene(scene)
             return
-        self.finish(scene)
+        if _takes_argument(self.finish):
+            self.finish(scene)
+        else:
+            self.finish()  # A Community-signature override: finish(self).
         if self.remover:
             scene.remove(self.mobject)
 
@@ -10749,6 +10776,8 @@ class Animation(metaclass=_CommunityTree):
 def _faded_group(mobjects, name):
     if not mobjects:
         raise ValueError('At least one mobject must be passed to ' + name)
+    if mobjects == (None,):
+        return Mobject()  # Community's Animation substitutes an empty Mobject for None.
     if any(not isinstance(m, Mobject) for m in mobjects):
         raise TypeError(name + ' expects Mobjects')
     return mobjects[0] if len(mobjects) == 1 else Group(*mobjects)
@@ -11617,13 +11646,23 @@ class Animate(Transform):
     def __init__(self, mobject):
         super().__init__(mobject, mobject)
         self.operations = []
+        self._overridden, self._anim_args = None, {}
 
     def build(self):
-        """Community's _AnimationBuilder.build: the animation itself here."""
+        """Community's _AnimationBuilder.build: the animation itself (or an overriding
+        animation), with mobject.target holding the edited copy."""
+        overridden = self.__dict__.get('_overridden')
+        if overridden is not None:
+            for key, value in self._anim_args.items():
+                setattr(overridden, key, value)
+            return overridden
+        self.mobject.target = self.target
         return self
 
     def __call__(self, **kwargs):
         """mobject.animate(run_time=..., lag_ratio=...): Community's animation arguments."""
+        if self.operations or self.__dict__.get('_overridden') is not None or self.__dict__.get('_anim_args'):
+            raise ValueError('Animation arguments must be passed before accessing methods and can only be passed once')
         unsupported = [key for key in kwargs if key not in self._ANIMATION_OPTIONS]
         if unsupported:
             raise NotImplementedError('Unsupported animate options: ' + ', '.join(unsupported))
@@ -11635,6 +11674,7 @@ class Animate(Transform):
             raise TypeError('rate_func must be callable')
         for key, value in kwargs.items():
             setattr(self, key, value)
+        self._anim_args = dict(kwargs)
         return self
 
     def begin(self, scene):
@@ -11648,10 +11688,15 @@ class Animate(Transform):
         if name.startswith('_'):
             raise AttributeError(name)
         method = getattr(type(self.mobject), name, None)
-        if hasattr(method, '_override_animate') and not self.operations:
-            # Community's @override_animate(method) decorator.
-            custom = method._override_animate
-            return lambda *args, **kwargs: custom(self.mobject, *args, anim_args={}, **kwargs)
+        if self.__dict__.get('_overridden') is not None or self.operations and hasattr(method, '_override_animate'):
+            raise NotImplementedError('Method chaining is currently not supported for overridden animations')
+        if hasattr(method, '_override_animate'):
+            # Community's @override_animate(method) decorator; build() returns the animation.
+            def override(*args, **kwargs):
+                self._overridden = method._override_animate(self.mobject, *args,
+                                                            anim_args=dict(self._anim_args), **kwargs)
+                return self
+            return override
         override = type(self.mobject).__dict__.get('_animate_overrides', None) or getattr(type(self.mobject), '_animate_overrides', {})
         if name in override and not self.operations:
             # Community's @override_animate: the method builds its own animation.
@@ -11669,14 +11714,20 @@ class Animate(Transform):
         return apply
 
 
+def _built(animation):
+    """Community's prepare_animation: an .animate builder becomes its animation."""
+    return animation.build() if isinstance(animation, Animate) else animation
+
+
 class AnimationGroup:
     """Combine independent animations on a timeline, optionally overlapping."""
     introducer = False
 
     def __init__(self, *animations, lag_ratio=0, run_time=None, rate_func=linear, group=None, introducer=False,
                  remover=False, name=None):
-        if not animations or any(not isinstance(a, (Animation, AnimationGroup)) for a in animations):
-            raise TypeError('AnimationGroup expects at least one supported animation')
+        animations = tuple(_built(animation) for animation in animations)
+        if any(not isinstance(a, (Animation, AnimationGroup)) for a in animations):
+            raise TypeError('AnimationGroup expects supported animations')
         if group is not None and not isinstance(group, Mobject):
             raise TypeError('AnimationGroup group must be a Mobject')
         self._group, self.introducer = group, bool(introducer)
@@ -11688,7 +11739,8 @@ class AnimationGroup:
             raise ValueError('lag_ratio must be nonnegative and finite')
         self.animations, self.rate_func, self.lag_ratio = animations, rate_func, lag_ratio
         self.run_time = self.init_run_time(run_time)
-        if not math.isfinite(self.run_time) or self.run_time < 0 or (self.run_time == 0 and not self._instant):
+        if not math.isfinite(self.run_time) or self.run_time < 0 or (
+                self.run_time == 0 and not self._instant and animations):
             raise ValueError('Animation run_time must be positive and finite')
 
     remover = False
@@ -11706,7 +11758,7 @@ class AnimationGroup:
             self.timings.append((start, animation.run_time))
             start += self.lag_ratio * animation.run_time
         self.anims_with_timings = [(a, s, s + d) for a, (s, d) in zip(self.animations, self.timings)]
-        self.natural_duration = max(start + duration for start, duration in self.timings)
+        self.natural_duration = max((start + duration for start, duration in self.timings), default=0)
         if not math.isfinite(self.natural_duration):
             raise ValueError('Animation timeline duration must be finite')
 
@@ -11714,6 +11766,13 @@ class AnimationGroup:
         self.build_animations_with_timings()
         self.max_end_time = self.natural_duration
         return self.max_end_time if run_time is None else run_time
+
+    def begin(self, scene=None):
+        if not self.animations:
+            raise ValueError(f'Trying to play {self} with no animations. Please add at least one subanimation.')
+        self.build_animations_with_timings()
+        if scene is not None:
+            self.prepare(scene)
 
     def get_run_time(self):
         return self.run_time
@@ -11753,7 +11812,7 @@ class AnimationGroup:
 
     @property
     def _instant(self):
-        return all(animation._instant for animation in self.animations)
+        return bool(self.animations) and all(animation._instant for animation in self.animations)
 
     @property
     def mobject(self):
@@ -11771,6 +11830,8 @@ class AnimationGroup:
         return [m for animation in self.animations for m in animation.objects()]
 
     def prepare(self, scene):
+        if not self.animations:
+            self.begin()
         self._introduce_group(scene)
         for animation in self.animations:
             animation.prepare(scene)
@@ -11847,6 +11908,8 @@ class Succession(AnimationGroup):
         return list(dict.fromkeys(super().objects()))
 
     def prepare(self, scene):
+        if not self.animations:
+            self.begin()
         self._introduce_group(scene)
         self._scene, self._active = scene, -1
         # Objects first introduced by a later stage stay hidden until it begins.
@@ -12327,6 +12390,8 @@ class AddTextLetterByLetter(Animation):
                 or '_number_format' in text.__dict__):
             raise TypeError('Letter-by-letter animations expect Text')
         glyphs = sum(1 for char in text.text if not char.isspace())
+        if not glyphs:
+            raise ValueError(f'The text mobject {text} does not seem to contain any characters.')
         if run_time is None:
             run_time = max(0.06, time_per_char * glyphs)
         kwargs.setdefault('introducer', True)
@@ -12803,7 +12868,7 @@ class Scene:
                 flat.extend(arg)
             else:
                 flat.append(arg)
-        return tuple(flat)
+        return tuple(_built(animation) for animation in flat)
 
     def play(self, *animations, run_time=None, rate_func=None, **kwargs):
         animations = self._flat_animations(animations)
@@ -12826,8 +12891,10 @@ class Scene:
                 setattr(animation, key, value)
         self.validate(*animations)
         durations = [a.run_time if run_time is None else run_time for a in animations]
-        if any(not math.isfinite(d) or d < 0 or (d == 0 and not a._instant) for d, a in zip(durations, animations)):
+        if any(not math.isfinite(d) or d < 0 for d in durations):
             raise ValueError('Animation run_time must be positive and finite')
+        if not any(a._instant for a in animations):
+            self._validate_run_time(max(durations), 'play', 'total run_time')
         # Instant animations (Add) take no frames, as Community's zero run_time;
         # other totals are at least one frame (validate_run_time).
         count = max(1, _frame_count(max(durations))) if max(durations) else 0
@@ -12901,13 +12968,26 @@ class Scene:
             self._world_members.pop(token[0], None)
             _exit_world(token)
 
+    def _validate_run_time(self, run_time, method, parameter='run_time'):
+        """Community's Scene.validate_run_time: positive, and at least one frame long."""
+        name = f'{type(self).__name__}.{method}()'
+        if not run_time > 0:
+            raise ValueError(f'{name} has a {parameter} of {run_time:g} <= 0 seconds which Manim cannot '
+                             f'render. The {parameter} must be a positive number.')
+        if run_time < 1 / FPS:
+            logging.getLogger('manim').warning(
+                f'The original {parameter} of {name}, {run_time:g} seconds, is too short for the current '
+                f'frame rate of {FPS:g} FPS. Rendering with the shortest possible {parameter} of '
+                f'{1 / FPS:g} seconds instead.')
+            run_time = 1 / FPS
+        return run_time
+
     def wait(self, duration=1, stop_condition=None, frozen_frame=None):
-        if not math.isfinite(duration) or duration < 0:
-            raise ValueError('Wait duration must be nonnegative and finite')
+        if not math.isfinite(duration):
+            raise ValueError('Wait duration must be finite')
         if stop_condition is not None and not callable(stop_condition):
             raise TypeError('stop_condition must be callable')
-        if 0 < duration < 1 / FPS:
-            duration = 1 / FPS  # Community's validate_run_time: at least one frame.
+        duration = self._validate_run_time(duration, 'wait', 'duration')
         static = self._wait_is_static(stop_condition, frozen_frame)
         # Community freezes a static wait for int(duration * fps) frames without running
         # updaters; other waits sample np.arange(0, duration, 1 / fps).
@@ -12953,9 +13033,11 @@ class Scene:
         return not any(member.has_time_based_updater() for root in roots for member in root.get_family())
 
     def wait_until(self, stop_condition, max_time=60):
+        max_time = self._validate_run_time(max_time, 'wait_until', 'max_time')
         return self.wait(max_time, stop_condition=stop_condition)
 
     def pause(self, duration=1.0):
+        duration = self._validate_run_time(duration, 'pause', 'duration')
         return self.wait(duration, frozen_frame=True)
 
     def next_section(self, name='unnamed', section_type=None, skip_animations=False):
@@ -19922,6 +20004,18 @@ def override_animate(method):
     return decorator
 
 
+class EndSceneEarlyException(Exception):
+    pass
+
+
+class RerunSceneException(Exception):
+    pass
+
+
+class MultiAnimationOverrideException(Exception):
+    pass
+
+
 def override_animation(animation_class):
     """Decorator: make animation_class(mobject, ...) build this method's animation."""
     def decorator(func):
@@ -20893,7 +20987,8 @@ _SUBMODULE_NAMES = frozenset((
 
 
 # Public in Community's submodules but not in its star import.
-_SUBMODULE_ONLY = ('path_along_circles', 'spiral_path')
+_SUBMODULE_ONLY = ('path_along_circles', 'spiral_path', 'EndSceneEarlyException', 'RerunSceneException',
+                   'MultiAnimationOverrideException')
 
 
 class _ModuleNamespace(types.ModuleType):
