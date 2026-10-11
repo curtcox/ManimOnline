@@ -837,3 +837,5 @@ Same-type primitives keep analytical interpolation unless both their local geome
 their pose scale/turn differ; then `_align_path_snapshots` aligns them pointwise (Community's
 straight path), since lerping radius and scale separately is not linear in the points.
 Recursive inversion (`_member_states`) keeps a NumberLine's shaft child first, as its own points.
+Animation-driven updaters (`turn_animation_into_updater`) apply `_sampled_copy(partial=True)`:
+partly drawn outlines become pointwise partial geometry, so live bounds follow Community.

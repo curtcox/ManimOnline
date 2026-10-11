@@ -21250,7 +21250,7 @@ def _animation_state(animation, starting, alpha):
                   animation.states(min(alpha, 1 - 1e-9)).get(animation.mobject) or ()]
         if not states:
             return starting.copy()
-    return _sampled_copy(starting, states)
+    return _sampled_copy(starting, states, partial=True)
 
 
 def _own_outline(mobject):

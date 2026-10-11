@@ -846,6 +846,27 @@ class AnimationApiTests(unittest.TestCase):
             'result = [s.r[len(s.r) * k // 10] for k in (7, 8)] + [b(c)]\n'),
             [0.1, 0.06, [-0.72, -0.47, 0.72, 0.97]])
 
+    def test_animation_updaters_draw_partial_outlines(self):
+        self.assertEqual(scene_values(
+            'def b(m):\n'
+            '    return [m.get_left()[0], m.get_bottom()[1], m.get_right()[0], m.get_top()[1]]\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        m = Square()\n'
+            '        n = VGroup(Circle(), Square().shift(RIGHT * 3))\n'
+            '        self.r = []\n'
+            '        turn_animation_into_updater(Create(m, run_time=0.9))\n'
+            '        turn_animation_into_updater(Write(n, run_time=0.9))\n'
+            '        self.add(m, n)\n'
+            '        self.add_updater(lambda dt: self.r.append(b(m) + b(n)))\n'
+            '        self.wait(0.5)\n'
+            '        self.wait(0.6)\n'
+            's = S(); s.render()\n'
+            'result = [s.r[k] for k in (2, 4, 7)]\n'),
+            [[0.9413, 1.0, 1.0, 1.0, 0.438, 0.0, 4.0, 1.0],
+             [0.5796, 1.0, 1.0, 1.0, -1.0, -0.2088, 4.0, 1.0],
+             [-1.0, 0.0981, 1.0, 1.0, -1.0, -1.0, 4.0, 1.0]])
+
     def test_rotate_fixes_its_pivot_when_constructed(self):
         self.assertEqual(scene_values(
             's = Square()\n'
