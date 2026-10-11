@@ -1409,6 +1409,22 @@ class AnimationApiTests(unittest.TestCase):
             '          rate_functions.ease_out_bounce(0.7)]\n')
         self.assertEqual(values, [0.25, -0.0997, 0.5, 0.5, 0.9306])
 
+    def test_submodule_only_names_import(self):
+        # Manim 0.22 defines these in submodules without exporting them from manim.
+        values = scene_values(
+            'from manim.mobject.graph import GenericGraph\n'
+            'from manim.mobject.types.image_mobject import AbstractImageMobject\n'
+            'from manim.animation.transform_matching_parts import TransformMatchingAbstractBase\n'
+            'from manim.data_structures import MethodWithArgs\n'
+            'from manim.utils.config_ops import DictAsObject\n'
+            'from manim.mobject.vector_field import StreamLine\n'
+            'import manim\n'
+            'call = MethodWithArgs(Square.shift, (UP,), {})\n'
+            'result = [issubclass(DiGraph, GenericGraph), issubclass(ImageMobject, AbstractImageMobject),\n'
+            '          issubclass(TransformMatchingShapes, TransformMatchingAbstractBase), call.args == (UP,),\n'
+            '          DictAsObject({"a": 1}).a, issubclass(StreamLine, VMobject), hasattr(manim, "MethodWithArgs")]\n')
+        self.assertEqual(values, [True, True, True, True, 1, True, False])
+
     def test_number_line_scene_structure(self):
         # Manim 0.22: the line owns the shaft points (cut at the tip base); submobjects
         # are the tip and ticks, and indexing/iteration include the line itself.

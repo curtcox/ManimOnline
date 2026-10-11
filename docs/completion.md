@@ -419,3 +419,5 @@ does), a non-default `num_components` sets circle bounds and rotated centers fro
 anchors, and `round_corners` rejects radius lists that do not tile each vertex group.
 Point equality follows np.allclose for non-finite coordinates, and importing
 `manim.utils.rate_functions` exposes the easing functions kept only in that module.
+A submodule import scan (every public class/function Community defines per module) now
+finds only renderer, file-writer and interactive-scene internals missing.

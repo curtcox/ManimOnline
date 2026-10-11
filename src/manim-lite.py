@@ -15145,7 +15145,11 @@ class _ZoomedCamera:
         return self.frame.get_center()
 
 
-class ImageMobjectFromCamera(Mobject):
+class AbstractImageMobject(Mobject):
+    """Community's common base of ImageMobject and ImageMobjectFromCamera."""
+
+
+class ImageMobjectFromCamera(AbstractImageMobject):
     """A display that shows its camera's frame stretched to fit (vector, not pixels).
 
     A pure container keeps Community's world-space children: an invisible screen
@@ -20474,7 +20478,7 @@ def _data_uri_size(uri):
     raise ValueError('Could not read the image size from the data URI')
 
 
-class ImageMobject(Mobject):
+class ImageMobject(AbstractImageMobject):
     """Community's raster image: height = rows / scale_to_resolution * frame height.
     Arrays are encoded as PNG; files written to the browser file system and data URIs work."""
     _frame_excluded = ('_pixels',)  # The renderer draws href; pixels are decoded on demand.
@@ -23920,7 +23924,47 @@ def _typing_alias(name):
     return typing.Union[base, typing.Sequence] if name.endswith(('Like', 'Like_Array')) or name == 'FlatBezierPoints' else base
 
 
-_SUBMODULE_ONLY = ('path_along_circles', 'spiral_path', 'EndSceneEarlyException', 'RerunSceneException',
+TransformMatchingAbstractBase = _TransformMatching
+MathTexPart = _MathTexPart
+
+
+class RateFunction(typing.Protocol):
+    def __call__(self, t: float) -> float: ...
+
+
+class Comparable(typing.Protocol):
+    def __lt__(self, other) -> bool: ...
+    def __gt__(self, other) -> bool: ...
+
+
+class LayoutFunction(typing.Protocol):
+    def __call__(self, graph, scale=2, *args, **kwargs) -> dict: ...
+
+
+class QualityDict(typing.TypedDict):
+    flag: typing.Optional[str]
+    pixel_height: int
+    pixel_width: int
+    frame_rate: int
+
+
+@dataclasses.dataclass
+class MethodWithArgs:
+    """A method to call later with args and kwargs (Community's animate-builder record)."""
+    __slots__ = ['method', 'args', 'kwargs']
+    method: typing.Any
+    args: typing.Any
+    kwargs: dict
+
+
+class DictAsObject:
+    def __init__(self, dictin):
+        self.__dict__ = dictin
+
+
+_SUBMODULE_ONLY = ('GenericGraph', 'StreamLine', 'AbstractImageMobject', 'TransformMatchingAbstractBase',
+                   'MathTexPart', 'RateFunction', 'Comparable', 'LayoutFunction', 'QualityDict',
+                   'MethodWithArgs', 'DictAsObject','path_along_circles', 'spiral_path', 'EndSceneEarlyException', 'RerunSceneException',
                    'MultiAnimationOverrideException', '_layouts', 'Pixels', 'Percent', 'Degrees', 'Munits',
                    '_texcode_for_environment', 'get_quadratic_approximation_of_cubic',
                    'extract_mobject_family_members', 'ConvertToOpenGL', 'QuickHull', 'QuickHullPoint',
