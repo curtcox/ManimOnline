@@ -492,6 +492,26 @@ class AnimationApiTests(unittest.TestCase):
             '              type(s.renderer.camera.fixed_orientation_mobjects).__name__]\n'),
             [7.1111, 2.0, 7.1111, 1.5708, 3.0, True, 7.1111, 0.0, 2.0, True, 'dict'])
 
+    def test_tex_templates_typing_aliases_and_empty_groups(self):
+        self.assertEqual(scene_values(
+            'from manim.typing import Point3D, ManimFloat\n'
+            'from manim.utils.tex import _texcode_for_environment\n'
+            'from manim.utils.bezier import get_quadratic_approximation_of_cubic\n'
+            'import typing\n'
+            'def f(p: typing.Optional[Point3D] = None) -> Point3D: return p\n'
+            't = TexTemplate(); t.add_to_preamble(r"\\usepackage{x}", prepend=True); t.add_to_document("D")\n'
+            'q = get_quadratic_approximation_of_cubic([0, 0, 0], [1, 0, 0], [2, 1, 0], [2, 2, 0])\n'
+            'g = VGroup().shift(3 * RIGHT)\n'
+            'result = [t.get_texcode_for_expression_in_env("E", "{tabular}[t]{cc}").split("\\n"),\n'
+            '          _texcode_for_environment("align*"), ManimFloat(2), [list(p) for p in q],\n'
+            '          list(g.get_center()), config.tex_template.placeholder_text]\n'),
+            [['\\documentclass[preview]{standalone}', '\\usepackage{x}', '\\usepackage[english]{babel}',
+              '\\usepackage{amsmath}', '\\usepackage{amssymb}', '\\begin{document}', 'D',
+              '\\begin{tabular}[t]{cc}', 'E', '\\end{tabular}', '\\end{document}'],
+             ['\\begin{align*}', '\\end{align*}'], 2.0,
+             [[0.0, 0.0, 0.0], [0.75, 0.0, 0.0], [1.375, 0.625, 0.0], [1.375, 0.625, 0.0],
+              [2.0, 1.25, 0.0], [2.0, 2.0, 0.0]], [0.0, 0.0, 0.0], 'YourTextHere'])
+
     def test_dashed_arrows_keep_one_set_of_tips(self):
         self.assertEqual(scene_values(
             'd = DashedVMobject(Arrow(ORIGIN, 2 * UR, color=RED))\n'

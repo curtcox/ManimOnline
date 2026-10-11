@@ -744,3 +744,6 @@ preceding part and collapses whitespace runs as TeX does. PreviewConfig `_PASSIV
 1080-pixel-high reference until the scene sets pixel dimensions (`_pixels_explicit`), so
 the 800 × 450 preview keeps Community's default pixel sizes. ThreeDCamera's fixed-mobject
 collections hold mobjects (dict/set), with orientation callbacks kept by id.
+`manim.typing` aliases come from the submodules' module `__getattr__` (`_typing_alias`:
+NDArray with NumPy, list otherwise) so annotations and unions work. An empty exact
+Group/VGroup/Mobject ignores shift (Community moves points; it has none).

@@ -7670,7 +7670,7 @@ class Demo(Scene):
                 self.assertPointAlmostEqual(group._point_to_world(child.get_center()),(2+(col-1)*1.4,1+(.5-row)*1.8,0))
         empty = lite.Group().shift(lite.RIGHT)
         self.assertIs(empty.arrange_in_grid(),empty)
-        self.assertEqual(empty.get_center(),lite.RIGHT)
+        self.assertEqual(empty.get_center(),lite.ORIGIN)
 
     def test_grid_inference_partial_cells_sizes_and_alignment(self):
         shapes = [lite.Rectangle(width=w,height=h) for w,h in ((1,1),(2,.5),(.5,2))]

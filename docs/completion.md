@@ -386,3 +386,14 @@ get_moving_and_static_mobjects follow Community, and play() accepts lists and ge
 Still open: frame-loop Scene internals (compile_animation_data, update_to_time),
 some CoordinateSystem helpers, TexTemplate preamble attributes, pixel images
 (get_image/show raise NotImplementedError) and alternative cameras.
+
+Community module tests (2026-10-10): Manim 0.22's own pytest suite (tests/module, 655
+tests) was run against lite through a `manim` shim. Lite now passes 563; the failures are
+private internals (_get_subdivision_matrix, _locate_first_match, compile_animation_data,
+caching/hashing), file-system TeX/Typst output, OpenGL metaclasses, intentional floating
+rounding and point-alignment differences. This pass added Community's ManimColor value
+semantics and operators, animate builders and run-time validation, subcaptions, Graph/Matrix/
+DecimalNumber attributes, Text font_size/submobjects, Tex separators, TexTemplate body/
+environment generation, config.tex_template, manim.utils.unit (Pixels, Percent, Degrees,
+Munits), manim.typing aliases, get_quadratic_approximation_of_cubic and empty containers
+that ignore shifts.

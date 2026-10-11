@@ -3,6 +3,7 @@ import bisect
 import cmath
 import contextlib
 import copy
+import dataclasses
 import enum
 import functools
 import inspect
@@ -867,6 +868,10 @@ class PreviewConfig:
     def __getattr__(self, name):
         if name in PreviewConfig._PASSIVE:
             return PreviewConfig._PASSIVE[name]
+        if name == 'tex_template':
+            template = TexTemplate()
+            object.__setattr__(self, name, template)
+            return template
         raise AttributeError(f"'PreviewConfig' object has no attribute '{name}'")
 
     def __init__(self, **kwargs):
@@ -953,6 +958,9 @@ class PreviewConfig:
         elif name == 'background_color':
             if not isinstance(value, str) or len(value) != 7 or not value.startswith('#') or any(c not in '0123456789abcdefABCDEF' for c in value[1:]):
                 raise ValueError('Background color must be a six-digit hex color')
+        elif name == 'tex_template':
+            if not isinstance(value, TexTemplate):
+                raise TypeError('config.tex_template must be a TexTemplate')
         elif name == 'seed':
             if value is not None and (isinstance(value, bool) or not isinstance(value, numbers.Integral)):
                 raise ValueError('config.seed must be an integer or None')
@@ -1497,6 +1505,10 @@ class Mobject:
                 child.shift(direction)
             self.__dict__.pop('_family_pivot_cache', None)
             return self
+        if (type(self) in (Group, VGroup, Mobject) and not self.children and self.angle == 0 and
+                self.geometry_scale == 1 and not any(self.position) and
+                not self.__dict__.get('_mobject_points')):
+            return self  # Community moves points; an empty container has none to move.
         self.position = list(Vector(self.position) + direction)
         return self
 
@@ -6838,41 +6850,68 @@ def _explode_math(leaf):
     leaf.children, leaf._type = others + children, 'vgroup'
 
 
+_DEFAULT_TEX_PREAMBLE = '\\usepackage[english]{babel}\n\\usepackage{amsmath}\n\\usepackage{amssymb}'
+
+
+@dataclasses.dataclass(eq=True)
 class TexTemplate:
     """Community's LaTeX template. The preview typesets with MathJax, so preambles,
     compilers and font packages are recorded but do not change the output."""
-    def __init__(self, tex_compiler='latex', description='', output_format='.dvi', documentclass=None,
-                 preamble=None, placeholder_text='YourTextHere', post_doc_commands='', **kwargs):
-        self.tex_compiler, self.description, self.output_format = tex_compiler, description, output_format
-        self.documentclass = documentclass or r'\documentclass[preview]{standalone}'
-        self.preamble = preamble if preamble is not None else (
-            '\\usepackage[english]{babel}\n\\usepackage{amsmath}\n\\usepackage{amssymb}')
-        self.placeholder_text, self.post_doc_commands = placeholder_text, post_doc_commands
-        for key, value in kwargs.items():
-            setattr(self, key, value)
+    _body: str = dataclasses.field(default='', init=False)
+    tex_compiler: object = 'latex'
+    description: str = ''
+    output_format: str = '.dvi'
+    documentclass: str = '\\documentclass[preview]{standalone}'
+    preamble: str = _DEFAULT_TEX_PREAMBLE
+    placeholder_text: str = 'YourTextHere'
+    post_doc_commands: str = ''
+
+    @property
+    def body(self):
+        return self._body or '\n'.join(filter(None, [
+            self.documentclass, self.preamble, '\\begin{document}', self.post_doc_commands,
+            self.placeholder_text, '\\end{document}']))
+
+    @body.setter
+    def body(self, value):
+        self._body = value
+
+    @classmethod
+    def from_file(cls, file='tex_template.tex', **kwargs):
+        raise NotImplementedError('Reading TeX template files is not available in the browser preview')
 
     def add_to_preamble(self, txt, prepend=False):
+        if self._body:
+            warnings.warn('This TeX template was created with a fixed body, trying to add text the preamble '
+                          'will have no effect.', UserWarning, stacklevel=2)
         self.preamble = (txt + '\n' + self.preamble) if prepend else (self.preamble + '\n' + txt)
         return self
 
     def add_to_document(self, txt):
+        if self._body:
+            warnings.warn('This TeX template was created with a fixed body, trying to add text the document '
+                          'will have no effect.', UserWarning, stacklevel=2)
         self.post_doc_commands += txt
         return self
-
-    @property
-    def body(self):
-        return '\n'.join((self.documentclass, self.preamble, '\\begin{document}',
-                           self.post_doc_commands, self.placeholder_text, '\\end{document}'))
 
     def get_texcode_for_expression(self, expression):
         return self.body.replace(self.placeholder_text, expression)
 
     def get_texcode_for_expression_in_env(self, expression, environment):
-        begin, end = f'\\begin{{{environment}}}', f'\\end{{{environment}}}'
-        return self.body.replace(self.placeholder_text, f'{begin}\n{expression}\n{end}')
+        begin, end = _texcode_for_environment(environment)
+        return self.body.replace(self.placeholder_text, '\n'.join([begin, expression, end]))
 
     def copy(self):
         return copy.deepcopy(self)
+
+
+def _texcode_for_environment(environment):
+    """Community's \\begin/\\end pair for an environment such as ``align*`` or ``{tabular}{cc}``."""
+    environment = environment.removeprefix('\\begin').removeprefix('{')
+    begin = '\\begin{' + environment
+    if not begin.endswith(('}', ']')):
+        begin += '}'
+    return begin, '\\end{' + environment.split('}', 1)[0] + '}'
 
 
 class _TemplateNamespace:
@@ -11993,7 +12032,7 @@ class AnimationGroup:
                 raise ValueError('Animation run_time must be positive and finite')
             self.timings.append((start, animation.run_time))
             start += self.lag_ratio * animation.run_time
-        self.anims_with_timings = [(a, s, s + d) for a, (s, d) in zip(self.animations, self.timings)]
+        self.anims_with_timings = _TimingList((a, s, s + d) for a, (s, d) in zip(self.animations, self.timings))
         self.natural_duration = max((start + duration for start, duration in self.timings), default=0)
         if not math.isfinite(self.natural_duration):
             raise ValueError('Animation timeline duration must be finite')
@@ -19901,6 +19940,31 @@ def partial_bezier_points(points, a, b):
     return lower
 
 
+def get_quadratic_approximation_of_cubic(a0, h0, h1, a1):
+    """Community's two-quadratic approximation of each cubic (6 points per curve)."""
+    args = [arg.tolist() if hasattr(arg, 'tolist') else arg for arg in (a0, h0, h1, a1)]
+    def depth(value):
+        if not isinstance(value, (list, tuple)):
+            return 0
+        return 2 if value and isinstance(value[0], (list, tuple)) else 1
+    depths = {depth(arg) for arg in args}
+    if depths == {1}:
+        curves = [tuple([float(v) for v in arg] for arg in args)]
+    elif depths == {2}:
+        curves = [tuple([float(v) for v in p] for p in curve) for curve in zip(*args)]
+    else:
+        raise ValueError('All arguments must be Point3D or Point3D_Array.')
+    if len({len(p) for curve in curves for p in curve}) > 1:
+        raise ValueError('All arguments must be Point3D or Point3D_Array.')
+    result = []
+    for a, h, g, b in curves:
+        m0 = [0.25 * (3 * x + y) for x, y in zip(h, a)]
+        m1 = [0.25 * (3 * x + y) for x, y in zip(g, b)]
+        k = [0.5 * (x + y) for x, y in zip(m0, m1)]
+        result += [list(a), m0, k, list(k), m1, list(b)]
+    return _number_array(result)
+
+
 def subdivide_bezier(points, n_divisions):
     points = list(points)
     if n_divisions == 1:
@@ -20769,6 +20833,12 @@ def _pooled_json(result, default):
     return head[:-1] + ', "pool": [' + ', '.join(pool) + '], "frames": [' + ', '.join(frames) + ']}'
 
 
+def _submodule_getattr(name):
+    if name in _TYPING_NAMES:
+        return _typing_alias(name)
+    raise AttributeError(name)
+
+
 class _SubmoduleFinder:
     """Serve any manim.* submodule as a package sharing the preview namespace."""
     def find_spec(self, fullname, path=None, target=None):
@@ -20784,6 +20854,7 @@ class _SubmoduleFinder:
         module.__dict__.update({name: globals()[name] for name in _SUBMODULE_ONLY})
         module.__all__ = list(root.__all__)
         module.__path__ = []
+        module.__getattr__ = _submodule_getattr
         return module
 
     def exec_module(self, module):
@@ -21295,8 +21366,64 @@ _SUBMODULE_NAMES = frozenset((
 
 
 # Public in Community's submodules but not in its star import.
+class _TimingList(list):
+    """Community's structured timing array: tolist() gives (animation, start, end) tuples."""
+    def tolist(self):
+        return [tuple(row) for row in self]
+
+
+_TYPING_NAMES = frozenset('''
+ManimFloat ManimInt ManimColorDType FloatRGB FloatRGBLike FloatRGB_Array FloatRGBLike_Array IntRGB IntRGBLike
+FloatRGBA FloatRGBALike FloatRGBA_Array FloatRGBALike_Array IntRGBA IntRGBALike FloatHSV FloatHSVLike FloatHSVA
+FloatHSVALike FloatHSL FloatHSLLike ManimColorInternal PointDType Point2D Point2DLike Point2D_Array
+Point2DLike_Array Point3D Point3DLike Point3D_Array Point3DLike_Array PointND PointNDLike PointND_Array
+PointNDLike_Array Vector2D Vector2DLike Vector2D_Array Vector2DLike_Array Vector3D Vector3DLike Vector3D_Array
+Vector3DLike_Array VectorND VectorNDLike VectorND_Array VectorNDLike_Array RowVector ColVector MatrixMN Zeros
+QuadraticBezierPoints QuadraticBezierPointsLike QuadraticBezierPoints_Array QuadraticBezierPointsLike_Array
+QuadraticBezierPath QuadraticBezierPathLike QuadraticSpline QuadraticSplineLike CubicBezierPoints
+CubicBezierPointsLike CubicBezierPoints_Array CubicBezierPointsLike_Array CubicBezierPath CubicBezierPathLike
+CubicSpline CubicSplineLike BezierPoints BezierPointsLike BezierPoints_Array BezierPointsLike_Array BezierPath
+BezierPathLike Spline SplineLike FlatBezierPoints FunctionOverride PathFuncType MappingFunction
+MultiMappingFunction ManimTextLabel PixelArray GrayscalePixelArray RGBPixelArray RGBAPixelArray StrPath
+StrOrBytesPath'''.split())
+
+
+def _typing_alias(name):
+    """manim.typing aliases, usable in annotations and unions (NDArray when NumPy is loaded)."""
+    try:
+        import numpy
+        import numpy.typing
+        real, integer = numpy.float64, numpy.int64
+        array = lambda dtype: numpy.typing.NDArray[dtype]
+    except ImportError:
+        real, integer = float, int
+        array = lambda dtype: list[dtype]
+    if name in ('ManimFloat', 'ManimColorDType', 'PointDType'):
+        return real
+    if name == 'ManimInt':
+        return integer
+    if name in ('FunctionOverride',):
+        return typing.Callable
+    if name in ('PathFuncType', 'MappingFunction', 'MultiMappingFunction'):
+        return typing.Callable[..., typing.Any]
+    if name == 'ManimTextLabel':
+        return 'Text | MathTex | Typst'
+    if name == 'StrPath':
+        import os
+        return typing.Union[str, os.PathLike]
+    if name == 'StrOrBytesPath':
+        import os
+        return typing.Union[str, bytes, os.PathLike]
+    if name.startswith(('IntRGB', 'PixelArray')) or name.endswith('PixelArray'):
+        base = array(integer)
+    else:
+        base = array(real)
+    return typing.Union[base, typing.Sequence] if name.endswith(('Like', 'Like_Array')) or name == 'FlatBezierPoints' else base
+
+
 _SUBMODULE_ONLY = ('path_along_circles', 'spiral_path', 'EndSceneEarlyException', 'RerunSceneException',
-                   'MultiAnimationOverrideException', '_layouts', 'Pixels', 'Percent', 'Degrees', 'Munits')
+                   'MultiAnimationOverrideException', '_layouts', 'Pixels', 'Percent', 'Degrees', 'Munits',
+                   '_texcode_for_environment', 'get_quadratic_approximation_of_cubic')
 
 
 class _ModuleNamespace(types.ModuleType):
@@ -21313,6 +21440,8 @@ class _ModuleNamespace(types.ModuleType):
             return getattr(self._root, name)
         if name in _SUBMODULE_ONLY:
             return globals()[name]
+        if name in _TYPING_NAMES:
+            return _typing_alias(name)
         if name in _SUBMODULE_NAMES:
             return _ModuleNamespace(f'{self.__name__}.{name}', self._root)
         raise AttributeError(f"module {self.__name__!r} has no attribute {name!r}")
