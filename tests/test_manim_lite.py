@@ -4955,17 +4955,21 @@ assert isinstance(t.get_value(), (int, float))""")
         returned[0].clear()
         self.assertEqual(len(clone.get_subpaths()[0]), 12)
 
-    def test_disconnected_alignment_matches_each_contour_even_with_equal_total_counts(self):
+    def test_equal_total_counts_pair_curves_across_contours(self):
         a = lite.VMobject().start_new_path(lite.ORIGIN).add_points_as_corners([lite.RIGHT,lite.UR])
         a.start_new_path(lite.LEFT*3).add_line_to(lite.LEFT*4)
         b = lite.VMobject().start_new_path(lite.UP).add_line_to(lite.UR)
         b.start_new_path(lite.DOWN*3).add_points_as_corners([lite.DR*3,lite.RIGHT*4])
         original = a.to_dict(), b.to_dict()
         first, last = lite._align_path_snapshots(*original)
-        self.assertEqual(first['subpath_lengths'], [2,2])
-        self.assertEqual(last['subpath_lengths'], [2,2])
+        # Community skips alignment for equal point counts: curves pair in order and the
+        # morph breaks wherever either side does (Manim 0.22: three one-curve subpaths).
+        self.assertEqual(first['subpath_lengths'], [1,1,1])
+        self.assertEqual(last['subpath_lengths'], [1,1,1])
         middle = lite.interpolate(first,last,.5)
-        self.assertEqual([len(p) for p in lite._path_subpaths(middle)], [2,2])
+        self.assertEqual([len(p) for p in lite._path_subpaths(middle)], [1,1,1])
+        self.assertEqual([[round(v, 3) for v in curve[0][:2]] for curve in middle['curves']],
+                         [[0.0, 0.5], [0.5, -1.5], [0.0, -1.5]])
         self.assertTrue(all(isinstance(n,int) for n in middle['subpath_lengths']))
         self.assertEqual((a.to_dict(),b.to_dict()), original)
         # Matching counts still need boundaries when their endpoints coincide
@@ -7161,20 +7165,19 @@ class Demo(Scene):
         self.assertEqual(shape._type, 'circle')
         self.assertEqual(shape.geometry_scale, 1)
 
-    def test_growth_easing_and_unsupported_options(self):
+    def test_growth_easing_and_options(self):
         result = render('self.play(GrowFromCenter(Square()), run_time=2, rate_func=lambda t: t*t)')
         self.assertEqual(result['frames'][15]['mobjects'][0]['geometry_scale'], 0.25)
         for point in ((float('nan'), 0), (0, float('inf'))):
             with self.assertRaises(ValueError):
                 lite.GrowFromPoint(lite.Square(), point)
-        with self.assertRaises(NotImplementedError):
-            lite.GrowFromPoint(lite.Square(), lite.OUT)
-        for animation in (lite.GrowFromPoint(lite.Square().shift(lite.OUT), lite.ORIGIN),
+        # Out-of-plane points and centers scale in 3D, as in Community.
+        for animation in (lite.GrowFromPoint(lite.Square(), lite.OUT),
+                          lite.GrowFromPoint(lite.Square().shift(lite.OUT), lite.ORIGIN),
                           lite.GrowFromCenter(lite.Square().shift(lite.OUT))):
             scene = lite.Scene()
-            with self.assertRaises(NotImplementedError):
-                scene.play(animation)
-            self.assertEqual(scene.mobjects, [])
+            scene.play(animation)
+            self.assertEqual(len(scene.mobjects), 1)
         # Manim 0.22: the start copy is recolored with point_color and blends to the original.
         result = render('s = Square(color=BLUE)\nself.play(GrowFromCenter(s, point_color=RED), rate_func=linear)')
         for index, color in ((0, '#FC6255'), (7, '#AF8F94'), (14, '#62BDD3'), (15, '#58C4DD')):

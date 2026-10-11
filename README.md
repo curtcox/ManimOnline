@@ -234,14 +234,15 @@ sweep. Fill closes the endpoints with a chord; sectors, 3D arcs, multiple turns,
 and `num_components` are unsupported.
 
 `GrowFromCenter(object)` expands geometry from its bounding-box center;
-`GrowFromPoint(object, point)` expands from a fixed XY point while moving toward
+`GrowFromPoint(object, point)` expands from a fixed point while moving toward
 its original center. Both restore the original size, rotation, style, and
 position at completion. `ShrinkToCenter(object)` contracts around its center
 and leaves the object in the scene at zero scale; use `remover=True` to remove
 it at completion. These animations work on
 whole groups and accept `run_time` and `rate_func`, defaulting to one second
-with smooth easing. Growth centers are resolved when playback begins. Point
-colors, curved growth trajectories, and 3D growth are unsupported. Text uses
+with smooth easing. Growth centers are resolved when playback begins. Points and
+centers may lie outside the XY plane, and `point_color` blends from that color.
+Curved growth trajectories are unsupported. Text uses
 its anchor as its center; normal preview stroke-width behavior still applies.
 
 Shapes accept `fill_color`, `stroke_color`, and `stroke_opacity` in addition to

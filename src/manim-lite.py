@@ -2060,10 +2060,15 @@ class Mobject:
         return self.shift(target - anchor + direction * buff)
 
     @staticmethod
-    def _xy_vector(value, name):
+    def _finite_vector(value, name):
         value = Vector(value)
         if not all(isinstance(v, _REAL) and not isinstance(v, bool) and math.isfinite(v) for v in value):
             raise ValueError(name + ' must be finite')
+        return value
+
+    @staticmethod
+    def _xy_vector(value, name):
+        value = Mobject._finite_vector(value, name)
         if value[2]:
             raise NotImplementedError(name + ' supports only the XY plane')
         return value
@@ -10973,6 +10978,14 @@ def _align_path_snapshots(start, target):
     paths1, paths2 = _path_subpaths(start), _path_subpaths(target)
     if not paths1 or not paths2:
         return None  # Empty geometry has no endpoint to align; retain the fade.
+    lengths1, lengths2 = [len(path) for path in paths1], [len(path) for path in paths2]
+    if sum(lengths1) == sum(lengths2) and lengths1 != lengths2:
+        # Community skips alignment for equal point counts, so points pair across contours
+        # (e.g. reverse_points on a cutout); the morph breaks wherever either side does.
+        flat1, flat2 = [curve for path in paths1 for curve in path], [curve for path in paths2 for curve in path]
+        cuts = sorted(set(itertools.accumulate(lengths1)) | set(itertools.accumulate(lengths2)))
+        spans = list(zip([0] + cuts[:-1], cuts))
+        paths1, paths2 = [flat1[a:b] for a, b in spans], [flat2[a:b] for a, b in spans]
     if (start['type'] == target['type'] and not pointwise and not drawn and
             (len(paths1) == len(paths2) == 1 and len(paths1[0]) == len(paths2[0]) if start['type'] == 'bezierpath'
              else len(start['vertices']) == len(target['vertices']))):
@@ -11745,9 +11758,9 @@ class FadeIn(Animation):
             kwargs.setdefault('introducer', True)
         super().__init__(_faded_group(mobjects, type(self).__name__), **kwargs)
         if shift is not None:
-            shift = Mobject._xy_vector(shift, 'Fade shift')
+            shift = Mobject._finite_vector(shift, 'Fade shift')
         if target_position is not None and not isinstance(target_position, Mobject):
-            target_position = Mobject._xy_vector(target_position, 'Fade target position')
+            target_position = Mobject._finite_vector(target_position, 'Fade target position')
         NumberLine._real(scale, 'Fade scale')
         self.shift_vector, self.target_position, self.scale_factor = shift, target_position, scale
         self._lagged = self.lag_ratio > 0
@@ -11772,12 +11785,13 @@ class FadeIn(Animation):
                       or self.scale_factor != 1)
         away = self._faded() if self.moved else self.start
         self.first, self.last = (away, self.start) if self._fading_in else (self.start, away)
+        self._lerp = _snapshot_lerp(self.first, self.last)
 
     def _visibility(self, opacity, alpha):
         return opacity * (alpha if self._fading_in else 1 - alpha)
 
     def sample(self, alpha):
-        result = interpolate(self.first, self.last, alpha) if self.moved else _snapshot_copy(self.start)
+        result = self._lerp(alpha) if self.moved else _snapshot_copy(self.start)
         result['opacity'] = self._visibility(self.start['opacity'], alpha)
         return [result]
 
@@ -11789,6 +11803,24 @@ class FadeIn(Animation):
         result = _snapshot_copy(self.start)
         # Whole drawable subtrees fade together so nested opacity never compounds.
         return [self._member_states(result, alpha, rate_func, member, nested=False)]
+
+
+def _same_shape(a, b):
+    """Whether two snapshots interpolate key by key (same types and family structure)."""
+    return (a['type'] == b['type'] and len(a.get('children') or ()) == len(b.get('children') or ())
+            and all(_same_shape(x, y) for x, y in zip(a.get('children') or (), b.get('children') or ())))
+
+
+def _snapshot_lerp(start, target):
+    """interpolate(start, target, alpha) as a function, aligning the snapshots first when an
+    edit changed their representation (e.g. scaling bakes an out-of-plane outline)."""
+    if _same_shape(start, target):
+        return lambda alpha: interpolate(start, target, alpha)
+    plan = _transform_plan(start, target)
+    def sample(alpha):
+        states = _sample_transform(plan, alpha)
+        return states[0] if len(states) == 1 else interpolate(start, target, alpha)
+    return sample
 
 
 def _lookup(data, path):
@@ -11811,15 +11843,11 @@ class GrowFromPoint(Animation):
         self.point, self.point_color = Vector(point), point_color
         if not all(math.isfinite(v) for v in self.point):
             raise ValueError('Growth point must be finite')
-        if self.point[2]:
-            raise NotImplementedError('Growth supports only the XY plane')
 
     def begin(self, scene):
         center = self.mobject.get_center()
         if not all(math.isfinite(v) for v in center):
             raise ValueError('Growth center must be finite')
-        if center[2]:
-            raise NotImplementedError('Growth supports only the XY plane')
         super().begin(scene)
         self.original = self.mobject.copy()
         self._growth_plan = None
@@ -12312,11 +12340,12 @@ class Indicate(Animation):
     def begin(self, scene):
         super().begin(scene)
         self.highlight = self.mobject.copy().scale(self.scale_factor).set_color(self.color).to_dict()
+        self._lerp = _snapshot_lerp(self.start, self.highlight)
 
     def sample(self, alpha):
         if alpha == 0:
             return [_snapshot_copy(self.start)]
-        return [interpolate(self.start, self.highlight, alpha)]
+        return [self._lerp(alpha)]
 
 
 class Rotate(Animation):

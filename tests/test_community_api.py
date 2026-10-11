@@ -863,6 +863,24 @@ class AnimationApiTests(unittest.TestCase):
             [[14.2222, 10.0, 5.0, -7.0, 14.2222, 8.0], [200.0, 400.0, 200.0, 112.5],
              [1080.0, 8.0, 14.2222, 14.2222]])
 
+    def test_out_of_plane_fades_growth_and_indicate(self):
+        result = scene_values(
+            'class S(ThreeDScene):\n'
+            '    def construct(self):\n'
+            '        cube, ring, dot = Cube(side_length=1), Circle().shift(OUT), Dot3D([1, 1, 1])\n'
+            '        self.r = []\n'
+            '        self.add_updater(lambda dt: self.r.append([cube.get_z(), ring.width, dot.get_center()]))\n'
+            '        self.play(FadeIn(cube, shift=OUT), GrowFromCenter(ring), GrowFromCenter(dot), run_time=1)\n'
+            '        self.play(Indicate(ring), FadeOut(cube, target_position=[0, 0, 2]), run_time=1)\n'
+            's = S(); s.render()\n'
+            'result = [s.r[7], s.r[22], s.r[-1][2]]\n')
+        self.assertEqual(result[0][0], -0.5837)
+        self.assertEqual(result[0][2], [1.0, 1.0, 1.0])
+        self.assertGreater(result[0][1], 0.5)
+        self.assertLess(result[0][1], 2)
+        self.assertGreater(result[1][1], 2.3)
+        self.assertGreater(result[1][0], 0.5)
+
     def test_dashed_line_tips_refit_the_dashes(self):
         result = scene_values(
             'def bounds(m):\n'

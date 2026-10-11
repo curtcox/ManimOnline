@@ -861,3 +861,8 @@ dashes (and an opposite tip) by a similarity about the far end, pop_tips stretch
 and put_start_and_end_on carries tips along. Endpoints are tip points (Community's quirky
 start-tip get_start/get_end are not reproduced). BackgroundRectangle frames carry
 `_fill_partial`: Create/DrawBorderThenFill/ShowPassingFlash fade its fill instead of tracing.
+Equal total curve counts with different contour splits are not aligned per contour:
+Community pairs points in order, so `_align_path_snapshots` cuts both at the union of
+their boundaries (e.g. reverse_points on a Cutout). Scaling a planar outline with z != 0
+bakes it to a bezierpath; Indicate/FadeIn interpolate through `_snapshot_lerp`, which
+plans an alignment when snapshot shapes differ. Fade shifts and growth points accept z.
