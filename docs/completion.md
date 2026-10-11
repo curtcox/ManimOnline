@@ -362,3 +362,16 @@ glyph shear under ApplyWave. Remaining per-frame differences come from platform 
 fonts, unseeded random layouts, glyph-level (rather than outline-point) nonlinear maps,
 updaters reading a source mid-TransformMatchingTex, and reusing a group after Unwrite.
 
+
+API surface (2026-10-10): Community's public method lists were diffed class by class
+against lite. Added Mobject/VMobject point and curve utilities (curve functions and
+lengths, anchors/handles, subpath splitting, smooth/quadratic/cubic path builders,
+put_start_and_end_on, reverse_points/repeat, align_data/align_submobjects, insert,
+surround, space_out_submobjects, proportion_from_point), rgba style accessors with a
+get_style/set_style round trip, the animation override registry (override_animation,
+add_animation_override) and Community's isinstance tree (VGroup, Text and MathTex are
+VMobjects; FadeIn/Rotate/Indicate are Transforms; arrows are named Vector). Default stroke
+widths now match Community (4 for arcs, lines and VGroups; 2 for NumberLine/axes; shaft-
+limited DoubleArrow). Still open: Scene internals (compile_animation_data and friends),
+some CoordinateSystem helpers, TexTemplate preamble attributes, pixel images
+(get_image/show raise NotImplementedError) and alternative cameras.

@@ -701,3 +701,11 @@ target) and returns `_SourceStates`, so updaters see the source half, not the mo
 visible state. GrowArrow scales tips and shaft width from zero, as Community does.
 Tests must pass under plain `python3` without NumPy (the browser's default); use
 `point_list` and `HAS_NUMPY` in tests that touch points arrays.
+
+Class tree: VMobject and Animation use the `_CommunityTree` metaclass so scene code's
+isinstance/issubclass follows Community (`_VIRTUAL_BASES`: VGroup/Text count as VMobject,
+AnimationGroup as Animation, FadeIn/Rotate/Indicate/... as Transform). Inside the library,
+type dispatch that depends on lite's real inheritance must use `_is_a(x, VMobject)`.
+The arrow class is exposed as `Vector` via __name__. Stroke widths follow Community:
+DEFAULT_STROKE_WIDTH (4) for VMobjects/VGroups, 2 for NumberLine and Axes axes.
+`tests/test_community_api.py` checks these Community-measured values.

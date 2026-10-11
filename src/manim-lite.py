@@ -33,7 +33,7 @@ _PLAIN_VALUE_TYPES = frozenset((int, float, str, bool, type(None)))  # ManimColo
 def _holds_mobject(value):
     """True for mobject references (also inside lists/dicts), which frames never store."""
     kind = type(value)
-    if kind in _PLAIN_VALUE_TYPES or kind.__name__ == 'Vector':
+    if kind in _PLAIN_VALUE_TYPES or kind is Vector:
         return False
     if isinstance(value, (list, tuple)):
         # Point arrays are large; skip plain items without a call per coordinate.
@@ -260,7 +260,7 @@ def _snapshot_copy(value):
                 for key, item in value.items()}
     if kind is list:
         return [item if type(item) in _PLAIN_VALUE_TYPES else _snapshot_copy(item) for item in value]
-    if kind in _PLAIN_VALUE_TYPES or kind.__name__ == 'Vector':
+    if kind in _PLAIN_VALUE_TYPES or kind is Vector:
         return value  # Immutable.
     if kind is tuple:
         return tuple(_snapshot_copy(item) for item in value)
@@ -817,6 +817,30 @@ def _restore_default(cls):
         cls.__dict__.get('__init__') is not None and delattr(cls, '__init__')
     elif original is not None:
         cls.__init__ = original
+
+
+class _CommunityTree(type):
+    """isinstance/issubclass follow Community's class tree where lite's differs: VGroup
+    and Text families are VMobjects, AnimationGroup is an Animation, fades and growths
+    are Transforms. Library code tests real inheritance with _is_a."""
+    def __instancecheck__(cls, instance):
+        return type.__instancecheck__(cls, instance) or cls._virtual(type(instance))
+
+    def __subclasscheck__(cls, subclass):
+        return type.__subclasscheck__(cls, subclass) or cls._virtual(subclass)
+
+    def _virtual(cls, subclass):
+        bases = _VIRTUAL_BASES.get(cls)
+        return bool(bases) and isinstance(subclass, type) and any(
+            type.__subclasscheck__(base, subclass) for base in bases)
+
+
+_VIRTUAL_BASES = {}  # Filled once the classes exist (see _install_scene_calls).
+
+
+def _is_a(value, cls):
+    """isinstance by real inheritance, ignoring _CommunityTree's virtual bases."""
+    return type.__instancecheck__(cls, value)
 
 
 class _UpdaterBuilder:
@@ -2201,7 +2225,7 @@ class Mobject:
         if not isinstance(mobject, Mobject):
             raise TypeError('match_points expects a Mobject')
         for member, source in zip(self.get_family(), mobject.get_family()):
-            if isinstance(member, VMobject) and source._type in _PATH_TYPES:
+            if _is_a(member, VMobject) and source._type in _PATH_TYPES:
                 VMobject.set_points(member, source.get_points())
         return self
 
@@ -2677,9 +2701,28 @@ class Mobject:
 
     def set_style(self, fill_color=None, fill_opacity=None, stroke_color=None, stroke_width=None,
                   stroke_opacity=None, family=True, **kwargs):
-        unsupported = [key for key in kwargs if not key.startswith('background_stroke') and key not in ('sheen_factor', 'sheen_direction')]
+        unsupported = [key for key in kwargs if not key.startswith('background_stroke') and
+                       key not in ('sheen_factor', 'sheen_direction', 'background_image')]
         if unsupported:
             raise NotImplementedError('Unsupported style options: ' + ', '.join(unsupported))
+        def single(value):
+            # get_style() lists one entry per gradient stop, None for transparent black.
+            if isinstance(value, (list, tuple)) and value and not isinstance(value[0], _REAL):
+                value = [BLACK if v is None else v for v in value]
+                return value[0] if len(value) == 1 else value
+            return value
+        fill_color, stroke_color = single(fill_color), single(stroke_color)
+        if hasattr(fill_opacity, 'tolist'):
+            fill_opacity = fill_opacity.tolist()
+        if isinstance(fill_opacity, list) and len(fill_opacity) == 1:
+            fill_opacity = fill_opacity[0]
+        background = single(kwargs.get('background_stroke_color'))
+        if isinstance(background, list):
+            kwargs['background_stroke_color'] = background[0]
+        elif background is not None:
+            kwargs['background_stroke_color'] = background
+        if kwargs.get('background_image') is not None:
+            self.color_using_background_image(kwargs['background_image'])
         if kwargs.get('sheen_factor') is not None or kwargs.get('sheen_direction') is not None:
             self.set_sheen(self.sheen_factor if kwargs.get('sheen_factor') is None else kwargs['sheen_factor'],
                            kwargs.get('sheen_direction'), family=family)
@@ -2717,17 +2760,128 @@ class Mobject:
     def get_fill_color(self):
         return self.fill_color
 
-    def get_stroke_color(self):
-        return self.stroke_color
+    def get_stroke_color(self, background=False):
+        return self.__dict__.get('background_stroke_color', BLACK) if background else self.stroke_color
 
     def get_fill_opacity(self):
         return self.fill_opacity
 
-    def get_stroke_opacity(self):
-        return self.stroke_opacity
+    def get_stroke_opacity(self, background=False):
+        return self.__dict__.get('background_stroke_opacity', 1) if background else self.stroke_opacity
 
-    def get_stroke_width(self):
-        return self.stroke_width
+    def get_stroke_width(self, background=False):
+        return self.__dict__.get('background_stroke_width', 0) if background else self.stroke_width
+
+    def generate_rgbas_array(self, color, opacity):
+        """Community's RGBA rows for a color/opacity (or gradient) pair, with a sheen stop."""
+        colors = [c for c in (color if isinstance(color, (list, tuple)) and not isinstance(color, str) else [color])]
+        opacities = list(opacity) if isinstance(opacity, (list, tuple)) or hasattr(opacity, 'tolist') else [opacity]
+        colors, opacities = make_even([BLACK if c is None else c for c in colors],
+                                      [0 if o is None else o for o in opacities])
+        rgbas = [list(ManimColor(c)._rgba[:3]) + [float(o)] for c, o in zip(colors, opacities)]
+        if self.sheen_factor and len(rgbas) == 1:
+            rgbas.append([min(1, max(0, v + self.sheen_factor)) for v in rgbas[0][:3]] + rgbas[0][3:])
+        return _number_array(rgbas)
+
+    def _channel_rgbas(self, channel):
+        if channel == 'background_stroke':
+            return self.generate_rgbas_array(self.get_stroke_color(True), self.get_stroke_opacity(True))
+        color = getattr(self, channel + '_color')
+        stops = self.__dict__.get(channel + '_opacities')
+        opacity = getattr(self, channel + '_opacity')
+        return self.generate_rgbas_array(color, [opacity * s for s in stops] if stops else opacity)
+
+    def _set_channel_rgbas(self, channel, rgbas):
+        rows = [list(row) for row in (rgbas.tolist() if hasattr(rgbas, 'tolist') else rgbas)]
+        if not rows:
+            raise ValueError('RGBA arrays need at least one row')
+        colors = [rgba_to_color(row[:3]) for row in rows]
+        opacities = [row[3] if len(row) > 3 else 1 for row in rows]
+        color = colors[0] if len(colors) == 1 else colors
+        opacity = opacities[0] if len(opacities) == 1 else opacities
+        if channel == 'fill':
+            self.set_fill(color, opacity, family=False)
+        elif channel == 'stroke':
+            self.set_stroke(color, None, opacity, family=False)
+        else:
+            self.set_background_stroke(colors[0], None, opacities[0], family=False)
+
+    fill_rgbas = property(lambda self: self._channel_rgbas('fill'),
+                          lambda self, value: self._set_channel_rgbas('fill', value))
+    stroke_rgbas = property(lambda self: self._channel_rgbas('stroke'),
+                            lambda self, value: self._set_channel_rgbas('stroke', value))
+    background_stroke_rgbas = property(lambda self: self._channel_rgbas('background_stroke'),
+                                       lambda self, value: self._set_channel_rgbas('background_stroke', value))
+
+    def get_fill_rgbas(self):
+        return self.fill_rgbas
+
+    def get_stroke_rgbas(self, background=False):
+        return self.background_stroke_rgbas if background else self.stroke_rgbas
+
+    def get_fill_colors(self):
+        return [ManimColor(tuple(row[:3])) if any(row) else None for row in self.get_fill_rgbas()]
+
+    def get_fill_opacities(self):
+        return _number_array([row[3] for row in self.get_fill_rgbas()])
+
+    def get_stroke_colors(self, background=False):
+        return [ManimColor(tuple(row[:3])) if any(row) else None for row in self.get_stroke_rgbas(background)]
+
+    def get_stroke_opacities(self, background=False):
+        return _number_array([row[3] for row in self.get_stroke_rgbas(background)])
+
+    def update_rgbas_array(self, array_name, color=None, opacity=None):
+        channel = array_name[:-len('_rgbas')] if array_name.endswith('_rgbas') else array_name
+        if channel == 'fill':
+            self.set_fill(color, opacity, family=False)
+        elif channel == 'stroke':
+            self.set_stroke(color, None, opacity, family=False)
+        elif channel == 'background_stroke':
+            self.set_background_stroke(color, None, opacity, family=False)
+        else:
+            raise ValueError(f'Unknown color array {array_name!r}')
+        return self
+
+    def align_rgbas(self, vmobject):
+        return self
+
+    def get_style(self, simple=False):
+        style = {'stroke_opacity': self.get_stroke_opacity(), 'stroke_width': self.get_stroke_width()}
+        if simple:
+            style.update(fill_color=self.get_fill_color(), fill_opacity=self.get_fill_opacity(),
+                         stroke_color=self.get_stroke_color())
+        else:
+            style.update(fill_color=self.get_fill_colors(), fill_opacity=self.get_fill_opacities(),
+                         stroke_color=self.get_stroke_colors(),
+                         background_stroke_color=self.get_stroke_colors(background=True),
+                         background_stroke_width=self.get_stroke_width(background=True),
+                         background_stroke_opacity=self.get_stroke_opacity(background=True),
+                         sheen_factor=self.get_sheen_factor(), sheen_direction=self.get_sheen_direction(),
+                         background_image=self.get_background_image())
+        return style
+
+    def color_using_background_image(self, background_image):
+        """Recorded for get_style; the preview cannot paint raster backgrounds into shapes."""
+        self.background_image = background_image
+        self.set_color(WHITE, family=False)
+        for child in self.children:
+            child.color_using_background_image(background_image)
+        return self
+
+    def get_background_image(self):
+        return self.__dict__.get('background_image')
+
+    def match_background_image(self, vmobject):
+        return self.color_using_background_image(vmobject.get_background_image())
+
+    def get_gradient_start_and_end_points(self):
+        direction = self.get_sheen_direction()
+        center = self.get_center()
+        offset = Vector(ORIGIN)
+        for basis, weight in zip((RIGHT, UP, OUT), direction):
+            offset = offset + (self.get_critical_point(basis) - center) * weight
+        return center - offset, center + offset
 
     def match_color(self, mobject):
         if not isinstance(mobject, Mobject):
@@ -2942,6 +3096,435 @@ class Mobject:
     def shuffle_submobjects(self, *args, **kwargs):
         return self.shuffle(*args, **kwargs)
 
+    # Community's family, point and alignment utilities.
+    animation_overrides = {}
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        cls.animation_overrides = {}
+        for name in dir(cls):
+            value = getattr(cls, name, None)
+            target = getattr(value, '_override_animation', None)
+            if target is not None:
+                cls.animation_overrides.setdefault(target, value)
+
+    @classmethod
+    def animation_override_for(cls, animation_class):
+        return cls.animation_overrides.get(animation_class)
+
+    @classmethod
+    def add_animation_override(cls, animation_class, override_func):
+        if animation_class in cls.animation_overrides:
+            raise ValueError(f'The animation {animation_class.__name__} has already been overridden '
+                             f'for the mobject type {cls.__name__}')
+        if 'animation_overrides' not in cls.__dict__:
+            cls.animation_overrides = dict(cls.animation_overrides)
+        cls.animation_overrides[animation_class] = override_func
+
+    @property
+    def depth(self):
+        stored = self.__dict__.get('depth')
+        return stored if stored is not None else self.get_depth()
+
+    @depth.setter
+    def depth(self, value):
+        self.rescale_to_fit(value, 2)
+
+    def scale_to_fit_depth(self, depth, **kwargs):
+        return self.rescale_to_fit(depth, 2, stretch=False, **kwargs)
+
+    def stretch_to_fit_depth(self, depth, **kwargs):
+        return self.rescale_to_fit(depth, 2, stretch=True, **kwargs)
+
+    def match_depth(self, mobject, **kwargs):
+        return self.match_dim_size(mobject, 2, **kwargs)
+
+    def stretch_about_point(self, factor, dim, point):
+        return self.stretch(factor, dim, about_point=point)
+
+    def surround(self, mobject, dim_to_match=0, stretch=False, buff=MED_SMALL_BUFF):
+        self.replace(mobject, dim_to_match, stretch)
+        length = mobject.length_over_dim(dim_to_match)
+        return self.scale((length + buff) / length)
+
+    def space_out_submobjects(self, factor=1.5, **kwargs):
+        self.scale(factor, **kwargs)
+        for child in self.children:
+            child.scale(1 / factor)
+        return self
+
+    def sort_submobjects(self, *args, **kwargs):
+        return self.sort(*args, **kwargs)
+
+    def insert(self, index, mobject):
+        self._validate_children([mobject])
+        self._adopt([mobject])
+        children = [m for m in self.children if m is not mobject]
+        children.insert(index, mobject)
+        self._replace_children(children)
+        return self
+
+    def nonempty_submobjects(self):
+        return [m for m in self.children if m.children or m.has_points()]
+
+    def repeat_submobject(self, submob):
+        return submob.copy()
+
+    def add_background_rectangle_to_submobjects(self, **kwargs):
+        for child in list(self.children):
+            child.add_background_rectangle(**kwargs)
+        return self
+
+    def add_background_rectangle_to_family_members_with_points(self, **kwargs):
+        for member in self.family_members_with_points():
+            member.add_background_rectangle(**kwargs)
+        return self
+
+    def match_updaters(self, mobject):
+        self.clear_updaters()
+        for updater in mobject.get_updaters():
+            self.add_updater(updater)
+        return self
+
+    def to_original_color(self):
+        return self.set_color(self.color)
+
+    def set_z_index_by_z_Point3D(self):
+        return self.set_z_index(self.get_center()[2])
+
+    def get_z_index_reference_point(self):
+        return getattr(self, 'z_index_group', self).get_center()
+
+    def init_colors(self, propagate_colors=True):
+        return self
+
+    def generate_points(self):
+        return self
+
+    @staticmethod
+    def get_mobject_type_class():
+        return Mobject
+
+    def get_point_mobject(self, center=None):
+        return VectorizedPoint(self.get_center() if center is None else center)
+
+    def throw_error_if_no_points(self):
+        if self.has_no_points():
+            caller = sys._getframe(1).f_code.co_name
+            message = f'Cannot call {type(self).__name__}.{caller} because {self!r} has no points.'
+            members = self.family_members_with_points()
+            if members:
+                message += f" Its family contains {len(members)} mobject{'' if len(members) == 1 else 's'} with points."
+            raise ValueError(message)
+
+    def get_start_and_end(self):
+        return self.get_start(), self.get_end()
+
+    def put_start_and_end_on(self, start, end):
+        current_start, current_end = self.get_start_and_end()
+        start, end = Vector(start), Vector(end)
+        current = current_end - current_start
+        if not any(current):
+            return self.shift(start - current_start)
+        target = end - start
+        self.scale(math.sqrt(sum(v * v for v in target)) / math.sqrt(sum(v * v for v in current)),
+                   about_point=current_start)
+        if current[2] or target[2]:
+            cross = Vector((current[1] * target[2] - current[2] * target[1],
+                            current[2] * target[0] - current[0] * target[2],
+                            current[0] * target[1] - current[1] * target[0]))
+            norm = math.sqrt(sum(v * v for v in cross))
+            angle = math.atan2(norm, sum(a * b for a, b in zip(current, target)))
+            self.rotate(angle, about_point=current_start, axis=cross * (1 / norm) if norm else OUT)
+        else:
+            self.rotate(math.atan2(current[0] * target[1] - current[1] * target[0],
+                                   current[0] * target[0] + current[1] * target[1]), about_point=current_start)
+        return self.shift(start - current_start)
+
+    def pose_at_angle(self, **kwargs):
+        return self.rotate(TAU / 14, RIGHT + UP, **kwargs)
+
+    def apply_function_to_position(self, function):
+        return self.move_to(function(self.get_center()))
+
+    def apply_function_to_submobject_positions(self, function):
+        for child in self.children:
+            child.apply_function_to_position(function)
+        return self
+
+    def apply_points_function_about_point(self, func, about_point=None, about_edge=None):
+        if about_point is None:
+            about_point = self.get_critical_point(ORIGIN if about_edge is None else about_edge)
+        def point_map(point):
+            return list(func(_point_array([list(point)]))[0])
+        return self.apply_function(point_map, about_point=about_point)
+
+    def apply_to_family(self, func):
+        for member in self.family_members_with_points():
+            func(member)
+        return self
+
+    def get_array_attrs(self):
+        return ['points']
+
+    def apply_over_attr_arrays(self, func):
+        for attr in self.get_array_attrs():
+            setattr(self, attr, func(getattr(self, attr)))
+        return self
+
+    def _family_world_points(self):
+        """Every family member's points in this mobject's frame (world for scene code)."""
+        result = []
+        def visit(member, ancestors):
+            points = member.get_points()
+            for parent in reversed(ancestors):
+                points = parent._points_to_world(points) if points else points
+            result.extend(Vector(p) for p in points)
+            for child in member.children:
+                visit(child, ancestors + [member])
+        visit(self, [])
+        return result
+
+    def get_all_points(self):
+        return _point_array([list(p) for p in self._family_world_points()])
+
+    def get_merged_array(self, array_attr):
+        if array_attr == 'points':
+            return self.get_all_points()
+        result = list(getattr(self, array_attr))
+        for child in self.children:
+            result.extend(child.get_merged_array(array_attr))
+        return result
+
+    def get_points_defining_boundary(self):
+        return self.get_all_points()
+
+    def get_extremum_along_dim(self, points=None, dim=0, key=0):
+        rows = self._family_world_points() if points is None else [list(p) for p in points]
+        values = [row[dim] for row in rows]
+        if not values:
+            raise ValueError('No points to measure')
+        return min(values) if key < 0 else max(values) if key > 0 else (min(values) + max(values)) / 2
+
+    def reduce_across_dimension(self, reduce_func, dim):
+        if dim not in (0, 1, 2):
+            raise ValueError('Dimension must be 0, 1 or 2')
+        values = [p[dim] for p in self._family_world_points()]
+        if not values:
+            return None
+        return reduce_func(values)
+
+    def reset_points(self):
+        if _is_a(self, VMobject):
+            VMobject.set_points(self, [])
+        return self
+
+    def reverse_points(self):
+        for member in self.family_members_with_points():
+            lengths = member.__dict__.get('subpath_lengths')
+            VMobject.set_points(member, list(reversed(member.get_points())))
+            if lengths:
+                member.subpath_lengths = list(reversed(lengths))
+        return self
+
+    def repeat(self, count):
+        if isinstance(count, bool) or not isinstance(count, numbers.Integral) or not 1 <= count <= 1000:
+            raise ValueError('repeat expects a count from 1 to 1000')
+        for member in self.family_members_with_points():
+            lengths = member.__dict__.get('subpath_lengths')
+            VMobject.set_points(member, member.get_points() * count)
+            if lengths:
+                member.subpath_lengths = list(lengths) * count
+        return self
+
+    def push_self_into_submobjects(self):
+        own = self.copy()
+        own._replace_children([])
+        self.reset_points()
+        self.add(own)
+        return self
+
+    def null_point_align(self, mobject):
+        for first, second in ((self, mobject), (mobject, self)):
+            if first.has_no_points() and second.has_points():
+                second.push_self_into_submobjects()
+        return self
+
+    def add_n_more_submobjects(self, n):
+        if n == 0:
+            return None
+        current = len(self.children)
+        if current == 0:
+            self.add(*(self.get_point_mobject() for _ in range(n)))
+            return None
+        target = current + n
+        splits = [0] * current
+        for index in range(target):
+            splits[index * current // target] += 1
+        children = []
+        for child, count in zip(self.children, splits):
+            children.append(child)
+            children.extend(child.copy().fade(1) for _ in range(1, count))
+        self._replace_children(children)
+        return self
+
+    def align_submobjects(self, mobject):
+        first, second = len(self.children), len(mobject.children)
+        self.add_n_more_submobjects(max(0, second - first))
+        mobject.add_n_more_submobjects(max(0, first - second))
+        return self
+
+    def align_points(self, mobject):
+        return self
+
+    def align_points_with_larger(self, larger_mobject):
+        return self
+
+    def align_data(self, mobject, skip_point_alignment=False):
+        self.null_point_align(mobject)
+        self.align_submobjects(mobject)
+        if not skip_point_alignment:
+            self.align_points(mobject)
+        for first, second in zip(self.children, mobject.children):
+            first.align_data(second)
+        return self
+
+    def interpolate(self, mobject1, mobject2, alpha, path_func=None):
+        """Become the alpha blend of two mobjects' points (when both have them), pose and styles."""
+        if not isinstance(mobject1, Mobject) or not isinstance(mobject2, Mobject):
+            raise TypeError('interpolate expects two mobjects')
+        NumberLine._real(alpha, 'Interpolation alpha')
+        if mobject1.has_points() and mobject2.has_points():
+            return VMobject.interpolate(self, mobject1, mobject2, alpha, path_func)
+        for name in ('position', 'angle', 'geometry_scale'):
+            start, end = getattr(mobject1, name), getattr(mobject2, name)
+            setattr(self, name, interpolate(list(start) if name == 'position' else start,
+                                            list(end) if name == 'position' else end, alpha))
+        return self.interpolate_color(mobject1, mobject2, alpha)
+
+    def interpolate_color(self, mobject1, mobject2, alpha):
+        def first(color):
+            return color[0] if isinstance(color, list) else color
+        def mix(name):
+            return interpolate_color(first(getattr(mobject1, name)), first(getattr(mobject2, name)), alpha)
+        self.color, self.fill_color, self.stroke_color = mix('color'), mix('fill_color'), mix('stroke_color')
+        for name in ('fill_opacity', 'stroke_opacity', 'stroke_width'):
+            setattr(self, name, getattr(mobject1, name) * (1 - alpha) + getattr(mobject2, name) * alpha)
+        return self
+
+    def proportion_from_point(self, point):
+        """Community's proportion_from_point: arc-length fraction at a point on the path."""
+        self.throw_error_if_no_points()
+        points = [list(Vector(p)) for p in self.get_points()]
+        curves = [points[i:i + 4] for i in range(0, len(points) - len(points) % 4, 4)]
+        lengths = [_cubic_length(curve) for curve in curves]
+        total, target = sum(lengths), 0
+        for curve, length in zip(curves, lengths):
+            proportions = proportions_along_bezier_curve_for_point(point, curve)
+            if len(proportions):
+                target += length * max(proportions)
+                break
+            target += length
+        else:
+            raise ValueError(f'Point {point} does not lie on this curve.')
+        return target / total
+
+    n_points_per_cubic_curve = n_points_per_curve = 4
+    tolerance_for_point_equality = 1e-6
+
+    def get_last_point(self):
+        points = self.get_points()
+        if not points:
+            raise IndexError('The mobject has no points')
+        return Vector(points[-1])
+
+    def get_anchors_and_handles(self):
+        points = self.points
+        return [points[i::4] for i in range(4)]
+
+    def get_nth_curve_points(self, n):
+        if not 0 <= n < self.get_num_curves():
+            raise IndexError(f'Curve index {n} is out of range')
+        return self.points[4 * n:4 * n + 4]
+
+    def get_nth_curve_function(self, n):
+        return bezier(self.get_nth_curve_points(n))
+
+    def get_nth_curve_length_pieces(self, n, sample_points=None):
+        curve = self.get_nth_curve_function(n)
+        count = 10 if sample_points is None else sample_points
+        samples = [curve(i / (count - 1)) for i in range(count)] if count > 1 else [curve(0)]
+        return _number_array([math.dist(a, b) for a, b in zip(samples, samples[1:])])
+
+    def get_nth_curve_function_with_length(self, n, sample_points=None):
+        return self.get_nth_curve_function(n), float(sum(self.get_nth_curve_length_pieces(n, sample_points)))
+
+    def get_nth_curve_length(self, n, sample_points=None):
+        return self.get_nth_curve_function_with_length(n, sample_points)[1]
+
+    def get_curve_functions(self):
+        for n in range(self.get_num_curves()):
+            yield self.get_nth_curve_function(n)
+
+    def get_curve_functions_with_lengths(self, **kwargs):
+        for n in range(self.get_num_curves()):
+            yield self.get_nth_curve_function_with_length(n, **kwargs)
+
+    def gen_cubic_bezier_tuples_from_points(self, points):
+        points = points[:len(points) - len(points) % 4]
+        return tuple(points[i:i + 4] for i in range(0, len(points), 4))
+
+    def get_cubic_bezier_tuples_from_points(self, points):
+        tuples = self.gen_cubic_bezier_tuples_from_points(points)
+        try:
+            import numpy
+        except ImportError:
+            return list(tuples)
+        return numpy.array(tuples, dtype=float).reshape(len(tuples), 4, -1)
+
+    def consider_points_equals(self, p0, p1):
+        return all(abs(a - b) <= self.tolerance_for_point_equality + 1e-5 * abs(b) for a, b in zip(p0, p1))
+
+    def consider_points_equals_2d(self, p0, p1):
+        return self.consider_points_equals(list(p0)[:2], list(p1)[:2])
+
+    def _gen_subpaths_from_points(self, points, filter_func):
+        splits = [0, *filter(filter_func, range(4, len(points), 4)), len(points)]
+        return (points[a:b] for a, b in zip(splits, splits[1:]) if b - a >= 4)
+
+    def get_subpaths_from_points(self, points):
+        return list(self._gen_subpaths_from_points(
+            points, lambda n: not self.consider_points_equals(points[n - 1], points[n])))
+
+    def gen_subpaths_from_points_2d(self, points):
+        return self._gen_subpaths_from_points(
+            points, lambda n: not self.consider_points_equals_2d(points[n - 1], points[n]))
+
+    def get_subpath_split_indices_from_points(self, points, n_dims=3):
+        count = len(points)
+        splits = [0] + [n for n in range(4, count, 4)
+                        if not self.consider_points_equals(list(points[n - 1])[:n_dims], list(points[n])[:n_dims])]
+        bounds = splits + [count]
+        result = [[a, b] for a, b in zip(bounds, bounds[1:])] if count >= 4 else []
+        try:
+            import numpy
+        except ImportError:
+            return result
+        return numpy.array(result, dtype=int).reshape(-1, 2)
+
+    def insert_n_curves_to_point_list(self, n, points):
+        rows = [list(Vector(p)) for p in (points.tolist() if hasattr(points, 'tolist') else points)]
+        if len(rows) == 1:
+            return _point_array(rows * (4 * n))
+        tuples = self.gen_cubic_bezier_tuples_from_points(rows)
+        curves = bezier_remap(tuples, len(tuples) + n)
+        return _point_array([list(p) for curve in curves for p in curve])
+
+    def _no_pixels(self, *args, **kwargs):
+        raise NotImplementedError('Pixel images of mobjects are not available in the browser preview')
+
+    get_image = show = save_image = _no_pixels
+
     def to_dict(self):
         global _BOUNDS_MEMO
         if _BOUNDS_MEMO is not None:
@@ -2990,6 +3573,15 @@ class Mobject:
         if ox or oy:
             cx, cy = (left + right) / 2, (bottom + top) / 2
             result['gradient_points'] = [[cx - ox, cy - oy], [cx + ox, cy + oy]]
+
+
+def _number_array(values):
+    """A float array when NumPy is loaded (as Community returns), else the list itself."""
+    try:
+        import numpy
+    except ImportError:
+        return values
+    return numpy.array(values, dtype=float)
 
 
 def _point_array(rows, owner=None):
@@ -3152,7 +3744,7 @@ def always_rotate(mobject, rate=20 * DEGREES, **kwargs):
     return mobject
 
 
-class VMobject(Mobject):
+class VMobject(Mobject, metaclass=_CommunityTree):
     """XY paths made of straight or cubic segments, with separate contours."""
     def __init__(self, **kwargs):
         kwargs.setdefault('stroke_width', 4)
@@ -3225,7 +3817,7 @@ class VMobject(Mobject):
 
     def align_points(self, mobject):
         """Give both paths the same number of cubic curves (Community's align_points)."""
-        if not isinstance(mobject, VMobject):
+        if not _is_a(mobject, VMobject):
             raise TypeError('align_points expects a VMobject')
         a, b = self._aligned_point_lists(self, mobject)
         if a and len(a) != len(self.get_points()):
@@ -3246,16 +3838,6 @@ class VMobject(Mobject):
             points = [Vector(p) for p in path_func(a, b, alpha)]
         self.set_points(points)
         self.interpolate_color(mobject1, mobject2, alpha)
-        return self
-
-    def interpolate_color(self, mobject1, mobject2, alpha):
-        def first(color):
-            return color[0] if isinstance(color, list) else color
-        def mix(name):
-            return interpolate_color(first(getattr(mobject1, name)), first(getattr(mobject2, name)), alpha)
-        self.color, self.fill_color, self.stroke_color = mix('color'), mix('fill_color'), mix('stroke_color')
-        for name in ('fill_opacity', 'stroke_opacity', 'stroke_width'):
-            setattr(self, name, getattr(mobject1, name) * (1 - alpha) + getattr(mobject2, name) * alpha)
         return self
 
     def append_points(self, new_points):
@@ -3443,6 +4025,88 @@ class VMobject(Mobject):
             raise ValueError('The path has no points')
         return self._point_to_world(Vector(self.vertices[-1]))
 
+    @staticmethod
+    def get_mobject_type_class():
+        return VMobject
+
+    def add_cubic_bezier_curve(self, anchor1, handle1, handle2, anchor2):
+        return self.append_points([anchor1, handle1, handle2, anchor2])
+
+    def add_cubic_bezier_curves(self, curves):
+        rows = curves.tolist() if hasattr(curves, 'tolist') else list(curves)
+        if rows and isinstance(rows[0], (list, tuple)) and rows[0] and isinstance(rows[0][0], (list, tuple)):
+            rows = [point for curve in rows for point in curve]
+        return self.append_points(rows)
+
+    def add_quadratic_bezier_curve_to(self, handle, anchor):
+        handle, anchor, last = Vector(handle), Vector(anchor), self.get_last_point()
+        return self.add_cubic_bezier_curve_to(handle * (2 / 3) + last * (1 / 3),
+                                              handle * (2 / 3) + anchor * (1 / 3), anchor)
+
+    def add_smooth_curve_to(self, *points):
+        if len(points) == 1:
+            handle2, anchor = None, Vector(points[0])
+        elif len(points) == 2:
+            handle2, anchor = Vector(points[0]), Vector(points[1])
+        else:
+            raise ValueError('Only call add_smooth_curve_to with 1 or 2 points')
+        if self.has_new_path_started():
+            return self.add_line_to(anchor)
+        self.throw_error_if_no_points()
+        existing = self.get_points()
+        last_handle, last_anchor = Vector(existing[-2]), Vector(existing[-1])
+        tangent = last_anchor - last_handle
+        if handle2 is None:
+            # The previous tangent rotated a half turn about the direction to the new anchor.
+            direction = anchor - last_anchor
+            norm = math.sqrt(sum(v * v for v in direction))
+            unit = direction * (1 / norm) if norm else Vector(ORIGIN)
+            handle2 = anchor - (unit * (2 * sum(a * b for a, b in zip(tangent, unit))) - tangent)
+        return self.append_points([last_anchor, last_anchor + tangent, handle2, anchor])
+
+    def set_anchors_and_handles(self, anchors1, handles1, handles2, anchors2):
+        groups = [[list(p) for p in (g.tolist() if hasattr(g, 'tolist') else g)]
+                  for g in (anchors1, handles1, handles2, anchors2)]
+        if len({len(group) for group in groups}) != 1:
+            raise ValueError('Anchor and handle lists must have the same length')
+        return self.set_points([group[i] for i in range(len(groups[0])) for group in groups])
+
+    def scale_handle_to_anchor_distances(self, factor):
+        for member in self.family_members_with_points():
+            points = [Vector(p) for p in member.get_points()]
+            whole = len(points) - len(points) % 4
+            if not whole:
+                continue
+            scaled = []
+            for i in range(0, whole, 4):
+                a1, h1, h2, a2 = points[i:i + 4]
+                scaled += [a1, a1 + (h1 - a1) * factor, a2 + (h2 - a2) * factor, a2]
+            lengths = member.__dict__.get('subpath_lengths')
+            VMobject.set_points(member, scaled + points[whole:])
+            if lengths:
+                member.subpath_lengths = lengths
+        return self
+
+    def resize_points(self, new_length, resize_func=None):
+        points = self.points
+        if new_length != len(points):
+            self.points = (resize_func or _resize_array)(points, new_length)
+        return self
+
+    def align_points_with_larger(self, larger_mobject):
+        points, _ = self._aligned_point_lists(self, larger_mobject)
+        if points and len(points) != len(self.get_points()):
+            self.set_points(points)
+        return self
+
+
+def _resize_array(array, length):
+    """Community's resize_array: cycle the rows to the requested length."""
+    rows = list(array)
+    if not length:
+        return _point_array([])
+    return _point_array([list(rows[i % len(rows)]) for i in range(length)])
+
 
 def _smooth_path_curves(anchors):
     """C2 cubic spline: natural open ends or a periodic closed-loop system."""
@@ -3515,6 +4179,12 @@ def _curve_length_data(mobject, samples):
             parameters.append((index+alpha)/count)
             previous = point
     return lengths,parameters
+
+
+def _cubic_length(curve, sample_points=10):
+    """Community's get_nth_curve_length: a polyline through evenly spaced parameters."""
+    samples = [VMobject._bezier_point(curve, i / (sample_points - 1)) for i in range(sample_points)]
+    return sum(math.dist(a, b) for a, b in zip(samples, samples[1:]))
 
 
 class ParametricFunction(VMobject):
@@ -3901,7 +4571,6 @@ class Arc(TipableVMobject):
             raise ValueError('Arc geometry must be finite with a nonnegative radius')
         if abs(angle) > TAU:
             raise NotImplementedError('Arcs support at most one full turn')
-        kwargs.setdefault('stroke_width',2)
         super().__init__(**kwargs)
         self._type, self.radius = 'arc', radius
         self.start_angle, self.arc_angle = start_angle % TAU, angle
@@ -4394,7 +5063,6 @@ class Line(TipableVMobject):
         start,end = self._endpoints(*self._resolve_ends(start,end))
         if path_arc:
             # Community: the points of ArcBetweenPoints, trimmed by buff along the arc.
-            kwargs.setdefault('stroke_width',2)
             super().__init__(tip_length=tip_length,tip_style=tip_style,**kwargs)
             self._type = 'line'
             self.start, self.end, self.buff, self.path_arc = list(start), list(end), buff, path_arc
@@ -4414,7 +5082,6 @@ class Line(TipableVMobject):
         if span > 2*buff and buff:
             offset = (end-start)*(buff/span)
             start,end = start+offset,end-offset
-        kwargs.setdefault('stroke_width',2)
         super().__init__(tip_length=tip_length,tip_style=tip_style,**kwargs)
         self._type = 'line'
         self.start, self.end = list(start),list(end)
@@ -4741,6 +5408,10 @@ class DoubleArrow(Arrow):
         tip_shape_start = kwargs.pop('tip_shape_start',ArrowTriangleFilledTip)
         super().__init__(*args,**kwargs)
         self.add_tip(at_start=True,tip_shape=tip_shape_start)
+        # Community's add_tip rescales the shaft, which resets the width from the
+        # shaft between both tips.
+        shaft = math.dist(self.start_tip.base, self.tip.base)
+        self.stroke_width = min(self.initial_stroke_width, self.max_stroke_width_to_length_ratio*shaft)
 
 
 class CurvedArrow(ArcBetweenPoints):
@@ -6269,6 +6940,8 @@ class Tex(MathTex):
 
 class Group(Mobject):
     def __init__(self, *mobjects, **kwargs):
+        if _is_a(self, VGroup):
+            kwargs.setdefault('stroke_width', DEFAULT_STROKE_WIDTH)
         super().__init__(**kwargs)
         self._type = 'vgroup'
         self.add(*mobjects)
@@ -7507,6 +8180,7 @@ class NumberLine(VGroup):
         label_direction = self._direction(label_direction)
         length = (values[1]-values[0])*unit_size if length is None else length
         self._real(length,'length',positive=True)
+        kwargs.setdefault('stroke_width', 2.0)
         super().__init__(**kwargs)
         self.x_range = values[:]
         self.x_min,self.x_max,self.x_step = values
@@ -7782,7 +8456,7 @@ class Axes(VGroup, CoordinateSystem):
             raise ValueError('Axes tips must be a boolean')
         super().__init__(**kwargs)
         common = dict(color=self.color,stroke_color=self.stroke_color,
-                      stroke_width=self.stroke_width,stroke_opacity=self.stroke_opacity,
+                      stroke_width=2.0,stroke_opacity=self.stroke_opacity,
                       include_tip=tips,numbers_to_exclude=[0],exclude_origin_tick=True)
         merge = self._merge_axis_options
         common = merge(common,axis_config)
@@ -9500,7 +10174,7 @@ def _painted_paths(data, path=(), nested=True):
     return result
 
 
-class Animation:
+class Animation(metaclass=_CommunityTree):
     _instant = False  # Only Add may have a zero run_time.
     set_default = classmethod(_set_default)
 
@@ -9508,10 +10182,9 @@ class Animation:
         mobject = args[0] if args else kwargs.get('mobject')
         if use_override and isinstance(mobject, Mobject):
             # Community's @override_animation: a mobject method builds this animation.
-            for klass in type(mobject).__mro__:
-                for value in vars(klass).values():
-                    if getattr(value, '_override_animation', None) is cls:
-                        return value(mobject, *args[1:], **kwargs)
+            override = type(mobject).animation_override_for(cls)
+            if override is not None:
+                return override(mobject, *args[1:], **kwargs)
         return super().__new__(cls)
 
     def __init__(self, mobject, run_time=1, rate_func=smooth, lag_ratio=0, remover=False,
@@ -9956,7 +10629,7 @@ class DrawBorderThenFill(Animation):
         # A reversed draw that stays in the scene ends as Community's alpha 0: every
         # outline collapsed onto its first point, unfilled (e.g. Unwrite(reverse=False)).
         for member in self.mobject.get_family():
-            if member._type in _PATH_TYPES and isinstance(member, VMobject):
+            if member._type in _PATH_TYPES and _is_a(member, VMobject):
                 points = member.get_points()
                 if points:
                     VMobject.set_points(member, [points[0]] * 4)
@@ -11416,7 +12089,7 @@ class Scene:
             mobject.children = children
             progress = snapshot.get('draw_progress')
             if progress is not None and progress < 1 and snapshot['type'] in _PATH_TYPES and \
-                    isinstance(mobject, VMobject):
+                    _is_a(mobject, VMobject):
                 # Community traces outlines by pointwise_become_partial: queries such as
                 # get_end() follow the drawn part.
                 try:
@@ -13560,7 +14233,7 @@ class ThreeDAxes(Axes):
         self.z_range, self.z_length = z_range, z_length
         self.z_normal, self.num_axis_pieces = list(normal), int(num_axis_pieces)
         self.light_source, self.dimension = list(light), 3
-        self.depth, self.gloss = depth, gloss
+        self.__dict__['depth'], self.gloss = depth, gloss
         z_options = self._merge_axis_options(self.axis_config, z_axis_config)
         z_options['exclude_origin_tick'] = isinstance(z_options.get('scaling') or LinearBase(), LinearBase)
         z_options['length'] = z_length
@@ -19607,6 +20280,10 @@ def _install_scene_calls():
 
 
 _install_scene_calls()
+_VIRTUAL_BASES.update({VMobject: (VGroup, Text), Animation: (AnimationGroup,),
+                       Transform: (FadeIn, GrowFromPoint, Indicate, Rotate, TransformAnimations)})
+# Scenes see the arrow as Community's Vector (internally Vector is the coordinate tuple).
+VectorArrow.__name__ = VectorArrow.__qualname__ = 'Vector'
 
 
 def _render_scene(source, scene_name=None, compact=False):

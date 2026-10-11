@@ -2259,7 +2259,12 @@ assert isinstance(t.get_value(), (int, float))""")
         for normal in (lite.UP,lite.ORIGIN):
             with self.assertRaises(NotImplementedError): lite.Arc(normal_vector=normal)
         with self.assertRaises(ValueError): lite.Circle(tip_length=-1)
-        self.assertEqual(lite.Arc().stroke_width,2)
+        # Community's DEFAULT_STROKE_WIDTH for every VMobject, arcs and lines included.
+        self.assertEqual(lite.Arc().stroke_width,4)
+        self.assertEqual(lite.Circle().stroke_width,4)
+        self.assertEqual(lite.Line().stroke_width,4)
+        self.assertEqual(lite.Axes().x_axis.stroke_width,2)
+        self.assertAlmostEqual(lite.DoubleArrow().stroke_width,4)
         self.assertEqual(lite.CurvedArrow(lite.LEFT,lite.RIGHT).stroke_width,4)
 
     def test_generic_tip_gallery_restoration_and_cleanup(self):
