@@ -69,6 +69,19 @@ def _bounds_query(method):
     return query
 
 
+def _memo_query(memo, function, *args):
+    """Run one geometry query with a bounds memo shared across a batch of queries (plot
+    samples): the caller guarantees nothing moves between them."""
+    global _BOUNDS_MEMO
+    if _BOUNDS_MEMO is not None:
+        return function(*args)
+    _BOUNDS_MEMO = memo
+    try:
+        return function(*args)
+    finally:
+        _BOUNDS_MEMO = None
+
+
 # Community keeps every family member in world coordinates. Here a posed parent (an
 # Arrow, a rotated NumberLine, ...) stores its children in its own frame, which the
 # library's internals rely on. Scene code instead sees members in world coordinates:
@@ -1283,6 +1296,12 @@ class Mobject:
         return _fit_curve_endpoints(curves, ends.get('start', curves[0][0]), ends.get('end', curves[-1][-1]))
 
     def _replace_children(self, children):
+        if self.angle == 0 and self.geometry_scale == 1:
+            # An unrotated, unscaled parent needs no compensation (A(delta) - delta = 0).
+            self.children = children
+            _link_children(self, children)
+            self.__dict__.pop('_family_pivot_cache',None)
+            return
         # Keep the affine mapping fixed when any family's bounds change.
         previous = self._geometry_center()
         self.children = children
@@ -1800,6 +1819,19 @@ class Mobject:
                 origin = mapped(world(ORIGIN)) if linear else world(ORIGIN)
             def local(point):
                 return list(mapped(world(point))-origin)
+            if linear:
+                # A linear map of an affine pose is affine: compose it once from three probes.
+                base = mapped(world(ORIGIN))
+                ex, ey, shift = mapped(world(RIGHT))-base, mapped(world(UP))-base, base-origin
+                exact = local
+                def local(point):
+                    if len(point) > 2 and point[2]:
+                        return exact(point)
+                    x, y = point[0], point[1]
+                    result = [shift[0]+x*ex[0]+y*ey[0], shift[1]+x*ex[1]+y*ey[1], shift[2]+x*ex[2]+y*ey[2]]
+                    if not all(math.isfinite(value) for value in result):
+                        raise ValueError('Mapped geometry must be finite')
+                    return result
             kind = old._type
             snapshot = old.to_dict()
             if kind in ('line','arrow') and linear:
@@ -9303,12 +9335,25 @@ class NumberLine(VGroup):
             return [self.number_to_point(value) for value in self._numbers(number)]
         self._real(number,'NumberLine value')
         number = self._real(self.scaling.inverse_function(number),'NumberLine value')
-        result = self.get_start()+self.get_vector()*((number-self.x_min)/(self.x_max-self.x_min))
+        start, vector = self._world_frame()
+        result = start+vector*((number-self.x_min)/(self.x_max-self.x_min))
         if not all(math.isfinite(v) for v in result):
             raise ValueError('NumberLine coordinates must be finite')
         return result
 
     n2p = number_to_point
+
+    def _world_frame(self):
+        """The shaft's start and vector, shared within one bounds-memo window."""
+        memo = _BOUNDS_MEMO
+        key = ('number_line', id(self))
+        if memo is not None and key in memo:
+            return memo[key]
+        start = self.get_start()
+        result = (start, self.get_end()-start)
+        if memo is not None:
+            memo[key] = result
+        return result
 
     def rotate_about_number(self, number, angle, axis=OUT, **kwargs):
         return self.rotate(angle, axis, about_point=self.n2p(number), **kwargs)
@@ -9921,18 +9966,20 @@ class Axes(VGroup, CoordinateSystem):
         values = ParametricFunction._range(values,step)
         scale = self.x_axis.scaling
         linear_scale = isinstance(scale,LinearBase)
+        memo = {}
+        c2p = lambda x, y: _memo_query(memo, self.c2p, x, y)
         if use_vectorized:
             def point(t):
                 xs = _listed(t) if linear_scale else [scale.function(v) for v in _listed(t)]
                 ys = _listed(function(_number_array(xs)))
                 ys = list(ys) if isinstance(ys,(list,tuple)) else [ys]*len(xs)
-                points = [self.c2p(x,y) for x,y in zip(xs,ys)]
+                points = [c2p(x,y) for x,y in zip(xs,ys)]
                 return [p[0] for p in points],[p[1] for p in points],[p[2] for p in points]
         elif linear_scale:
-            point = lambda t: self.c2p(t,function(t))
+            point = lambda t: c2p(t,function(t))
         else:
             # Community samples scaled plots at scaling.function(t) over the raw range.
-            point = lambda t: self.c2p(scale.function(t),function(scale.function(t)))
+            point = lambda t: c2p(scale.function(t),function(scale.function(t)))
         graph = ParametricFunction(point,t_range=values,use_vectorized=use_vectorized,**kwargs)
         graph.underlying_function = function
         if colorscale:
@@ -9979,7 +10026,8 @@ class Axes(VGroup, CoordinateSystem):
         if not callable(function):
             raise TypeError('Parametric plotting expects a callable returning XY coordinates')
         dim = len(self._AXIS_ROLES)
-        return ParametricFunction(lambda t: self.c2p(*list(function(t))[:dim]),**kwargs)
+        memo = {}
+        return ParametricFunction(lambda t: _memo_query(memo, self.c2p, *list(function(t))[:dim]),**kwargs)
 
     def plot_surface(self, function, u_range=None, v_range=None, colorscale=None,
                      colorscale_axis=2, **kwargs):

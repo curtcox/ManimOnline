@@ -652,6 +652,8 @@ Polyhedra keep Community's Graph of Dot3D vertices and a face-rebuilding updater
 (`match_points` is family-wise). ConvexHull3D uses a deterministic incremental hull
 of outward triangles. get_center/get_critical_point/_z_extent/_handle_bounds share
 one bounds memo per outermost query (`_bounds_query`); never mutate geometry inside them.
+Batch read-only queries (plot samples) share one memo via `_memo_query`; NumberLine
+caches its world frame there. Linear `_apply_xy_map` uses an affine fast path.
 
 
 Glyph-level MathTex: ManimMath.glyphLeaves extracts MathJax's drawable leaves in TeX's
