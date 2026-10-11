@@ -1371,6 +1371,29 @@ class AnimationApiTests(unittest.TestCase):
             '          [type(m).__name__ for m in line.labels], type(other.labels[0]).__name__]\n')
         self.assertEqual(values, [10, True, True, ['Tex', 'MathTex'], 'Typst'])
 
+    def test_image_files_and_png_pixel_arrays(self):
+        # Expected pixels come from Pillow, Community's image reader.
+        import tempfile
+        cases = json.loads((Path(__file__).with_name('fixtures') / 'png_cases.json').read_text())
+        with tempfile.TemporaryDirectory() as folder:
+            values = scene_values(
+                'import base64, os\n'
+                f'cases = {[[mode, data] for mode, data, _ in cases]!r}\n'
+                f'folder = {folder!r}\n'
+                'pixels = [[[list(p) for p in row] for row in\n'
+                '           ImageMobject("data:image/png;base64," + data).get_pixel_array()]\n'
+                '          for _, data in cases]\n'
+                'with open(os.path.join(folder, "tiny.png"), "wb") as handle:\n'
+                '    handle.write(base64.b64decode(cases[2][1]))\n'
+                'image = ImageMobject(os.path.join(folder, "tiny"), scale_to_resolution=7)\n'
+                'inverted = ImageMobject(os.path.join(folder, "tiny.png"), invert=True)\n'
+                'result = [pixels, image.href.startswith("data:image/png;base64,"), image.height,\n'
+                '          [list(p) for p in inverted.get_pixel_array()[0][:2]], "_pixels" in inverted.to_dict()]\n')
+        self.assertEqual(plain(values[0]), [expected for _, _, expected in cases])
+        first = cases[2][2][0][:2]
+        self.assertEqual(plain(values[1:]), plain([True, 5 / 7 * 8, [[255 - r, 255 - g, 255 - b, a]
+                                                                    for r, g, b, a in first], False]))
+
     def test_subdivision_matrices_skia_path_stand_in_and_files(self):
         import tempfile
         values = scene_values(

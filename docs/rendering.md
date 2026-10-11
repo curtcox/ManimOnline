@@ -2299,8 +2299,9 @@ about the drawing's center (lite children are not transformed by posed parents),
 then centers and fits height/width. Arcs follow svgelements exactly: quadratics of at
 most 36 degrees of the ellipse parameter, raised to cubics. All 34 Community SVG graphical
 tests match their bounds frame by frame.
-ImageMobject encodes arrays as PNG data URIs in Python; the renderer draws only inline
-base64 raster data, upright, with `image-rendering: pixelated` for nearest resampling.
+ImageMobject encodes arrays as PNG data URIs in Python and reads image files into data
+URIs; a pure-Python PNG decoder (Pillow's conversions, non-interlaced) supplies pixel arrays
+and invert. The renderer draws only inline base64 raster data, upright, with `image-rendering: pixelated` for nearest resampling.
 `set_opacity` uses whole-image opacity rather than Community's per-pixel alpha.
 
 ChangeSpeed wraps any animation, remapping progress through Community's piecewise

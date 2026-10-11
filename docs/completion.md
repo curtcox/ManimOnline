@@ -296,7 +296,7 @@ Code is implemented with Community geometry checks (0.001 units) and Pygments co
 code_file reads files written to Pyodide's file system; custom Pygments Style classes from
 user code remain unsupported.
 
-SVGMobject/VMobjectFromSVGPath (markup strings) and ImageMobject (arrays/data URIs) are
+SVGMobject/VMobjectFromSVGPath (markup strings) and ImageMobject (arrays/data URIs/files) are
 implemented with Community geometry/style checks; file paths read files written to Pyodide's
 file system. Gradients/patterns, clip paths and image pixel interpolation in Transform remain open.
 

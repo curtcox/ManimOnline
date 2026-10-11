@@ -20272,6 +20272,115 @@ def _png_data_uri(rows):
     return 'data:image/png;base64,' + base64.b64encode(png).decode('ascii')
 
 
+def _image_file_uri(file_name):
+    """A data URI for an image that scene code wrote to the (Pyodide) file system."""
+    import base64, os
+    for path in [file_name] + [file_name + ext for ext in ('.jpg', '.jpeg', '.png', '.gif', '.ico')]:
+        if os.path.isfile(path):
+            if os.path.getsize(path) > 6000000:
+                raise ValueError('Image files are limited to 6 MB')
+            with open(path, 'rb') as handle:
+                data = handle.read()
+            if data[:8] == b'\x89PNG\r\n\x1a\n':
+                kind = 'png'
+            elif data[:3] == b'GIF':
+                kind = 'gif'
+            elif data[:2] == b'\xff\xd8':
+                kind = 'jpeg'
+            elif data[:4] == b'RIFF' and data[8:12] == b'WEBP':
+                kind = 'webp'
+            else:
+                raise NotImplementedError('ImageMobject files must be PNG, GIF, JPEG or WebP images')
+            return f'data:image/{kind};base64,' + base64.b64encode(data).decode('ascii')
+    raise NotImplementedError(f'No image file {file_name!r} in the browser file system; pass a pixel array, a '
+                              'base64 PNG/JPEG/GIF data URI, or write the file first.')
+
+
+def _decode_png(data):
+    """RGBA rows (8-bit) of a non-interlaced PNG, enough for get_pixel_array and invert."""
+    import zlib
+    if data[:8] != b'\x89PNG\r\n\x1a\n':
+        raise NotImplementedError('Only PNG image data is decoded in the browser preview')
+    index, chunks, palette, transparency = 8, [], None, None
+    while index + 8 <= len(data):
+        length, kind = struct.unpack('>I', data[index:index + 4])[0], data[index + 4:index + 8]
+        body = data[index + 8:index + 8 + length]
+        if kind == b'IHDR':
+            width, height, depth, color, _, _, interlace = struct.unpack('>IIBBBBB', body)
+        elif kind == b'PLTE':
+            palette = [tuple(body[i:i + 3]) for i in range(0, len(body), 3)]
+        elif kind == b'tRNS':
+            transparency = body
+        elif kind == b'IDAT':
+            chunks.append(body)
+        elif kind == b'IEND':
+            break
+        index += 12 + length
+    channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}.get(color)
+    packed = depth < 8 and color in (0, 3)
+    if (channels is None or interlace or not (depth in (8, 16) and color != 3 or packed and depth in (1, 2, 4)
+                                              or color == 3 and depth == 8) or color == 3 and palette is None):
+        raise NotImplementedError('Interlaced or unusual PNG formats are not decoded in the browser preview')
+    if width * height > _IMAGE_PIXEL_LIMIT:
+        raise ValueError('ImageMobject is limited to 4 million pixels')
+    raw = zlib.decompress(b''.join(chunks))
+    step = max(1, channels * depth // 8)
+    stride = (width * channels * depth + 7) // 8
+    previous, rows = bytearray(stride), []
+    for row in range(height):
+        start = row * (stride + 1)
+        kind, line = raw[start], bytearray(raw[start + 1:start + 1 + stride])
+        if kind == 1:
+            for i in range(step, stride):
+                line[i] = (line[i] + line[i - step]) & 255
+        elif kind == 2:
+            for i in range(stride):
+                line[i] = (line[i] + previous[i]) & 255
+        elif kind == 3:
+            for i in range(stride):
+                left = line[i - step] if i >= step else 0
+                line[i] = (line[i] + ((left + previous[i]) >> 1)) & 255
+        elif kind == 4:
+            for i in range(stride):
+                a = line[i - step] if i >= step else 0
+                b, c = previous[i], previous[i - step] if i >= step else 0
+                p = a + b - c
+                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+                line[i] = (line[i] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
+        if packed:
+            mask, per = (1 << depth) - 1, 8 // depth
+            values = [(line[i // per] >> (8 - depth * (i % per + 1))) & mask for i in range(width)]
+        elif depth == 16:
+            values = [(line[i] << 8) | line[i + 1] for i in range(0, stride, 2)]
+        else:
+            values = line
+        if color == 3:
+            alphas = transparency or b''
+            pixels = [palette[v] + ((alphas[v] if v < len(alphas) else 255),) for v in values]
+        else:
+            # tRNS keys compare at full depth. Like Pillow (Community's reader), 16-bit gray
+            # clamps to 255 and 16-bit color keeps the high byte.
+            key = (tuple(struct.unpack(f'>{len(transparency) // 2}H', transparency))
+                   if transparency and color in (0, 2) else None)
+            top = (1 << depth) - 1
+            groups = [tuple(values[i:i + channels]) for i in range(0, len(values), channels)]
+            def scale(v):
+                if depth == 16:
+                    return min(v, 255) if color == 0 else v >> 8
+                return (v * 255 + top // 2) // top if depth != 8 else v
+            if color == 0:
+                pixels = [(scale(g),) * 3 + (0 if key == (g,) else 255,) for (g,) in groups]
+            elif color == 4:
+                pixels = [(scale(g),) * 3 + (scale(a),) for g, a in groups]
+            elif color == 2:
+                pixels = [tuple(scale(v) for v in group) + (0 if key == group else 255,) for group in groups]
+            else:
+                pixels = [tuple(scale(v) for v in group) for group in groups]
+        rows.append(pixels)
+        previous = line
+    return rows
+
+
 def _data_uri_size(uri):
     """Pixel (width, height) of a base64 PNG, GIF or JPEG data URI."""
     import base64, re
@@ -20302,7 +20411,8 @@ def _data_uri_size(uri):
 
 class ImageMobject(Mobject):
     """Community's raster image: height = rows / scale_to_resolution * frame height.
-    Arrays are encoded as PNG; files are unavailable, but image data URIs work."""
+    Arrays are encoded as PNG; files written to the browser file system and data URIs work."""
+    _frame_excluded = ('_pixels',)  # The renderer draws href; pixels are decoded on demand.
     def __init__(self, filename_or_array, scale_to_resolution=1080, invert=False, image_mode='RGBA', **kwargs):
         kwargs.setdefault('fill_opacity', 1)
         kwargs.setdefault('stroke_width', 0)
@@ -20314,12 +20424,17 @@ class ImageMobject(Mobject):
         super().__init__(**kwargs)
         self._type = 'image'
         self.pixel_array_dtype = dtype
-        if isinstance(filename_or_array, str):
-            if invert:
-                raise NotImplementedError('invert needs a pixel array in the browser preview')
-            self.pixel_width, self.pixel_height = _data_uri_size(filename_or_array.strip())
-            self.href = filename_or_array.strip()
+        import os
+        if isinstance(filename_or_array, (str, os.PathLike)):
+            source = str(filename_or_array).strip()
+            if not source.startswith('data:'):
+                source = _image_file_uri(source)
+            self.pixel_width, self.pixel_height = _data_uri_size(source)
+            self.href = source
             self._pixels = None
+            if invert:
+                rows = [[(255 - r, 255 - g, 255 - b, a) for r, g, b, a in row] for row in self._decoded()]
+                self._pixels, self.href = rows, _png_data_uri(rows)
         else:
             rows = _rgba_rows(filename_or_array, limit)
             if invert:
@@ -20336,9 +20451,16 @@ class ImageMobject(Mobject):
         self.__dict__.update(height=height, width=height * self.pixel_width / self.pixel_height)
         self.resampling_algorithm = 'bicubic'
 
+    def _decoded(self):
+        import base64
+        header, _, payload = self.href.partition(',')
+        if header != 'data:image/png;base64':
+            raise NotImplementedError('Only PNG images are decoded into pixel arrays in the browser preview')
+        return _decode_png(base64.b64decode(payload))
+
     def get_pixel_array(self):
         if self._pixels is None:
-            raise NotImplementedError('Pixel arrays of data URI images are not decoded in the browser preview')
+            self._pixels = self._decoded()
         try:
             import numpy
         except ImportError:

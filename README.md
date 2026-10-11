@@ -1524,9 +1524,10 @@ package for sources that call `Code(...)`; listings use DejaVu Sans Mono metrics
 `code_file`). Text with a monospace `font` now uses those metrics everywhere.
 
 The **Inline SVG and pixel images** example covers `SVGMobject`, `VMobjectFromSVGPath`
-and `ImageMobject`. With no file system in the browser, `SVGMobject` takes SVG markup
-(a string starting with `<svg`) and `ImageMobject` takes a pixel array (lists or
-NumPy, gray/RGB/RGBA) or a base64 PNG/JPEG/GIF data URI. Shapes, styles, transforms,
+and `ImageMobject`. `SVGMobject` takes SVG markup (a string starting with `<svg`) and
+`ImageMobject` takes a pixel array (lists or NumPy, gray/RGB/RGBA) or a base64
+PNG/JPEG/GIF data URI; both also read files that scene code wrote to Pyodide's file
+system. PNG images decode to pixel arrays (for `get_pixel_array` and `invert`). Shapes, styles, transforms,
 `use`, viewBox, sizing and centering follow Community; `<text>` is skipped as there.
 `Circle`/`Ellipse` now default to RED like Community (Dot stays WHITE).
 
