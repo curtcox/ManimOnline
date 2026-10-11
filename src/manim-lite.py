@@ -13848,6 +13848,57 @@ def _linspace(start, stop, count):
     return [start + i * step for i in range(count)]
 
 
+class SpecialThreeDScene(ThreeDScene):
+    """Community's SpecialThreeDScene helpers. (Manim 0.22's own constructor fails before
+    rendering; here the scene works, and get_axes returns uncut ThreeDAxes.)"""
+    def __init__(self, cut_axes_at_radius=True, camera_config=None, three_d_axes_config=None,
+                 sphere_config=None, default_angled_camera_position=None, low_quality_config=None, **kwargs):
+        self.cut_axes_at_radius = cut_axes_at_radius
+        self.three_d_axes_config = three_d_axes_config or {
+            'num_axis_pieces': 1,
+            'axis_config': {'unit_size': 2, 'tick_frequency': 1, 'numbers_with_elongated_ticks': [0, 1, 2],
+                            'stroke_width': 2}}
+        self.sphere_config = sphere_config or {'radius': 2, 'resolution': (24, 48)}
+        self.default_angled_camera_position = default_angled_camera_position or {
+            'phi': 70 * DEGREES, 'theta': -110 * DEGREES}
+        self.low_quality_config = low_quality_config or {}
+        super().__init__(**kwargs)
+
+    def get_axes(self):
+        options = {key: value for key, value in self.three_d_axes_config.items() if key != 'num_axis_pieces'}
+        if 'axis_config' in options:
+            options['axis_config'] = {key: value for key, value in options['axis_config'].items()
+                                      if key != 'tick_frequency'}
+        return ThreeDAxes(**options)
+
+    def get_sphere(self, **kwargs):
+        return Sphere(**merge_dicts_recursively(self.sphere_config, kwargs))
+
+    def get_default_camera_position(self):
+        return self.default_angled_camera_position
+
+    def set_camera_to_default_position(self):
+        self.set_camera_orientation(**self.default_angled_camera_position)
+
+
+def _unavailable(name, reason):
+    def __init__(self, *args, **kwargs):
+        raise NotImplementedError(name + ' ' + reason)
+    return type(name, (), {'__init__': __init__, '__doc__': 'Unavailable here: ' + reason})
+
+
+_OPENGL_ONLY = 'needs the OpenGL renderer, which the browser preview does not provide'
+_PIXEL_CAMERA = 'maps rendered pixels, which the vector browser preview does not produce'
+DotCloud = _unavailable('DotCloud', _OPENGL_ONLY)
+TrueDot = _unavailable('TrueDot', _OPENGL_ONLY)
+OpenGLPMobject = _unavailable('OpenGLPMobject', _OPENGL_ONLY)
+OpenGLPGroup = _unavailable('OpenGLPGroup', _OPENGL_ONLY)
+OpenGLPMPoint = _unavailable('OpenGLPMPoint', _OPENGL_ONLY)
+MappingCamera = _unavailable('MappingCamera', _PIXEL_CAMERA)
+OldMultiCamera = _unavailable('OldMultiCamera', _PIXEL_CAMERA)
+SplitScreenCamera = _unavailable('SplitScreenCamera', _PIXEL_CAMERA)
+
+
 class ThreeDVMobject(VMobject):
     """Community's ThreeDVMobject: a VMobject shaded by the 3D camera."""
     def __init__(self, shade_in_3d=True, **kwargs):
@@ -19814,7 +19865,7 @@ class ManimBanner(VGroup):
                           UpdateFromAlphaFunc(self, slide_back, run_time=run_time / 3, rate_func=smooth))
 
 
-EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'ZoomedScene', 'VectorScene', 'LinearTransformationScene', 'ThreeDCamera', 'ThreeDScene', 'ThreeDVMobject', 'Surface', 'Sphere', 'Dot3D', 'Cube', 'Prism', 'Cone', 'Cylinder', 'Line3D', 'Arrow3D', 'Torus', 'ThreeDAxes', 'Polyhedron', 'Tetrahedron', 'Octahedron', 'Icosahedron', 'Dodecahedron', 'ConvexHull3D', 'angle_of_vector', 'ImageMobjectFromCamera', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
+EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'ZoomedScene', 'VectorScene', 'LinearTransformationScene', 'ThreeDCamera', 'ThreeDScene', 'SpecialThreeDScene', 'DotCloud', 'TrueDot', 'OpenGLPMobject', 'OpenGLPGroup', 'OpenGLPMPoint', 'MappingCamera', 'OldMultiCamera', 'SplitScreenCamera', 'ThreeDVMobject', 'Surface', 'Sphere', 'Dot3D', 'Cube', 'Prism', 'Cone', 'Cylinder', 'Line3D', 'Arrow3D', 'Torus', 'ThreeDAxes', 'Polyhedron', 'Tetrahedron', 'Octahedron', 'Icosahedron', 'Dodecahedron', 'ConvexHull3D', 'angle_of_vector', 'ImageMobjectFromCamera', 'Mobject', 'ValueTracker', 'always_redraw', 'VMobject', 'TipableVMobject', 'TracedPath', 'ParametricFunction', 'FunctionGraph', 'CubicBezier', 'Circle', 'Ellipse', 'Arc', 'ArcBetweenPoints', 'ArcPolygon', 'ArcPolygonFromArcs', 'AnnularSector', 'Sector', 'Annulus', 'Dot', 'Square', 'Rectangle', 'RoundedRectangle', 'Line', 'DashedLine', 'DashedVMobject', 'TangentLine', 'Elbow', 'Angle', 'RightAngle', 'ArrowTip', 'ArrowTriangleTip', 'ArrowTriangleFilledTip', 'ArrowCircleTip', 'ArrowCircleFilledTip', 'ArrowSquareTip', 'ArrowSquareFilledTip', 'StealthTip', 'Arrow', 'DoubleArrow', 'CurvedArrow', 'CurvedDoubleArrow',
            'Triangle', 'Polygon', 'Polygram', 'RegularPolygram', 'RegularPolygon', 'Star', 'Brace', 'BraceBetweenPoints', 'BraceLabel', 'BraceText',
            'Title', 'BulletedList', 'Tex', 'SingleStringMathTex', 'MarkupText', 'LabeledDot', 'Variable', 'always', 'f_always', 'always_shift', 'always_rotate',
            'SurroundingRectangle', 'BackgroundRectangle', 'Cross', 'Underline', 'Text', 'DecimalNumber', 'Integer', 'MathTex', 'Group', 'VGroup', 'NumberLine', 'Axes', 'BarChart', 'PolarPlane', 'NumberPlane', 'ComplexPlane', 'VectorField', 'ArrowVectorField', 'StreamLines', 'sigmoid', 'ScreenRectangle', 'FullScreenRectangle', 'VectorizedPoint', 'ComplexValueTracker', 'UnitInterval', 'TangentialArc', 'CurvesAsSubmobjects', 'VDict', 'Cutout', 'ConvexHull', 'ArcBrace', 'LaggedStartMap', 'MaintainPositionRelativeTo', 'Blink', 'Broadcast', 'SpiralIn', 'AddTextWordByWord', 'Animation', 'line_intersection', 'angle_between_vectors', 'DEFAULT_LAGGED_START_LAG_RATIO', 'Graph', 'DiGraph', 'Union', 'Intersection', 'Difference', 'Exclusion', 'Code', 'SVGMobject', 'VMobjectFromSVGPath', 'ImageMobject', 'RESAMPLING_ALGORITHMS', 'ManimColor', 'HSV', 'RGBA', 'LinearBase', 'LogBase', 'DefaultSectionType', 'Add', 'ShowPartial', 'TexTemplate', 'TexTemplateLibrary', 'TexFontTemplates', 'CoordinateSystem', 'PMobject', 'Mobject1D', 'Mobject2D', 'PGroup', 'PointCloudDot', 'Point', 'DEFAULT_POINT_DENSITY_1D', 'DEFAULT_POINT_DENSITY_2D', 'RandomColorGenerator', 'random_color', 'random_bright_color', 'TypeWithCursor', 'UntypeWithCursor', 'AnimatedBoundary', 'ShowPassingFlashWithThinningStrokeWidth', 'FadeTransformPieces', 'ImplicitFunction', 'LabeledPolygram', 'ChangeSpeed', 'Create', 'Write', 'Unwrite', 'DrawBorderThenFill', 'FadeIn',

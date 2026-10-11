@@ -377,6 +377,10 @@ Transform exposes create_target/target_mobject and a path_func separate from num
 path_arc; Write/DrawBorderThenFill expose get_outline/get_stroke_color; plus Wiggle pivots,
 Line.set_path_arc, Arc.stop_angle, MathTex.index_of_part/sort_alphabetically and NumberLine
 label/tip getters. The docstring corpus frame comparison now matches 195 of 273 examples.
+SpecialThreeDScene works (Manim 0.22's own constructor fails), and the OpenGL point clouds
+(DotCloud, TrueDot, OpenGLPMobject...) and pixel cameras (MappingCamera, SplitScreenCamera,
+OldMultiCamera) are importable names that raise a clear NotImplementedError. Manim's
+example_scenes/basic.py runs completely; its non-TeX scenes match Community frame by frame.
 Still open: Scene internals (compile_animation_data and friends),
 some CoordinateSystem helpers, TexTemplate preamble attributes, pixel images
 (get_image/show raise NotImplementedError) and alternative cameras.

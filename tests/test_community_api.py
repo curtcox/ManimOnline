@@ -207,6 +207,23 @@ class AnimationApiTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             scene_values('s = Square()\nresult = ApplyMethod(s.shift, UP).check_validity_of_input(s)\n')
 
+    def test_special_three_d_scene_helpers(self):
+        frames = json.loads(lite.render_scene(
+            'from manim import *\n'
+            'class S(SpecialThreeDScene):\n'
+            '    def construct(self):\n'
+            '        self.set_camera_to_default_position()\n'
+            '        self.add(self.get_axes(), self.get_sphere(resolution=(6, 12)))\n'
+            '        self.wait(0.2)\n'))['frames']
+        camera = frames[-1]['camera']['three_d']
+        self.assertAlmostEqual(camera['phi'], 70 * lite.DEGREES)
+        self.assertAlmostEqual(camera['theta'], -110 * lite.DEGREES)
+
+    def test_opengl_and_pixel_camera_names_fail_clearly(self):
+        for name in ('DotCloud', 'TrueDot', 'OpenGLPMobject', 'MappingCamera', 'SplitScreenCamera'):
+            with self.assertRaisesRegex(NotImplementedError, name):
+                scene_values('result = %s()\n' % name)
+
     def test_pixel_images_are_reported_as_unsupported(self):
         with self.assertRaises(NotImplementedError):
             scene_values('result = Square().get_image()\n')
