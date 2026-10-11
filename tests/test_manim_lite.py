@@ -2499,7 +2499,8 @@ assert isinstance(t.get_value(), (int, float))""")
                 tip._type=child['type']
                 tip.children=[]
                 tip._sampled_geometry_center=lite.Vector(child['geometry_center'])
-                curves=snapshot['shaft_curves']
+                # Mid-morph frames carry the pointwise drawn shaft (Community) instead of a refit.
+                curves=snapshot['shaft_curves'] if snapshot.get('_curved_tip_path') else snapshot['curves']
                 self.assertPointAlmostEqual(curves[0][0] if child['_tip_role']=='start' else curves[-1][-1],tip.base)
         for kwargs in ({'angle':lite.TAU},{'tip_length':-1},{'radius':0},{'tip_shape':lite.Dot}):
             with self.assertRaises((ValueError,TypeError)):

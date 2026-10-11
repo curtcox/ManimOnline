@@ -853,3 +853,6 @@ Community animation internals: Animation/AnimationGroup._setup_scene, Succession
 active_animation (absent before begin), and animation.total_time as turn_animation_into_updater's
 clock. ImageMobject keeps uint8/uint16 pixel arrays (pixel_array_dtype, inverted at that depth);
 the drawn PNG is scaled to 8 bits.
+Reshaping a curved arrow (reverse_points, or morphing to/from a non-curved path) aligns
+the drawn `shaft_curves` pointwise, as Community does, instead of refitting the shaft to
+interpolated tips; plain pose changes of curved arrows keep the tip-fitted refit.

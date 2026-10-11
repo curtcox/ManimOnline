@@ -863,6 +863,21 @@ class AnimationApiTests(unittest.TestCase):
             [[14.2222, 10.0, 5.0, -7.0, 14.2222, 8.0], [200.0, 400.0, 200.0, 112.5],
              [1080.0, 8.0, 14.2222, 14.2222]])
 
+    def test_reshaped_curved_arrows_move_their_drawn_shaft_pointwise(self):
+        self.assertEqual(scene_values(
+            'def b(m):\n'
+            '    return [m.get_left()[0], m.get_bottom()[1], m.get_right()[0], m.get_top()[1]]\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        m = CurvedArrow(LEFT, RIGHT)\n'
+            '        self.r = []\n'
+            '        self.add(m)\n'
+            '        self.add_updater(lambda dt: self.r.append(b(m)))\n'
+            '        self.play(m.animate.reverse_points())\n'
+            's = S(); s.render()\n'
+            'result = [s.r[k] for k in (4, 7, 12)]\n'),
+            [[-0.8549, -0.4914, 1.0, 0.0], [-0.2704, -0.4867, 1.0, 0.0], [-0.9276, -0.4942, 1.0, 0.0]])
+
     def test_succession_stages_updater_time_and_image_depths(self):
         self.assertEqual(scene_values(
             'line = Line()\n'

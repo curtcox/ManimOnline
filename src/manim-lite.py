@@ -10867,10 +10867,12 @@ def _align_path_snapshots(start, target):
     # Align untrimmed curved-arrow geometry; capture fits it to sampled tips.
     start,target = _snapshot_copy(start),_snapshot_copy(target)
     curved = [bool(snapshot.get('_curved_tip_path')) for snapshot in (start,target)]
+    # Reshaping a curved arrow (e.g. reverse_points) also moves its drawn shaft pointwise.
+    drawn = curved[0] != curved[1] or all(curved) and start.get('curves') != target.get('curves')
     for snapshot in (start,target):
         if not snapshot.get('_curved_tip_path'):
             continue
-        if curved[0] != curved[1]:
+        if drawn:
             # Morphing into another shape, Community interpolates the drawn (tip-trimmed)
             # shaft pointwise; refitting it to collapsing tips would diverge.
             if 'shaft_curves' not in snapshot:
@@ -10881,7 +10883,7 @@ def _align_path_snapshots(start, target):
     paths1, paths2 = _path_subpaths(start), _path_subpaths(target)
     if not paths1 or not paths2:
         return None  # Empty geometry has no endpoint to align; retain the fade.
-    if (start['type'] == target['type'] and not pointwise and
+    if (start['type'] == target['type'] and not pointwise and not drawn and
             (len(paths1) == len(paths2) == 1 and len(paths1[0]) == len(paths2[0]) if start['type'] == 'bezierpath'
              else len(start['vertices']) == len(target['vertices']))):
         return None
