@@ -2392,3 +2392,8 @@ Community (`>=`, not `>`), so its tip length and stroke width become zero.
 `ParametricFunction(scaling=...)` maps each sample input through `scaling.function`
 (LogBase plots sample 10^t). Riemann rectangle colors use `color_gradient` and
 `invert_color`, so negative cells match Community's truncated float inversion.
+
+Text exposes Community's attributes: `text` (the source without spaces, tabs or
+newlines, aligned with glyph indices), `original_text`, `line_spacing` (in points:
+font_size × (1 + argument)), `font`, `slant`, `weight` and the `t2c`/`t2f`/`t2g`/`t2s`/`t2w`
+dictionaries (t2c values as hex). MarkupText's `text`/`original_text` keep the markup.

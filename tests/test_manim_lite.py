@@ -1039,11 +1039,11 @@ self.play(UntypeWithCursor(text, cursor))""")['frames']
         graded=lite.Text('abc',gradient=(lite.PURE_RED,lite.PURE_BLUE))
         self.assertEqual([g.color for g in graded],lite.color_gradient([lite.PURE_RED,lite.PURE_BLUE],3))
         markup=lite.MarkupText('<b>Bold</b> and <span foreground="#FF0000">red</span> &amp;')
-        self.assertEqual(markup.text,'Bold and red &')
+        self.assertEqual(markup.text,'<b>Bold</b>and<spanforeground="#FF0000">red</span>&amp;')
         self.assertEqual((markup[0].weight,markup[7].color),(lite.BOLD,'#FF0000'))
         for bad in ('<blink>x</blink>', '<b>x', '<b>x</i>', 'x</b>', 'a < b'):
             with self.assertRaises(ValueError): lite.MarkupText(bad)
-        self.assertEqual(lite.MarkupText('<markup><big>a</big><tt>b</tt></markup>').text, 'ab')
+        self.assertEqual(lite.MarkupText('<markup><big>a</big><tt>b</tt></markup>').__dict__['text'], 'ab')
         self.assertEqual(lite.DecimalNumber(1.5)._type,'text')
         written=render('t = Text("Hello")\nself.play(Write(t), run_time=1)')
         frame=written['frames'][6]['mobjects'][0]

@@ -6129,7 +6129,7 @@ _TEXT_LAYOUTS = {}
 
 
 def _text_layout_key(snapshot):
-    return (snapshot['text'], snapshot['font_size'], snapshot.get('line_spacing', .3), '_number_format' in snapshot,
+    return (snapshot['text'], snapshot['font_size'], snapshot.get('_line_spacing', .3), '_number_format' in snapshot,
             _is_mono(snapshot.get('font')), snapshot.get('_wrap_width'), bool(snapshot.get('justify')))
 
 
@@ -6177,7 +6177,7 @@ def _wrap_paragraph(paragraph, width, measure):
 
 def _compute_text_layout(text, font_size, line_spacing, numeric, mono=False, wrap=None, justify=False):
     import re
-    snapshot = {'text': text, 'font_size': font_size, 'line_spacing': line_spacing}
+    snapshot = {'text': text, 'font_size': font_size, '_line_spacing': line_spacing}
     em = font_size * (TEX_EM_PER_POINT if numeric else TEXT_EM_PER_POINT) / 1000
     lines, ink = [], None
     def merge(box):
@@ -6207,7 +6207,7 @@ def _compute_text_layout(text, font_size, line_spacing, numeric, mono=False, wra
             # Draw the string on a baseline that puts digit bottoms on y = 0.
             lines.append({'text': snapshot['text'], 'x': ink[0], 'y': 0, 'length': ink[2] - ink[0]})
     else:
-        pitch = font_size * (1 + snapshot.get('line_spacing', .3)) * TEX_EM_PER_POINT
+        pitch = font_size * (1 + snapshot.get('_line_spacing', .3)) * TEX_EM_PER_POINT
         table = _MONO_GLYPHS if mono else _SANS_GLYPHS
         def measure(chunk):
             return sum(_glyph_box(char, table)[0] for char in chunk) * em
@@ -6370,6 +6370,44 @@ def _math_glyphs(text, font_size, part_strings=None):
 
 
 class Text(Mobject):
+    # Community's defaults; non-default values are stored (and exported) per text.
+    font, slant, weight = '', NORMAL, NORMAL
+    _frame_excluded = ('_text_maps', '_line_spacing_value', '_original_text')
+    _TEXT_MAPS = ('t2c', 't2f', 't2g', 't2s', 't2w')
+
+    def __getattr__(self, name):
+        if name in Text._TEXT_MAPS:
+            return dict(self.__dict__.get('_text_maps', {}).get(name, {}))
+        if name == 'original_text' and 'text' in self.__dict__:
+            return self.__dict__.get('_original_text', self.__dict__['text'])
+        return super().__getattr__(name)
+
+    @property
+    def text(self):
+        """Scene code sees Community's text: the source without spaces, tabs or newlines,
+        so its characters line up with the glyph indices. Frames keep the full string."""
+        value = self.__dict__.get('text', '')
+        if (sys._getframe(1).f_code.co_filename != _LIB_FILE and
+                not any(cls in (DecimalNumber, MathTex, _MathTexPart, _MathTexGlyph) for cls in type(self).__mro__)):
+            source = self.__dict__.get('_original_text', value)
+            return source.replace('\t', ' ').replace(' ', '').replace('\n', '')
+        return value
+
+    @text.setter
+    def text(self, value):
+        self.__dict__['text'] = value
+
+    @property
+    def line_spacing(self):
+        """Community's line pitch in points: font_size * (1 + line_spacing argument)."""
+        if '_line_spacing_value' in self.__dict__:
+            return self.__dict__['_line_spacing_value']
+        return self.__dict__.get('font_size', DEFAULT_FONT_SIZE) * (1 + self.__dict__.get('_line_spacing', .3))
+
+    @line_spacing.setter
+    def line_spacing(self, value):
+        self.__dict__['_line_spacing_value'] = value
+
     @staticmethod
     def font_list():
         """Fonts with measured layout (Liberation Sans/Mono metrics); others fall back to them."""
@@ -6413,7 +6451,12 @@ class Text(Mobject):
         if len(self.text) > 10000:
             raise ValueError('Text is limited to 10000 characters')
         if line_spacing != -1:
-            self.line_spacing = line_spacing
+            self.__dict__['_line_spacing'] = line_spacing
+        maps = {name: dict(mapping) for name, mapping in zip(Text._TEXT_MAPS, (t2c, t2f, t2g, t2s, t2w)) if mapping}
+        if 't2c' in maps:
+            maps['t2c'] = {key: ManimColor(value).to_hex() for key, value in maps['t2c'].items()}
+        if maps:
+            self.__dict__['_text_maps'] = maps
         if font:
             self.font = font
         if slant != NORMAL:
@@ -6472,7 +6515,9 @@ class Text(Mobject):
         em = layout['em'] / 1000
         style = {key: self.__dict__[key] for key in ('color', 'fill_color', 'stroke_color', 'fill_opacity',
                                                     'stroke_opacity', 'stroke_width', 'z_index')}
-        options = {key: self.__dict__[key] for key in ('font', 'slant', 'weight', 'line_spacing') if key in self.__dict__}
+        options = {key: self.__dict__[key] for key in ('font', 'slant', 'weight') if key in self.__dict__}
+        if '_line_spacing' in self.__dict__:
+            options['line_spacing'] = self.__dict__['_line_spacing']
         glyphs, index = [], 0
         for line in layout['lines']:
             x = line['x']
@@ -6576,6 +6621,7 @@ class MarkupText(Text):
 
     def __init__(self, text, justify=False, **kwargs):
         import re, html
+        self.__dict__['_original_text'] = str(text)
         text, gradients = self._extract_manim_tags(str(text), 'gradient', ('from', 'to'))
         text, colors = self._extract_manim_tags(text, 'color', ('col',))
         self.justify = bool(justify)

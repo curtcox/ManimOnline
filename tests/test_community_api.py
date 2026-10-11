@@ -1178,6 +1178,16 @@ class AnimationApiTests(unittest.TestCase):
             'result = [g.get_start(), g.get_end(), len(g.get_points())]\n'.replace('math.log10', '__import__("math").log10')),
             [[0.0, 0.02, 0.0], [2.0, 2.0, 0.0], 16.0])
 
+    def test_text_attributes_follow_community(self):
+        self.assertEqual(scene_values(
+            't = Text("Hi\\nyo", font_size=30)\n'
+            'm = MarkupText("<b>ab</b>\\nc")\n'
+            'result = [t.text, t.original_text, t.line_spacing, Text("Hi", line_spacing=2).line_spacing,'
+            ' Text("Hi").font, Text("Hi", font="Arial").font, Text("Hi").slant, Text("Hi").weight,'
+            ' Text("abc", t2c={"b": RED}).t2c, Text("a").t2w, m.text, m.original_text]\n'),
+            ['Hiyo', 'Hi\nyo', 39.0, 144.0, '', 'Arial', 'NORMAL', 'NORMAL', {'b': '#FC6255'}, {},
+             '<b>ab</b>c', '<b>ab</b>\nc'])
+
 
 if __name__ == '__main__':
     unittest.main()

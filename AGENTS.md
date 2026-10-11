@@ -892,3 +892,7 @@ API probes (Community vs lite on single expressions) must evaluate in the scene 
 EXPORTS plus VectorArrow as Vector and `_user_interpolate` as interpolate (as _render_scene).
 PreviewConfig.frame_center exists only on scene cameras (`_camera`); to_dict exports it only
 when nonzero so default frames stay unchanged.
+Text.text is a property: scene code gets Community's stripped string; library code (and frames,
+via __dict__) keep the drawn string. The raw line-spacing multiplier lives in `_line_spacing`;
+`line_spacing` reports Community's point pitch. Inside manim-lite.py never assume scene code
+sees the drawn string.
