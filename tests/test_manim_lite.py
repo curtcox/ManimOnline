@@ -960,7 +960,7 @@ self.play(UntypeWithCursor(text, cursor))""")['frames']
         scene.wait(.2)
         self.assertGreater(len(ticks),2)
         scene.add_sound('beep.wav'); scene.add_subcaption('hello',duration=2)
-        self.assertEqual((len(scene.sounds),scene.subcaptions[0]['end']),(1,scene.time+2))
+        self.assertEqual((len(scene.sounds),scene.subcaptions[0].end.total_seconds()),(1,scene.time+2))
         group=lite.VGroup(lite.Square()); scene.add(group)
         self.assertEqual(scene.get_top_level_mobjects(),[group])
         self.assertTrue(scene.should_update_mobjects())

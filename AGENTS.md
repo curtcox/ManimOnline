@@ -734,3 +734,9 @@ RGBA closeness (plain strings still compare as text), hash is the hex with alpha
 arithmetic/bitwise operators work on RGBA. Integer indices return float channels while
 slices keep str behavior (internal hex parsing slices); check hex with startswith, not
 `value[0]`. Non-float tuples are 0-255 channels; to_rgb and the helpers return arrays.
+Text.font_size is a property: the unscaled size lives in `__dict__['font_size']` (read it
+there inside the library) and the property reports it times |geometry_scale| (Community
+derives it from height); setting it rescales. Text/MathTex `submobjects` expand glyphs or
+parts on access (internal code uses `children`). Tex typesets arg_separator inside the
+preceding part and collapses whitespace runs as TeX does. PreviewConfig `_PASSIVE` keys
+(seed, dry_run, quality, ...) are stored but only seed affects the preview.

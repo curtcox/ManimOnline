@@ -859,6 +859,16 @@ def invert_color(color):
 
 class PreviewConfig:
     """Validated 2D preview settings; not the full Community config object."""
+    # Community output options the preview accepts and stores but does not act on (except seed).
+    _PASSIVE = {'seed': None, 'dry_run': False, 'quality': 'high_quality', 'disable_caching': False,
+                'write_to_movie': False, 'save_last_frame': False, 'preview': False,
+                'progress_bar': 'display', 'verbosity': 'INFO', 'media_dir': './media'}
+
+    def __getattr__(self, name):
+        if name in PreviewConfig._PASSIVE:
+            return PreviewConfig._PASSIVE[name]
+        raise AttributeError(f"'PreviewConfig' object has no attribute '{name}'")
+
     def __init__(self, **kwargs):
         # Community's default frame: 8 units tall, 16:9 (14.22 units wide).
         self.pixel_width, self.pixel_height = 800, 450
@@ -933,7 +943,10 @@ class PreviewConfig:
         elif name == 'background_color':
             if not isinstance(value, str) or len(value) != 7 or not value.startswith('#') or any(c not in '0123456789abcdefABCDEF' for c in value[1:]):
                 raise ValueError('Background color must be a six-digit hex color')
-        elif name not in ('frame_x_radius', 'frame_y_radius'):
+        elif name == 'seed':
+            if value is not None and (isinstance(value, bool) or not isinstance(value, numbers.Integral)):
+                raise ValueError('config.seed must be an integer or None')
+        elif name not in ('frame_x_radius', 'frame_y_radius') and name not in PreviewConfig._PASSIVE:
             raise NotImplementedError('Unsupported preview configuration: ' + name)
         object.__setattr__(self, name, value)
 
@@ -1783,11 +1796,11 @@ class Mobject:
     def _glyph_size(self):
         """The unmapped ink box (width, height) of a text or formula leaf."""
         if self._type == 'mathtex' and 'glyph' in self.__dict__:
-            glyphs = _math_glyphs(self.text, self.font_size, self.__dict__.get('part_strings'))
+            glyphs = _math_glyphs(self.text, self.__dict__['font_size'], self.__dict__.get('part_strings'))
             return glyphs[self.glyph][2:4] if self.glyph < len(glyphs) else (0, 0)
         if self._type == 'mathtex' and 'part' in self.__dict__:
-            return _math_parts(self.text, self.part_strings, self.font_size)[self.part][2:]
-        return _math_box(self.text, self.font_size) if self._type == 'mathtex' else _text_extent(self.__dict__)
+            return _math_parts(self.text, self.part_strings, self.__dict__['font_size'])[self.part][2:]
+        return _math_box(self.text, self.__dict__['font_size']) if self._type == 'mathtex' else _text_extent(self.__dict__)
 
     def _is_3d(self):
         """True when any family member holds geometry outside the XY plane."""
@@ -5083,8 +5096,16 @@ class Polygram(VMobject):
                 for path in _path_subpaths(self.to_dict(), include_pending=False) for curve in path]
 
     def get_vertex_groups(self):
-        return [[list(self._point_to_world(Vector(curve[0]))) for curve in path]
-                for path in _path_subpaths(self.to_dict(), include_pending=False)]
+        # Community closes a group whenever a curve ends on the group's first vertex.
+        curves = [curve for path in _path_subpaths(self.to_dict(), include_pending=False) for curve in path]
+        anchors = self._points_to_world([p for curve in curves for p in (curve[0], curve[-1])])
+        groups, group = [], []
+        for start, end in zip(anchors[::2], anchors[1::2]):
+            group.append(list(start))
+            if self.consider_points_equals(end, group[0]):
+                groups.append(_number_array(group))
+                group = []
+        return groups
 
     def round_corners(self, radius=0.5, evenly_distribute_anchors=False, components_per_rounded_corner=2):
         radii = list(radius) if isinstance(radius, (list, tuple)) else [radius]
@@ -6125,9 +6146,27 @@ def _math_glyphs(text, font_size, part_strings=None):
 
 
 class Text(Mobject):
+    @property
+    def font_size(self):
+        """Community's font_size follows scaling; the unscaled size stays in __dict__."""
+        scale = self.__dict__.get('geometry_scale', 1)
+        if scale == 1:
+            glyph = next((c for c in self.children if '_char_index' in c.__dict__), None)
+            scale = 1 if glyph is None else glyph.__dict__.get('geometry_scale', 1)
+        return self.__dict__.get('font_size', DEFAULT_FONT_SIZE) * abs(scale)
+
+    @font_size.setter
+    def font_size(self, value):
+        if 'font_size' not in self.__dict__:
+            self.__dict__['font_size'] = value
+            return
+        NumberLine._real(value, 'font_size', positive=True)
+        if self.font_size > 0:
+            self.scale(value / self.font_size)
+
     def __init__(self, text, font_size=48, line_spacing=-1, font='', slant=NORMAL, weight=NORMAL,
                  t2c=None, t2f=None, t2g=None, t2s=None, t2w=None, gradient=None, disable_ligatures=False,
-                 height=None, width=None, **kwargs):
+                 height=None, width=None, warn_missing_font=True, **kwargs):
         if isinstance(font_size, bool) or not isinstance(font_size, _REAL) or not math.isfinite(font_size) or font_size <= 0:
             raise ValueError('font_size must be positive and finite')
         if isinstance(line_spacing, bool) or not isinstance(line_spacing, _REAL) or not math.isfinite(line_spacing):
@@ -6212,7 +6251,7 @@ class Text(Mobject):
             for char in line['text']:
                 advance, x0, x1, y0, y1 = _glyph_box(char, _glyph_table(self.__dict__.get('font')))
                 if not char.isspace() and (x1 > x0 or y1 > y0):
-                    glyph = Text(char, font_size=self.font_size, **options, **style)
+                    glyph = Text(char, font_size=self.__dict__['font_size'], **options, **style)
                     (a, b), (c, d) = _glyph_matrix(self.__dict__)
                     cx, cy = x + (x0 + x1) / 2 * em, line['y'] + (y0 + y1) / 2 * em
                     center = Vector((a * cx + b * cy, c * cx + d * cy, 0))
@@ -6235,6 +6274,23 @@ class Text(Mobject):
     def __getitem__(self, value):
         self._explode()
         return super().__getitem__(value)
+
+    @property
+    def chars(self):
+        return self[:]
+
+    def _show_children(self):
+        self._explode()
+
+    @property
+    def submobjects(self):
+        # Community's glyph/part submobjects; internal code reads children directly.
+        self._show_children()
+        return self.children
+
+    @submobjects.setter
+    def submobjects(self, mobjects):
+        Mobject.submobjects.fset(self, mobjects)
 
     def __iter__(self):
         self._explode()
@@ -6392,6 +6448,20 @@ class DecimalNumber(Text):
     def unit_sign(self):
         return next((c for c in self.children if c.__dict__.get('_number_role') == 'unit'), None)
 
+    def _format_option(name):
+        def get(self):
+            return self._number_format[name]
+
+        def set_(self, value):
+            self._number_format = dict(self._number_format, **{name: value})
+        return property(get, set_)
+
+    num_decimal_places = _format_option('num_decimal_places')
+    include_sign = _format_option('include_sign')
+    group_with_commas = _format_option('group_with_commas')
+    show_ellipsis = _format_option('show_ellipsis')
+    del _format_option
+
     def _place_unit(self):
         sign = self.unit_sign
         if sign is None:
@@ -6399,7 +6469,7 @@ class DecimalNumber(Text):
         width, height = _text_extent(self.__dict__)
         # Community's next_to buff: (unit_buff_per_font_unit + digit_buff_per_font_unit) * font_size.
         buff = (self.__dict__.get('unit_buff_per_font_unit', 0) +
-                self.__dict__.get('digit_buff_per_font_unit', 0.001)) * self.font_size
+                self.__dict__.get('digit_buff_per_font_unit', 0.001)) * self.__dict__['font_size']
         # Children of a shape live in its local frame, where the digits' ink is centered on 0.
         x = width / 2 + buff + sign.get_width() / 2
         y = (height - sign.get_height()) / 2 * (1 if self.unit.startswith('^') else -1)
@@ -6728,9 +6798,9 @@ def _explode_math(leaf):
     if leaf._type != 'mathtex' or 'glyph' in leaf.__dict__:
         return
     part_strings = leaf.__dict__.get('part_strings')
-    glyphs = _math_glyphs(leaf.text, leaf.font_size, part_strings)
+    glyphs = _math_glyphs(leaf.text, leaf.__dict__['font_size'], part_strings)
     if 'part' in leaf.__dict__:
-        px, py = _math_parts(leaf.text, part_strings, leaf.font_size)[leaf.part][:2]
+        px, py = _math_parts(leaf.text, part_strings, leaf.__dict__['font_size'])[leaf.part][:2]
         members = [(i, g) for i, g in enumerate(glyphs) if g[4] == leaf.part]
     else:
         px = py = 0
@@ -6741,7 +6811,7 @@ def _explode_math(leaf):
     children = []
     for index, (cx, cy, _, _, _, sub) in members:
         x, y = cx - px, cy - py
-        glyph = _MathTexGlyph(leaf.text, index, leaf.font_size, part_strings, **style)
+        glyph = _MathTexGlyph(leaf.text, index, leaf.__dict__['font_size'], part_strings, **style)
         if sub >= 0:
             glyph.sub = sub
         glyph.position = list(leaf._point_to_world(Vector((a * x + b * y, c * x + d * y, 0))))
@@ -6812,6 +6882,8 @@ TexFontTemplates = _TemplateNamespace(())
 
 class MathTex(Text):
     """Formulas rendered as SVG paths by MathJax; several strings become parts."""
+    _split_double_braces = staticmethod(_split_double_braces)
+
     def get_tex_string(self):
         return self.tex_string
 
@@ -6846,7 +6918,11 @@ class MathTex(Text):
                     self._matched.append((string, index, sub))
                     sub += 1
             typeset.append(self._typeset_part(segments, sub - sum(m for _, m in segments)))
-        text = self._environment(arg_separator.join(typeset))
+        # Community 0.22 typesets the separator inside the preceding part's group.
+        if arg_separator and len(typeset) > 1:
+            separator = self._typeset(arg_separator)
+            typeset = [piece + separator for piece in typeset[:-1]] + typeset[-1:]
+        text = self._environment(''.join(typeset))
         if len(text) > 4096:
             raise ValueError('MathTex expressions are limited to 4096 characters')
         if len(parts) <= 1:
@@ -6856,7 +6932,7 @@ class MathTex(Text):
         else:
             # Each part is tagged with \class so MathJax keeps TeX spacing while
             # the browser measures and draws every part separately.
-            classed = self._environment(arg_separator.join(_class_wrap(piece, i) for i, piece in enumerate(typeset)))
+            classed = self._environment(''.join(_class_wrap(piece, i) for i, piece in enumerate(typeset)))
             super().__init__(classed, font_size=font_size, **kwargs)
             self._type = 'vgroup'
             self.tex_string, self.tex_strings = arg_separator.join(parts), parts
@@ -6934,7 +7010,7 @@ class MathTex(Text):
             return
         style = {key: self.__dict__[key] for key in ('color', 'fill_color', 'stroke_color', 'fill_opacity',
                                                     'stroke_opacity', 'stroke_width', 'z_index')}
-        part = _MathTexPart(self.text, None, None, self.font_size, **style)
+        part = _MathTexPart(self.text, None, None, self.__dict__['font_size'], **style)
         part.tex_string = self.tex_string
         for key in ('position', 'angle', 'geometry_scale', 'opacity', 'glyph_stretch', 'glyph_matrix'):
             if key in self.__dict__:
@@ -6948,6 +7024,9 @@ class MathTex(Text):
     def __getitem__(self, value):
         self._split_single()
         return super().__getitem__(value)
+
+    def _show_children(self):
+        self._split_single()
 
     def __iter__(self):
         self._split_single()
@@ -7240,6 +7319,16 @@ def _tex_text_to_math(text):
                     segments.append(('math', None, '\\' + name + ' '))
                     continue
                 raise NotImplementedError('Tex supports text, $math$ and basic font commands in this preview')
+            if char.isspace():
+                # TeX reads a whitespace run as one space; a blank line ends the paragraph.
+                start = i
+                while i < n and text[i].isspace():
+                    i += 1
+                if text.count('\n', start, i) >= 2:
+                    segments.append(('math', None, '\\\\'))
+                else:
+                    add_text(font, ' ')
+                continue
             if char == '~':
                 add_text(font, ' ')
             elif char in _TEX_MATH_ESCAPES:
@@ -7404,6 +7493,13 @@ class BackgroundRectangle(SurroundingRectangle):
                          stroke_width=stroke_width, stroke_opacity=stroke_opacity,
                          fill_opacity=fill_opacity, buff=buff, **kwargs)
         self.original_fill_opacity = self.fill_opacity
+
+    def set_style(self, fill_opacity, **kwargs):
+        # Community keeps the black, stroke-free style and only changes fill opacity.
+        super().set_style(stroke_color=BLACK, stroke_width=0, fill_color=BLACK, fill_opacity=fill_opacity)
+        if kwargs:
+            logging.getLogger('manim').info('Argument %s is ignored in BackgroundRectangle.set_style.', kwargs)
+        return self
 
 
 class Cross(VGroup):
@@ -7713,6 +7809,11 @@ class Paragraph(VGroup):
         self._align(alignment or 'left')
         self.center()
 
+    @property
+    def chars(self):
+        """Community's 2D chars: one group of glyphs per line."""
+        return VGroup(*(line[:] for line in self.children))
+
     def _align(self, alignment):
         lines = list(self.children)
         if not lines:
@@ -7943,6 +8044,7 @@ def matrix_to_mobject(matrix):
 class Matrix(VGroup):
     """Entries on a grid between stretched TeX brackets, as in Community."""
     BRACKET_HEIGHT = 0.5977
+    _frame_excluded = ('element_to_mobject', 'element_to_mobject_config')
 
     def __init__(self, matrix, v_buff=0.8, h_buff=1.3, bracket_h_buff=MED_SMALL_BUFF, bracket_v_buff=MED_SMALL_BUFF,
                  add_background_rectangles_to_entries=False, include_background_rectangle=False,
@@ -7959,6 +8061,10 @@ class Matrix(VGroup):
         self.element_alignment_corner = Mobject._xy_vector(element_alignment_corner, 'Alignment corner')
         make = MathTex if element_to_mobject is None else element_to_mobject
         config_ = dict(element_to_mobject_config or {})
+        self.element_to_mobject, self.element_to_mobject_config = make, config_
+        self.left_bracket, self.right_bracket, self.stretch_brackets = left_bracket, right_bracket, stretch_brackets
+        self.add_background_rectangles_to_entries = add_background_rectangles_to_entries
+        self.include_background_rectangle = include_background_rectangle
         self.mob_matrix = [[make(item, **config_) for item in row] for row in rows]
         for i, row in enumerate(self.mob_matrix):
             for j, mob in enumerate(row):
@@ -12620,6 +12726,8 @@ class Scene:
         # Community's Scene arguments: a camera class, and a seed for random and NumPy's random.
         if camera_class is not None:
             self.camera_class = camera_class
+        if random_seed is None:
+            random_seed = config.seed
         self.always_update_mobjects, self.random_seed = always_update_mobjects, random_seed
         if random_seed is not None:
             random.seed(random_seed)
@@ -12665,7 +12773,8 @@ class Scene:
     def renderer(self):
         """Community's CairoRenderer view: its camera, scene time and frame count."""
         return types.SimpleNamespace(camera=self.camera, time=self.time, num_plays=len(self.sections),
-                                     skip_animations=self._skipping)
+                                     skip_animations=self._skipping,
+                                     file_writer=types.SimpleNamespace(subcaptions=self.subcaptions))
 
     def _add_camera_view(self, display):
         """Community's MultiCamera.add_image_mobject_from_camera."""
@@ -12990,7 +13099,16 @@ class Scene:
                 flat.append(arg)
         return tuple(_built(animation) for animation in flat)
 
-    def play(self, *animations, run_time=None, rate_func=None, **kwargs):
+    def play(self, *animations, subcaption=None, subcaption_duration=None, subcaption_offset=0, **kwargs):
+        start = self.time
+        result = self._play(*animations, **kwargs)
+        if subcaption:
+            run_time = self.time - start
+            self.add_subcaption(subcaption, run_time if subcaption_duration is None else subcaption_duration,
+                                -run_time + subcaption_offset)
+        return result
+
+    def _play(self, *animations, run_time=None, rate_func=None, **kwargs):
         animations = self._flat_animations(animations)
         unsupported = [key for key in kwargs if key not in self._PLAY_OPTIONS]
         if unsupported:
@@ -13173,9 +13291,13 @@ class Scene:
         self.sounds.append({'file': str(sound_file), 'time': self.time + time_offset, 'gain': gain})
 
     def add_subcaption(self, content, duration=1, offset=0):
+        import datetime
         NumberLine._real(duration, 'Subcaption duration', nonnegative=True)
-        self.subcaptions.append({'content': str(content), 'start': self.time + offset,
-                                 'end': self.time + offset + duration})
+        # Shaped like the srt.Subtitle entries Community's file writer collects.
+        self.subcaptions.append(types.SimpleNamespace(
+            index=len(self.subcaptions), content=str(content),
+            start=datetime.timedelta(seconds=float(self.time + offset)),
+            end=datetime.timedelta(seconds=float(self.time + offset + duration))))
 
     def add_updater(self, func):
         if not callable(func):
@@ -15529,6 +15651,12 @@ def _float32(value):
     return struct.unpack('f', struct.pack('f', value))[0]
 
 
+class _GraphView(list):
+    """networkx's NodeView/EdgeView: a sequence that may also be called."""
+    def __call__(self, *args, **kwargs):
+        return self
+
+
 class _GraphData:
     """The networkx structure Community layouts consume: ordered nodes and adjacency."""
     def __init__(self, directed=False):
@@ -15545,7 +15673,7 @@ class _GraphData:
 
     @property
     def nodes(self):
-        return list(self._adj)
+        return _GraphView(self._adj)
 
     @property
     def edges(self):
@@ -15555,7 +15683,7 @@ class _GraphData:
                 if self.directed or (v, u) not in seen:
                     seen.add((u, v))
                     result.append((u, v))
-        return result
+        return _GraphView(result)
 
     def add_node(self, node):
         try:
@@ -16604,6 +16732,7 @@ _GRAPH_LAYOUTS = {'circular': _circular_layout, 'shell': _shell_layout, 'spiral'
                   'partite': _partite_layout, 'random': _random_layout, 'spring': _spring_layout,
                   'tree': _tree_layout, 'spectral': _spectral_layout, 'kamada_kawai': _kamada_kawai_layout,
                   'planar': _planar_layout}
+_layouts = _GRAPH_LAYOUTS
 
 
 def _determine_graph_layout(graph, layout='spring', layout_scale=2, layout_config=None):
@@ -16898,6 +17027,8 @@ class Graph(GenericGraph):
     def __repr__(self):
         return f'Undirected graph on {len(self.vertices)} vertices and {len(self.edges)} edges'
 
+    __str__ = __repr__
+
 
 class DiGraph(GenericGraph):
     """A directed graph: arrow tips stop at the target vertex's boundary."""
@@ -16917,6 +17048,8 @@ class DiGraph(GenericGraph):
 
     def __repr__(self):
         return f'Directed graph on {len(self.vertices)} vertices and {len(self.edges)} edges'
+
+    __str__ = __repr__
 
 
 def _bez(c, t):
@@ -17364,6 +17497,11 @@ class Code(VGroup):
             buttons.shift(UP * 0.1 + LEFT * 0.1)
             self.background.add(buttons)
         self.add_to_back(self.background)
+
+    @classmethod
+    def get_pygments_style(cls, name):
+        from pygments.styles import get_style_by_name
+        return get_style_by_name(name)
 
     @classmethod
     def get_styles_list(cls):
@@ -21114,7 +21252,7 @@ _SUBMODULE_NAMES = frozenset((
 
 # Public in Community's submodules but not in its star import.
 _SUBMODULE_ONLY = ('path_along_circles', 'spiral_path', 'EndSceneEarlyException', 'RerunSceneException',
-                   'MultiAnimationOverrideException')
+                   'MultiAnimationOverrideException', '_layouts')
 
 
 class _ModuleNamespace(types.ModuleType):

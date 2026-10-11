@@ -460,6 +460,24 @@ class AnimationApiTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, message):
                 scene_values('result = %s\n' % source)
 
+    def test_graph_matrix_number_and_scene_options(self):
+        self.assertEqual(scene_values(
+            'g = Graph([1, 2, 3], [(1, 2), (2, 3)], layout="circular")\n'
+            'm = Matrix([[1, 2], [3, 4]], left_bracket="(", right_bracket=")")\n'
+            'n = DecimalNumber(3.14159, num_decimal_places=3); n.num_decimal_places = 1; n.set_value(2.71828)\n'
+            'with tempconfig({"seed": 5}):\n'
+            '    Scene(); a = [random_color() for _ in range(3)]\n'
+            '    Scene(); b = [random_color() for _ in range(3)]\n'
+            's = Scene(); s.add_subcaption("a", duration=1); s.wait()\n'
+            's.play(Wait(), run_time=2, subcaption="b", subcaption_duration=1.5, subcaption_offset=.5)\n'
+            'result = [str(g), str(DiGraph([1, 2], [(1, 2)])), list(g._graph.nodes()), m.left_bracket,\n'
+            '          m.right_bracket, n.num_decimal_places, n.text, a == b, a,\n'
+            '          [(c.content, c.start.total_seconds(), c.end.total_seconds())\n'
+            '           for c in s.renderer.file_writer.subcaptions]]\n'),
+            ['Undirected graph on 3 vertices and 2 edges', 'Directed graph on 2 vertices and 1 edges',
+             [1.0, 2.0, 3.0], '(', ')', 1.0, '2.7', True, ['#FF862F', '#236B8E', '#699C52'],
+             [['a', 0.0, 1.0], ['b', 1.5, 3.0]]])
+
     def test_dashed_arrows_keep_one_set_of_tips(self):
         self.assertEqual(scene_values(
             'd = DashedVMobject(Arrow(ORIGIN, 2 * UR, color=RED))\n'
