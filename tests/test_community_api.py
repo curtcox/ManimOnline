@@ -164,8 +164,10 @@ class MobjectUtilityTests(unittest.TestCase):
         result = scene_values(
             'd = Dot(UP)\n'
             'p = d.get_center().copy()\n'
-            'result = [p.tolist(), d.get_top().tolist(), list(d.get_center().shape)]\n')
-        self.assertEqual(result, [[0.0, 1.0, 0.0], [0.0, 1.08, 0.0], [3.0]])
+            'result = [p.tolist(), d.get_top().tolist(), list(d.get_center().shape), list(UR * [2, 0.5, 0]),\n'
+            '          list([3, 1, 1] * LEFT), list(UR / [2, 4, 1])]\n')
+        self.assertEqual(result, [[0.0, 1.0, 0.0], [0.0, 1.08, 0.0], [3.0], [2.0, 0.5, 0.0], [-3.0, 0.0, 0.0],
+                                  [0.5, 0.25, 0.0]])
 
     @unittest.skipUnless(HAS_NUMPY, 'scene code gets NumPy point arrays only when NumPy is loaded')
     def test_point_results_are_mutable_arrays_with_numpy(self):

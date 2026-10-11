@@ -325,6 +325,10 @@ class Vector(tuple):
         return tuple.__new__(cls, values)
 
     def __mul__(self, value):
+        if hasattr(value, '__len__'):
+            if getattr(value, 'ndim', 1) != 1:
+                return NotImplemented  # NumPy broadcasts other shapes.
+            return Vector(x * y for x, y in zip(self, Vector(value)))  # Elementwise, like NumPy.
         return Vector(x * value for x in self)
 
     __rmul__ = __mul__
@@ -336,6 +340,10 @@ class Vector(tuple):
         return Vector(a - b for a, b in zip(self, Vector(other)))
 
     def __truediv__(self, value):
+        if hasattr(value, '__len__'):
+            if getattr(value, 'ndim', 1) != 1:
+                return NotImplemented
+            return Vector(x / y for x, y in zip(self, Vector(value)))
         return Vector(x / value for x in self)
 
     def __neg__(self):
