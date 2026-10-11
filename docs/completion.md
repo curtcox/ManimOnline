@@ -17,6 +17,7 @@ has been asked of the user; do not silently equate the current subset with eithe
 | Gallery | Bundled catalog, stale-load tests, browser loading | Preserve catalog acceptance as APIs change |
 | MathTex | Python/backend/renderer tests, real formula SVG paths and export | Glyph bounds, substring APIs, tracing, broader formula coverage |
 | SVG/PNG export for both renderers | Graphviz supports both; Manim exports current SVG or 800 × 450 PNG snapshot, with rasterization failure/cleanup tests | Browser export checks across supported browsers |
+| Video export | MP4 (H.264) and WebM (VP9/VP8) via WebCodecs with in-memory muxers; container-structure and pipeline tests; Chrome decode, duration, seeking and cancellation checks (2026-10-10) | Safari/Firefox encoder coverage; audio tracks |
 | Offline editing/rendering | Versioned complete asset cache, explicit update/retry UI, offline/partial-cache service worker tests | Real browser disconnected rendering and update/eviction behavior across browsers |
 | Mobile-friendly UI | Stacked layout, wrapped code, larger controls, accessible toggle; browser checks at 390 × 844, 320 × 568, and desktop resizing | Native mobile keyboard/device coverage |
 | Deployed site | Existing test and GitHub Pages workflows | Check every new commit's CI/deployment and deployed behavior |

@@ -285,13 +285,19 @@ interpolation limitations apply to this effect as well.
 
 Animation previews run at
 15 frames per second and are limited to 60 seconds, with a 90-second deadline
-for loading and execution. Editing or Cancel render terminates active Python computation. Choose SVG or PNG
-under Frame format, then Download to save the current frame. PNG pauses playback
-at the displayed frame and exports an 800 × 450 image with a black background.
-These are still images, not video exports. SVG retains vector formula paths;
-PNG includes those paths and the browser's rendered text.
+for loading and execution. Editing or Cancel render terminates active Python computation. Choose an
+Export format, then Download. SVG frame and PNG frame save the current frame; PNG pauses playback
+at the displayed frame and exports it at the camera's pixel size (800 × 450 by default) with a black background.
+SVG retains vector formula paths; PNG includes those paths and the browser's rendered text.
+MP4 video (H.264) and WebM video (VP9, or VP8 as a fallback) encode every frame of the
+current render at its exact timestamp with the browser's WebCodecs encoder, so the file
+has the scene's frame rate and duration however long encoding takes. Clicking Download
+again while encoding (shown as Cancel video) cancels it, as does editing or re-rendering.
+Browsers without WebCodecs video encoding, or without the chosen codec, report that
+video export is unavailable. Odd pixel sizes are rounded up to even dimensions. Audio
+added with `add_sound` is not included in the video.
 
-Full LaTeX documents, OpenGL rendering, full NumPy integration, and MP4 export
+Full LaTeX documents, OpenGL rendering and full NumPy integration
 are not implemented. The broader examples directory includes APIs
 outside this subset. Unsupported operations report Python errors.
 

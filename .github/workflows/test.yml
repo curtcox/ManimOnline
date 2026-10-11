@@ -27,6 +27,7 @@ jobs:
           node --check src/examples.js
           node --check src/manim-math.js
           node --check src/manim-export.js
+          node --check src/manim-video.js
           node --check src/offline.js
           node --check src/render-scheduler.js
           node --check src/detector.js

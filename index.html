@@ -520,10 +520,12 @@ class HelloWorld(Scene):
       <a href="#" target="_blank" id="download">Download</a>
     </label>
     <label class="manim-options" id="manim-export-option">
-      Frame format:
-      <select id="manim-export-format" aria-label="Frame format">
-        <option value="svg">SVG</option>
-        <option value="png">PNG</option>
+      Export:
+      <select id="manim-export-format" aria-label="Export format">
+        <option value="svg">SVG frame</option>
+        <option value="png">PNG frame</option>
+        <option value="mp4">MP4 video</option>
+        <option value="webm">WebM video</option>
       </select>
     </label>
     <span id="export-status" role="status"></span>
@@ -565,6 +567,7 @@ class HelloWorld(Scene):
   <script src="src/manim-math.js?v=7"></script>
   <script src="src/manim-typst.js?v=2"></script>
   <script src="src/manim-export.js?v=1"></script>
+  <script src="src/manim-video.js?v=1"></script>
   <script src="src/offline.js?v=1"></script>
   <script>
     const editorElement = document.getElementById('editor');
@@ -780,10 +783,63 @@ class HelloWorld(Scene):
         applySceneToURL(url);
         history.replaceState(null, '', url);
       });
-      downloadBtn.addEventListener('click', async event => {
-        if (currentType !== 'manim' || frameFormat.value !== 'png') return;
-        event.preventDefault();
+      let videoExport = null;
+      function saveBlob(blob, name) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = name;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+      async function exportVideo(format) {
+        // A second click while encoding cancels the export.
+        if (videoExport) { videoExport.abort(); return; }
         if (exportingPNG) return;
+        if (!player || reviewer.classList.contains('working') || reviewer.classList.contains('error')) {
+          exportStatus.textContent = 'Render an animation before downloading a video.';
+          return;
+        }
+        const snapshotPlayer = player;
+        const revision = renderRevision;
+        const label = format === 'mp4' ? 'MP4' : 'WebM';
+        snapshotPlayer.pause();
+        const shown = snapshotPlayer.stage.firstElementChild;
+        const controller = new AbortController();
+        videoExport = controller;
+        downloadBtn.setAttribute('aria-busy', 'true');
+        downloadBtn.textContent = 'Cancel video';
+        exportStatus.textContent = `Encoding ${label}… 0%`;
+        try {
+          const serializer = new XMLSerializer();
+          const blob = await ManimVideo.encode({
+            format, frameCount: snapshotPlayer.frames.length, fps: snapshotPlayer.fps,
+            width: Number(shown.getAttribute('width')), height: Number(shown.getAttribute('height')),
+            svgFor: index => serializer.serializeToString(ManimRenderer.render(snapshotPlayer.frames[index], snapshotPlayer.mathGlyphs)),
+            onProgress: progress => {
+              if (revision === renderRevision) exportStatus.textContent = `Encoding ${label}… ${Math.floor(progress * 100)}%`;
+            },
+            signal: controller.signal
+          });
+          if (revision !== renderRevision || player !== snapshotPlayer) return;
+          saveBlob(blob, `manim.${format}`);
+          exportStatus.textContent = `${label} downloaded.`;
+        } catch (error) {
+          if (revision === renderRevision) exportStatus.textContent = error.name === 'AbortError' ? 'Video export cancelled.' : error.message;
+        } finally {
+          videoExport = null;
+          downloadBtn.textContent = 'Download';
+          downloadBtn.removeAttribute('aria-busy');
+          if (revision !== renderRevision) exportStatus.textContent = '';
+        }
+      }
+      downloadBtn.addEventListener('click', async event => {
+        if (currentType !== 'manim' || frameFormat.value === 'svg') return;
+        event.preventDefault();
+        if (frameFormat.value !== 'png') return exportVideo(frameFormat.value);
+        if (exportingPNG || videoExport) return;
         if (!player || reviewer.classList.contains('working') || reviewer.classList.contains('error')) {
           exportStatus.textContent = 'Render an animation before downloading a frame.';
           return;
@@ -801,14 +857,7 @@ class HelloWorld(Scene):
         try {
           const blob = await ManimExport.png(source, pixelWidth, pixelHeight);
           if (revision !== renderRevision || player !== snapshotPlayer) return;
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = 'manim.png';
-          document.body.appendChild(link);
-          link.click();
-          link.remove();
-          setTimeout(() => URL.revokeObjectURL(url), 1000);
+          saveBlob(blob, 'manim.png');
           exportStatus.textContent = 'PNG downloaded.';
         } catch (error) {
           if (revision === renderRevision) exportStatus.textContent = error.message;
@@ -857,6 +906,7 @@ class HelloWorld(Scene):
       function invalidateRender() {
         if (shareSnapshot && shareFingerprint !== currentShareFingerprint()) clearShare();
         renderRevision++;
+        if (videoExport) videoExport.abort();
         exportStatus.textContent = '';
         if (manimClient.pending) manimClient.cancel();
         if (player) player.pause();
