@@ -372,6 +372,11 @@ get_style/set_style round trip, the animation override registry (override_animat
 add_animation_override) and Community's isinstance tree (VGroup, Text and MathTex are
 VMobjects; FadeIn/Rotate/Indicate are Transforms; arrows are named Vector). Default stroke
 widths now match Community (4 for arcs, lines and VGroups; 2 for NumberLine/axes; shaft-
-limited DoubleArrow). Still open: Scene internals (compile_animation_data and friends),
+limited DoubleArrow). AnimationGroup now has Animation's accessors and timing builders;
+Transform exposes create_target/target_mobject and a path_func separate from numeric
+path_arc; Write/DrawBorderThenFill expose get_outline/get_stroke_color; plus Wiggle pivots,
+Line.set_path_arc, Arc.stop_angle, MathTex.index_of_part/sort_alphabetically and NumberLine
+label/tip getters. The docstring corpus frame comparison now matches 195 of 273 examples.
+Still open: Scene internals (compile_animation_data and friends),
 some CoordinateSystem helpers, TexTemplate preamble attributes, pixel images
 (get_image/show raise NotImplementedError) and alternative cameras.

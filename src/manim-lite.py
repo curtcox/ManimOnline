@@ -4581,6 +4581,10 @@ class Arc(TipableVMobject):
     def get_arc_center(self):
         return self._point_to_world(ORIGIN)
 
+    def stop_angle(self):
+        end = Vector(self.get_points()[-1]) - self.get_arc_center()
+        return math.atan2(end[1], end[0]) % TAU
+
     def move_arc_center_to(self, point):
         point = Vector(point)
         if not all(math.isfinite(v) for v in point):
@@ -5058,6 +5062,12 @@ class MovingCamera(PreviewConfig):
 
 
 class Line(TipableVMobject):
+    path_arc = 0
+
+    def set_path_arc(self, new_value):
+        self.path_arc = NumberLine._real(new_value, 'path_arc')
+        return self.set_points_by_ends(self.get_start(), self.get_end(), path_arc=new_value)
+
     def __init__(self, start=LEFT, end=RIGHT, buff=0, path_arc=0, tip_length=.35, tip_style=None, **kwargs):
         NumberLine._real(path_arc, 'path_arc')
         start,end = self._endpoints(*self._resolve_ends(start,end))
@@ -5110,9 +5120,18 @@ class Line(TipableVMobject):
         return cls._pointify(start, direction), cls._pointify(end, -direction)
 
     def set_points_by_ends(self, start, end, buff=0, path_arc=0):
-        if path_arc:
-            raise NotImplementedError('set_points_by_ends supports straight lines (path_arc=0)')
+        NumberLine._real(path_arc, 'path_arc')
         start, end = self._endpoints(*self._resolve_ends(start, end))
+        if path_arc or self._type != 'line':
+            # Community bends by the line's own path_arc; the argument only selects an arc.
+            if path_arc and self.path_arc:
+                VMobject.set_points(self, ArcBetweenPoints(start, end, angle=self.path_arc).get_points())
+            else:
+                self.set_points_as_corners([start, end])
+            length = self.get_length() if self.path_arc == 0 else self.get_arc_length()
+            if buff > 0 and length >= 2 * buff:
+                self.pointwise_become_partial(self, buff / length, 1 - buff / length)
+            return self
         span = math.dist(start, end)
         if buff and span > 2 * buff:
             offset = (end - start) * (buff / span)
@@ -6653,6 +6672,19 @@ class MathTex(Text):
     def index_of_part_by_tex(self, tex, **kwargs):
         part = self.get_part_by_tex(tex, **kwargs)
         return self._parts().index(part) if part in self._parts() else -1
+
+    def index_of_part(self, part):
+        self._split_single()
+        for index, member in enumerate(self._parts()):
+            if member is part:
+                return index
+        raise ValueError('Trying to get index of part not in MathTex')
+
+    def sort_alphabetically(self):
+        self._split_single()
+        if self._type == 'vgroup':
+            self._replace_children(sorted(self.children, key=lambda m: m.get_tex_string()))
+        return self
 
     def set_color_by_tex(self, tex, color, **kwargs):
         for group in self._matches(tex):
@@ -8441,6 +8473,31 @@ class NumberLine(VGroup):
         labels = VGroup(*(self.get_number_mobject(value,font_size=font_size,**kwargs)
                           for value in values if value not in excluding))
         return self._add_world_decoration(labels,'numbers')
+
+    def default_numbers_to_display(self):
+        return [value for value in self.get_tick_range() if value not in self.numbers_to_exclude]
+
+    def get_number_mobjects(self, *numbers, **kwargs):
+        numbers = numbers or self.default_numbers_to_display()
+        return VGroup(*(self.get_number_mobject(number, **kwargs) for number in numbers))
+
+    def get_labels(self):
+        return self.get_number_mobjects()
+
+    def _tips(self):
+        return [child for child in self.children if child.__dict__.get('_number_line_role') == 'tip']
+
+    def has_tip(self):
+        return bool(self._tips())
+
+    def get_tip(self):
+        tips = self._tips()
+        if not tips:
+            raise Exception('tip not found')
+        return tips[-1]
+
+    def get_tips(self):
+        return VGroup(*self._tips())
 
 
 class CoordinateSystem:
@@ -10596,6 +10653,36 @@ class DrawBorderThenFill(Animation):
         Mobject._validate_width(stroke_width)
         self.outline_width, self.outline_color = stroke_width, stroke_color
 
+    @property
+    def stroke_width(self):
+        return self.outline_width
+
+    @stroke_width.setter
+    def stroke_width(self, width):
+        Mobject._validate_width(width)
+        self.outline_width = width
+
+    @property
+    def stroke_color(self):
+        return self.outline_color
+
+    @stroke_color.setter
+    def stroke_color(self, color):
+        self.outline_color = color
+
+    def get_stroke_color(self, vmobject):
+        if self.outline_color:
+            return self.outline_color
+        return vmobject.get_stroke_color() if vmobject.get_stroke_width() > 0 else vmobject.get_color()
+
+    def get_outline(self):
+        """Community's unfilled outline copy, stroked as the first half draws it."""
+        outline = self.mobject.copy()
+        outline.set_fill(opacity=0)
+        for member in outline.family_members_with_points():
+            member.set_stroke(color=self.get_stroke_color(member), width=self.outline_width)
+        return outline
+
     def _member(self, node, alpha, path):
         # Community's integer_interpolate(0, 2, alpha): outline, then style.
         phase = min(1, int(2 * alpha))
@@ -10654,6 +10741,9 @@ class Write(DrawBorderThenFill):
         self.reverse = self._inverted_members = reverse
         super().__init__(vmobject, rate_func=rate_func, introducer=not reverse, **kwargs)
 
+    def reverse_submobjects(self):
+        self.mobject.invert(recursive=True)
+
 
 class Unwrite(Write):
     def __init__(self, vmobject, rate_func=linear, reverse=True, **kwargs):
@@ -10683,7 +10773,7 @@ def _arc_factor(alpha, path_arc):
 class Transform(Animation):
     def __init__(self, mobject, target_mobject, path_arc=0, path_arc_axis=OUT, path_func=None, **kwargs):
         super().__init__(mobject, **kwargs)
-        point_path = None
+        point_path, self._arc = None, path_arc
         if path_func is not None:
             if isinstance(path_func, _PathFunction):
                 path_arc, path_arc_axis = path_func.path_arc, OUT
@@ -10699,9 +10789,51 @@ class Transform(Animation):
         if point_path is None and Vector(path_arc_axis) not in (OUT, IN):
             # Community's path_along_arc about any axis moves every point on its own arc.
             point_path = _AxisArcPath(path_arc, path_arc_axis)
-        self.path_arc = point_path or (path_arc if Vector(path_arc_axis) == OUT else -path_arc)
+        self._path = point_path or (path_arc if Vector(path_arc_axis) == OUT else -path_arc)
         # Targets are world-placed; play() animates posed members in world coordinates.
         self.target = _world_copy(target_mobject)
+
+    @property
+    def target_mobject(self):
+        return self.target
+
+    @target_mobject.setter
+    def target_mobject(self, mobject):
+        self.target = mobject
+
+    def create_target(self):
+        return self.target_mobject
+
+    # _path is what sampling follows: a signed arc about OUT, or a per-point path.
+    _arc = _path = 0
+
+    @property
+    def path_arc(self):
+        return self._arc
+
+    @path_arc.setter
+    def path_arc(self, value):
+        # As in Community, setting path_arc replaces the path function with an arc.
+        self._arc = self._path = NumberLine._real(value, 'path_arc')
+
+    @property
+    def path_func(self):
+        """Community's path function, called with (start_points, end_points, alpha)."""
+        path = self._path
+        return path if isinstance(path, _PointPath) else _PathFunction(path)
+
+    @path_func.setter
+    def path_func(self, function):
+        if function is None:
+            return
+        if isinstance(function, _PathFunction):
+            self._path = function.path_arc
+        elif isinstance(function, _PointPath):
+            self._path = function
+        elif callable(function):
+            self._path = _FunctionPath(function)
+        else:
+            raise TypeError('path_func must be a path function')
 
     def begin(self, scene):
         super().begin(scene)
@@ -10757,7 +10889,7 @@ class Transform(Animation):
         if self._transform_plan is None:
             end = self.__dict__.get('_path_target') or self._plan_snapshot(self.target)
             self._transform_plan = _transform_plan(self.start, end)
-        return _sample_transform(self._transform_plan, alpha, self.path_arc)
+        return _sample_transform(self._transform_plan, alpha, self._path)
 
     @property
     def _lagged(self):
@@ -10773,7 +10905,7 @@ class Transform(Animation):
         index = itertools.count()
         def member_alpha():
             return rate_func(max(0, min(1, alpha * full - next(index) * self.lag_ratio)))
-        return _sample_transform(plan, rate_func(alpha), self.path_arc, member_alpha)
+        return _sample_transform(plan, rate_func(alpha), self._path, member_alpha)
 
     def finish(self, scene):
         if abs(self.rate_func(1)) < 1e-9 and not self.reverse_rate_function:
@@ -11217,21 +11349,70 @@ class AnimationGroup:
         self._group, self.introducer = group, bool(introducer)
         if not math.isfinite(lag_ratio) or lag_ratio < 0:
             raise ValueError('lag_ratio must be nonnegative and finite')
-        self.animations, self.rate_func = animations, rate_func
+        self.animations, self.rate_func, self.lag_ratio = animations, rate_func, lag_ratio
+        self.run_time = self.init_run_time(run_time)
+        if not math.isfinite(self.run_time) or self.run_time < 0 or (self.run_time == 0 and not self._instant):
+            raise ValueError('Animation run_time must be positive and finite')
+
+    remover = False
+    name = None
+    set_default = classmethod(_set_default)
+
+    def build_animations_with_timings(self):
+        """Community's (animation, start, end) triplets, laid out with lag_ratio."""
         self.timings = []
         start = 0
-        for animation in animations:
+        for animation in self.animations:
             if (not math.isfinite(animation.run_time) or animation.run_time < 0 or
                     (animation.run_time == 0 and not animation._instant)):
                 raise ValueError('Animation run_time must be positive and finite')
             self.timings.append((start, animation.run_time))
-            start += lag_ratio * animation.run_time
+            start += self.lag_ratio * animation.run_time
+        self.anims_with_timings = [(a, s, s + d) for a, (s, d) in zip(self.animations, self.timings)]
         self.natural_duration = max(start + duration for start, duration in self.timings)
         if not math.isfinite(self.natural_duration):
             raise ValueError('Animation timeline duration must be finite')
-        self.run_time = self.natural_duration if run_time is None else run_time
-        if not math.isfinite(self.run_time) or self.run_time < 0 or (self.run_time == 0 and not self._instant):
-            raise ValueError('Animation run_time must be positive and finite')
+
+    def init_run_time(self, run_time=None):
+        self.build_animations_with_timings()
+        self.max_end_time = self.natural_duration
+        return self.max_end_time if run_time is None else run_time
+
+    def get_run_time(self):
+        return self.run_time
+
+    def set_run_time(self, run_time):
+        self.run_time = run_time
+        return self
+
+    def get_rate_func(self):
+        return self.rate_func
+
+    def set_rate_func(self, rate_func):
+        self.rate_func = rate_func
+        return self
+
+    def set_name(self, name):
+        self.name = name
+        return self
+
+    def is_remover(self):
+        return self.remover
+
+    def is_introducer(self):
+        return self.introducer
+
+    def copy(self):
+        return copy.deepcopy(self)
+
+    def get_all_mobjects(self):
+        return list(self.group)
+
+    def get_all_mobjects_to_update(self):
+        return []
+
+    def update_mobjects(self, dt):
+        self._advance_copies(dt)
 
     @property
     def _instant(self):
@@ -11645,6 +11826,12 @@ class Wiggle(Animation):
             NumberLine._real(value, name)
         self.scale_value, self.rotation_angle, self.n_wiggles = scale_value, rotation_angle, n_wiggles
         self.scale_about_point, self.rotate_about_point = scale_about_point, rotate_about_point
+
+    def get_scale_about_point(self):
+        return self.mobject.get_center() if self.scale_about_point is None else self.scale_about_point
+
+    def get_rotate_about_point(self):
+        return self.mobject.get_center() if self.rotate_about_point is None else self.rotate_about_point
 
     def begin(self, scene):
         super().begin(scene)

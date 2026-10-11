@@ -131,6 +131,67 @@ class MobjectUtilityTests(unittest.TestCase):
             '          Axes().x_axis, Axes(stroke_width=6).x_axis, DoubleArrow(), DoubleArrow(ORIGIN, RIGHT, buff=0))]\n')
         self.assertEqual(result, [4, 4, 4, 4, 4, 2.0, 2.0, 2.0, 4.0, 2.5])
 
+    def test_line_and_arc_helpers(self):
+        result = scene_values(
+            'a = Arc(start_angle=1, angle=2).shift(RIGHT)\n'
+            'l = Line(LEFT, RIGHT); l.set_path_arc(1)\n'
+            'm = Line(LEFT, RIGHT, path_arc=1); m.set_path_arc(0)\n'
+            'n = Line(LEFT, RIGHT, buff=0.2); n.set_points_by_ends(UP, DOWN, buff=0.5, path_arc=2)\n'
+            'result = [a.stop_angle(), l.get_points()[1], l.path_arc, m.get_start(), len(m.get_points()),\n'
+            '          n.get_start(), n.get_end()]\n')
+        self.assertEqual(result, [3.0, [-0.9237, -0.0417, 0.0], 1.0, [-1.0, 0.0, 0.0], 4,
+                                  [0.0, 0.5, 0.0], [0.0, -0.5, 0.0]])
+
+    def test_formula_and_number_line_helpers(self):
+        result = scene_values(
+            'm = MathTex("a", "c", "b"); p = m[2]\n'
+            'n = NumberLine(x_range=[-2, 2, 1])\n'
+            't = NumberLine(include_tip=True)\n'
+            'result = [m.index_of_part(p), [x.get_tex_string() for x in m.sort_alphabetically()],\n'
+            '          len(n.get_labels()), [x.get_value() for x in n.get_number_mobjects(1, 2)],\n'
+            '          n.has_tip(), t.has_tip(), len(t.get_tips())]\n')
+        self.assertEqual(result, [2, ['a', 'b', 'c'], 5, [1.0, 2.0], False, True, 1])
+        with self.assertRaises(ValueError):
+            scene_values('result = MathTex("a", "b").index_of_part(Square())\n')
+
+
+class AnimationApiTests(unittest.TestCase):
+    def test_transform_paths(self):
+        result = scene_values(
+            't = Transform(Square(), Circle(), path_arc=PI/2)\n'
+            'u = Transform(Square(), Circle()); u.path_func = clockwise_path()\n'
+            'v = Transform(Square(), Circle(), path_func=counterclockwise_path())\n'
+            'result = [t.create_target() is t.target_mobject, t.path_func([ORIGIN], [RIGHT], 0.5),\n'
+            '          u.path_arc, u.path_func([ORIGIN], [RIGHT], 0.5), v.path_arc]\n')
+        self.assertEqual(result, [True, [[0.5, -0.2071, 0.0]], 0.0, [[0.5, 0.5, 0.0]], 0.0])
+
+    def test_path_func_drives_sampling(self):
+        clockwise = scene_values(
+            't = Transform(Dot(LEFT), Dot(RIGHT)); t.path_func = clockwise_path()\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        self.play(t)\n'
+            's = S(); s.render(); result = [f for f in s.frames]\n')
+        middle = clockwise[len(clockwise) // 2]
+        self.assertGreater(middle['mobjects'][0]['position'][1], 0.5)
+
+    def test_animation_group_accessors(self):
+        result = scene_values(
+            'g = AnimationGroup(FadeIn(Square()), FadeIn(Circle(), run_time=2), lag_ratio=0.5)\n'
+            'result = [g.get_run_time(), [(s, e) for _, s, e in g.anims_with_timings], g.max_end_time,\n'
+            '          g.init_run_time(5), g.is_remover(), len(g.get_all_mobjects()),\n'
+            '          g.set_run_time(3).get_run_time(), g.set_name("x").name, g.get_rate_func()(0.5)]\n')
+        self.assertEqual(result, [2.5, [[0.0, 1.0], [0.5, 2.5]], 2.5, 5.0, False, 0, 3.0, 'x', 0.5])
+
+    def test_write_and_wiggle_helpers(self):
+        result = scene_values(
+            'w = Write(Square(color=RED), stroke_width=3)\n'
+            'o = w.get_outline()\n'
+            'wg = Wiggle(Square().shift(RIGHT), scale_about_point=UP)\n'
+            'result = [w.stroke_width, o.get_fill_opacity(), o.get_stroke_width(), o.get_stroke_color(),\n'
+            '          w.get_stroke_color(Circle()), wg.get_scale_about_point(), wg.get_rotate_about_point()]\n')
+        self.assertEqual(result, [3.0, 0.0, 3.0, '#FC6255', '#FC6255', [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]])
+
     def test_pixel_images_are_reported_as_unsupported(self):
         with self.assertRaises(NotImplementedError):
             scene_values('result = Square().get_image()\n')
