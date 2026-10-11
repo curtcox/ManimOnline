@@ -1340,6 +1340,13 @@ class AnimationApiTests(unittest.TestCase):
              ['Dot', 'Circle', 'Circle', 'Triangle', 'VGroup', 'VGroup', 'Circle'], 2,
              [1.0, 0.0, 0.0, 1.0, 0.0], 2.0, ['VectorizedPoint', 'VectorizedPoint'], 2.0, False])
 
+    def test_path_options_on_finish_and_group_keywords(self):
+        # Values from Manim Community 0.22 (whose AnimationGroup adds a Group root: 3 there).
+        src = open(Path(__file__).with_name('fixtures') / 'path_options.py').read()
+        self.assertEqual(plain(scene_values(src)), [
+            [[0.5, 3.0, 0.0], [0.7071, 3.5, 0.0]], [[0.5, 0.5, 0.0], [1.0, 1.0, 0.0]],
+            [[-0.75, 0.0, 0.0], 0.0], [[-0.375, -0.1628, 0.0], 0.75], [2, True], [1.0, 0.0, 0.0]])
+
     def test_subdivision_matrices_skia_path_stand_in_and_files(self):
         import tempfile
         values = scene_values(

@@ -910,3 +910,8 @@ fixtures, then run pytest with --continue-on-collection-errors. Remaining failur
 categories: LaTeX/Typst files, OpenGL, file IO, private helpers, non-finite points and the
 preview's fixed 15 fps. Submodule imports serve the flat namespace; capitalized names other
 than the color palettes are classes, so missing ones raise ImportError.
+
+`_PathOptions` holds the path keywords for Transform and the animations that accept them.
+Analytic shapes follow point paths only through `_arc_similarity` blends (see
+`_CirclesPath.similarity_blend`); add a blend rather than moving just the center. prepare()
+runs a deep-copied terminal `_complete`, so it replaces instance `_on_finish` callbacks.

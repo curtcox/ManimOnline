@@ -11520,10 +11520,11 @@ def _snapshot_pose(node):
     return forward, inverse
 
 
-def _arc_similarity(result, start, target, factor, frames=None):
+def _arc_similarity(result, start, target, factor, frames=None, blend=None):
     """Every point p + m (q - p) of a scaled, posed unit shape (world = B + Z * size * u)
     is again such a shape: Z * size and B take the same complex weight m. Applies to
-    squares, circles and rectangles/ellipses of one aspect ratio."""
+    squares, circles and rectangles/ellipses of one aspect ratio. blend((w0, b0), (w1, b1))
+    may instead combine the two world similarities (any affine-in-u point path)."""
     kind = result['type']
     if start['type'] != kind or target['type'] != kind:
         return False
@@ -11545,9 +11546,11 @@ def _arc_similarity(result, start, target, factor, frames=None):
         a, t = _compose_frames(frame, _pose_frame(node))[:2]
         return a * node[keys[0]], t
     (w0, b0), (w1, b1) = pose(start, outer[0]), pose(target, outer[1])
+    w, b = (blend((w0, b0), (w1, b1)) if blend is not None
+            else (w0 + factor * (w1 - w0), b0 + factor * (b1 - b0)))
     # The sampled world similarity, expressed in the sampled parent's frame.
-    z = (w0 + factor * (w1 - w0)) / size / outer[2][0]
-    offset = (b0 + factor * (b1 - b0) - outer[2][1]) / outer[2][0]
+    z = w / size / outer[2][0]
+    offset = (b - outer[2][1]) / outer[2][0]
     c = result.get('geometry_center', ORIGIN)
     moved = offset - complex(c[0], c[1]) + z * complex(c[0], c[1])
     result['position'] = [moved.real, moved.imag, result['position'][2]]
@@ -11573,6 +11576,9 @@ def _arc_geometry(result, start, target, alpha, path_arc, frames=None):
               'line': ('start', 'end'), 'arrow': ('start', 'end')}.get(kind)
     if fields is None or start['type'] != kind or target['type'] != kind:
         if not isinstance(path_arc, _PointPath) and _arc_similarity(result, start, target, factor, frames):
+            return
+        blend = path_arc.similarity_blend(alpha) if isinstance(path_arc, _CirclesPath) else None
+        if blend is not None and _arc_similarity(result, start, target, None, frames, blend):
             return
         # Analytical shapes, text and images: the center follows the path.
         centers = [Vector(data['position']) + Vector(data.get('geometry_center', ORIGIN)) for data in (start, target)]
@@ -11702,7 +11708,9 @@ class Animation(metaclass=_CommunityTree):
 
     def __init__(self, mobject, run_time=1, rate_func=smooth, lag_ratio=0, remover=False,
                  introducer=False, name=None, suspend_mobject_updating=True, reverse_rate_function=False,
-                 use_override=True):
+                 use_override=True, *, _on_finish=None):
+        if _on_finish is not None:
+            self._on_finish = _on_finish
         if isinstance(lag_ratio, bool) or not isinstance(lag_ratio, _REAL) or not math.isfinite(lag_ratio) or lag_ratio < 0:
             raise ValueError('lag_ratio must be nonnegative and finite')
         if not callable(rate_func):
@@ -11774,7 +11782,12 @@ class Animation(metaclass=_CommunityTree):
         for mobject in self.get_all_mobjects_to_update():
             mobject.update(dt)
 
+    @staticmethod
+    def _on_finish(scene):
+        """Community's completion callback (an _on_finish keyword replaces it)."""
+
     def clean_up_from_scene(self, scene):
+        self._on_finish(scene)
         if self.is_remover():
             scene.remove(self.mobject)
 
@@ -11867,6 +11880,7 @@ class Animation(metaclass=_CommunityTree):
             self.finish(scene)
         else:
             self.finish()  # A Community-signature override: finish(self).
+        self._on_finish(scene)
         if self.remover:
             scene.remove(self.mobject)
 
@@ -11917,6 +11931,8 @@ class Animation(metaclass=_CommunityTree):
         self.begin(scene)
         # Compute the held terminal frame without changing the live scene early.
         terminal = copy.deepcopy(self)
+        if '_on_finish' in terminal.__dict__:
+            terminal._on_finish = Animation._on_finish  # User callbacks run once, on the live scene.
         staging = Scene().add(terminal.mobject)
         terminal._complete(staging)
         self._terminal = [m.to_dict() for m in staging.mobjects]
@@ -11951,7 +11967,84 @@ def _faded_group(mobjects, name):
     return mobjects[0] if len(mobjects) == 1 else Group(*mobjects)
 
 
-class FadeIn(Animation):
+_PATH_OPTIONS = ('path_arc', 'path_arc_axis', 'path_func', 'path_arc_centers',
+                 'replace_mobject_with_target_in_scene')
+
+
+def _path_lerp(start, target, path):
+    """Snapshot interpolation from start to target, along path when it is not straight."""
+    if not path:
+        return _snapshot_lerp(start, target)
+    plan = _transform_plan(start, target)
+    def sample(alpha):
+        states = _sample_transform(plan, alpha, path)
+        return states[0] if len(states) == 1 else interpolate(start, target, alpha)
+    return sample
+
+
+class _PathOptions:
+    """Transform's path options, which Community's Transform subclasses (fades, growth,
+    Indicate, Rotate, ...) all accept."""
+    # _path is what sampling follows: a signed arc about OUT, or a per-point path.
+    _arc = _path = 0
+    path_arc_axis, path_arc_centers, replace_mobject_with_target_in_scene = OUT, None, False
+
+    def _init_path(self, path_arc=0, path_arc_axis=OUT, path_func=None, path_arc_centers=None,
+                   replace_mobject_with_target_in_scene=False):
+        self.replace_mobject_with_target_in_scene = replace_mobject_with_target_in_scene
+        point_path, self._arc = None, path_arc
+        self.path_arc_axis, self.path_arc_centers = path_arc_axis, path_arc_centers
+        if path_func is None and path_arc_centers is not None:
+            path_func = path_along_circles(path_arc, path_arc_centers, path_arc_axis)
+        if path_func is not None:
+            if isinstance(path_func, _PathFunction):
+                path_arc, path_arc_axis = path_func.path_arc, OUT
+            elif isinstance(path_func, _PointPath):
+                point_path = path_func
+            elif callable(path_func):
+                point_path = _FunctionPath(path_func)
+            else:
+                raise TypeError('path_func must be a path function')
+        NumberLine._real(path_arc, 'path_arc')
+        if point_path is None and Vector(path_arc_axis) not in (OUT, IN):
+            # Community's path_along_arc about any axis moves every point on its own arc.
+            point_path = _AxisArcPath(path_arc, path_arc_axis)
+        self._path = point_path or (path_arc if Vector(path_arc_axis) == OUT else -path_arc)
+
+    @staticmethod
+    def _path_kwargs(kwargs):
+        return {key: kwargs.pop(key) for key in _PATH_OPTIONS if key in kwargs}
+
+    @property
+    def path_arc(self):
+        return self._arc
+
+    @path_arc.setter
+    def path_arc(self, value):
+        # As in Community, setting path_arc replaces the path function with an arc.
+        self._arc = self._path = NumberLine._real(value, 'path_arc')
+
+    @property
+    def path_func(self):
+        """Community's path function, called with (start_points, end_points, alpha)."""
+        path = self._path
+        return path if isinstance(path, _PointPath) else _PathFunction(path)
+
+    @path_func.setter
+    def path_func(self, function):
+        if function is None:
+            return
+        if isinstance(function, _PathFunction):
+            self._path = function.path_arc
+        elif isinstance(function, _PointPath):
+            self._path = function
+        elif callable(function):
+            self._path = _FunctionPath(function)
+        else:
+            raise TypeError('path_func must be a path function')
+
+
+class FadeIn(_PathOptions, Animation):
     """Fade in, optionally from a shift, a starting position and a scale."""
     _fading_in = True
     _start_follows_updaters = True
@@ -11959,7 +12052,9 @@ class FadeIn(Animation):
     def __init__(self, *mobjects, shift=None, target_position=None, scale=1, **kwargs):
         if self._fading_in:
             kwargs.setdefault('introducer', True)
+        path = self._path_kwargs(kwargs)
         super().__init__(_faded_group(mobjects, type(self).__name__), **kwargs)
+        self._init_path(**path)
         if shift is not None:
             shift = Mobject._finite_vector(shift, 'Fade shift')
         if target_position is not None and not isinstance(target_position, Mobject):
@@ -11992,7 +12087,7 @@ class FadeIn(Animation):
 
     def _pair(self, away):
         self.first, self.last = (away, self.start) if self._fading_in else (self.start, away)
-        self._lerp = _snapshot_lerp(self.first, self.last)
+        self._lerp = _path_lerp(self.first, self.last, self._path)
 
     def _advance_copies(self, dt):
         if self.__dict__.get('_live_start') is None:
@@ -12070,11 +12165,13 @@ def _strip_children(data):
     return {key: value for key, value in data.items() if key != 'children'}
 
 
-class GrowFromPoint(Animation):
+class GrowFromPoint(_PathOptions, Animation):
     """Scale a snapshot from a fixed XY point to its original geometry."""
     def __init__(self, mobject, point, point_color=None, **kwargs):
         kwargs.setdefault('introducer', True)
+        path = self._path_kwargs(kwargs)
         super().__init__(mobject, **kwargs)
+        self._init_path(**path)
         if isinstance(point, Mobject):
             point = point.get_center()
         self.point, self.point_color = Vector(point), point_color
@@ -12090,14 +12187,16 @@ class GrowFromPoint(Animation):
         self._growth_plan = None
         self._live_morph = None
         if _LiveMorph.wanted(self.original):
-            start = self.original.copy().scale(0)
-            start.move_to(self.point)
+            start = self._growth_start()
             if self.point_color:
                 start.set_color(self.point_color)
             self._live_morph = _LiveMorph(start, self.original.copy(), self._growth_path())
 
     def _growth_path(self):
-        return 0
+        return self._path
+
+    def _growth_start(self):
+        return self.original.copy().scale(0).move_to(self.point)
 
     def finish(self, scene):
         morph = self.__dict__.get('_live_morph')
@@ -12113,7 +12212,7 @@ class GrowFromPoint(Animation):
         """The updated target grown from the collapsed copy's current center (Community's
         straight or spiral path from a single point)."""
         morph = self._live_morph
-        if self._fixed_tips():
+        if self._fixed_tips() or self._path:
             return morph.sample(alpha)
         point = morph.start.get_center()
         current = morph.target.copy().scale(alpha, about_point=point)
@@ -12124,14 +12223,13 @@ class GrowFromPoint(Animation):
     def sample(self, alpha):
         if self.__dict__.get('_live_morph') is not None:
             return self._live_growth(alpha)
-        if self._fixed_tips():
+        if self._fixed_tips() or self._path:
             if self.__dict__.get('_growth_plan') is None:
-                start = self.original.copy().scale(0)
-                start.move_to(self.point)
+                start = self._growth_start()
                 if self.point_color:
                     start.set_color(self.point_color)
                 self._growth_plan = _transform_plan(start.to_dict(), self.original.to_dict())
-            return _sample_transform(self._growth_plan, alpha)
+            return _sample_transform(self._growth_plan, alpha, self._path)
         current = self.original.copy().scale(alpha, about_point=self.point)
         return [self._tint(current, alpha).to_dict()]
 
@@ -12384,8 +12482,11 @@ class FadeOut(FadeIn):
         kwargs.setdefault('remover', True)
         super().__init__(*mobjects, **kwargs)
 
-    def finish(self, scene):
-        scene.remove(self.mobject)
+    def finish(self, scene=None):
+        if scene is None:
+            return super().finish()
+        if not self.remover:
+            scene.remove(self.mobject)
 
 
 def _arc_factor(alpha, path_arc):
@@ -12397,33 +12498,16 @@ def _arc_factor(alpha, path_arc):
     return complex(scale * math.cos(angle), scale * math.sin(angle))
 
 
-class Transform(Animation):
+class Transform(_PathOptions, Animation):
     def __init__(self, mobject, target_mobject=None, path_arc=0, path_arc_axis=OUT, path_func=None,
                  path_arc_centers=None, replace_mobject_with_target_in_scene=False, **kwargs):
         super().__init__(mobject, **kwargs)
-        self.replace_mobject_with_target_in_scene = replace_mobject_with_target_in_scene
-        point_path, self._arc = None, path_arc
-        self.path_arc_axis, self.path_arc_centers = path_arc_axis, path_arc_centers
-        if path_func is None and path_arc_centers is not None:
-            path_func = path_along_circles(path_arc, path_arc_centers, path_arc_axis)
-        if path_func is not None:
-            if isinstance(path_func, _PathFunction):
-                path_arc, path_arc_axis = path_func.path_arc, OUT
-            elif isinstance(path_func, _PointPath):
-                point_path = path_func
-            elif callable(path_func):
-                point_path = _FunctionPath(path_func)
-            else:
-                raise TypeError('path_func must be a path function')
         if target_mobject is None:
             target_mobject = Mobject()
         if not isinstance(target_mobject, Mobject):
             raise TypeError('Transform expects a target Mobject')
-        NumberLine._real(path_arc, 'path_arc')
-        if point_path is None and Vector(path_arc_axis) not in (OUT, IN):
-            # Community's path_along_arc about any axis moves every point on its own arc.
-            point_path = _AxisArcPath(path_arc, path_arc_axis)
-        self._path = point_path or (path_arc if Vector(path_arc_axis) == OUT else -path_arc)
+        self._init_path(path_arc, path_arc_axis, path_func, path_arc_centers,
+                        replace_mobject_with_target_in_scene)
         # Targets are world-placed; play() animates posed members in world coordinates.
         self.target = _world_copy(target_mobject)
         self._target_source = target_mobject
@@ -12439,36 +12523,6 @@ class Transform(Animation):
     def create_target(self):
         return self.target_mobject
 
-    # _path is what sampling follows: a signed arc about OUT, or a per-point path.
-    _arc = _path = 0
-
-    @property
-    def path_arc(self):
-        return self._arc
-
-    @path_arc.setter
-    def path_arc(self, value):
-        # As in Community, setting path_arc replaces the path function with an arc.
-        self._arc = self._path = NumberLine._real(value, 'path_arc')
-
-    @property
-    def path_func(self):
-        """Community's path function, called with (start_points, end_points, alpha)."""
-        path = self._path
-        return path if isinstance(path, _PointPath) else _PathFunction(path)
-
-    @path_func.setter
-    def path_func(self, function):
-        if function is None:
-            return
-        if isinstance(function, _PathFunction):
-            self._path = function.path_arc
-        elif isinstance(function, _PointPath):
-            self._path = function
-        elif callable(function):
-            self._path = _FunctionPath(function)
-        else:
-            raise TypeError('path_func must be a path function')
 
     def begin(self, scene):
         if type(self).create_target is not Transform.create_target:
@@ -12617,11 +12671,13 @@ class Restore(Transform):
         super().__init__(mobject, mobject.copy().restore(), **kwargs)
 
 
-class Indicate(Animation):
+class Indicate(_PathOptions, Animation):
     """Temporarily scale and recolor a snapshot without changing live state."""
     def __init__(self, mobject, scale_factor=1.2, color=PURE_YELLOW,
                  rate_func=there_and_back, **kwargs):
+        path = self._path_kwargs(kwargs)
         super().__init__(mobject, rate_func=rate_func, **kwargs)
+        self._init_path(**path)
         if not math.isfinite(scale_factor) or scale_factor < 0:
             raise ValueError('Indicate scale_factor must be nonnegative and finite')
         self.scale_factor, self.color = scale_factor, color
@@ -12630,9 +12686,9 @@ class Indicate(Animation):
         super().begin(scene)
         highlight = self.mobject.copy().scale(self.scale_factor).set_color(self.color)
         self.highlight = highlight.to_dict()
-        self._lerp = _snapshot_lerp(self.start, self.highlight)
-        self._live_morph = (_LiveMorph(self.mobject.copy(), highlight) if _LiveMorph.wanted(highlight)
-                            else None)
+        self._lerp = _path_lerp(self.start, self.highlight, self._path)
+        self._live_morph = (_LiveMorph(self.mobject.copy(), highlight, self._path)
+                            if _LiveMorph.wanted(highlight) else None)
 
     def sample(self, alpha):
         if self.__dict__.get('_live_morph') is not None:
@@ -12647,11 +12703,13 @@ class Indicate(Animation):
             self.mobject.become(morph.target if abs(self.rate_func(1)) > .5 else morph.start)
 
 
-class Rotate(Animation):
+class Rotate(_PathOptions, Animation):
     """Sample a rigid rotation from the original object rather than its endpoints."""
     _pivot_at_construction = True
 
     def __init__(self, mobject, angle=PI, axis=OUT, about_point=None, about_edge=None, **kwargs):
+        # An explicit path replaces Community's default (path_arc=angle about the pivot).
+        self._custom_path = self._path_kwargs(kwargs)
         super().__init__(mobject, **kwargs)
         if not math.isfinite(angle):
             raise ValueError('Rotation angle must be finite')
@@ -12670,6 +12728,7 @@ class Rotate(Animation):
         self.angle = angle if axis != IN else -angle
         self.about_point = Vector(about_point) if about_point is not None else None
         self.about_edge = None if about_edge is None else Mobject._xy_vector(about_edge, 'Pivot edge')
+        self._arc, self.path_arc_axis = self.angle, self.axis
 
     def begin(self, scene):
         super().begin(scene)
@@ -12677,7 +12736,14 @@ class Rotate(Animation):
         if self.about_edge is not None:
             # The edge is resolved once, at the stage start, like Community's pivot.
             self.about_point = self.original.get_critical_point(self.about_edge)
-        self._live_morph = None
+        self._live_morph = self._custom_plan = None
+        if self._custom_path:
+            pivot = self.about_point if self.about_point is not None else self.original.get_center()
+            self._init_path(**dict({'path_arc': self.angle, 'path_arc_axis': self.axis,
+                                    'path_arc_centers': pivot}, **self._custom_path))
+            target = self.original.copy().rotate(self.angle, self.axis, about_point=pivot)
+            self._custom_plan = _transform_plan(self.original.to_dict(), target.to_dict())
+            return
         if _LiveMorph.wanted(self.original):
             # Community's Rotate is a Transform along circles about the fixed pivot.
             self._live_pivot = pivot = (self.about_point if self.about_point is not None
@@ -12686,6 +12752,8 @@ class Rotate(Animation):
             self._live_morph = _LiveMorph(self.original.copy(), target)
 
     def sample(self, alpha):
+        if self.__dict__.get('_custom_plan') is not None:
+            return _sample_transform(self._custom_plan, alpha, self._path)
         morph = self.__dict__.get('_live_morph')
         if morph is not None:
             # path_along_circles: blend toward the target turned back about the pivot,
@@ -13158,7 +13226,12 @@ class AnimationGroup:
     introducer = False
 
     def __init__(self, *animations, lag_ratio=0, run_time=None, rate_func=linear, group=None, introducer=False,
-                 remover=False, name=None):
+                 remover=False, name=None, reverse_rate_function=False, suspend_mobject_updating=True,
+                 use_override=True, _on_finish=None):
+        # Community's AnimationGroup accepts (and ignores) the Animation options it does not use.
+        self.reverse_rate_function, self.suspend_mobject_updating = reverse_rate_function, suspend_mobject_updating
+        if _on_finish is not None:
+            self._on_finish = _on_finish
         animations = tuple(_built(animation) for animation in animations)
         if any(not isinstance(a, (Animation, AnimationGroup)) for a in animations):
             raise TypeError('AnimationGroup expects supported animations')
@@ -13370,7 +13443,12 @@ class AnimationGroup:
         elif isinstance(animation.mobject, Mobject):
             scene.remove(animation.mobject)
 
+    @staticmethod
+    def _on_finish(scene):
+        """Community's completion callback, run before the members are cleaned up."""
+
     def _complete(self, scene):
+        self._on_finish(scene)
         self.finish(scene)
 
     def _advance_copies(self, dt):
@@ -13746,7 +13824,7 @@ class Wait(Animation):
         return {}
 
     def _complete(self, scene):
-        pass
+        self._on_finish(scene)
 
 
 class GrowFromEdge(GrowFromPoint):
@@ -13767,9 +13845,16 @@ class GrowArrow(GrowFromPoint):
         self.point = Vector(self.mobject.get_start())
         super().begin(scene)
 
+    def _growth_start(self):
+        if not isinstance(self.original, Arrow):
+            return super()._growth_start()
+        start = self.original.copy().scale(0, scale_tips=True, about_point=self.point)
+        start.stroke_width = 0
+        return start
+
     def sample(self, alpha):
         current = self.original.copy()
-        if not isinstance(current, Arrow):
+        if not isinstance(current, Arrow) or self._path:
             return super().sample(alpha)
         # Community starts from scale(0, scale_tips=True), whose stroke width is zero, and
         # interpolates points and the shaft width linearly toward the original.
@@ -13878,6 +13963,7 @@ class UpdateFromFunc(Animation):
         self._alpha = 1
         self.mobject.remove_updater(self._updater)
         self._call(self.mobject)
+        self._on_finish(scene)
         if self.remover:
             scene.remove(self.mobject)
 
@@ -18359,18 +18445,6 @@ def _determine_graph_layout(graph, layout='spring', layout_scale=2, layout_confi
                      'nor a vertex placement dictionary.')
 
 
-class _GraphAnimationGroup(AnimationGroup):
-    """An AnimationGroup that runs a callback after its stages finish (Community's _on_finish)."""
-    def __init__(self, *animations, on_finish=None, **kwargs):
-        super().__init__(*animations, **kwargs)
-        self._on_finish = on_finish
-
-    def finish(self, scene):
-        super().finish(scene)
-        if self._on_finish is not None:
-            self._on_finish(scene)
-
-
 class GenericGraph(VGroup):
     """Community's Graph base: vertex and edge mobjects kept attached by an updater."""
     _frame_excluded = ('_graph', '_layout', '_labels', '_vertex_config', '_edge_config', '_tip_config',
@@ -18519,7 +18593,7 @@ class GenericGraph(VGroup):
             for entry in created:
                 scene.remove(entry[-1])
                 self._add_created_vertex(*entry)
-        return _GraphAnimationGroup(*(animation(entry[-1], **anim_args) for entry in created), on_finish=on_finish)
+        return AnimationGroup(*(animation(entry[-1], **anim_args) for entry in created), _on_finish=on_finish)
 
     def _remove_vertex(self, vertex):
         if vertex not in self.vertices:
@@ -22020,6 +22094,21 @@ class _CirclesPath(_PointPath):
     def __call__(self, start_points, end_points, alpha):
         self._index = 0
         return super().__call__(start_points, end_points, alpha)
+
+    def similarity_blend(self, alpha):
+        """The path applied to posed similarity shapes (p = B + W u): a lerp toward the target
+        turned back about one center, turned forward by alpha * angle."""
+        axis = Vector(self.axis)
+        if isinstance(self.centers, list) or axis not in (OUT, IN):
+            return None
+        angle = self.arc_angle if axis == OUT else -self.arc_angle
+        c = complex(self.centers[0], self.centers[1])
+        back, turn = cmath.rect(1, -angle), cmath.rect(1, alpha * angle)
+        def blend(first, last):
+            (w0, b0), (w1, b1) = first, last
+            wb, bb = back * w1, c + back * (b1 - c)
+            return turn * (w0 + alpha * (wb - w0)), c + turn * (b0 + alpha * (bb - b0) - c)
+        return blend
 
     def point(self, p, q, alpha):
         c = self._center()

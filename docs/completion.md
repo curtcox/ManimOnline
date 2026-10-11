@@ -293,11 +293,12 @@ Union, Intersection, Difference and Exclusion are implemented with Community are
 bounds checks; coincident curved (non-straight) boundaries are approximate.
 
 Code is implemented with Community geometry checks (0.001 units) and Pygments colors;
-code_file and custom Pygments Style classes from user code remain unsupported.
+code_file reads files written to Pyodide's file system; custom Pygments Style classes from
+user code remain unsupported.
 
 SVGMobject/VMobjectFromSVGPath (markup strings) and ImageMobject (arrays/data URIs) are
-implemented with Community geometry/style checks; file paths, gradients/patterns,
-clip paths and image pixel interpolation in Transform remain open.
+implemented with Community geometry/style checks; file paths read files written to Pyodide's
+file system. Gradients/patterns, clip paths and image pixel interpolation in Transform remain open.
 
 TypeWithCursor/UntypeWithCursor, AnimatedBoundary, ChangeSpeed, ImplicitFunction,
 LabeledPolygram, ShowPassingFlashWithThinningStrokeWidth and FadeTransformPieces are

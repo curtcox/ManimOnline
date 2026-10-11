@@ -2438,3 +2438,7 @@ Bezier subdivision follows Community's memoized subdivision matrices (successive
 beyond cubics), and the private boolean-ops helpers convert outlines to and from a recorded
 stand-in for skia-pathops paths. SVGMobject and Code read files that scene code wrote to
 Pyodide's file system; other names still need inline SVG markup or a code string.
+Path options (path_arc, path_arc_axis, path_func, path_arc_centers) are shared by Transform,
+FadeIn/FadeOut, GrowFromPoint/GrowArrow, Indicate and Rotate, as Community's keyword
+forwarding allows. A single-center path_arc_centers moves posed analytic shapes exactly.
+Every Animation and AnimationGroup accepts _on_finish, run once before removal.
