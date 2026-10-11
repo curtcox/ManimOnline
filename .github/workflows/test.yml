@@ -34,3 +34,17 @@ jobs:
           node --check src/share-links.js
           node --check offline-assets.js
           node --check service-worker.js
+          node --check tests/browser/smoke.cjs
+  browsers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save playwright
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: |
+          python3 -m http.server 8000 &
+          sleep 2
+          node tests/browser/smoke.cjs http://localhost:8000/ chromium firefox webkit

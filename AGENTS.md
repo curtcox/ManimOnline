@@ -95,6 +95,9 @@ Run `python3 -m unittest discover -s tests -v` and `node --test tests/*.test.js`
 Serve locally with `python3 -m http.server 8000`. Check both a DOT graph and a
 Manim example in a real browser. Syntax checks or native Python tests do not
 prove Pyodide loading or browser playback. Report which checks actually ran.
+`tests/browser/smoke.cjs` (Playwright; CI job `browsers`) renders DOT and Manim in
+Chromium, Firefox and WebKit; see README for the local command. Playwright's
+Firefox build may fail to launch on recent macOS ("Could not find profile folder").
 Update the README and these notes when adding test commands or changing the
 runtime. Do not claim full Manim compatibility from a subset implementation.
 

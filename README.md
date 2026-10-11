@@ -415,6 +415,16 @@ invalid Python, and
 switching to `digraph { a -> b }`. These unit tests cover the compatibility
 runtime and worker lifecycle; they do not substitute for browser checks.
 
+A Playwright smoke test renders a DOT graph and a Manim scene (with a formula)
+in Chromium, Firefox and WebKit, and reports which video encoders each engine
+offers. CI runs it on every push; locally:
+
+```sh
+npm install --no-save playwright && npx playwright install chromium firefox webkit
+python3 -m http.server 8000 &
+node tests/browser/smoke.cjs http://localhost:8000/ chromium firefox webkit
+```
+
 ## Credits
 
 - Based on [GraphvizOnline](https://github.com/dreampuf/GraphvizOnline) by Dreampuf (BSD-3-Clause)
