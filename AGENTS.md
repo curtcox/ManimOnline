@@ -775,3 +775,6 @@ an overridden create_target at begin. Constructor defaults can be diffed against
 with `inspect.signature`; colors are PURE_YELLOW for Indicate/Flash/Circumscribe/FunctionGraph.
 Animation role flags follow Community: Uncreate and ShrinkToCenter are not introducers,
 ShowPassingFlash is an introducing remover, and the thinning-flash group is not a remover.
+Mobject.get_subpaths covers containers (none) and set_points accepts an empty list on a
+pointless container. Unsupported outline types fall back to sampling their own world cubic
+points in point_from_proportion (an Arrow samples its shaft, as in Community).

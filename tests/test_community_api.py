@@ -625,6 +625,14 @@ class AnimationApiTests(unittest.TestCase):
             'result = [g.anims_with_timings.tolist()[1][1:], half, s.get_stroke_opacity()]\n'),
             [[1.0, 2.0], 0.5, 1.0])
 
+    def test_containers_report_empty_subpaths_and_arrows_sample_shafts(self):
+        self.assertEqual(scene_values(
+            'g = VGroup(Square())\n'
+            'g.set_points(g.points)\n'
+            'result = [len(g.get_subpaths()), len(Text("a").get_subpaths()), len(Square().get_subpaths()),\n'
+            '          Arrow(LEFT, UP * 2).point_from_proportion(0.25), DoubleArrow().point_from_proportion(0.5)]\n'),
+            [0.0, 0.0, 1.0, [-0.7332, 0.5335, 0.0], [0.0, 0.0, 0.0]])
+
     def test_text_glyphs_are_leaves(self):
         self.assertEqual(scene_values(
             'def depth(m):\n'

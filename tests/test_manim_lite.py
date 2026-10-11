@@ -7309,8 +7309,8 @@ class Demo(Scene):
         for path in (lite.Text('x'), lite.VGroup(lite.Circle())):
             with self.assertRaisesRegex(ValueError, r'^Cannot call (Text|VGroup)\.point_from_proportion because .* has no points'):
                 path.point_from_proportion(0.5)
-        with self.assertRaises(NotImplementedError):
-            lite.Arrow().point_from_proportion(0.5)
+        # Like Community, an Arrow samples its shaft points.
+        self.assertPointAlmostEqual(lite.Arrow().point_from_proportion(0.5), (-0.175, 0, 0))
         with self.assertRaises(TypeError):
             lite.MoveAlongPath(lite.Dot(), [(0, 0), (1, 0)])
         dot = lite.Dot()

@@ -2346,6 +2346,8 @@ class Mobject:
     def set_points(self, points):
         """Community's plain Mobject/Group points: they shape bounds but are never drawn."""
         if isinstance(self, VMobject) or self._type not in ('mobject', 'vgroup'):
+            if not _listed(points) and not self.get_points():
+                return self  # Setting a pointless container's empty points changes nothing.
             raise NotImplementedError(f'{type(self).__name__} points cannot be set directly')
         rows = [list(Vector(point)) for point in _listed(points)]
         if len(rows) > _POINT_CLOUD_LIMIT:
@@ -2362,6 +2364,13 @@ class Mobject:
 
     def has_no_points(self):
         return not self.has_points()
+
+    def get_subpaths(self):
+        """Community's subpaths of this mobject's own cubic points (none for containers)."""
+        points = [Vector(p) for p in self.get_points()]
+        splits = [0] + [n for n in range(4, len(points), 4)
+                        if math.dist(points[n - 1], points[n]) > 1e-8] + [len(points)]
+        return [points[a:b] for a, b in zip(splits, splits[1:]) if b - a >= 4]
 
     def get_cubic_bezier_tuples(self):
         points = self.get_points()
@@ -2587,6 +2596,10 @@ class Mobject:
                 height = math.sqrt(3) / 2
                 vertices = [(0, height * 2 / 3), (-0.5, -height / 3), (0.5, -height / 3)]
             else:
+                points = self.get_points()
+                if len(points) >= 4:
+                    # Other outlines (e.g. an Arrow's shaft) sample their own world cubic points.
+                    return VMobject().set_points(points[:len(points) - len(points) % 4]).point_from_proportion(alpha)
                 raise NotImplementedError('Paths support Circle, Arc, Line, Polygon, VMobject corners, Square, Rectangle, and Triangle')
             if self._type == 'polyline' and len(vertices) == 1:
                 return self._point_to_world(Vector(vertices[0]))
