@@ -1408,6 +1408,45 @@ class AnimationApiTests(unittest.TestCase):
             [0, 1.0132], [0, 3.0264], [1.0264, 1.0132], [0, 0.9633], [1.0, 0.9633], [1.0264, 0],
             [0, 1.0132], [2.0527, 1.0132], [1.0238, 0], [1.1064, 0], 2.0527, 2.0527]))
 
+    def test_removed_tips_family_and_become_errors(self):
+        # Manim 0.22: removing a tip leaves the shaft cut at the tip base (pop_tips restores
+        # the ends); get_family has no NumberLine shaft member; become needs interpolate_color.
+        values = scene_values(
+            'def r(m): return [round(float(x), 3) for x in (*m.get_corner(DL)[:2], *m.get_corner(UR)[:2])]\n'
+            'a = DoubleArrow(LEFT, RIGHT * 1.12); a.remove(a.submobjects[0])\n'
+            'c = Arrow(LEFT, RIGHT * 2).rotate(0.7).shift(UP); c.remove(c.submobjects[0]); c.rotate(0.3)\n'
+            'd = CurvedArrow(LEFT, RIGHT * 2); d.remove(d.submobjects[0])\n'
+            'f = Arrow(LEFT, RIGHT); f.remove(f.tip); f.add_tip()\n'
+            'errors = []\n'
+            'for g in (lambda: Group(Square()).become(Group(Circle())), lambda: Square().become(Group(Circle())),\n'
+            '          lambda: ValueTracker(1).become(ValueTracker(3)), lambda: VGroup(Square()).become(VGroup(Circle()))):\n'
+            '    try:\n'
+            '        g(); errors.append("ok")\n'
+            '    except Exception as e:\n'
+            '        errors.append(type(e).__name__)\n'
+            'line = NumberLine(x_range=[-2, 2, 1], include_tip=True)\n'
+            'result = [r(a), r(c), r(d), r(f), [type(m).__name__ for m in line.get_family()], len(Axes().get_family()), errors]\n')
+        self.assertEqual(values, plain([
+            [-0.75, -0.175, 0.52, 0.175], [-0.215, -0.017, 0.947, 1.792], [-1.0, -0.694, 1.753, 0.0],
+            [-0.75, -0.144, 0.4, 0.144],
+            ['NumberLine', 'ArrowTriangleFilledTip', 'VGroup', 'Line', 'Line', 'Line', 'Line'], 27,
+            ['NotImplementedError', 'AttributeError', 'NotImplementedError', 'ok']]))
+
+    def test_become_keeps_scene_attributes(self):
+        # Community's become copies points and colors; attributes scene code added remain,
+        # so a transformed label keeps its bookkeeping (LinearTransformationScene relies on it).
+        values = scene_values(
+            'a = Circle(); a.speed = 3; a.tag = "x"\n'
+            'b = Square(); b.tag = "y"; b.extra = 1\n'
+            'a.become(b)\n'
+            'c = Dot(); c.info = {"k": 1}\n'
+            'scene = Scene(); scene.play(Transform(c, Square()), run_time=0.2)\n'
+            's = Square(); s.color = RED\n'
+            'result = [a.speed, a.tag, hasattr(a, "extra"), c.info, s.get_stroke_color(), a.width]\n')
+        self.assertEqual(values, plain([3, 'x', False, {'k': 1}, '#FC6255', 2.0]))
+        source = open(Path(__file__).parents[1] / 'examples' / 'linear_transformation_scene.py').read()
+        self.assertNotIn('error', json.loads(lite.render_scene(source, 'LinearTransformationExample')))
+
     def test_point_equality_rejects_non_finite_differences(self):
         # np.allclose semantics (Manim 0.22): infinities match only themselves; NaN never matches.
         values = scene_values(

@@ -290,11 +290,20 @@ def _scene_dimension(stored, measure):
     return get
 
 
+def _from_scene():
+    """Whether the caller of the calling function is scene code. Assignments reach property
+    setters through Mobject.__setattr__, whose frame is skipped."""
+    frame = sys._getframe(2)
+    if frame.f_code is _SETATTR_CODE:
+        frame = frame.f_back
+    return frame.f_code.co_filename != _LIB_FILE
+
+
 def _scene_call(function, reference=False, live_points=False):
     """Run a method called from scene code in Community's world coordinates."""
     @functools.wraps(function)
     def call(self, *args, **kwargs):
-        if sys._getframe(1).f_code.co_filename == _LIB_FILE:
+        if not _from_scene():
             return function(self, *args, **kwargs)
         if reference:
             args, kwargs = _world_args(args, kwargs)
@@ -1219,6 +1228,13 @@ class Mobject:
             return types.MethodType(setter, self)
         raise AttributeError(f"{type(self).__name__} object has no attribute '{attr}'")
 
+    def __setattr__(self, name, value):
+        object.__setattr__(self, name, value)
+        # Remember attributes scene code adds, which Community's become leaves in place.
+        if (sys._getframe(1).f_code.co_filename != _LIB_FILE and not hasattr(type(self), name)
+                and name not in self.__dict__.get('_scene_keys', ())):
+            self.__dict__['_scene_keys'] = (*self.__dict__.get('_scene_keys', ()), name)
+
     def _validate_children(self, mobjects):
         kind = VMobject if isinstance(self, VMobject) else Mobject
         for index, mobject in enumerate(mobjects):
@@ -1486,6 +1502,13 @@ class Mobject:
         return [member for member in self.get_family() if member.has_points()]
 
     def get_family(self, recurse=True):
+        family = self._family()
+        if sys._getframe(1).f_code.co_filename == _LIB_FILE:
+            return family
+        # Scene code sees Community's family: a NumberLine shaft stands for the line's own points.
+        return [m for m in family if m.__dict__.get('_number_line_role') != 'shaft']
+
+    def _family(self):
         result, seen = [], set()
         shared = False
         def visit(mobject):
@@ -3427,6 +3450,17 @@ class Mobject:
         self.__dict__.update(state)
         _link_children(self, state.get('children', ()))
 
+    def _scene_become(self, mobject, *args, **kwargs):
+        # Community copies colors with interpolate_color, which plain Mobjects (Group,
+        # ValueTracker, ...) do not implement and which a VMobject cannot read from them.
+        if isinstance(mobject, Mobject):
+            if not isinstance(self, (VMobject, PMobject, AbstractImageMobject)):
+                raise NotImplementedError('Please override in a child class.')
+            if isinstance(self, VMobject) and not isinstance(mobject, VMobject):
+                raise AttributeError(f"{type(mobject).__name__} object has no attribute 'fill_rgbas'")
+        become = Mobject.become
+        return getattr(become, '__wrapped__', become)(self, mobject, *args, **kwargs)
+
     def become(self, mobject, match_height=False, match_width=False, match_depth=False, match_center=False,
                stretch=False):
         """Replace supported geometry while retaining identity and updater registrations."""
@@ -3469,10 +3503,18 @@ class Mobject:
                 children.append(member)
             retained = {key:source.__dict__[key] for key in ('updaters','updating_suspended','_saved_state')
                         if key in source.__dict__}
+            # Community's become copies points and colors only: scene-added attributes stay
+            # (unless the library stores the target's geometry under the same name).
+            scene_keys, target_keys = source.__dict__.get('_scene_keys', ()), replacement.__dict__.get('_scene_keys', ())
+            retained.update({key: source.__dict__[key] for key in scene_keys if key in source.__dict__
+                             and (key not in replacement.__dict__ or key in target_keys)})
+            if scene_keys:
+                retained['_scene_keys'] = scene_keys
             # References to replaced descendants (e.g. Graph.vertices) resolve to the
             # retained live members rather than the target's copies.
-            state = copy.deepcopy({key:value for key,value in replacement.__dict__.items()
-                                   if key not in ('children','updaters','updating_suspended','_saved_state','_sampled_geometry_center')},
+            dropped = ('children','updaters','updating_suspended','_saved_state','_sampled_geometry_center',
+                       '_scene_keys', *target_keys)
+            state = copy.deepcopy({key:value for key,value in replacement.__dict__.items() if key not in dropped},
                                   dict(replacements))
             if 'traced_point_func' in source.__dict__:
                 retained.update({key:source.__dict__[key] for key in
@@ -4016,7 +4058,7 @@ class Mobject:
         center = self._geometry_center()
         result = _snapshot_copy({key: value for key, value in self.__dict__.items()
                                 if (key in _POINT_KEYS and type(value) is list or not _holds_mobject(value) and not callable(value)) and
-                                key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache', '_flow_points', '_name', '_mobject_points') and
+                                key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache', '_flow_points', '_name', '_mobject_points', '_scene_keys') and
                                 key not in self._frame_excluded})
         result['type'] = result.pop('_type')
         result['geometry_center'] = list(center)
@@ -4236,7 +4278,7 @@ def _style_property(name, setter):
             return self.get_color()
         return self.__dict__.get(name)
     def set_(self, value):
-        if sys._getframe(1).f_code.co_filename == _LIB_FILE:
+        if not _from_scene():
             self.__dict__[name] = value
         else:
             setter(self, value)
@@ -4246,6 +4288,7 @@ def _style_property(name, setter):
 Mobject.color = _style_property('color', lambda mobject, value: mobject.set_color(value))
 Mobject.fill_color = _style_property('fill_color', lambda mobject, value: mobject.set_fill(value))
 Mobject.stroke_color = _style_property('stroke_color', lambda mobject, value: mobject.set_stroke(value))
+_SETATTR_CODE = Mobject.__setattr__.__code__
 
 
 class VMobject(Mobject, metaclass=_CommunityTree):
@@ -5065,6 +5108,36 @@ class TipableVMobject(VMobject):
         self.remove(*tips.children)
         self.explicit_tips = True
         return tips
+
+    def _scene_remove(self, *mobjects):
+        """Community cuts the shaft at a tip's base when the tip is attached, so removing
+        the tip directly (unlike pop_tips) leaves the shaft short."""
+        curved = self.__dict__.get('_curved_tip_path')
+        removed = [child for child in self.children if any(child is m for m in mobjects)
+                   and child.__dict__.get('_tip_role') in ('start', 'end')]
+        if not removed or not (curved or self._type in ('line', 'arrow')):
+            return Mobject.remove(self, *mobjects)
+        shaft = self._tip_shaft_curves() if curved else None
+        bases = {}
+        for child in removed:
+            curves = _path_curves(child.to_dict())
+            if curves:
+                index = len(curves) / 2
+                point = VMobject._bezier_point(curves[min(int(index), len(curves) - 1)], index - int(index))
+                bases[child._tip_role] = child._point_to_world(point)
+        Mobject.remove(self, *mobjects)
+        self.explicit_tips = True
+        before = self._geometry_center()
+        if curved:
+            self.curves = shaft
+        else:
+            for role, point in bases.items():
+                setattr(self, role, list(point))
+        self.__dict__.pop('_family_pivot_cache', None)
+        delta = self._geometry_center() - before
+        transformed = Vector((delta[0]*math.cos(self.angle)-delta[1]*math.sin(self.angle),
+                              delta[0]*math.sin(self.angle)+delta[1]*math.cos(self.angle), 0))*self.geometry_scale
+        return self.shift(transformed - delta)
 
     def _raw_curves(self):
         snapshot = self.to_dict()
@@ -9470,7 +9543,7 @@ class NumberLine(VGroup):
     @submobjects.setter
     def submobjects(self, mobjects):
         mobjects = list(mobjects)
-        if sys._getframe(1).f_code.co_filename != _LIB_FILE:
+        if _from_scene():
             mobjects = [c for c in self.children if c.__dict__.get('_number_line_role') == 'shaft'
                         and c not in mobjects] + mobjects
         Mobject.submobjects.fset(self, mobjects)
@@ -15610,6 +15683,7 @@ class LinearTransformationScene(VectorScene):
         label_mob.target_text = new_label if new_label else f'{transformation_name}({label_mob.get_tex_string()})'
         label_mob.vector = vector
         label_mob.kwargs = {key: value for key, value in kwargs.items() if key != 'animate'}
+        label_mob._scene_keys = (*label_mob.__dict__.get('_scene_keys', ()), 'target_text', 'vector', 'kwargs')
         self.transformable_labels.append(label_mob)
         return label_mob
 
@@ -24062,7 +24136,7 @@ def _scene_dimension_setter(stored, rescale):
     if rescale is None:
         return stored and _scene_call(stored)
     def set_(self, value):
-        if sys._getframe(1).f_code.co_filename == _LIB_FILE:
+        if not _from_scene():
             return stored(self, value)
         return _in_world(self, rescale, value)
     return set_

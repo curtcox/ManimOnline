@@ -922,3 +922,11 @@ Scene-view hooks: `_scene_call` runs `_scene_<name>` (when the class defines it)
 library internals. NumberLine uses it: scene code sees own points (the shaft cut at the
 tip bases), `submobjects`/iteration/indexing without the shaft child, and Community's
 `nl[0] is nl`. Library code keeps using the real `children`, including the shaft.
+Scene-code get_family also omits NumberLine shafts. `_scene_remove` on tipped lines bakes
+the current shaft cut into the endpoints (Community never regrows a shaft; pop_tips restores
+ends explicitly). `_scene_become` raises Community's errors: plain Mobject receivers lack
+interpolate_color, and VMobjects cannot become plain Mobjects; library become is unrestricted
+(restore, Transform completion). Lite still refits shafts when tips are moved or arranged.
+Mobject.__setattr__ records attribute names that scene code adds (`_scene_keys`, not in
+frames); become keeps them as Community does (its become copies only points and colors).
+Property setters that check their caller must use `_from_scene()`, which skips that frame.

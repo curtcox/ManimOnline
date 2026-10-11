@@ -5383,24 +5383,27 @@ self.wait(1)""")
         self.assertEqual(source.get_updaters(), [callback])
         before=source.to_dict()
         for invalid in [3,lite.ValueTracker(),lite.MovingCameraScene().camera.frame]:
-            with self.assertRaises((TypeError,ValueError)): source.become(invalid)
+            with self.assertRaises((TypeError,ValueError,AttributeError)): source.become(invalid)
             self.assertEqual(source.to_dict(),before)
 
     def test_become_group_preserves_prefix_links_and_aligns_shared_aliases(self):
+        # Community's Group.become fails (plain Mobjects lack interpolate_color); VGroup works.
         first = lite.Circle()
-        group = lite.Group(first)
-        group.become(lite.Group(lite.Square(),lite.Triangle()))
+        with self.assertRaises(NotImplementedError):
+            lite.Group(lite.Circle()).become(lite.Group(lite.Square()))
+        group = lite.VGroup(first)
+        group.become(lite.VGroup(lite.Square(),lite.Triangle()))
         self.assertIs(group[0], first)
         self.assertEqual(first.to_dict()['type'],'square')
         self.assertEqual(len(group),2)
         shared = lite.Circle()
-        group.become(lite.Group(lite.Group(shared),lite.Group(shared)))
+        group.become(lite.VGroup(lite.VGroup(shared),lite.VGroup(shared)))
         self.assertIs(group[0].children[0],group[1].children[0])
-        group.become(lite.Group(lite.Group(lite.Square()),lite.Group(lite.Triangle())))
+        group.become(lite.VGroup(lite.VGroup(lite.Square()),lite.VGroup(lite.Triangle())))
         self.assertIsNot(group[0].children[0],group[1].children[0])
         self.assertEqual(group[0].children[0].to_dict()['type'],'square')
         self.assertEqual(group[1].children[0].to_dict()['type'],'polygon')
-        group.become(lite.Group())
+        group.become(lite.VGroup())
         self.assertEqual(len(group),0)
 
     def test_redraw_rebuilds_sampled_geometry_and_copies_update_themselves(self):

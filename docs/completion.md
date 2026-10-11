@@ -428,3 +428,9 @@ and next_to targets) include Bezier handles as in Community; VGroup keeps anchor
 Fuzzing also found two deferred structural differences: Community cuts an arrow shaft
 once when its tip is attached (Lite refits it to the current tips), and become keeps
 extra degenerate children from submobject alignment (Lite replaces the family).
+Removing an arrow tip directly now leaves the shaft cut, scene-code get_family matches
+Community (no NumberLine shaft), and become raises Community's errors for Group/Mobject
+receivers and VMobject-to-Mobject targets. Community 0.22 also fails restore() on a Group or
+ValueTracker through the same path; Lite keeps restore working.
+become (and so Transform completion) keeps attributes that scene code added, fixing the
+LinearTransformationScene gallery example's second transformation of a labelled vector.
