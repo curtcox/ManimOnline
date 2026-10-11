@@ -381,6 +381,8 @@ SpecialThreeDScene works (Manim 0.22's own constructor fails), and the OpenGL po
 (DotCloud, TrueDot, OpenGLPMobject...) and pixel cameras (MappingCamera, SplitScreenCamera,
 OldMultiCamera) are importable names that raise a clear NotImplementedError. Manim's
 example_scenes/basic.py runs completely; its non-TeX scenes match Community frame by frame.
-Still open: Scene internals (compile_animation_data and friends),
+Scene.compile_animations, add_mobjects_from_animations, validate_run_time and
+get_moving_and_static_mobjects follow Community, and play() accepts lists and generators.
+Still open: frame-loop Scene internals (compile_animation_data, update_to_time),
 some CoordinateSystem helpers, TexTemplate preamble attributes, pixel images
 (get_image/show raise NotImplementedError) and alternative cameras.

@@ -11307,6 +11307,10 @@ class Animate(Transform):
         super().__init__(mobject, mobject)
         self.operations = []
 
+    def build(self):
+        """Community's _AnimationBuilder.build: the animation itself here."""
+        return self
+
     def __call__(self, **kwargs):
         """mobject.animate(run_time=..., lag_ratio=...): Community's animation arguments."""
         unsupported = [key for key in kwargs if key not in self._ANIMATION_OPTIONS]
@@ -12458,7 +12462,19 @@ class Scene:
     _PLAY_OPTIONS = ('path_arc', 'lag_ratio', 'remover', 'introducer', 'name',
                      'suspend_mobject_updating', 'reverse_rate_function')
 
+    @staticmethod
+    def _flat_animations(args):
+        """Community's flatten_iterable_parameters: lists and generators of animations."""
+        flat = []
+        for arg in args:
+            if isinstance(arg, (list, tuple, types.GeneratorType)):
+                flat.extend(arg)
+            else:
+                flat.append(arg)
+        return tuple(flat)
+
     def play(self, *animations, run_time=None, rate_func=None, **kwargs):
+        animations = self._flat_animations(animations)
         unsupported = [key for key in kwargs if key not in self._PLAY_OPTIONS]
         if unsupported:
             raise NotImplementedError('Unsupported play options: ' + ', '.join(unsupported))
@@ -12657,7 +12673,46 @@ class Scene:
         return list(dict.fromkeys(moving + [m for m in self.get_mobject_family_members() if m.updaters]))
 
     def get_run_time(self, animations):
-        return max(a.run_time for a in animations)
+        return self.validate_run_time(max(a.run_time for a in animations), self.play, 'total run_time')
+
+    def compile_animations(self, *args, **kwargs):
+        animations = []
+        for arg in self._flat_animations(args):
+            if not isinstance(arg, (Animation, AnimationGroup)):
+                if callable(arg) and getattr(arg, '__self__', None) is not None:
+                    raise TypeError('Passing Mobject methods to Scene.play is no longer supported. '
+                                    'Use Mobject.animate instead.')
+                raise TypeError('Unexpected argument %r passed to Scene.play().' % (arg,))
+            animations.append(arg)
+        for animation in animations:
+            for key, value in kwargs.items():
+                setattr(animation, key, value)
+        return animations
+
+    def add_mobjects_from_animations(self, animations):
+        current = self.get_mobject_family_members()
+        for animation in animations:
+            if animation.is_introducer():
+                continue
+            mobject = animation.mobject
+            if mobject is not None and mobject not in current:
+                self.add(mobject)
+                current += mobject.get_family()
+
+    @classmethod
+    def validate_run_time(cls, run_time, method, parameter_name='run_time'):
+        name = '%s.%s()' % (cls.__name__, method.__name__)
+        if run_time <= 0:
+            raise ValueError('%s has a %s of %g <= 0 seconds which Manim cannot render. '
+                             'The %s must be a positive number.' % (name, parameter_name, run_time, parameter_name))
+        return max(run_time, 1 / FPS)
+
+    def get_moving_and_static_mobjects(self, animations):
+        moving = [m for m in self.get_moving_mobjects(*animations)]
+        moving_set = set(map(id, moving))
+        static = [m for m in self.get_mobject_family_members()
+                  if id(m) not in moving_set and not m.has_no_points()]
+        return moving, static
 
     def get_attrs(self, *keys):
         return [getattr(self, key) for key in keys]

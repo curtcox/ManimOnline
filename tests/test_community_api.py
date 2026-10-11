@@ -207,6 +207,30 @@ class AnimationApiTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             scene_values('s = Square()\nresult = ApplyMethod(s.shift, UP).check_validity_of_input(s)\n')
 
+    def test_scene_animation_helpers(self):
+        result = scene_values(
+            's = Scene(); a, b = Square(), Circle()\n'
+            'anims = s.compile_animations(FadeIn(a), b.animate.shift(UP), run_time=3)\n'
+            't = Scene(); t.add_mobjects_from_animations([FadeIn(a), b.animate.shift(UP), Rotate(a)])\n'
+            'u = Scene(); u.add(a, b); moving, static = u.get_moving_and_static_mobjects([FadeIn(b)])\n'
+            'result = [[x.run_time for x in anims], [type(m).__name__ for m in t.mobjects],\n'
+            '          Scene.validate_run_time(2, Scene.wait), [type(m).__name__ for m in moving],\n'
+            '          [type(m).__name__ for m in static], b.animate.shift(UP).build().run_time]\n')
+        self.assertEqual(result, [[3.0, 3.0], ['Circle', 'Square'], 2.0, ['Circle'], ['Square'], 1.0])
+        with self.assertRaisesRegex(ValueError, 'cannot render'):
+            scene_values('result = Scene.validate_run_time(0, Scene.wait)\n')
+        with self.assertRaisesRegex(TypeError, 'Use Mobject.animate'):
+            scene_values('result = Scene().compile_animations(Square().shift)\n')
+
+    def test_play_accepts_lists_and_generators(self):
+        frames = json.loads(lite.render_scene(
+            'from manim import *\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        dots = [Dot(RIGHT * i) for i in range(3)]\n'
+            '        self.play([FadeIn(d) for d in dots[:2]], (Create(d) for d in dots[2:]))\n'))['frames']
+        self.assertEqual(len(frames[-1]['mobjects']), 3)
+
     def test_special_three_d_scene_helpers(self):
         frames = json.loads(lite.render_scene(
             'from manim import *\n'
