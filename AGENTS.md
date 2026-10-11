@@ -843,3 +843,7 @@ SVG arcs follow svgelements (`_svg_arc_cubics`): parameter slices of at most 36 
 quadratics with the (4 - cos(step)) / 3 control push, raised to cubics. A DOCTYPE without an
 internal subset is stripped before parsing; ENTITY/internal subsets stay rejected.
 SVGMobject(color=...) colors only the still-empty group (Community); parsed shapes keep SVG paint.
+Config frame_width/frame_height are independent values (Community); `_camera_dict` gives a
+scene's camera the configured width with height fitted to the pixel aspect, and cameras (flag
+`_camera`) keep width/height coupled. Square pixels therefore give a 14.22 × 14.22 frame unless
+frame_width is set, as examples/camera_scene.py does. `frame_size` sets both pixel dimensions.

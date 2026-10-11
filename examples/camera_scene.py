@@ -3,7 +3,7 @@ from manim import *
 
 config.pixel_width = 600
 config.pixel_height = 600
-config.frame_height = 8
+config.frame_width = 8
 config.background_color = WHITE
 
 

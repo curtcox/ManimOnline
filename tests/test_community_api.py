@@ -846,6 +846,23 @@ class AnimationApiTests(unittest.TestCase):
             'result = [s.r[len(s.r) * k // 10] for k in (7, 8)] + [b(c)]\n'),
             [0.1, 0.06, [-0.72, -0.47, 0.72, 0.97]])
 
+    def test_config_frame_dimensions_are_independent_and_cameras_keep_the_width(self):
+        self.assertEqual(scene_values(
+            'out = []\n'
+            'with tempconfig({"frame_height": 10}) as config:\n'
+            '    s = Scene()\n'
+            '    out.append([config.frame_width, config.frame_height, config.top[1], Axes().x_range[0],\n'
+            '                s.camera.frame_width, s.camera.frame_height])\n'
+            'with tempconfig({"frame_x_radius": 100, "frame_y_radius": 200}) as config:\n'
+            '    s = Scene()\n'
+            '    out.append([config.frame_width, config.frame_height, s.camera.frame_width, s.camera.frame_height])\n'
+            'with tempconfig({"frame_size": (1080, 1080)}) as config:\n'
+            '    s = Scene()\n'
+            '    out.append([config.pixel_width, config.frame_height, s.camera.frame_width, s.camera.frame_height])\n'
+            'result = out\n'),
+            [[14.2222, 10.0, 5.0, -7.0, 14.2222, 8.0], [200.0, 400.0, 200.0, 112.5],
+             [1080.0, 8.0, 14.2222, 14.2222]])
+
     def test_animation_updaters_draw_partial_outlines(self):
         self.assertEqual(scene_values(
             'def b(m):\n'

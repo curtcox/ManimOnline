@@ -906,7 +906,9 @@ class PreviewConfig:
     def __init__(self, **kwargs):
         # Community's default frame: 8 units tall, 16:9 (14.22 units wide).
         self.pixel_width, self.pixel_height = 800, 450
-        self.frame_height, self.background_color = 8, BLACK
+        # Community stores frame width and height independently; cameras keep the width
+        # and fit their height to the pixel aspect (see _camera_dict).
+        self.frame_height, self.frame_width, self.background_color = 8, 8 * 16 / 9, BLACK
         object.__setattr__(self, '_pixels_explicit', False)
         for name, value in kwargs.items():
             setattr(self, name, value)
@@ -918,13 +920,24 @@ class PreviewConfig:
             return self.pixel_width
         return 1080 * self.pixel_width / self.pixel_height
 
+    def _camera_dict(self):
+        values = self.to_dict()
+        values['frame_height'] = values['frame_width'] * self.pixel_height / self.pixel_width
+        return values
+
     @property
     def frame_width(self):
-        return self.frame_height * self.pixel_width / self.pixel_height
+        # A scene's camera keeps its frame at the pixel aspect; the global config does not.
+        if self.__dict__.get('_camera'):
+            return self.frame_height * self.pixel_width / self.pixel_height
+        return self.__dict__['_frame_width']
 
     @frame_width.setter
     def frame_width(self, value):
-        self.frame_height = value * self.pixel_height / self.pixel_width
+        if self.__dict__.get('_camera'):
+            self.frame_height = value * self.pixel_height / self.pixel_width
+        else:
+            self.__dict__['_frame_width'] = value
 
     @property
     def frame_x_radius(self):
@@ -962,6 +975,10 @@ class PreviewConfig:
     def frame_size(self):
         return (self.pixel_width, self.pixel_height)
 
+    @frame_size.setter
+    def frame_size(self, value):
+        self.pixel_width, self.pixel_height = value
+
     @property
     def frame_rate(self):
         return FPS
@@ -993,7 +1010,7 @@ class PreviewConfig:
         elif name == 'seed':
             if value is not None and (isinstance(value, bool) or not isinstance(value, numbers.Integral)):
                 raise ValueError('config.seed must be an integer or None')
-        elif name not in ('frame_x_radius', 'frame_y_radius') and name not in PreviewConfig._PASSIVE:
+        elif name not in ('frame_x_radius', 'frame_y_radius', 'frame_size') and name not in PreviewConfig._PASSIVE:
             raise NotImplementedError('Unsupported preview configuration: ' + name)
         object.__setattr__(self, name, value)
 
@@ -13512,7 +13529,8 @@ class Scene:
                 pass
             else:
                 numpy.random.seed(random_seed)
-        self.camera = self.camera_class(**config.to_dict())
+        self.camera = self.camera_class(**config._camera_dict())
+        object.__setattr__(self.camera, '_camera', True)
         for name, value in (camera_config or {}).items():
             setattr(self.camera, name, value)
         self.mobjects, self.frames = [], []
