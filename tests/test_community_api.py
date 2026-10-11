@@ -250,6 +250,64 @@ class AnimationApiTests(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, 'Use Mobject.animate'):
             scene_values('result = Scene().compile_animations(Square().shift)\n')
 
+    def test_group_remover_removes_every_member(self):
+        frames = json.loads(lite.render_scene(
+            'from manim import *\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        self.play(AnimationGroup(AnimationGroup(Create(Square()), Create(Circle())),\n'
+            '                                 Succession(FadeIn(Dot()), FadeIn(Star())), remover=True))\n'
+            '        self.wait(0.1)\n'))['frames']
+        self.assertGreater(len(frames[0]['mobjects']), 0)
+        self.assertEqual(frames[-1]['mobjects'], [])
+
+    def test_become_matching_options(self):
+        result = scene_values(
+            's = Rectangle(width=2, height=1).shift(UP); d = Dot()\n'
+            'a = s.copy().become(d, match_width=True)\n'
+            'b = s.copy().become(d, match_height=True, match_center=True)\n'
+            'c = s.copy().become(d, stretch=True)\n'
+            'result = [a.width, a.get_center(), b.height, b.get_center(), c.width, c.height]\n')
+        self.assertEqual(result, [2.0, [0.0, 0.0, 0.0], 1.0, [0.0, 1.0, 0.0], 2.0, 1.0])
+
+    def test_transform_path_variants(self):
+        result = scene_values(
+            't = Transform(VGroup(Dot(LEFT)), VGroup(Dot(RIGHT)), path_arc=PI, path_arc_centers=ORIGIN)\n'
+            'f = FadeTransform(Square().shift(LEFT), VGroup().shift(RIGHT))\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        self.play(t)\n'
+            '        self.play(ApplyComplexFunction(lambda z: z + 2j, Square()))\n'
+            '        self.add(Square().shift(LEFT)); self.play(f)\n'
+            's = S(); s.render(); result = [type(t.path_func).__name__, s.frames]\n')
+        self.assertEqual(result[0], '_CirclesPath')
+        frames = result[1]
+        # The counterclockwise orbit passes below the center; the complex shift moves straight up (no arc).
+        self.assertTrue(any(f['mobjects'][0]['children'][0]['position'][1] < -0.9 for f in frames[:16]))
+        shifted = [f['mobjects'][-1] for f in frames[16:30]]
+        self.assertTrue(all(abs(m['position'][0] + m['geometry_center'][0]) < 1e-9 for m in shifted))
+        self.assertGreater(shifted[-1]['geometry_center'][1], 1.9)
+
+    def test_plot_colorscale(self):
+        result = scene_values(
+            'ax = Axes(x_range=[-3, 3], y_range=[-3, 3])\n'
+            'c = ax.plot(lambda x: x, x_range=(-3, 3, 1), colorscale=[(RED, -1), (BLUE, 2)])\n'
+            'result = [[str(x) for x in c.get_stroke_colors()], c.get_sheen_direction()]\n')
+        self.assertEqual(result, [['#FC6255', '#FC6255', '#FC6255', '#C58282', '#8EA3AF', '#58C4DD', '#58C4DD'],
+                                  [1.0, 0.0, 0.0]])
+
+    @unittest.skipUnless(HAS_NUMPY, 'vectorized plotting passes NumPy arrays to the function')
+    def test_vectorized_plot(self):
+        result = scene_values(
+            'ax = Axes(x_range=[-1, 4], y_range=[0, 3], x_axis_config={"scaling": LogBase()})\n'
+            'g = ax.plot(lambda x: np.where(x < 10, 2, 1), x_range=[-1, 4], use_vectorized=True)\n'
+            'ax2 = Axes()\n'
+            'f = ax2.plot(lambda x: 2 * x, x_range=[0, 2])\n'
+            'a = ax2.plot_antiderivative_graph(f, use_vectorized=True)\n'
+            'b = ax2.plot_antiderivative_graph(f)\n'
+            'result = [len(g.points), g.points[0], g.points[-1], np.allclose(a.points, b.points)]\n')
+        self.assertEqual(result, [200.0, [-6.0, 1.0, 0.0], [6.0, -1.0, 0.0], True])
+
     def test_play_accepts_lists_and_generators(self):
         frames = json.loads(lite.render_scene(
             'from manim import *\n'

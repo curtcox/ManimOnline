@@ -3019,7 +3019,8 @@ class Mobject:
         self.__dict__.update(state)
         _link_children(self, state.get('children', ()))
 
-    def become(self, mobject):
+    def become(self, mobject, match_height=False, match_width=False, match_depth=False, match_center=False,
+               stretch=False):
         """Replace supported geometry while retaining identity and updater registrations."""
         if not isinstance(mobject, Mobject):
             raise TypeError('become expects a Mobject')
@@ -3027,6 +3028,19 @@ class Mobject:
             if isinstance(self, special) != isinstance(mobject, special):
                 raise ValueError('Camera frames and trackers can only become their own kind')
         target = mobject.copy()
+        if stretch:
+            target.stretch_to_fit_height(self.get_height())
+            target.stretch_to_fit_width(self.get_width())
+            target.stretch_to_fit_depth(self.get_depth())
+        else:
+            if match_height:
+                target.match_height(self)
+            if match_width:
+                target.match_width(self)
+            if match_depth:
+                target.match_depth(self)
+        if match_center:
+            target.move_to(self.get_center())
         if isinstance(self, CameraFrame):
             if (target.angle or target.position[2] or target.get_width() <= 0 or target.get_height() <= 0 or
                     not all(math.isfinite(v) for v in (*target.position,target.get_width(),target.get_height()))):
@@ -4222,8 +4236,6 @@ class ParametricFunction(VMobject):
                  use_smoothing=True, use_vectorized=False, **kwargs):
         if not callable(function):
             raise TypeError('ParametricFunction expects a callable returning an XY point')
-        if use_vectorized:
-            raise NotImplementedError('Vectorized plotting is not implemented')
         if not isinstance(use_smoothing,bool) or not isinstance(use_vectorized,bool):
             raise ValueError('Plotting flags must be booleans')
         values = self._range(t_range,.01)
@@ -4233,6 +4245,7 @@ class ParametricFunction(VMobject):
         self._parametric_function = function
         self.t_min,self.t_max,self.t_step = values
         self.dt,self.discontinuities,self.use_smoothing = dt,discontinuities,use_smoothing
+        self.use_vectorized = use_vectorized
         self.generate_points()
 
     @staticmethod
@@ -4254,6 +4267,19 @@ class ParametricFunction(VMobject):
     def get_point_from_function(self, t):
         NumberLine._real(t,'Function input')
         return Vector(self._corners([self._parametric_function(t)])[0])
+
+    def _vectorized_points(self, times):
+        """Community's use_vectorized: one call with every input, returning (xs, ys[, zs])."""
+        coordinates = [_listed(values) for values in self._parametric_function(_number_array(times))]
+        if len(coordinates) not in (2, 3):
+            raise ValueError('A vectorized function must return x, y and optionally z arrays')
+        columns = [list(values) if isinstance(values, (list, tuple)) else [values] * len(times)
+                   for values in coordinates]
+        if len(columns) == 2 or not isinstance(coordinates[2], (list, tuple)):
+            columns = columns[:2] + [[0] * len(times)]  # Community fills a scalar z with zeros.
+        if any(len(values) != len(times) for values in columns):
+            raise ValueError('A vectorized function must return one value per input')
+        return [Vector(point) for point in self._corners(list(zip(*columns)))]
 
     def generate_points(self):
         intervals,cursor = [],self.t_min
@@ -4279,7 +4305,8 @@ class ParametricFunction(VMobject):
             # np.arange fills start + i * ((start + step) - start), as Community samples.
             delta = (start+self.t_step)-start
             times = [start+i*delta for i in range(count) if start+i*delta < end]+[end]
-            anchors = [self.get_point_from_function(t) for t in times]
+            anchors = (self._vectorized_points(times) if self.__dict__.get('use_vectorized') else
+                       [self.get_point_from_function(t) for t in times])
             if len(anchors) == 1:
                 pending = [list(anchors[0])]
                 continue
@@ -8894,7 +8921,7 @@ class Axes(VGroup, CoordinateSystem):
             line_graph['vertex_dots'] = VGroup(*(Dot(point=vertex, radius=vertex_dot_radius, **style) for vertex in vertices))
         return line_graph
 
-    def plot(self, function, x_range=None, use_vectorized=False, **kwargs):
+    def plot(self, function, x_range=None, use_vectorized=False, colorscale=None, colorscale_axis=1, **kwargs):
         if not callable(function):
             raise TypeError('Axes.plot expects a scalar function')
         values = self.x_range[:] if x_range is None else list(x_range)
@@ -8904,14 +8931,60 @@ class Axes(VGroup, CoordinateSystem):
             values[2] = step
         values = ParametricFunction._range(values,step)
         scale = self.x_axis.scaling
-        if isinstance(scale,LinearBase):
+        linear_scale = isinstance(scale,LinearBase)
+        if use_vectorized:
+            def point(t):
+                xs = _listed(t) if linear_scale else [scale.function(v) for v in _listed(t)]
+                ys = _listed(function(_number_array(xs)))
+                ys = list(ys) if isinstance(ys,(list,tuple)) else [ys]*len(xs)
+                points = [self.c2p(x,y) for x,y in zip(xs,ys)]
+                return [p[0] for p in points],[p[1] for p in points],[p[2] for p in points]
+        elif linear_scale:
             point = lambda t: self.c2p(t,function(t))
         else:
             # Community samples scaled plots at scaling.function(t) over the raw range.
             point = lambda t: self.c2p(scale.function(t),function(scale.function(t)))
         graph = ParametricFunction(point,t_range=values,use_vectorized=use_vectorized,**kwargs)
         graph.underlying_function = function
+        if colorscale:
+            self._apply_colorscale(graph, function, values if x_range is None else x_range,
+                                   colorscale, colorscale_axis)
         return graph
+
+    def _apply_colorscale(self, graph, function, x_range, colorscale, axis):
+        """Community's plot colorscale: a stroke gradient sampled along x, spread to the right."""
+        if axis not in (0, 1):
+            raise ValueError('colorscale_axis must be 0 (x) or 1 (y)')
+        colorscale = list(colorscale)
+        if isinstance(colorscale[0], (list, tuple)):
+            colors = [color for color, _ in colorscale]
+            pivots = [NumberLine._real(pivot, 'colorscale pivot') for _, pivot in colorscale]
+        else:
+            colors = colorscale
+            low, high = (self.x_range, self.y_range)[axis][:2]
+            step = (high - low) / (len(colors) - 1) if len(colors) > 1 else 1
+            pivots = [low + i * step for i in range(len(colors))]
+        resolution = 0.01 if len(x_range) == 2 else NumberLine._real(x_range[2], 'colorscale resolution', positive=True)
+        count = math.ceil((x_range[1] + resolution - x_range[0]) / resolution)
+        if count > 100000:
+            raise ValueError('colorscale sampling is limited to 100000 points')
+        samples = []
+        for index in range(count):
+            x = x_range[0] + index * resolution
+            value = (x, function(x))[axis]
+            if value <= pivots[0]:
+                samples.append(ManimColor(colors[0]))
+            elif value >= pivots[-1]:
+                samples.append(ManimColor(colors[-1]))
+            else:
+                i = next(i for i, pivot in enumerate(pivots) if pivot > value)
+                alpha = min((value - pivots[i - 1]) / (pivots[i] - pivots[i - 1]), 1)
+                samples.append(interpolate_color(colors[i - 1], colors[i], alpha))
+        if len(samples) > 256:
+            # Evenly spaced gradient stops; more than this draws the same gradient.
+            samples = [samples[round(i * (len(samples) - 1) / 255)] for i in range(256)]
+        graph.set_stroke(samples)
+        graph.set_sheen_direction(RIGHT)
 
     def plot_parametric_curve(self, function, **kwargs):
         if not callable(function):
@@ -8987,6 +9060,8 @@ class Axes(VGroup, CoordinateSystem):
         if isinstance(samples,bool) or not isinstance(samples, numbers.Integral) or not 2 <= samples <= 10000:
             raise ValueError('Antiderivative samples must be an integer from 2 to 10000')
         def integral(x):
+            if hasattr(x,'__len__'):
+                return _number_array([integral(value) for value in _listed(x)])  # use_vectorized inputs.
             values = [NumberLine._real(function(x*(index/(samples-1))),'Integral sample')
                       for index in range(samples)]
             step = x/(samples-1)
@@ -10814,9 +10889,13 @@ def _arc_factor(alpha, path_arc):
 
 
 class Transform(Animation):
-    def __init__(self, mobject, target_mobject, path_arc=0, path_arc_axis=OUT, path_func=None, **kwargs):
+    def __init__(self, mobject, target_mobject, path_arc=0, path_arc_axis=OUT, path_func=None,
+                 path_arc_centers=None, **kwargs):
         super().__init__(mobject, **kwargs)
         point_path, self._arc = None, path_arc
+        self.path_arc_axis, self.path_arc_centers = path_arc_axis, path_arc_centers
+        if path_func is None and path_arc_centers is not None:
+            path_func = path_along_circles(path_arc, path_arc_centers, path_arc_axis)
         if path_func is not None:
             if isinstance(path_func, _PathFunction):
                 path_arc, path_arc_axis = path_func.path_arc, OUT
@@ -11263,6 +11342,8 @@ class FadeTransform(Transform):
         source.set_opacity(0)
 
     def _fit(self, mobject, reference):
+        if not (reference.get_num_points() or reference.children):
+            return mobject  # An empty target: the source fades out where it is.
         try:
             return mobject.replace(reference, self.dim_to_match, self.stretch)
         except NotImplementedError:
@@ -11394,12 +11475,17 @@ class AnimationGroup:
     """Combine independent animations on a timeline, optionally overlapping."""
     introducer = False
 
-    def __init__(self, *animations, lag_ratio=0, run_time=None, rate_func=linear, group=None, introducer=False):
+    def __init__(self, *animations, lag_ratio=0, run_time=None, rate_func=linear, group=None, introducer=False,
+                 remover=False, name=None):
         if not animations or any(not isinstance(a, (Animation, AnimationGroup)) for a in animations):
             raise TypeError('AnimationGroup expects at least one supported animation')
         if group is not None and not isinstance(group, Mobject):
             raise TypeError('AnimationGroup group must be a Mobject')
         self._group, self.introducer = group, bool(introducer)
+        if remover:
+            self.remover = True  # Community passes it on to every member when the group ends.
+        if name is not None:
+            self.name = name
         if not math.isfinite(lag_ratio) or lag_ratio < 0:
             raise ValueError('lag_ratio must be nonnegative and finite')
         self.animations, self.rate_func, self.lag_ratio = animations, rate_func, lag_ratio
@@ -11528,7 +11614,17 @@ class AnimationGroup:
     def finish(self, scene):
         for animation in self.animations:
             animation.__dict__.pop('_holding', None)
+            if self.remover:
+                animation.remover = True
             animation._complete(scene)
+
+    @staticmethod
+    def _remove_members(scene, animation):
+        if isinstance(animation, AnimationGroup):
+            for member in animation.animations:
+                AnimationGroup._remove_members(scene, member)
+        elif isinstance(animation.mobject, Mobject):
+            scene.remove(animation.mobject)
 
     def _complete(self, scene):
         self.finish(scene)
@@ -11588,8 +11684,13 @@ class Succession(AnimationGroup):
 
     def finish(self, scene):
         self._advance(len(self.animations) - 1)
+        if self.remover:
+            self.animations[-1].remover = True
         self.animations[-1]._complete(scene)
         self._active = len(self.animations)
+        if self.remover:
+            for animation in self.animations[:-1]:
+                self._remove_members(scene, animation)
 
 
 class ApplyMethod(Animate):
@@ -11672,9 +11773,10 @@ class ApplyComplexFunction(ApplyMethod):
     def __init__(self, function, mobject, **kwargs):
         if not callable(function):
             raise TypeError('ApplyComplexFunction expects a complex function')
-        value = complex(function(complex(1)))
-        kwargs.setdefault('path_arc', math.atan2(value.imag, value.real) if value else 0)
+        # Community's arc from function(1) lives in an _init_path_func that is never called,
+        # so points move straight.
         super().__init__(mobject.apply_complex_function, function, **kwargs)
+        self.function = function
 
 
 class ApplyFunction(Transform):
