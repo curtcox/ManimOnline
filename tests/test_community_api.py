@@ -549,6 +549,31 @@ class AnimationApiTests(unittest.TestCase):
             '          o.get_subpaths()[1][3], p.get_subpaths()[0][3]]\n'),
             [[3.0, 2.0], [3.0, 2.0], [2.0, 0.5, 0.0], [0.0, 0.3333, 0.0]])
 
+    def test_number_line_tips_squeeze_the_family_like_community(self):
+        self.assertEqual(scene_values(
+            'b = NumberLine(x_range=[-3, 3, 1]); b.add_tip()\n'
+            'after = [t.get_center()[0] for t in b.ticks]\n'
+            'b.add_tip(at_start=True)\n'
+            'both = [b.has_tip(), b.has_start_tip(), b.tip.base, b.start_tip.base, b.n2p(2)]\n'
+            'c = NumberLine(x_range=[0, 4, 1]).rotate(PI / 4).shift(UP).scale(0.5)\n'
+            'c.add_tip(tip_length=0.5, tip_width=0.3)\n'
+            'tips = b.pop_tips()\n'
+            'result = [after, both, c.tip.get_tip_point(), c.tip.base, c.get_center(), c.width,\n'
+            '          len(tips), b.has_tip(), tips[0].get_tip_point()]\n'),
+            [[-3.0, -2.0583, -1.1167, -0.175, 0.7667, 1.7083, 2.65],
+             [True, True, [2.6704, 0.0, 0.0], [-2.65, 0.0, 0.0], [2.0, 0.0, 0.0]],
+             [0.7071, 1.7071, 0.0], [0.3536, 1.3536, 0.0], [-0.0133, 0.9867, 0.0], 1.4407,
+             2.0, False, [3.0, 0.0, 0.0]])
+
+    def test_scene_restructuring_helpers_and_font_list(self):
+        self.assertEqual(scene_values(
+            'a, b, c = Square(), Circle(), Dot(); g = VGroup(a, b)\n'
+            'scene = Scene(); scene.add(g, c)\n'
+            'scene.restructure_mobjects([a])\n'
+            'listed = scene.get_restructured_mobject_list([g, c], [c])\n'
+            'result = [[type(m).__name__ for m in scene.mobjects], listed == [g], "monospace" in Text.font_list()]\n'),
+            [['Circle', 'Dot'], True, True])
+
     def test_dashed_arrows_keep_one_set_of_tips(self):
         self.assertEqual(scene_values(
             'd = DashedVMobject(Arrow(ORIGIN, 2 * UR, color=RED))\n'

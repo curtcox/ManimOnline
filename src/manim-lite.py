@@ -1126,6 +1126,8 @@ class Mobject:
             def getter(self):
                 warnings.warn('This method is not guaranteed to stay around. Please prefer '
                               'getting the attribute normally.', DeprecationWarning, stacklevel=2)
+                if attr[4:] in _WORLD_PROPERTIES and sys._getframe(1).f_code.co_filename != _LIB_FILE:
+                    return _in_world(self, lambda m: getattr(m, attr[4:]))
                 return getattr(self, attr[4:])
             return types.MethodType(getter, self)
         if attr.startswith('set_') and len(attr) > 4:
@@ -6237,6 +6239,11 @@ def _math_glyphs(text, font_size, part_strings=None):
 
 
 class Text(Mobject):
+    @staticmethod
+    def font_list():
+        """Fonts with measured layout (Liberation Sans/Mono metrics); others fall back to them."""
+        return ['Liberation Sans', 'Liberation Mono', 'sans-serif', 'monospace']
+
     @property
     def font_size(self):
         """Community's font_size follows scaling; the unscaled size stays in __dict__."""
@@ -8895,7 +8902,23 @@ class NumberLine(VGroup):
 
     @property
     def tip(self):
-        return self._part('tip')
+        tips = self._tips(False)
+        if not tips:
+            raise ValueError('NumberLine has no tip')
+        return tips[-1]
+
+    @property
+    def start_tip(self):
+        tips = self._tips(True)
+        if not tips:
+            raise ValueError('NumberLine has no start tip')
+        return tips[-1]
+
+    def get_first_handle(self):
+        return self._point_to_world(self._part('shaft').get_first_handle())
+
+    def get_last_handle(self):
+        return self._point_to_world(self._part('shaft').get_last_handle())
 
     def get_start(self):
         return self._point_to_world(self._part('shaft').get_start())
@@ -9076,20 +9099,84 @@ class NumberLine(VGroup):
     def get_labels(self):
         return self.get_number_mobjects()
 
-    def _tips(self):
-        return [child for child in self.children if child.__dict__.get('_number_line_role') == 'tip']
+    def _tips(self, at_start=None):
+        return [child for child in self.children if child.__dict__.get('_number_line_role') == 'tip'
+                and (at_start is None or bool(child.__dict__.get('_tip_at_start')) == at_start)]
 
     def has_tip(self):
-        return bool(self._tips())
+        return bool(self._tips(False))
+
+    def has_start_tip(self):
+        return bool(self._tips(True))
 
     def get_tip(self):
-        tips = self._tips()
+        tips = self._tips(False) + self._tips(True)
         if not tips:
             raise Exception('tip not found')
-        return tips[-1]
+        return tips[0]
 
     def get_tips(self):
-        return VGroup(*self._tips())
+        return VGroup(*(self._tips(False) + self._tips(True)))
+
+    def get_default_tip_length(self):
+        return DEFAULT_ARROW_TIP_LENGTH
+
+    def get_unpositioned_tip(self, tip_shape=None, tip_length=None, tip_width=None):
+        return Line.get_unpositioned_tip(self._part('shaft'), tip_shape, tip_length, tip_width)
+
+    def position_tip(self, tip, at_start=False):
+        """Orient a tip along the shaft (in this line's frame) with its point on the end."""
+        if not isinstance(at_start, bool):
+            raise ValueError('at_start must be a boolean')
+        if not isinstance(tip, ArrowTip):
+            raise TypeError('tip must be an ArrowTip')
+        shaft = self._part('shaft')
+        start, end = shaft.get_start(), shaft.get_end()
+        anchor, vector = (start, start - end) if at_start else (end, end - start)
+        tip.rotate((math.atan2(vector[1], vector[0]) if any(vector) else 0) - tip.tip_angle)
+        tip.shift(anchor - tip.tip_point)
+        return tip
+
+    def create_tip(self, tip_shape=None, tip_length=None, tip_width=None, at_start=False):
+        if self.geometry_scale == 0:
+            raise ValueError('Cannot create a positioned tip on collapsed geometry')
+        tip = self.get_unpositioned_tip(tip_shape, tip_length, tip_width)
+        tip.scale(1 / abs(self.geometry_scale))
+        return self.position_tip(tip, at_start)
+
+    def add_tip(self, tip=None, tip_shape=None, tip_length=None, tip_width=None, at_start=False):
+        """Community's add_tip; the shaft keeps its length, so number_to_point is unchanged."""
+        if self.geometry_scale == 0:
+            raise ValueError('Cannot add a tip to collapsed geometry')
+        if tip is None:
+            tip = self.create_tip(tip_shape, tip_length, tip_width, at_start)
+        else:
+            if tip in self.children:
+                raise ValueError('The tip is already attached')
+            tip.scale(1 / abs(self.geometry_scale))
+            self.position_tip(tip, at_start)
+        tip._number_line_role, tip._tip_at_start = 'tip', at_start
+        old = self._tips(at_start)
+        # Community's reset_endpoints_based_on_tip fits the whole family between the fixed
+        # end and the tip base: ticks, numbers and an existing tip shrink toward that end.
+        # The shaft keeps its length (hidden under the tip) so number_to_point is unchanged.
+        shaft = self._part('shaft')
+        ends = [Vector(tip.tip_point) for tip in self._tips(not at_start)[-1:]]
+        fixed = ends[0] if ends else (shaft.get_end() if at_start else shaft.get_start())
+        moving = (shaft.get_start() if at_start else shaft.get_end())
+        span = math.dist(moving, fixed)
+        if span:
+            factor = math.dist(Vector(tip.base), fixed) / span
+            for child in self.children:
+                if child is not shaft and child not in old:
+                    child.scale(factor, about_point=fixed)
+        self._replace_children([child for child in self.children if child not in old] + [tip])
+        return self
+
+    def pop_tips(self):
+        tips = self.get_tips()
+        self.remove(*tips.children)
+        return tips
 
 
 class CoordinateSystem:
@@ -12993,6 +13080,16 @@ class Scene:
                 visit([child for child in mobject.children if 'camera_screen' not in child.__dict__], hit)
         visit(roots, list(removing))
         return result
+
+    def get_restructured_mobject_list(self, mobjects, to_remove):
+        return self._restructured(list(mobjects), list(to_remove))
+
+    def restructure_mobjects(self, to_remove, mobject_list_name='mobjects', extract_families=True):
+        if extract_families:
+            to_remove = [member for m in to_remove for member in m.get_family()]
+        setattr(self, mobject_list_name,
+                self.get_restructured_mobject_list(getattr(self, mobject_list_name), to_remove))
+        return self
 
     def get_mobject_family_members(self):
         return [m for root in self.mobjects for m in root.get_family()]

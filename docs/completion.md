@@ -378,7 +378,7 @@ limited DoubleArrow). AnimationGroup now has Animation's accessors and timing bu
 Transform exposes create_target/target_mobject and a path_func separate from numeric
 path_arc; Write/DrawBorderThenFill expose get_outline/get_stroke_color; plus Wiggle pivots,
 Line.set_path_arc, Arc.stop_angle, MathTex.index_of_part/sort_alphabetically and NumberLine
-label/tip getters. The docstring corpus frame comparison now matches 195 of 273 examples.
+label/tip getters. The docstring corpus frame comparison now matches 197 of 273 examples.
 SpecialThreeDScene works (Manim 0.22's own constructor fails), and the OpenGL point clouds
 (DotCloud, TrueDot, OpenGLPMobject...) and pixel cameras (MappingCamera, SplitScreenCamera,
 OldMultiCamera) are importable names that raise a clear NotImplementedError. Manim's
@@ -390,7 +390,7 @@ some CoordinateSystem helpers, TexTemplate preamble attributes, pixel images
 (get_image/show raise NotImplementedError) and alternative cameras.
 
 Community module tests (2026-10-10): Manim 0.22's own pytest suite (tests/module, 655
-tests) was run against lite through a `manim` shim. Lite now passes 563; the failures are
+tests) was run against lite through a `manim` shim. Lite now passes 573; the failures are
 private internals (_get_subdivision_matrix, _locate_first_match, compile_animation_data,
 caching/hashing), file-system TeX/Typst output, OpenGL metaclasses, intentional floating
 rounding and point-alignment differences. This pass added Community's ManimColor value
@@ -398,4 +398,6 @@ semantics and operators, animate builders and run-time validation, subcaptions, 
 DecimalNumber attributes, Text font_size/submobjects, Tex separators, TexTemplate body/
 environment generation, config.tex_template, manim.utils.unit (Pixels, Percent, Degrees,
 Munits), manim.typing aliases, get_quadratic_approximation_of_cubic and empty containers
-that ignore shifts.
+that ignore shifts. Later passes added Community's per-subpath align_points, NumberLine
+add_tip/pop_tips (the family squeezes toward the tip base as in Community), xy-plane
+Angle checks, Scene.restructure_mobjects and inert config names.

@@ -758,3 +758,6 @@ VMobject.align_points is Community's per-subpath pairing (trailing null curves d
 missing subpaths become null curves at the last point); morph snapshots still use
 _aligned_point_lists. Angle and line_intersection reject nonzero z like Community.
 PreviewConfig._PASSIVE also lists Community's inert directory/window/flag settings.
+NumberLine tips are role-tagged children (`_tip_at_start` marks start tips); add_tip scales
+the other children toward the tip base like Community but leaves the shaft (and n2p) alone.
+Generic get_<world property>() calls from scene code run through _in_world.
