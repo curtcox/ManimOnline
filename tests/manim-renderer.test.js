@@ -378,6 +378,17 @@ test('stream line gradients follow local chord endpoints in user space', () => {
   }
 });
 
+test('long gradient color lists are thinned to 256 evenly spaced stops', () => {
+  const colors = Array.from({length: 1000}, (_, i) => '#' + i.toString(16).padStart(6, '0'));
+  const data = {type:'polyline', vertices:[[0,0],[1,0]], stroke_color:colors, stroke_width:2, fill_opacity:0,
+    position:[0,0,0]};
+  const stops = renderer.renderMobject(data).querySelectorAll().filter(e => e.tag === 'stop');
+  assert.equal(stops.length, 256);
+  assert.equal(stops[0].getAttribute('stop-color'), colors[0]);
+  assert.equal(stops[255].getAttribute('stop-color'), colors[999]);
+  assert.throws(() => renderer.renderMobject({...data, stroke_color:['red']}), /six-digit hex/);
+});
+
 test('stroke caps and joins follow Community cap_style and joint_type', () => {
   const data = {type:'polyline', vertices:[[0,0],[1,0],[0,1]], stroke_width:20, color:'#00FF00', position:[0,0,0]};
   const plain = renderer.renderMobject(data);
@@ -423,7 +434,7 @@ test('point clouds batch fixed-size squares by color', () => {
 });
 
 test('gradient validation rejects unsafe colors and a single stop keeps a solid paint', () => {
-  for (const color of [[],['url(https://example.com/paint)'],['red'],Array(65).fill('#FFFFFF')]) {
+  for (const color of [[],['url(https://example.com/paint)'],['red'],Array(100001).fill('#FFFFFF')]) {
     assert.throws(()=>renderer.renderMobject({type:'polygon',fill_color:color}),/Gradient colors/);
   }
   const polygon = renderer.renderMobject({type:'polygon',fill_color:['#123456']});

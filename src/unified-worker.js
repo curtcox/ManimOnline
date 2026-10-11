@@ -1,6 +1,7 @@
 /** Python lives in this worker; the main thread enforces its hard deadline. */
 let runtimePromise;
 const PYODIDE_URL = 'https://cdn.jsdelivr.net/pyodide/v0.27.0/full/';
+const NETWORKX_WHEEL = PYODIDE_URL + 'networkx-3.4.2-py3-none-any.whl';
 
 async function initPyodide() {
   if (!runtimePromise) {
@@ -76,6 +77,8 @@ self.onmessage = event => {
       }
       // Code listings use Pygments for syntax colors, as Community does.
       if (/\bCode\s*\(/.test(code)) await runtime.loadPackage('pygments');
+      // By URL: the lock file's networkx entry pulls in matplotlib, which import networkx never needs.
+      if (/\b(?:networkx|nx)\b/.test(code)) await runtime.loadPackage(NETWORKX_WHEEL);
       self.postMessage({ id, type: 'pyodide-ready' });
       // Rebuild the compatibility definitions and use a fresh source namespace.
       await runtime.runPythonAsync(source);

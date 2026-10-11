@@ -517,8 +517,10 @@ pose groups. play(rate_func=...) assigns animation.rate_func before prepare.
 
 NumPy: validations use _REAL (numbers.Real) / numbers.Integral, never (int, float),
 so NumPy scalars work; Vector normalizes scalars and render_scene's JSON default
-handles leftovers. The worker loads NumPy only for sources mentioning np/numpy;
-OfflineAssets.optional caches the wheel without making it a readiness requirement.
+handles leftovers. The worker loads NumPy only for sources mentioning np/numpy
+(networkx/nx sources load networkx by wheel URL, avoiding its matplotlib lock dependency);
+OfflineAssets.optional caches these wheels without making them readiness requirements.
+Renderer gradients thin color lists above 256 stops to evenly spaced stops.
 When NumPy is loaded, `_scene_call` returns Vector results to scene code as mutable float
 arrays (Community's type); without it scene code gets Vector (tolist/copy/shape only).
 Coordinate entry points accept arrays via `_listed`. Tests compare points through

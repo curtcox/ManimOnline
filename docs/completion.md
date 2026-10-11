@@ -285,7 +285,9 @@ AddTextWordByWord are implemented with Community reference checks where the
 output is deterministic.
 
 Graph and DiGraph are implemented with networkx/Community layout parity for the
-deterministic layouts; SciPy-based layouts and networkx graph objects are unavailable.
+deterministic layouts; SciPy-based layouts are unavailable. Sources that mention
+networkx/nx load Pyodide's networkx wheel by URL (without matplotlib), so
+Graph.from_networkx and networkx generators run in the browser.
 
 Union, Intersection, Difference and Exclusion are implemented with Community area and
 bounds checks; coincident curved (non-straight) boundaries are approximate.

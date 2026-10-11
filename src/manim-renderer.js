@@ -355,8 +355,13 @@ const ManimRenderer = {
         opacities.every(Number.isFinite) ? opacities : null;
       if (!Array.isArray(color) && !alphas) return color;
       if (!Array.isArray(color)) color = [color];
-      if (!color.length || color.length > 64 || !color.every(stop => /^#[0-9a-f]{6}$/i.test(stop))) {
-        throw new Error('Gradient colors require 1 to 64 six-digit hex colors');
+      if (!color.length || color.length > 100000 || !color.every(stop => /^#[0-9a-f]{6}$/i.test(stop))) {
+        throw new Error('Gradient colors require 1 to 100000 six-digit hex colors');
+      }
+      if (color.length > 256) {
+        // Evenly spaced stops; more than this draws the same gradient.
+        const all = color;
+        color = Array.from({ length: 256 }, (_, i) => all[Math.round(i * (all.length - 1) / 255)]);
       }
       if (color.length === 1 && !alphas) return color[0];
       const count = Math.max(color.length, alphas ? alphas.length : 1);
