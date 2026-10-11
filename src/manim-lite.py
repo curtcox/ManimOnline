@@ -307,6 +307,12 @@ def _scene_call(function, reference=False, live_points=False):
             return function(self, *args, **kwargs)
         if reference:
             args, kwargs = _world_args(args, kwargs)
+        if '_tip_role' in self.__dict__ and not (function.__name__.startswith(('get_', 'has_', 'is_'))
+                                                 or function.__name__ in _WORLD_PROPERTIES):
+            owner = _PARENTS.get(self)
+            owner = owner() if owner is not None else None
+            if isinstance(owner, TipableVMobject) and any(child is self for child in owner.children):
+                owner._freeze_shaft()
         # A class may present Community's structure to scene code with a _scene_<name> variant.
         result = _in_world(self, getattr(type(self), '_scene_' + function.__name__, function), *args, **kwargs)
         # Community's get_points returns the points buffer itself.
@@ -1321,7 +1327,7 @@ class Mobject:
         """Community's reset_endpoints_based_on_tip: a curved path with tips keeps its shape
         but is moved by the similarity taking its ends onto the tip bases."""
         curves = self.__dict__.get('curves', [])
-        if not self.__dict__.get('_curved_tip_path') or not curves:
+        if not self.__dict__.get('_curved_tip_path') or not curves or self.__dict__.get('_shaft_fixed'):
             return curves
         ends = {}
         for child in self.children:
@@ -1362,6 +1368,8 @@ class Mobject:
     def _layout_targets(self):
         if self.geometry_scale == 0:
             raise NotImplementedError('Cannot arrange a collapsed family')
+        if isinstance(self, TipableVMobject):
+            self._freeze_shaft()  # Layout moves the tips, never Community's own points.
         self._geometry_center()
         targets = []
         for child in self._layout_members():
@@ -3654,6 +3662,8 @@ class Mobject:
 
     def space_out_submobjects(self, factor=1.5, **kwargs):
         self.scale(factor, **kwargs)
+        if isinstance(self, TipableVMobject):
+            self._freeze_shaft()
         for child in self._layout_members():
             # Each member shrinks about its world bounds center, which a posed parent's
             # local frame does not preserve.
@@ -5085,6 +5095,7 @@ class TipableVMobject(VMobject):
             raise ValueError('at_start must be a boolean')
         if self.geometry_scale == 0:
             raise ValueError('Cannot add a tip to collapsed geometry')
+        self._unfreeze_shaft()  # Community's attachment re-cuts through put_start_and_end_on.
         if tip is not None and tip not in self.children and self.geometry_scale != 1:
             # A supplied tip (e.g. one pop_tips released into world coordinates) keeps its
             # world size, as in Community: express it in this path's local frame.
@@ -5114,40 +5125,94 @@ class TipableVMobject(VMobject):
         return self
 
     def pop_tips(self):
+        self._unfreeze_shaft(orient=False)
         tips = self.get_tips()
         self.remove(*tips.children)
         self.explicit_tips = True
         return tips
 
-    def _scene_remove(self, *mobjects):
-        """Community cuts the shaft at a tip's base when the tip is attached, so removing
-        the tip directly (unlike pop_tips) leaves the shaft short."""
-        curved = self.__dict__.get('_curved_tip_path')
-        removed = [child for child in self.children if any(child is m for m in mobjects)
-                   and child.__dict__.get('_tip_role') in ('start', 'end')]
-        if not removed or not (curved or self._type in ('line', 'arrow')):
-            return Mobject.remove(self, *mobjects)
-        shaft = self._tip_shaft_curves() if curved else None
-        bases = {}
-        for child in removed:
-            curves = _path_curves(child.to_dict())
-            if curves:
-                index = len(curves) / 2
-                point = VMobject._bezier_point(curves[min(int(index), len(curves) - 1)], index - int(index))
-                bases[child._tip_role] = child._point_to_world(point)
-        Mobject.remove(self, *mobjects)
-        self.explicit_tips = True
+    def _tip_base(self, tip, current=False):
+        """Where Community cut the shaft for a tip, in this path's frame: the midpoint of
+        the tip's ordered cubic array, which affine edits carry along. `current` gives the
+        length-weighted `base` a new cut uses, which differs once a tip is stretched."""
+        curves = _path_curves(tip.to_dict())
+        if not curves:
+            return None
+        if current:
+            return tip._point_to_world(_curves_proportion(curves, 0.5))
+        index = len(curves) / 2
+        return tip._point_to_world(VMobject._bezier_point(curves[min(int(index), len(curves) - 1)], index - int(index)))
+
+    def _set_own_ends(self, ends, curves=None):
+        """Replace own endpoints (or curves) in place, keeping the family where it is."""
         before = self._geometry_center()
-        if curved:
-            self.curves = shaft
-        else:
-            for role, point in bases.items():
-                setattr(self, role, list(point))
+        if curves is not None:
+            self.curves = curves
+        for role, point in ends.items():
+            setattr(self, role, list(point))
         self.__dict__.pop('_family_pivot_cache', None)
         delta = self._geometry_center() - before
         transformed = Vector((delta[0]*math.cos(self.angle)-delta[1]*math.sin(self.angle),
                               delta[0]*math.sin(self.angle)+delta[1]*math.cos(self.angle), 0))*self.geometry_scale
-        return self.shift(transformed - delta)
+        self.shift(transformed - delta)
+
+    def _tips_by_role(self):
+        return {child._tip_role: child for child in self.children
+                if child.__dict__.get('_tip_role') in ('start', 'end')}
+
+    def _freeze_shaft(self):
+        """Community cuts the shaft once, when a tip is attached: moving, editing or
+        removing tips afterwards leaves it in place (Lite otherwise refits it to the tips)."""
+        curved = self.__dict__.get('_curved_tip_path')
+        if self.__dict__.get('_shaft_fixed') or not (curved or self._type in ('line', 'arrow')):
+            return
+        tips = self._tips_by_role()
+        if not tips:
+            return
+        if curved:
+            self._set_own_ends({}, self._tip_shaft_curves())
+        else:
+            bases = {role: self._tip_base(tip) for role, tip in tips.items()}
+            self._set_own_ends({role: point for role, point in bases.items() if point is not None})
+        self._shaft_fixed = True
+
+    def _cut_shaft(self):
+        """Re-attaching tips cuts a straight shaft at their length-weighted bases; asymmetric
+        (stretched) tips keep that cut rather than the refit's array midpoint."""
+        if self.__dict__.get('_shaft_fixed') or self._type not in ('line', 'arrow'):
+            return
+        tips = self._tips_by_role()
+        bases = {role: self._tip_base(tip, current=True) for role, tip in tips.items()}
+        if any(point is not None and math.dist(point, self._tip_base(tips[role])) > 1e-9
+               for role, point in bases.items()):
+            self._set_own_ends({role: point for role, point in bases.items() if point is not None})
+            self._shaft_fixed = True
+
+    def _unfreeze_shaft(self, orient=True):
+        """Community's re-cut (Arrow.scale, put_start_and_end_on, pop_tips): the path runs
+        between the tip points again and each tip is re-aligned with it."""
+        if not self.__dict__.pop('_shaft_fixed', False):
+            return
+        tips = self._tips_by_role()
+        points = {role: Vector(tip.tip_point) for role, tip in tips.items()}
+        if self.__dict__.get('_curved_tip_path'):
+            curves = self.curves
+            if curves:
+                self._set_own_ends({}, _fit_curve_endpoints(curves, points.get('start', curves[0][0]),
+                                                            points.get('end', curves[-1][-1])))
+        else:
+            self._set_own_ends(points)
+        if orient:
+            for role, tip in tips.items():
+                self._orient_tip(tip, role == 'start')
+
+    def _scene_remove(self, *mobjects):
+        """Removing a tip directly (unlike pop_tips) leaves the shaft cut at its base."""
+        if any(child is m and child.__dict__.get('_tip_role') in ('start', 'end')
+               for child in self.children for m in mobjects):
+            self._freeze_shaft()
+            self.explicit_tips = True
+        return Mobject.remove(self, *mobjects)
 
     def _raw_curves(self):
         snapshot = self.to_dict()
@@ -5174,6 +5239,7 @@ class TipableVMobject(VMobject):
 
     def put_start_and_end_on(self, start, end):
         start,end = Line._endpoints(start,end)
+        self._unfreeze_shaft()
         old_start,old_end = self.get_start_and_end()
         old_vector,new_vector = old_end-old_start,end-start
         old_length,new_length = math.hypot(*old_vector),math.hypot(*new_vector)
@@ -5913,6 +5979,7 @@ class Line(TipableVMobject):
 
     def put_start_and_end_on(self, start, end):
         start, end = self._endpoints(start, end)
+        self._unfreeze_shaft()
         # Encode the requested endpoints in the current transform's local space.
         # This keeps ordinary endpoint animations linear even on rotated lines.
         scale = self.geometry_scale or 1
@@ -5980,12 +6047,15 @@ class ArrowTip(VMobject):
 
     @property
     def base(self):
-        # Native tips use the midpoint of their ordered cubic curve array.
+        # Community's point_from_proportion(0.5). It equals the ordered cubic array's
+        # midpoint unless the tip is stretched; that exact midpoint keeps angles stable.
         curves = _path_curves(self.to_dict())
         if not curves:
             raise ValueError('The tip has no completed curves')
         index = len(curves)/2
-        return self._point_to_world(VMobject._bezier_point(curves[min(int(index),len(curves)-1)],index-int(index)))
+        middle = VMobject._bezier_point(curves[min(int(index),len(curves)-1)],index-int(index))
+        weighted = _curves_proportion(curves, 0.5)
+        return self._point_to_world(weighted if math.dist(weighted, middle) > 1e-9 else middle)
 
     @property
     def vector(self):
@@ -6152,6 +6222,7 @@ class Arrow(Line):
             super().scale(factor,**kwargs)
             self._set_stroke_width_from_length()
             return self
+        self._unfreeze_shaft()
         # Community pops the tips and scales the bare line (so default pivots come from
         # its endpoints), then re-adds the tips, whose endpoint refit resets the width
         # from the shaft between the tip bases.
@@ -6171,6 +6242,7 @@ class Arrow(Line):
         super().scale(factor,about_point=about_point,**kwargs)
         for tip in self.get_tips().children:
             tip.scale(1/abs(factor),about_point=tip.tip_point)
+        self._cut_shaft()
         self._geometry_center()
         self.stroke_width = min(self.initial_stroke_width,self.max_stroke_width_to_length_ratio*self._shaft_length())
         return self
@@ -11241,6 +11313,10 @@ def _refresh_tip_shafts(snapshot):
         return snapshot
     snapshot.pop('shaft_start',None)
     snapshot.pop('shaft_end',None)
+    if snapshot.get('_shaft_fixed'):
+        if curved:
+            snapshot['shaft_curves'] = _snapshot_copy(snapshot['curves'])
+        return snapshot
     for child in snapshot.get('children',[]):
         role = child.get('_tip_role')
         if role not in ('start','end'):

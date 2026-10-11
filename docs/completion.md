@@ -426,7 +426,7 @@ differs only in three internal hooks (interpolate_submobject variants, MultiCame
 Plain Group/Mobject boundaries (critical points, centers, container scale/rotate pivots
 and next_to targets) include Bezier handles as in Community; VGroup keeps anchors.
 Fuzzing also found two deferred structural differences: Community cuts an arrow shaft
-once when its tip is attached (Lite refits it to the current tips), and become keeps
+once when its tip is attached (now matched with frozen shafts, see below), and become keeps
 extra degenerate children from submobject alignment (Lite replaces the family).
 Removing an arrow tip directly now leaves the shaft cut, scene-code get_family matches
 Community (no NumberLine shaft), and become raises Community's errors for Group/Mobject
@@ -439,3 +439,7 @@ shift takes several vectors, space_out_submobjects shrinks members about their w
 (visible for shapes with their own outline) and raises ZeroDivisionError with no members.
 Members attached to or released from a scaled parent change pose only, so arrows keep their
 world-size tips (Arrow.scale's fixed-size tips no longer apply to re-posing).
+Arrow shafts are now cut once, as in Community: moving, removing, arranging or spacing out
+tips leaves the shaft where it was cut, and add_tip, pop_tips, put_start_and_end_on and
+Arrow.scale re-cut it. A stretched tip's `base` is its length-weighted midpoint, as in
+Community. Remaining fuzz mismatches are mostly become structure and NumberLine tip edits.

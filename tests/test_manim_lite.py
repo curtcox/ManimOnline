@@ -2108,7 +2108,10 @@ assert isinstance(t.get_value(), (int, float))""")
         for actual,old in zip(arrow.get_points(),own):
             self.assertPointAlmostEqual(actual,(old[0],old[1]*.5,0))
         self.assertPointAlmostEqual(arrow.get_end(),(end[0],end[1]*.5,0))
-        self.assertPointAlmostEqual(arrow.get_points()[-1],arrow._point_to_world(arrow.tip.base))
+        # The shaft keeps its stretched cut; Community's base is the stretched tip's
+        # length-weighted midpoint (1.7154 here), no longer on the cut.
+        self.assertPointAlmostEqual(arrow.get_points()[-1],arrow._point_to_world(arrow._tip_base(arrow.tip)))
+        self.assertPointAlmostEqual(arrow.tip.base,(1.7154099666,-.0953375430,0))
         # Glyphs stretch along their own axes; rotated glyphs shear with a general glyph matrix.
         host=lite.VGroup(lite.Circle(),lite.Text('hello'))
         width=host[1].get_width()
@@ -2809,7 +2812,7 @@ assert isinstance(t.get_value(), (int, float))""")
                 tip._type=child['type']
                 tip.children=[]
                 tip._sampled_geometry_center=lite.Vector(child['geometry_center'])
-                self.assertPointAlmostEqual(arrow['shaft_'+role],tip.base)
+                self.assertPointAlmostEqual(arrow['shaft_'+role],restored._tip_base(tip))
                 tips.append(tip)
             # As in Manim, the end is the sampled tip's point.
             restored.children=tips

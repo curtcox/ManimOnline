@@ -1460,6 +1460,25 @@ class AnimationApiTests(unittest.TestCase):
         self.assertEqual(values, plain([[0.25, 0.825, 1.75, 1.175], [0.25, 0.825, 1.75, 1.175],
                                         [-1.239, -1.081, 1.437, 1.194]]))
 
+    def test_arrow_shaft_is_cut_once(self):
+        # Community cuts the shaft when tips attach: moving or removing a tip, arranging or
+        # spacing out the tips leaves it, while Arrow.scale re-cuts at (stretched) tip bases.
+        values = scene_values(
+            'R = lambda x: [round(float(v), 4) for v in x[:2]]\n'
+            'a = Arrow(LEFT*2, RIGHT*2); a.tip.shift(UP)\n'
+            'r1 = [R(a.points[0]), R(a.points[-1]), R(a.get_end()), R(a.get_center())]\n'
+            'a.scale(2); r1 += [R(a.points[-1]), R(a.tip.get_center())]\n'
+            'b = DoubleArrow(LEFT, RIGHT * 2.74); b.rotate(0.93, about_edge=UL)\n'
+            'b.stretch_to_fit_height(1.11); b.arrange(RIGHT, buff=0.31); b.space_out_submobjects(1.53)\n'
+            'r2 = [R(b.points[0]), R(b.points[-1]), R(b.tip.base), R(b.start_tip.get_center())]\n'
+            'v = Vector([1, 1.34]); v.rotate(1.56); v.space_out_submobjects(1.02)\n'
+            'c = Arrow(LEFT, RIGHT); c.remove(c.tip)\n'
+            'result = [r1, r2, [R(v.points[-1]), R(v.get_center())], [R(c.points[-1]), R(c.get_end())]]\n')
+        self.assertEqual(values, plain([
+            [[-1.75, 0.0], [1.4, 0.0], [1.75, 1.0], [0.0, 0.5875], [3.1635, 1.4038], [3.3077, 1.4038]],
+            [[0.6535, 0.4316], [0.7247, 0.3938], [0.682, 0.4215], [0.7769, 0.3518]],
+            [[0.1004, 0.975], [0.5019, 0.6683]], [[0.4, 0.0], [0.4, 0.0]]]))
+
     def test_become_keeps_scene_attributes(self):
         # Community's become copies points and colors; attributes scene code added remain,
         # so a transformed label keeps its bookkeeping (LinearTransformationScene relies on it).

@@ -817,7 +817,7 @@ longer refit them (Community). Exposed draw_progress samples cut curved arrows f
 shaft trimmed by their whole tips, computed before the tips themselves are exposed partially.
 SpiralIn saves, restores and moves each shape in world coordinates (`_in_world`), so an
 arrow's tip spirals with Community's path; get_center_of_mass uses family world points.
-Open: Community leaves an arrow's shaft in place when its tip moves alone; Lite refits it.
+Community leaves an arrow's shaft in place when its tip moves alone (see `_shaft_fixed`).
 Several animations may drive one object (Community): `Scene._prepare_in_order` applies each
 earlier animation's states(0) to the live object (`_sampled_copy(partial=True)` turns
 draw_progress into pointwise_become_partial geometry) before preparing the next, as
@@ -926,7 +926,15 @@ Scene-code get_family also omits NumberLine shafts. `_scene_remove` on tipped li
 the current shaft cut into the endpoints (Community never regrows a shaft; pop_tips restores
 ends explicitly). `_scene_become` raises Community's errors: plain Mobject receivers lack
 interpolate_color, and VMobjects cannot become plain Mobjects; library become is unrestricted
-(restore, Transform completion). Lite still refits shafts when tips are moved or arranged.
+(restore, Transform completion).
+Shaft cuts: Community cuts a straight/curved shaft once, when tips attach. Lite refits the
+shaft to its tips until `_shaft_fixed` is set; `_freeze_shaft` (scene calls that edit a
+tip, layout, space_out after scaling, removing a tip) bakes the cut into own start/end or
+curves. Re-cuts unfreeze (`_unfreeze_shaft`: add_tip, pop_tips, put_start_and_end_on,
+Arrow.scale) and re-aim tips at the restored endpoints. Cuts follow the ordered cubic
+array midpoint (`_tip_base`), which affine edits carry along; the public `base` is
+Community's length-weighted midpoint, which differs only for stretched tips, so
+Arrow.scale freezes at those bases (`_cut_shaft`). Tip getters never freeze.
 Mobject.__setattr__ records attribute names that scene code adds (`_scene_keys`, not in
 frames); become keeps them as Community does (its become copies only points and colors).
 Property setters that check their caller must use `_from_scene()`, which skips that frame.
