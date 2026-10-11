@@ -309,7 +309,11 @@ subcaptions are recorded only.
 
 - ZoomedScene (vector inset views, Community frame/display geometry and per-frame aspect sync) is implemented; pixel-level camera images (`get_pixel_array`) are not.
 - VectorScene and LinearTransformationScene are implemented (matrix, inverse and nonlinear plane transformations, ghost vectors, labels); Community's mid-animation arc positions are matched numerically.
-- ManimBanner, SampleSpace, TransformAnimations and Community's utility functions are implemented; queries on children of posed shapes still return parent-local coordinates.
+- ManimBanner, SampleSpace, TransformAnimations and Community's utility functions are implemented.
+- Scene code now sees members of posed families (arrow tips, rotated number lines and axes,
+  children of transformed shapes) in world coordinates for queries, edits, copies and reference
+  arguments, and play() animates such members (Transform targets, .animate, MoveToTarget,
+  updaters following them); removing one splits its family with the rest kept in place.
 
 - ThreeDAxes (z axis, shaded axis pieces, 3D labels, coordinate inversion), plot_surface
   colorscales, 3D parametric curves and in-plane-axis Rotate are implemented with Manim 0.22

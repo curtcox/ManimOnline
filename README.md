@@ -168,8 +168,8 @@ unsupported-glyph error.
 
 Connector endpoint queries include the line's own scale, rotation, and position.
 `put_start_and_end_on` accepts finite XY points and preserves styles and saved
-states. Zero-length and zero-scale connectors can be expanded again. Queries on
-group children use parent-local coordinates. Curved connectors, boundary
+states. Zero-length and zero-scale connectors can be expanded again. Scene code
+sees members of transformed families in world coordinates, as in Community. Curved connectors, boundary
 attachments, and line buffers remain unsupported; arrows use shaft endpoints.
 
 `Dot` is a filled circle with radius 0.08 and no outline by default. Layout
@@ -1157,7 +1157,7 @@ restoration. Arrow defaults to a .25 endpoint buffer, a filled triangular tip,
 and length-based caps for tip size and stroke width. `buff=0` touches the given
 endpoints; coordinate-plane vectors retain this behavior automatically.
 Arrow.scale keeps world tip size by default; `scale_tips=True` scales the whole
-family. Tip coordinates follow the runtime's parent-local child convention.
+family. Scene code reads and edits tips in world coordinates.
 Full native tip-family behavior and straight Arrow partial-path/morph support
 remain unfinished.
 
@@ -1178,8 +1178,8 @@ extends Arrow and adds a real filled triangular start tip by default. Configure
 each end independently with `tip_shape_start` and `tip_shape_end`; the latter
 replaces `tip_shape` for the end tip when both are supplied. It inherits Arrow's
 endpoint buffer, sizing caps, fixed-size tip scaling, endpoint editing, tip
-management, copying and checkpoint animation. Tip coordinates retain the
-runtime's parent-local convention; see curved-arrow support below.
+management, copying and checkpoint animation. Scene code sees tips in world
+coordinates; see curved-arrow support below.
 
 
 Try **Animate tangent-aligned curved arrows** (`examples/curved_arrow_scene.py`).
@@ -1206,8 +1206,8 @@ Manim's factory rule, this controls the built-in filled triangular shape; its
 default width follows the connector's default tip length. Other tip shapes retain
 their own constructor dimensions. `tip_style` overrides generated defaults,
 including a triangular `width`. Factory dimensions are finite and nonnegative;
-unsupported style options fail explicitly. Positioned tip coordinates use the
-runtime's parent-local convention. `get_tip()` returns the end tip or, if only a
+unsupported style options fail explicitly. Scene code sees positioned tips in
+world coordinates. `get_tip()` returns the end tip or, if only a
 start tip exists, that start tip.
 
 
@@ -1341,8 +1341,7 @@ previous preview triangle). `get_vertices`/`get_vertex_groups` return world poin
 `add_background_rectangle` are available. Shifting and scaling a `Group`/`VGroup`
 now moves its children in world space, as in Manim, so `group[0].get_center()`,
 matchers and arrows between members of a moved group land where expected.
-Rotation is still stored on the group: children of rotated groups keep
-parent-local coordinates. Text has no measured bounds yet, so matchers around text
+Scene code sees children of rotated groups in world coordinates. Text has no measured bounds yet, so matchers around text
 are not sized to the glyphs.
 
 

@@ -16,6 +16,16 @@ def render(body):
     return json.loads(lite.render_scene(source))
 
 
+def run_scene(source):
+    """Execute a scene class from source directly, returning the rendered instance."""
+    lite.render_scene('from manim import *\nclass Empty(Scene):\n    pass\n')  # installs `manim`
+    namespace = {}
+    exec(compile(source, '<test>', 'exec'), namespace)
+    scene = namespace['Demo']()
+    scene.render()
+    return scene
+
+
 def render_3d(body):
     source = 'from manim import *\nclass Demo(ThreeDScene):\n    def construct(self):\n'
     source += '\n'.join('        ' + line for line in body.splitlines())
@@ -254,17 +264,98 @@ class Demo(Scene):
         rectangle.add(dot)
         # Manim 0.22: the dot stays at (2, 0), so the family spans x in [0, 4].
         self.assertAlmostEqual(rectangle.get_right()[0], 4)
-        self.assertAlmostEqual(rectangle._point_to_world(lite.Vector(dot.get_center()))[0], 2)
+        self.assertAlmostEqual(dot.get_center()[0], 2)
         turned = lite.Rectangle().shift(lite.RIGHT * 2).rotate(0.5).scale(1.5)
         marker = lite.Dot((1, 1, 0))
         turned.add(marker)
-        center = turned._point_to_world(lite.Vector(marker.get_center()))
+        center = marker.get_center()
         self.assertAlmostEqual(center[0], 1)
         self.assertAlmostEqual(center[1], 1)
         turned.remove(marker)
         self.assertAlmostEqual(marker.get_center()[0], 1)
         self.assertAlmostEqual(marker.get_center()[1], 1)
         self.assertAlmostEqual(marker.get_width(), 0.16)
+
+    def test_scene_code_sees_posed_family_members_in_world_coordinates(self):
+        line = lite.NumberLine(x_range=[0, 4], include_numbers=True).rotate(lite.PI / 6).shift(lite.UP)
+        for value, tick in zip(range(5), line.ticks):
+            self.assertPointAlmostEqual(tick.get_center(), line.n2p(value))
+        arrow = lite.Arrow(lite.LEFT, lite.RIGHT, buff=0).shift(lite.UP * 3)
+        self.assertPointAlmostEqual(arrow.tip.get_center(), (0.825, 3, 0))
+        self.assertPointAlmostEqual(arrow.tip.copy().get_center(), (0.825, 3, 0))
+        dot = lite.Dot().next_to(line.numbers[2], lite.RIGHT, buff=0)
+        self.assertAlmostEqual(dot.get_left()[0], line.numbers[2].get_right()[0])
+        brace = lite.Brace(arrow.tip, lite.DOWN)
+        self.assertAlmostEqual(brace.get_center()[0], 0.825, places=2)
+        # Mutations take world arguments and leave the parent's own geometry in place.
+        start = arrow.get_start()
+        arrow.tip.move_to((0.825, 4, 0))
+        self.assertPointAlmostEqual(arrow.tip.get_center(), (0.825, 4, 0))
+        self.assertPointAlmostEqual(arrow.get_start(), start)
+        label = line.numbers[1]
+        before = lite.Vector(label.get_center())
+        label.shift(lite.RIGHT)
+        self.assertPointAlmostEqual(label.get_center(), before + lite.RIGHT)
+        line.ticks[0].set_points([(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)])
+        self.assertPointAlmostEqual(line.ticks[0].get_points()[3], (0, 1, 0))
+
+    def test_posed_family_members_animate_in_world_coordinates(self):
+        source = """from manim import *
+class Demo(Scene):
+    def construct(self):
+        arrow = Arrow(LEFT, RIGHT, buff=0).shift(UP * 2)
+        line = NumberLine(x_range=[0, 4], include_numbers=True).rotate(PI / 2).shift(RIGHT * 3)
+        dot = Dot().add_updater(lambda d: d.move_to(line.numbers[1]))
+        self.add(arrow, line, dot)
+        self.centers = []
+        self.add_updater(lambda dt: self.centers.append(arrow.tip.get_center()))
+        self.play(arrow.tip.animate.shift(UP))
+        self.result = [arrow.tip.get_center(), dot.get_center(), line.numbers[1].get_center()]
+        self.play(Transform(line.numbers[2], Square(0.3)))
+        self.result.append(line.numbers[2].get_center())
+        line.numbers[3].generate_target()
+        line.numbers[3].target.move_to(LEFT * 4)
+        self.play(MoveToTarget(line.numbers[3]))
+        self.result.append(line.numbers[3].get_center())
+"""
+        scene = run_scene(source)
+        tip, dot, label, square, moved = scene.result
+        self.assertPointAlmostEqual(tip, (0.825, 3, 0))
+        self.assertPointAlmostEqual(dot, label)
+        self.assertPointAlmostEqual(square, (0, 0, 0))
+        self.assertPointAlmostEqual(moved, (-4, 0, 0))
+        # Each frame draws the animated tip, re-posed into the arrow's frame, where it is.
+        def world(node, point, parent=None):
+            center, position = node['geometry_center'], node['position']
+            s, a = node['geometry_scale'], node['angle']
+            x, y = point[0] - center[0], point[1] - center[1]
+            point = (position[0] + center[0] + s * (x * math.cos(a) - y * math.sin(a)),
+                     position[1] + center[1] + s * (x * math.sin(a) + y * math.cos(a)))
+            return point if parent is None else world(parent, point)
+        for index in (0, 7, 14):
+            arrow = scene.frames[index]['mobjects'][0]
+            tip = next(child for child in arrow['children'] if child.get('_tip_role') == 'end')
+            drawn = world(tip, tip['geometry_center'], arrow)
+            self.assertAlmostEqual(drawn[1], scene.centers[index][1])
+        self.assertAlmostEqual(scene.centers[7][1], 2 + lite.smooth(7 / 15))
+
+    def test_removing_a_posed_family_member_keeps_the_rest_in_place(self):
+        source = """from manim import *
+class Demo(Scene):
+    def construct(self):
+        line = NumberLine(x_range=[0, 2], include_numbers=True).rotate(PI / 2).shift(RIGHT * 3)
+        self.add(line)
+        self.before = [n.get_center() for n in line.numbers]
+        self.remove(line.numbers[0])
+        self.wait(0.1)
+"""
+        scene = run_scene(source)
+        # Community splits the number line: its other members become scene roots.
+        texts = [node for node in scene.frames[-1]['mobjects'] if node['type'] == 'text']
+        self.assertEqual(len(texts), 2)
+        for node, expected in zip(texts, scene.before[1:]):
+            pivot = lite.Vector(node['position']) + lite.Vector(node['geometry_center'])
+            self.assertPointAlmostEqual(pivot, expected)
 
     def test_width_and_height_assignment_rescales_uniformly_like_community(self):
         circle = lite.Circle()
@@ -3415,8 +3506,8 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertEqual(len(line),5)
         for child in line:
             a,b = child._dash_interval
-            self.assertPointAlmostEqual(line._point_to_world(child.get_start()),(-2+5*a,1-2*a,0))
-            self.assertPointAlmostEqual(line._point_to_world(child.get_end()),(-2+5*b,1-2*b,0))
+            self.assertPointAlmostEqual(child.get_start(),(-2+5*a,1-2*a,0))
+            self.assertPointAlmostEqual(child.get_end(),(-2+5*b,1-2*b,0))
         line.restore()
         self.assertEqual(line.to_dict(),before)
         result = render("line = DashedLine(dash_length=.2)\nself.add(line)\nself.play(line.animate.put_start_and_end_on((0,1,0),(4,1,0)),run_time=2)")
@@ -3431,9 +3522,9 @@ assert isinstance(t.get_value(), (int, float))""")
     def test_dashed_endpoint_changes_preserve_individual_segment_edits(self):
         line = lite.DashedLine(dash_length=.2)
         line[2].shift(lite.UP*.2).set_color(lite.RED)
-        original = line._point_to_world(line[2].get_start())
+        original = line[2].get_start()
         line.put_start_and_end_on((0,0,0),(0,4,0))
-        point = line._point_to_world(line[2].get_start())
+        point = line[2].get_start()
         self.assertPointAlmostEqual(point,(-original[1]*2,(original[0]+1)*2,0))
         self.assertEqual(line[2].color,lite.RED)
         self.assertPointAlmostEqual(line.get_start(),(0,0,0))
@@ -4380,14 +4471,14 @@ assert isinstance(t.get_value(), (int, float))""")
             line.add_numbers([1],direction=lite.UP,buff=.4)
             self.assertPointAlmostEqual(line.get_start(),start)
             self.assertPointAlmostEqual(line.get_end(),end)
-            self.assertPointAlmostEqual(line._point_to_world(line.numbers[0].get_center()),desired.get_center())
+            self.assertPointAlmostEqual(line.numbers[0].get_center(),desired.get_center())
             self.assertAlmostEqual(line.numbers[0].angle+line.angle,0)
             self.assertAlmostEqual(line.numbers[0].geometry_scale*line.geometry_scale,1)
             line.add_ticks()
             self.assertPointAlmostEqual(line.get_start(),start)
             self.assertPointAlmostEqual(line.get_end(),end)
             for value,tick in zip(line.get_tick_range(),line.ticks):
-                self.assertPointAlmostEqual(line._point_to_world(tick.get_center()),line.n2p(value))
+                self.assertPointAlmostEqual(tick.get_center(),line.n2p(value))
 
     def test_number_line_copies_restoration_and_length_changes(self):
         line = lite.NumberLine([-2,4],unit_size=2,include_numbers=True).shift(lite.DOWN).save_state()
@@ -7354,19 +7445,12 @@ class Demo(Scene):
                 first,second = lite.Dot(lite.LEFT*2),lite.Square(side_length=.5)
                 host.add(first,second).rotate(.4).scale(scale).shift(lite.UP)
                 points = host.get_points()
-                first_world = host._point_to_world(first.get_center())
+                first_world = first.get_center()
                 self.assertIs(host.arrange_submobjects(lite.RIGHT,buff=.7,center=False),host)
                 for a,b in zip(points,host.get_points()):
                     self.assertPointAlmostEqual(a,b)
-                self.assertPointAlmostEqual(host._point_to_world(first.get_center()),first_world)
-                def world_bounds(child):
-                    target = child.copy()
-                    center = host._point_to_world(child.get_center())
-                    target.position = list(center-target._geometry_center())
-                    target.angle += host.angle
-                    target.geometry_scale *= host.geometry_scale
-                    return target._bounds()
-                self.assertAlmostEqual(world_bounds(second)[0]-world_bounds(first)[2],.7)
+                self.assertPointAlmostEqual(first.get_center(),first_world)
+                self.assertAlmostEqual(second.get_left()[0]-first.get_right()[0],.7)
                 center = host.get_center()
                 refs = list(host.children)
                 host.arrange_in_grid(rows=2,buff=.5)

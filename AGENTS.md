@@ -334,7 +334,7 @@ by A(delta)-delta. Synchronize before pose changes and frame serialization; excl
 the cache from JSON. Explicit child replacement resets the cache to avoid double
 compensation. Preserve sampled-frame pinned pivots. Coordinate helpers now use the common
 compensation; do not reintroduce their former manual pivot shifts.
-Native world-space child coordinates remain open.
+Scene code sees children in world coordinates (see the world-call notes at the end).
 
 
 Read `examples/transformed_layout_scene.py` for arrangement after rotation and
@@ -679,3 +679,14 @@ in group order before they begin, so they move in front as Community's added Gro
 The preview keeps them as separate roots (no Group root); groups with an explicit
 `group=` and internal ones (`_internal`, e.g. ChangeSpeed) are left alone.
 
+World calls: posed families (Arrow, rotated NumberLine/Axes, shapes with children) store
+children in the parent frame, and library code relies on that. Calls from scene code
+(any file other than manim-lite.py, so tests count too) go through `_scene_call`: the
+member is placed in world coordinates (`_enter_world`, pinning posed ancestors' pivots),
+the method runs, and it is placed back. Parents are tracked weakly in `_PARENTS`; link
+new children (`_link_children`) whenever you assign `children` outside
+`_replace_children`. Reference arguments (`_REFERENCE_METHODS`, constructors such as
+Brace or Line) get world copies (`_world_view`). play() animates posed members in world
+coordinates (`_world_members`) and `_root_states` re-poses their states into the parent
+frame; split posed members drawn as roots are posed into the world. Transform targets
+are world copies. Inside manim-lite.py, never assume a child query is world-space.

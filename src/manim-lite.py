@@ -18,6 +18,7 @@ import struct
 import sys
 import types
 import typing
+import weakref
 
 FPS = 15
 MAX_FRAMES = 901  # 900 timed samples plus a final seekable state.
@@ -64,6 +65,187 @@ def _bounds_query(method):
             _BOUNDS_MEMO = None
     query.__name__, query.__doc__ = method.__name__, method.__doc__
     return query
+
+
+# Community keeps every family member in world coordinates. Here a posed parent (an
+# Arrow, a rotated NumberLine, ...) stores its children in its own frame, which the
+# library's internals rely on. Scene code instead sees members in world coordinates:
+# calls from outside this file place the member in the world frame for their duration.
+_LIB_FILE = (lambda: None).__code__.co_filename
+_PARENTS = weakref.WeakKeyDictionary()  # child -> weak reference to its latest parent
+_IN_WORLD = set()  # ids of members currently placed in world coordinates
+_PINS = {}  # id(parent) -> [parent, count]: posed parents with a fixed pivot
+
+
+def _link_children(parent, children):
+    ref = weakref.ref(parent)
+    for child in children:
+        _PARENTS[child] = ref
+
+
+def _posed_ancestors(mobject):
+    """The parent chain (nearest first) when some ancestor holds a pose, else []."""
+    chain, node, posed = [], mobject, False
+    while id(node) not in _IN_WORLD:
+        ref = _PARENTS.get(node)
+        parent = ref() if ref is not None else None
+        if (parent is None or parent is mobject or any(p is parent for p in chain)
+                or not any(child is node for child in parent.children)):
+            break
+        chain.append(parent)
+        posed = posed or bool(parent.angle or parent.geometry_scale != 1 or any(parent.position))
+        node = parent
+    return chain if posed else []
+
+
+def _world_frame(chain):
+    """(scale, angle, offset) of the similarity taking chain[0]'s frame to the world."""
+    scale, angle, offset = 1, 0, Vector(ORIGIN)
+    for parent in chain:
+        scale *= parent.geometry_scale
+        angle += parent.angle
+        offset = parent._point_to_world(offset)
+    return (scale, angle, offset) if scale else None
+
+
+def _place(mobject, frame, inverse=False):
+    """Apply a world frame (or its inverse) to a mobject as a pure similarity."""
+    scale, angle, offset = frame
+    if inverse:
+        if any(offset):
+            Mobject.shift(mobject, -offset)
+        if angle:
+            Mobject.rotate(mobject, -angle, about_point=ORIGIN)
+        if scale != 1:
+            Mobject.scale(mobject, 1 / scale, about_point=ORIGIN)
+    else:
+        if scale != 1:
+            Mobject.scale(mobject, scale, about_point=ORIGIN)
+        if angle:
+            Mobject.rotate(mobject, angle, about_point=ORIGIN)
+        if any(offset):
+            Mobject.shift(mobject, offset)
+    return mobject
+
+
+def _pose_snapshot(state, frame, inverse=True):
+    """A frame snapshot in world coordinates re-posed into the parent frame (or, with
+    inverse=False, a parent-frame snapshot posed in world coordinates)."""
+    scale, angle, offset = frame
+    state = dict(state)
+    center = list(state.get('geometry_center') or [0, 0, 0]) + [0] * 3
+    position = list(state.get('position') or [0, 0, 0]) + [0] * 3
+    x, y, z = (position[i] + center[i] for i in range(3))
+    if inverse:
+        x, y, z = x - offset[0], y - offset[1], z - offset[2]
+        cos, sin = math.cos(-angle), math.sin(-angle)
+        pivot = ((x * cos - y * sin) / scale, (x * sin + y * cos) / scale, z / scale)
+        state['angle'] = state.get('angle', 0) - angle
+        state['geometry_scale'] = state.get('geometry_scale', 1) / scale
+    else:
+        cos, sin = math.cos(angle), math.sin(angle)
+        pivot = ((x * cos - y * sin) * scale + offset[0], (x * sin + y * cos) * scale + offset[1],
+                 z * scale + offset[2])
+        state['angle'] = state.get('angle', 0) + angle
+        state['geometry_scale'] = state.get('geometry_scale', 1) * scale
+    state['position'] = [pivot[i] - center[i] for i in range(3)]
+    return state
+
+
+def _enter_world(mobject):
+    """Place a posed parent's member in world coordinates; returns a token or None."""
+    if id(mobject) in _IN_WORLD:
+        return None
+    chain = _posed_ancestors(mobject)
+    if not chain:
+        return None
+    pinned = []
+    for parent in chain:
+        if parent.angle or parent.geometry_scale != 1 or any(parent.position):
+            pin = _PINS.get(id(parent))
+            if pin is None:
+                if '_sampled_geometry_center' in parent.__dict__:
+                    continue
+                center = list(parent._geometry_center())
+                parent._sampled_geometry_center = center
+                pin = _PINS[id(parent)] = [parent, 0]
+            pin[1] += 1
+            pinned.append(parent)
+    frame = _world_frame(chain)
+    if frame is None:
+        _unpin(pinned)
+        return None
+    _place(mobject, frame)
+    _IN_WORLD.add(id(mobject))
+    return (mobject, chain[0], frame, pinned)
+
+
+def _unpin(parents):
+    for parent in parents:
+        pin = _PINS[id(parent)]
+        pin[1] -= 1
+        if not pin[1]:
+            del _PINS[id(parent)]
+            parent.__dict__.pop('_sampled_geometry_center', None)
+
+
+def _exit_world(token):
+    mobject, parent, frame, pinned = token
+    _IN_WORLD.discard(id(mobject))
+    # A member that left its parent (e.g. a remover) keeps its world placement.
+    if any(child is mobject for child in parent.children):
+        _place(mobject, frame, inverse=True)
+    _unpin(pinned)
+
+
+def _world_copy(mobject):
+    """A free copy of a mobject placed in world coordinates."""
+    result = mobject.copy()
+    chain = _posed_ancestors(mobject)
+    frame = _world_frame(chain) if chain else None
+    return _place(result, frame) if frame else result
+
+
+def _world_view(value):
+    """value itself, or a world-placed copy when it is a member of a posed family."""
+    if isinstance(value, Mobject) and value in _PARENTS and _posed_ancestors(value):
+        return _world_copy(value)
+    return value
+
+
+def _world_args(args, kwargs):
+    return ([_world_view(value) for value in args],
+            {key: _world_view(value) for key, value in kwargs.items()})
+
+
+def _scene_call(function, reference=False):
+    """Run a method called from scene code in Community's world coordinates."""
+    @functools.wraps(function)
+    def call(self, *args, **kwargs):
+        if sys._getframe(1).f_code.co_filename == _LIB_FILE:
+            return function(self, *args, **kwargs)
+        if reference:
+            args, kwargs = _world_args(args, kwargs)
+        token = _enter_world(self) if self in _PARENTS else None
+        if token is None:
+            return function(self, *args, **kwargs)
+        try:
+            return function(self, *args, **kwargs)
+        finally:
+            _exit_world(token)
+    call._scene_call = True
+    return call
+
+
+def _scene_init(function):
+    """A constructor called from scene code reads mobject arguments in world coordinates."""
+    @functools.wraps(function)
+    def init(self, *args, **kwargs):
+        if sys._getframe(1).f_code.co_filename != _LIB_FILE:
+            args, kwargs = _world_args(args, kwargs)
+        return function(self, *args, **kwargs)
+    init._scene_call = True
+    return init
 # Attributes that only ever hold coordinates: serialization skips the mobject scan.
 _POINT_KEYS = frozenset(('curves', 'vertices', 'position', 'start', 'end', 'shaft_start',
                          'shaft_end', 'shaft_curves', 'cloud'))
@@ -788,6 +970,7 @@ class Mobject:
         # Keep the affine mapping fixed when any family's bounds change.
         previous = self._geometry_center()
         self.children = children
+        _link_children(self, children)
         self.__dict__.pop('_family_pivot_cache',None)
         if previous is not None:
             delta = self._geometry_center()-previous
@@ -2647,6 +2830,11 @@ class Mobject:
     def copy(self):
         return copy.deepcopy(self)
 
+    def __setstate__(self, state):
+        # Copies link their copied children (see _PARENTS).
+        self.__dict__.update(state)
+        _link_children(self, state.get('children', ()))
+
     def become(self, mobject):
         """Replace supported geometry while retaining identity and updater registrations."""
         if not isinstance(mobject, Mobject):
@@ -2685,6 +2873,7 @@ class Mobject:
                                  ('traced_point_func', 'dissipating_time', 'time')})
             state.update(retained, children=children)
             source.__dict__ = state
+            _link_children(source, children)
         replace(self, target)
         return self
 
@@ -2701,6 +2890,7 @@ class Mobject:
             return None
         state = object.__new__(type(self))
         state.__dict__ = copy.deepcopy(self._saved_state)
+        _link_children(state, state.children)
         return state
 
     def restore(self):
@@ -7074,6 +7264,7 @@ class DashedVMobject(VMobject,VGroup):
                 child = source.get_subcurve(a,b)
             child._dash_interval = [a,b]
             self.children.append(child)
+        _link_children(self, self.children)
 
 
 class DashedLine(Line,VGroup):
@@ -7100,6 +7291,7 @@ class DashedLine(Line,VGroup):
             child = Line(start+(end-start)*a,start+(end-start)*b,**kwargs)
             child._dash_interval = [a,b]
             self.children.append(child)
+        _link_children(self, self.children)
 
     def get_start(self):
         return self._point_to_world(self.children[0].get_start()) if self.children else Line.get_start(self)
@@ -9775,7 +9967,8 @@ class Transform(Animation):
             # Community's path_along_arc about any axis moves every point on its own arc.
             point_path = _AxisArcPath(path_arc, path_arc_axis)
         self.path_arc = point_path or (path_arc if Vector(path_arc_axis) == OUT else -path_arc)
-        self.target = target_mobject.copy()
+        # Targets are world-placed; play() animates posed members in world coordinates.
+        self.target = _world_copy(target_mobject)
 
     def begin(self, scene):
         super().begin(scene)
@@ -9873,13 +10066,14 @@ class TransformFromCopy(Transform):
         # so it may also move independently or belong to a scene-added group.
         super().begin(scene)
         self.target = self.mobject.copy()
+        source = _world_view(self.source)
         # Community animates the target from a copy of the source; both copies keep
         # their updaters, which run every frame.
-        self._live_start = (self.source.copy() if any(m.updaters for m in self.source.get_family())
+        self._live_start = (source.copy() if any(m.updaters for m in source.get_family())
                             else None)
         self.__dict__.pop('_path_target', None)
-        self._split_for(self.source)
-        self.start = self._plan_snapshot(self.source)
+        self._split_for(source)
+        self.start = self._plan_snapshot(source)
 
     def sample(self, alpha):
         if alpha == 0:
@@ -10928,6 +11122,7 @@ class Scene:
         for name, value in (camera_config or {}).items():
             setattr(self.camera, name, value)
         self.mobjects, self.frames = [], []
+        self._world_members = {}  # posed members animated in world coordinates -> frame
         self.foreground_mobjects = []
         self._elapsed_frames = 0
         self.updaters, self.sounds, self.subcaptions = [], [], []
@@ -11018,10 +11213,8 @@ class Scene:
                 if not hit:
                     result.append(mobject)
                     continue
-                if mobject.angle or mobject.geometry_scale != 1 or any(mobject.position):
-                    raise NotImplementedError('Cannot split a rotated or transformed group; '
-                                              'add or remove the whole group')
-                # A camera display's screen is the display itself in Community, not a member.
+                # Split members stay in their group; posed ones are drawn in world
+                # coordinates (see _root_states). A camera display's screen is the display itself in Community, not a member.
                 visit([child for child in mobject.children if 'camera_screen' not in child.__dict__], hit)
         visit(roots, list(removing))
         return result
@@ -11226,16 +11419,32 @@ class Scene:
         return objects
 
     def _root_states(self, root, overrides):
-        def states(mobject):
+        world = self._world_members
+        def states(mobject, nested=True):
             if overrides and mobject in overrides:
-                return [_refresh_tip_shafts(state) for state in overrides[mobject]]
-            if not overrides or not any(member in overrides for member in mobject.get_family()[1:]):
+                result = [_refresh_tip_shafts(state) for state in overrides[mobject]]
+            elif mobject in world:
+                result = [mobject.to_dict()]
+            elif not any((overrides and member in overrides) or member in world
+                         for member in mobject.get_family()[1:]):
                 return [mobject.to_dict()]
-            # An animated member is drawn inside its on-screen group.
-            data = mobject.to_dict()
-            data['children'] = [state for child in mobject.children for state in states(child)]
-            return [_refresh_tip_shafts(data)]
-        return states(root)
+            else:
+                # An animated member is drawn inside its on-screen group.
+                data = mobject.to_dict()
+                data['children'] = [state for child in mobject.children for state in states(child)]
+                return [_refresh_tip_shafts(data)]
+            if nested and mobject in world:
+                # Members animated in world coordinates are drawn in their parent's frame.
+                result = [_pose_snapshot(state, world[mobject]) for state in result]
+            return result
+        result = states(root, nested=False)
+        if root not in world and root in _PARENTS:
+            # A posed family's member drawn as a root (e.g. after its group was split).
+            chain = _posed_ancestors(root)
+            frame = _world_frame(chain) if chain else None
+            if frame:
+                result = [_pose_snapshot(state, frame, inverse=False) for state in result]
+        return result
 
     _PLAY_OPTIONS = ('path_arc', 'lag_ratio', 'remover', 'introducer', 'name',
                      'suspend_mobject_updating', 'reverse_rate_function')
@@ -11271,9 +11480,17 @@ class Scene:
             # play() options override each animation, as in Community.
             for animation in animations:
                 animation.rate_func = rate_func
+        tokens = self._enter_world_members(animations)
+        try:
+            self._play_frames(animations, durations, count)
+        finally:
+            self._exit_world_members(tokens)
+
+    def _play_frames(self, animations, durations, count):
         for animation in animations:
             animation.prepare(self)
-        self._static_frames = {} if self._static_frames_safe(animations) else None
+        self._static_frames = ({} if not self._world_members and self._static_frames_safe(animations)
+                               else None)
         try:
             for frame in range(count):
                 time = frame / FPS
@@ -11306,22 +11523,26 @@ class Scene:
             if members & seen:
                 raise ValueError('Use one animation per object in each play() call')
             seen |= members
-        def ancestors(root, target, path=()):
-            if root is target:
-                return path
-            for child in root.children:
-                found = ancestors(child, target, path + (root,))
-                if found is not None:
-                    return found
-            return None
-        for root in self.mobjects:
-            for obj in objects:
-                chain = ancestors(root, obj) if obj is not root else None
-                # Animated members are drawn inside their group, so their parents
-                # must not add another pose to the animation's world coordinates.
-                if chain and any(m.angle or m.geometry_scale != 1 or any(m.position) for m in chain):
-                    raise NotImplementedError('Animate members of rotated or transformed groups '
-                                              'by animating the whole group')
+        for obj in objects:
+            chain = _posed_ancestors(obj)
+            if chain and _world_frame(chain) is None:
+                raise NotImplementedError('Members of a collapsed (zero-scale) family cannot be animated')
+
+    def _enter_world_members(self, animations):
+        """Animate posed families' members in world coordinates (see _root_states)."""
+        tokens = []
+        for animation in animations:
+            for mobject in animation.objects():
+                token = _enter_world(mobject) if mobject in _PARENTS else None
+                if token is not None:
+                    tokens.append(token)
+                    self._world_members[mobject] = token[2]
+        return tokens
+
+    def _exit_world_members(self, tokens):
+        for token in reversed(tokens):
+            self._world_members.pop(token[0], None)
+            _exit_world(token)
 
     def wait(self, duration=1, stop_condition=None, frozen_frame=None):
         if not math.isfinite(duration) or duration < 0:
@@ -19243,6 +19464,47 @@ class _ModuleNamespace(types.ModuleType):
 def register_font(font_file):
     """Community registers a font file for Pango; the preview draws with browser fonts."""
     yield
+
+
+_STYLE_PREFIXES = ('set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_style', 'set_sheen',
+                   'get_color', 'get_fill', 'get_stroke', 'get_opacity', 'match_style', 'set_z_index')
+_NO_WORLD_CALL = frozenset(('add_updater', 'remove_updater', 'clear_updaters', 'update', 'get_updaters',
+                            'suspend_updating', 'resume_updating', 'get_time_based_updaters',
+                            'has_time_based_updater', 'get_family_updaters', 'get_family', 'to_dict',
+                            'get_group_class', 'family_members_with_points', 'split'))
+# Methods reading other mobjects' geometry, which scene code passes in world coordinates.
+_REFERENCE_METHODS = frozenset(('next_to', 'move_to', 'align_to', 'match_x', 'match_y', 'match_z',
+                                'match_width', 'match_height', 'match_depth', 'match_dim_size',
+                                'match_coord', 'replace', 'surround', 'become', 'match_points'))
+_WORLD_PROPERTIES = frozenset(('points', 'width', 'height', 'length', 'tip_point', 'vector', 'base',
+                               'tip_angle', 'font_size'))
+
+
+def _install_scene_calls():
+    """Wrap the public mobject API so scene code sees Community's world coordinates."""
+    reference_classes = (Brace, BraceLabel, SurroundingRectangle, BackgroundRectangle, Cross,
+                         Underline, Line, FocusOn, Circumscribe, Flash)
+    for cls in list(globals().values()):
+        if not isinstance(cls, type):
+            continue
+        if issubclass(cls, reference_classes) and '__init__' in cls.__dict__:
+            init = cls.__dict__['__init__']
+            if isinstance(init, types.FunctionType) and not hasattr(init, '_scene_call'):
+                cls.__init__ = _scene_init(init)
+        if not issubclass(cls, Mobject):
+            continue
+        for name, value in list(cls.__dict__.items()):
+            if name.startswith('_') or name in _NO_WORLD_CALL or name.startswith(_STYLE_PREFIXES):
+                continue
+            if isinstance(value, types.FunctionType) and not hasattr(value, '_scene_call'):
+                setattr(cls, name, _scene_call(value, name in _REFERENCE_METHODS))
+            elif isinstance(value, property) and name in _WORLD_PROPERTIES:
+                fget = value.fget and _scene_call(value.fget)
+                fset = value.fset and _scene_call(value.fset)
+                setattr(cls, name, property(fget, fset, value.fdel, value.__doc__))
+
+
+_install_scene_calls()
 
 
 def _render_scene(source, scene_name=None, compact=False):
