@@ -2434,3 +2434,7 @@ FadeTransform and FadeTransformPieces now clean up as Community does: the source
 saved when the animation is built and restored at the end, the target is appended to the
 scene (a nested source splits its parent off the roots) and FadeTransformPieces keeps
 Community's alignment padding. Transform accepts replace_mobject_with_target_in_scene.
+Bezier subdivision follows Community's memoized subdivision matrices (successive splitting
+beyond cubics), and the private boolean-ops helpers convert outlines to and from a recorded
+stand-in for skia-pathops paths. SVGMobject and Code read files that scene code wrote to
+Pyodide's file system; other names still need inline SVG markup or a code string.

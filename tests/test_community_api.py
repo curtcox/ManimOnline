@@ -1340,6 +1340,39 @@ class AnimationApiTests(unittest.TestCase):
              ['Dot', 'Circle', 'Circle', 'Triangle', 'VGroup', 'VGroup', 'Circle'], 2,
              [1.0, 0.0, 0.0, 1.0, 0.0], 2.0, ['VectorizedPoint', 'VectorizedPoint'], 2.0, False])
 
+    def test_subdivision_matrices_skia_path_stand_in_and_files(self):
+        import tempfile
+        values = scene_values(
+            'from manim.utils.bezier import _get_subdivision_matrix, SUBDIVISION_MATRICES\n'
+            'from manim.mobject.geometry.boolean_ops import _BooleanOps\n'
+            'm = _get_subdivision_matrix(4, 2)\n'
+            'quartic = [[0, 0, 0], [1, 2, 0], [2, 0, 0], [3, 2, 0], [4, 0, 0]]\n'
+            'ops = _BooleanOps(); path = ops._convert_vmobject_to_skia_path(Square())\n'
+            'back = _BooleanOps()._convert_skia_path_to_vmobject(path)\n'
+            'result = [[list(row) for row in m], 2 in SUBDIVISION_MATRICES[3],\n'
+            '          [list(p) for p in subdivide_bezier(quartic[:3], 2)],\n'
+            '          [list(p) for p in subdivide_bezier(quartic, 2)][4:6],\n'
+            '          [s[0] for s in path.segments], len(back.points),\n'
+            '          [list(p) for p in back.points[:-4]] == [list(p) for p in Square().points],\n'
+            '          [list(p) for p in ops._convert_2d_to_3d_array([(1.0, 2.0)], z_dim=1.0)]]\n')
+        self.assertEqual(plain(values), [
+            [[1.0, 0.0, 0.0, 0.0], [0.5, 0.5, 0.0, 0.0], [0.25, 0.5, 0.25, 0.0], [0.125, 0.375, 0.375, 0.125],
+             [0.125, 0.375, 0.375, 0.125], [0.0, 0.25, 0.5, 0.25], [0.0, 0.0, 0.5, 0.5], [0.0, 0.0, 0.0, 1.0]],
+            True, [[0.0, 0.0, 0.0], [0.5, 1.0, 0.0], [1.0, 1.0, 0.0], [1.0, 1.0, 0.0], [1.5, 1.0, 0.0],
+                   [2.0, 0.0, 0.0]],
+            [[2.0, 1.0, 0.0], [2.0, 1.0, 0.0]],
+            ['moveTo', 'curveTo', 'curveTo', 'curveTo', 'curveTo', 'closePath'], 20.0, True, [[1.0, 2.0, 1.0]]])
+        with tempfile.TemporaryDirectory() as folder:
+            svg, code = Path(folder) / 'shape.svg', Path(folder) / 'listing.py'
+            svg.write_text('<svg xmlns="http://www.w3.org/2000/svg"><path d=""/>'
+                           '<path d="M 0 0 L 1 1"/></svg>', encoding='utf-8')
+            code.write_text('def f(x):\n    return x + 1\n', encoding='utf-8')
+            self.assertEqual(len(lite.SVGMobject(svg).children), 1)
+            self.assertEqual(len(lite.SVGMobject(str(svg)[:-4]).children), 1)
+            self.assertEqual(len(lite.Code(code_file=code).code_lines), 2)
+        with self.assertRaises(NotImplementedError):
+            lite.Code(code_file='missing_listing.py')
+
 
 if __name__ == '__main__':
     unittest.main()

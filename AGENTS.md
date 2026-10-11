@@ -718,9 +718,8 @@ visible state. GrowArrow scales tips and shaft width from zero, as Community doe
 FadeTransform save_state()s the source when constructed; completion removes it (splitting
 parents off the roots), restores it and appends the target. Transform takes
 replace_mobject_with_target_in_scene (ReplacementTransform sets it).
-FadeTransform save_state()s the source when constructed; completion removes it (splitting
-parents off the roots), restores it and appends the target. Transform takes
-replace_mobject_with_target_in_scene (ReplacementTransform sets it).
+subdivide_bezier uses Community's subdivision matrices; internal callers use `_subdivide`
+(Vectors). SVGMobject/Code read existing (Pyodide) files through the same parsers/limits.
 Tests must pass under plain `python3` without NumPy (the browser's default); use
 `point_list` and `HAS_NUMPY` in tests that touch points arrays.
 

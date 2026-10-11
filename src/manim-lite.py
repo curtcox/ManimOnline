@@ -18924,8 +18924,83 @@ _BOOLEAN_RULES = {
 }
 
 
+class _PathVerb(enum.Enum):
+    MOVE, LINE, QUAD, CONIC, CUBIC, CLOSE = range(6)
+
+
+class _SkiaPath:
+    """The recorded verbs of a skia-pathops Path, which the browser cannot load."""
+    _PEN = {'MOVE': 'moveTo', 'LINE': 'lineTo', 'QUAD': 'qCurveTo', 'CUBIC': 'curveTo', 'CLOSE': 'closePath'}
+
+    def __init__(self):
+        self._verbs = []
+
+    def moveTo(self, x, y):
+        self._verbs.append((_PathVerb.MOVE, ((x, y),)))
+
+    def lineTo(self, x, y):
+        self._verbs.append((_PathVerb.LINE, ((x, y),)))
+
+    def quadTo(self, x1, y1, x2, y2):
+        self._verbs.append((_PathVerb.QUAD, ((x1, y1), (x2, y2))))
+
+    def cubicTo(self, x1, y1, x2, y2, x3, y3):
+        self._verbs.append((_PathVerb.CUBIC, ((x1, y1), (x2, y2), (x3, y3))))
+
+    def close(self):
+        self._verbs.append((_PathVerb.CLOSE, ()))
+
+    def __iter__(self):
+        return iter(self._verbs)
+
+    def __len__(self):
+        return len(self._verbs)
+
+    @property
+    def segments(self):
+        return iter([(self._PEN[verb.name], points) for verb, points in self._verbs])
+
+
 class _BooleanOps(VMobject):
     """Shared construction: run the operation, then store cubic contours."""
+    def _convert_vmobject_to_skia_path(self, vmobject):
+        path = _SkiaPath()
+        for subpath in vmobject.get_subpaths():
+            points = [(float(p[0]), float(p[1])) for p in subpath]
+            if not points:
+                continue
+            path.moveTo(*points[0])
+            for i in range(0, len(points) - 3, 4):
+                path.cubicTo(*points[i + 1], *points[i + 2], *points[i + 3])
+            if vmobject.consider_points_equals_2d(points[0], points[-1]):
+                path.close()
+        return path
+
+    def _convert_skia_path_to_vmobject(self, path):
+        start = (0.0, 0.0, 0.0)
+        for verb, points in path:
+            name = getattr(verb, 'name', verb)
+            parts = self._convert_2d_to_3d_array(points) if len(points) else []
+            if name == 'MOVE':
+                for part in parts:
+                    start = part
+                    self.start_new_path(part)
+            elif name == 'CUBIC':
+                self.add_cubic_bezier_curve_to(*parts)
+            elif name == 'LINE':
+                self.add_line_to(parts[0])
+            elif name == 'CLOSE':
+                self.add_line_to(start)
+            elif name == 'QUAD':
+                self.add_quadratic_bezier_curve_to(*parts)
+            else:
+                raise Exception(f'Unsupported: {verb}')
+        return self
+
+    def _convert_2d_to_3d_array(self, points, z_dim=0.0):
+        result = [list(p.tolist() if hasattr(p, 'tolist') else p) for p in points]
+        return _number_array([p + [z_dim] if len(p) == 2 else p for p in result])
+
     def _set_contours(self, contours):
         points = [list(p) + [0] for contour in contours for curve in contour for p in curve]
         VMobject.set_points(self, points)
@@ -19036,12 +19111,31 @@ class Code(VGroup):
                                  'stroke_width': 1, 'fill_opacity': 1}
     default_paragraph_config = {'font': 'Monospace', 'font_size': 24, 'line_spacing': 0.5, 'disable_ligatures': True}
 
+    @staticmethod
+    def _read_code_file(code_file, language):
+        import os
+        path = os.fspath(code_file)
+        if not os.path.isfile(path):
+            raise NotImplementedError(f'No code file {path!r} in the browser file system; pass code_string '
+                                      'or write the file first.')
+        if os.path.getsize(path) > 20000:
+            raise ValueError('Code listings are limited to 400 lines and 20000 characters')
+        with open(path, encoding='utf-8') as handle:
+            code_string = handle.read()
+        if language is None:
+            try:
+                from pygments.lexers import guess_lexer_for_filename
+                language = guess_lexer_for_filename(os.path.basename(path), code_string).aliases[0]
+            except Exception:
+                pass  # Plain colors, as without Pygments.
+        return code_string, language
+
     def __init__(self, code_file=None, code_string=None, language=None, formatter_style='vim', tab_width=4,
                  add_line_numbers=True, line_numbers_from=1, background='rectangle', background_config=None,
                  paragraph_config=None):
         super().__init__()
         if code_file is not None:
-            raise NotImplementedError('The browser preview has no file system; pass code_string instead of code_file.')
+            code_string, language = self._read_code_file(code_file, language)
         if not isinstance(code_string, str):
             raise ValueError('Either a code file or a code string must be specified.')
         if len(code_string) > 20000 or code_string.count('\n') > 400:
@@ -19370,20 +19464,21 @@ class VMobjectFromSVGPath(VMobject):
 
 class SVGMobject(VGroup):
     """Community's SVGMobject: one VMobject per SVG shape, y flipped, centered and fit
-    to height 2. The browser has no file system, so pass SVG markup as file_name."""
+    to height 2. Pass SVG markup as file_name, or a file written to Pyodide's file system."""
     _frame_excluded = ('_svg_shape_sources',)
     def __init__(self, file_name=None, should_center=True, height=2, width=None, color=None, opacity=None,
                  fill_color=None, fill_opacity=None, stroke_color=None, stroke_opacity=None, stroke_width=None,
                  svg_default=None, path_string_config=None, use_svg_cache=True, **kwargs):
         super().__init__(**kwargs)
+        if hasattr(file_name, '__fspath__'):
+            file_name = file_name.__fspath__()
         if not isinstance(file_name, str):
             raise ValueError('Must specify file for SVGMobject')
         if color is not None:
             self.set_color(color)  # Community colors the still-empty group, not the parsed shapes.
         markup = file_name.strip()
         if not markup.startswith('<'):
-            raise NotImplementedError('The browser preview has no file system; pass SVG markup '
-                                      '(a string starting with "<svg") instead of a file name.')
+            markup = self._read_svg_file(file_name)
         if len(markup) > 2000000:
             raise ValueError('SVG markup is limited to 2 MB')
         self.should_center, self.svg_height, self.svg_width = should_center, height, width
@@ -19404,6 +19499,18 @@ class SVGMobject(VGroup):
         self.set_style(fill_color=fill_color, fill_opacity=fill_opacity, stroke_color=stroke_color,
                        stroke_opacity=stroke_opacity, stroke_width=stroke_width)
         self.move_into_position()
+
+    @staticmethod
+    def _read_svg_file(file_name):
+        import os
+        for path in (file_name, file_name + '.svg', file_name + '.xml'):
+            if os.path.isfile(path):
+                if os.path.getsize(path) > 2000000:
+                    raise ValueError('SVG markup is limited to 2 MB')
+                with open(path, encoding='utf-8') as handle:
+                    return handle.read().strip()
+        raise NotImplementedError(f'No SVG file {file_name!r} in the browser file system; pass SVG '
+                                  'markup (a string starting with "<svg") or write the file first.')
 
     def move_into_position(self):
         if self.should_center:
@@ -21714,15 +21821,76 @@ def get_quadratic_approximation_of_cubic(a0, h0, h1, a1):
     return _number_array(result)
 
 
-def subdivide_bezier(points, n_divisions):
-    points = list(points)
+SUBDIVISION_MATRICES = [{} for _ in range(4)]
+
+
+def _get_subdivision_matrix(n_points, n_divisions):
+    """Community's memoized matrix splitting an n_points Bezier curve into n_divisions parts."""
+    if n_points not in (1, 2, 3, 4):
+        raise NotImplementedError('This function does not support subdividing Bézier '
+                                  'curves with 0 or more than 4 control points.')
+    memo = SUBDIVISION_MATRICES[n_points - 1].get(n_divisions)
+    if memo is not None:
+        return memo
+    n, rows, scale = n_divisions, [], 1
+    for i in range(n):
+        ip1, nmi = i + 1, n - i
+        nmim1 = nmi - 1
+        if n_points == 4:
+            rows += [[nmi ** 3, 3 * nmi * nmi * i, 3 * nmi * i * i, i ** 3],
+                     [nmi * nmi * nmim1, 2 * nmi * nmim1 * i + nmi * nmi * ip1,
+                      nmim1 * i * i + 2 * nmi * i * ip1, i * i * ip1],
+                     [nmi * nmim1 * nmim1, nmim1 * nmim1 * i + 2 * nmi * nmim1 * ip1,
+                      2 * nmim1 * i * ip1 + nmi * ip1 * ip1, i * ip1 * ip1],
+                     [nmim1 ** 3, 3 * nmim1 * nmim1 * ip1, 3 * nmim1 * ip1 * ip1, ip1 ** 3]]
+            scale = n ** 3
+        elif n_points == 3:
+            rows += [[nmi * nmi, 2 * i * nmi, i * i], [nmi * nmim1, i * nmim1 + ip1 * nmi, i * ip1],
+                     [nmim1 * nmim1, 2 * ip1 * nmim1, ip1 * ip1]]
+            scale = n * n
+        elif n_points == 2:
+            rows += [[nmi, i], [nmim1, ip1]]
+            scale = n
+        else:
+            rows.append([1])
+    matrix = _number_array([[float(v) / scale for v in row] for row in rows])
+    SUBDIVISION_MATRICES[n_points - 1][n_divisions] = matrix
+    return matrix
+
+
+def _subdivide(points, n_divisions):
+    """Community's subdivide_bezier as Vectors: the subdivision matrix up to cubics, else
+    successive splitting."""
+    points = [_point(p) for p in points]
     if n_divisions == 1:
-        return [_point(p) for p in points]
-    result, remaining = [], points
-    for i in range(n_divisions - 1):
-        left, remaining = _de_casteljau(remaining, 1 / (n_divisions - i))
-        result += left
-    return result + remaining
+        return points
+    count = len(points)
+    if count <= 4:
+        matrix = _get_subdivision_matrix(count, n_divisions)
+        return [Vector([sum(float(row[k]) * points[k][d] for k in range(count)) for d in range(3)])
+                for row in matrix]
+    beziers = [None] * (n_divisions - 1) + [list(points)]
+    for curve in range(n_divisions - 1, 0, -1):
+        current, previous = beziers[curve], [None] * count
+        previous[0] = current[0]
+        a = (n_divisions - curve) / (n_divisions - curve + 1)
+        for i in range(1, count):
+            for j in range(count - i):
+                current[j] = current[j] + (current[j + 1] - current[j]) * a
+            previous[i] = current[0]
+        beziers[curve - 1] = previous
+    return [p for bezier_points in beziers for p in bezier_points]
+
+
+def subdivide_bezier(points, n_divisions):
+    try:
+        import numpy
+    except ImportError:
+        return _subdivide(points, n_divisions)
+    points = numpy.asarray(points, dtype=float)
+    if n_divisions == 1 or len(points) > 4:
+        return numpy.array(_subdivide(points, n_divisions), dtype=float).reshape(-1, points.shape[1])
+    return _get_subdivision_matrix(len(points), n_divisions) @ points
 
 
 def bezier_remap(bezier_tuples, new_number_of_curves):
@@ -21733,7 +21901,7 @@ def bezier_remap(bezier_tuples, new_number_of_curves):
         splits[index * count // new_number_of_curves] += 1
     result = []
     for curve, parts in zip(tuples, splits):
-        pieces = subdivide_bezier(curve, parts) if parts else []
+        pieces = _subdivide(curve, parts) if parts else []
         degree = len(curve)
         result += [pieces[i:i + degree] for i in range(0, len(pieces), degree)]
     return result
@@ -23351,7 +23519,8 @@ _SUBMODULE_ONLY = ('path_along_circles', 'spiral_path', 'EndSceneEarlyException'
                    'MultiAnimationOverrideException', '_layouts', 'Pixels', 'Percent', 'Degrees', 'Munits',
                    '_texcode_for_environment', 'get_quadratic_approximation_of_cubic',
                    'extract_mobject_family_members', 'ConvertToOpenGL', 'QuickHull', 'QuickHullPoint',
-                   'SubFacet', 'Facet', 'Horizon', 'deprecated', 'deprecated_params')
+                   'SubFacet', 'Facet', 'Horizon', 'deprecated', 'deprecated_params', '_BooleanOps',
+                   'SUBDIVISION_MATRICES', '_get_subdivision_matrix')
 
 
 class _ModuleNamespace(types.ModuleType):
