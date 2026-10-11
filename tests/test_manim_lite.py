@@ -7888,8 +7888,8 @@ class Demo(Scene):
             lite.Dot().next_to((float('inf'), 0))
         with self.assertRaises(ValueError):
             lite.Dot().move_to((float('nan'), 0))
-        with self.assertRaises(TypeError):
-            lite.Dot().next_to(lite.ORIGIN, coor_mask=(1, 0, 0))
+        with self.assertRaises(ValueError):
+            lite.Dot().next_to(lite.ORIGIN, coor_mask=(1, float('nan'), 0))
         # A collapsed plain group collapses its members, which still arrange natively.
         lite.VGroup(lite.Dot()).rotate(1).scale(0).arrange()
 

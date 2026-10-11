@@ -1131,6 +1131,40 @@ class AnimationApiTests(unittest.TestCase):
         with self.assertRaises(NotImplementedError):
             scene_values('result = Square().get_image()\n')
 
+    def test_next_to_submobject_alignment_and_coordinate_mask(self):
+        self.assertEqual(scene_values(
+            'g = VGroup(Square(0.5), Circle(0.3).shift(UP * 2))\n'
+            'result = [VGroup(Square(0.5), Circle(0.3)).next_to(VGroup(Dot(), Dot(RIGHT * 3)), DOWN,'
+            ' index_of_submobject_to_align=1).get_center(),\n'
+            '          g.next_to(Square(2), RIGHT, submobject_to_align=g[1]).get_center(),\n'
+            '          Square(1).shift(UP * 2).next_to(Square(2), RIGHT, coor_mask=[1, 0, 0]).get_center()]\n'),
+            [[3.0, -0.63, 0.0], [1.55, -0.975, 0.0], [1.75, 2.0, 0.0]])
+
+    def test_animation_names_wait_duration_and_manual_update_functions(self):
+        self.assertEqual(scene_values(
+            's = Square()\n'
+            'a = UpdateFromAlphaFunc(s, lambda m, a: m.move_to(RIGHT * a * 4))\n'
+            'a.begin()\n'
+            'a.interpolate(0.25)\n'
+            'result = [str(FadeIn(Square())), repr(Transform(Square(), Circle())),'
+            ' str(AnimationGroup(FadeIn(Square()))), str(FadeIn(Square(), name="x")), str(Wait()),'
+            ' Wait(2).duration, s.get_x(), Axes().x_length, Axes(y_length=5).y_length]\n'),
+            ['FadeIn(Square)', 'Transform(Square)', 'AnimationGroup(Group)', 'x', 'Wait(Mobject)',
+             2.0, 0.2804, 12.0, 5.0])
+
+    def test_plain_scene_camera_frame_center(self):
+        frames = json.loads(lite.render_scene(
+            'from manim import *\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        self.add(Square())\n'
+            '        self.wait(0.1)\n'
+            '        self.camera.frame_center = RIGHT * 2\n'
+            '        self.wait(0.1)\n'))['frames']
+        self.assertNotIn('frame_center', frames[0]['camera'])
+        self.assertEqual(frames[-1]['camera']['frame_center'], [2, 0, 0])
+        self.assertEqual(scene_values('result = Scene().camera.frame_center\n'), [0.0, 0.0, 0.0])
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -897,6 +897,8 @@ class PreviewConfig:
     def __getattr__(self, name):
         if name in PreviewConfig._PASSIVE:
             return PreviewConfig._PASSIVE[name]
+        if name == 'frame_center' and self.__dict__.get('_camera'):
+            return ORIGIN
         if name == 'tex_template':
             template = TexTemplate()
             object.__setattr__(self, name, template)
@@ -1004,6 +1006,8 @@ class PreviewConfig:
         elif name == 'background_color':
             if not isinstance(value, str) or len(value) != 7 or not value.startswith('#') or any(c not in '0123456789abcdefABCDEF' for c in value[1:]):
                 raise ValueError('Background color must be a six-digit hex color')
+        elif name == 'frame_center' and self.__dict__.get('_camera'):
+            value = Mobject._xy_vector(value, 'Camera frame center')
         elif name == 'tex_template':
             if not isinstance(value, TexTemplate):
                 raise TypeError('config.tex_template must be a TexTemplate')
@@ -1021,8 +1025,12 @@ class PreviewConfig:
         setattr(self, name, value)
 
     def to_dict(self):
-        return {name: getattr(self, name) for name in
-                ('pixel_width','pixel_height','frame_width','frame_height','background_color')}
+        result = {name: getattr(self, name) for name in
+                  ('pixel_width','pixel_height','frame_width','frame_height','background_color')}
+        center = self.__dict__.get('frame_center')
+        if center is not None and any(center):
+            result['frame_center'] = list(center)
+        return result
 
 
 config = PreviewConfig()
@@ -2054,18 +2062,28 @@ class Mobject:
             return self.become(target)
         return self.rescale_to_fit(length,dim_to_match).move_to(center)
 
-    def next_to(self, mobject_or_point, direction=RIGHT, buff=0.25, aligned_edge=ORIGIN):
+    def next_to(self, mobject_or_point, direction=RIGHT, buff=0.25, aligned_edge=ORIGIN,
+                submobject_to_align=None, index_of_submobject_to_align=None, coor_mask=(1, 1, 1)):
         direction, aligned_edge = Vector(direction), Vector(aligned_edge)
-        if not all(math.isfinite(v) for v in (*direction, *aligned_edge, buff)):
+        mask = Vector(coor_mask)
+        if not all(math.isfinite(v) for v in (*direction, *aligned_edge, *mask, buff)):
             raise ValueError('Layout coordinates and buffer must be finite')
         if not any(direction):
             raise ValueError('Layout direction must be nonzero')
-        target = (mobject_or_point._critical_point(aligned_edge + direction)
-                  if isinstance(mobject_or_point, Mobject) else Vector(mobject_or_point))
+        index = index_of_submobject_to_align
+        if isinstance(mobject_or_point, Mobject):
+            aligner = mobject_or_point if index is None else _world_view(mobject_or_point[index])
+            target = aligner._critical_point(aligned_edge + direction)
+        else:
+            target = Vector(mobject_or_point)
         if not all(math.isfinite(v) for v in target):
             raise ValueError('Layout target must be finite')
-        anchor = self._critical_point(aligned_edge - direction)
-        return self.shift(target - anchor + direction * buff)
+        aligner = (submobject_to_align if submobject_to_align is not None
+                   else self if index is None else self[index])
+        anchor = (self._critical_point(aligned_edge - direction) if aligner is self
+                  else _world_view(aligner)._critical_point(aligned_edge - direction))
+        offset = target - anchor + direction * buff
+        return self.shift(Vector(tuple(a * b for a, b in zip(offset, mask))))
 
     @staticmethod
     def _finite_vector(value, name):
@@ -9517,6 +9535,7 @@ class Axes(VGroup, CoordinateSystem):
             axis._axes_role = role
         self.add(x_axis,y_axis)
         self.x_range,self.y_range = x_axis.x_range[:],y_axis.x_range[:]
+        self.x_length,self.y_length = x_options['length'],y_options['length']
         self.num_sampled_graph_points_per_tick = 10
         # Center the coordinate rectangle, including ranges which exclude zero.
         middle = self.c2p(x_axis.scaling.function((x_axis.x_min+x_axis.x_max)/2),
@@ -11561,6 +11580,10 @@ class Animation(metaclass=_CommunityTree):
         return any(getattr(cls, name) is not getattr(Animation, name) for name in self._COMMUNITY_HOOKS)
 
     def interpolate(self, alpha):
+        if isinstance(self, UpdateFromFunc) and not self._community_style:
+            self._alpha = self.rate_func(alpha)
+            self._call(self.mobject)
+            return
         start = self.__dict__.get('_manual_start')
         if start is not None and not self._community_style:
             # A built-in animation driven by hand (begin(), interpolate(alpha), finish()).
@@ -11632,6 +11655,13 @@ class Animation(metaclass=_CommunityTree):
 
     def copy(self):
         return copy.deepcopy(self)
+
+    def __str__(self):
+        if self.name:
+            return str(self.name)
+        return f'{type(self).__name__}({"Mobject" if self.mobject is None else self.mobject})'
+
+    __repr__ = __str__
 
     def _community_begin(self):
         if self.mobject is None:
@@ -12993,6 +13023,13 @@ class AnimationGroup:
     name = None
     set_default = classmethod(_set_default)
 
+    def __str__(self):
+        if self.name:
+            return str(self.name)
+        return f'{type(self).__name__}({"Group" if self._group is None else self._group})'
+
+    __repr__ = __str__
+
     def build_animations_with_timings(self):
         """Community's (animation, start, end) triplets, laid out with lag_ratio."""
         self.timings = []
@@ -13526,6 +13563,7 @@ class Wait(Animation):
             raise TypeError('stop_condition must be callable')
         NumberLine._real(run_time, 'Wait run_time', positive=True)
         super().__init__(None, run_time=run_time, rate_func=rate_func, **kwargs)
+        self.duration = run_time
         # Only a lone Wait passed to play() honors these, as in Community.
         self.stop_condition, self.frozen_frame = stop_condition, frozen_frame
 

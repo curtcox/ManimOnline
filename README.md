@@ -106,7 +106,8 @@ Manim-like runtime, **not the full Manim Community engine**.
   `get_start_and_end()`, `get_vector()`, `get_length()`, `get_unit_vector()`,
   `get_angle()`, and direct or animated `put_start_and_end_on(start, end)`.
 - Layout: `move_to` centers geometry on a point or another object; `next_to`
-  positions shapes with `direction`, `buff`, and `aligned_edge`; `VGroup.arrange`
+  positions shapes with `direction`, `buff`, `aligned_edge`, `submobject_to_align`,
+  `index_of_submobject_to_align`, and `coor_mask`; `VGroup.arrange`
   creates rows or columns with optional `center=False`.
 - Geometry: uniform scaling, 2D rotation in radians, optional `about_point`,
   `get_center()`, and `PI`, `TAU`, and `DEGREES` constants.

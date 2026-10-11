@@ -157,7 +157,8 @@ original state at each frame and preserve orbital radius around an explicit
 pivot. Only the XY plane with OUT/IN axes is supported. Full Manim semantics
 are not implied.
 
-Layout supports `next_to` with a bounding-box gap and aligned edge, and
+Layout supports `next_to` with a bounding-box gap, aligned edge, Community's
+`submobject_to_align`/`index_of_submobject_to_align` and `coor_mask`, and
 `VGroup.arrange` with direction, buffer, and optional centering. `move_to` uses
 the geometry center and accepts a point or another object. `Dot` uses a filled
 circle with radius 0.08 and no outline. Layout and arrangement also work in
@@ -2381,3 +2382,8 @@ Utilities live in a block before EXPORTS; `interpolate` is exported as `_user_in
 for `Transform(path_func=...)`; custom path callables are rejected. `@override_animation`
 is resolved in `Animation.__new__`; `@override_animate` in `Animate.__getattr__`.
 
+A plain `Scene` camera accepts `frame_center` (a finite XY point; default ORIGIN) and
+exports it with the frame, as Community's Cairo camera pans. `Axes` keep `x_length`
+and `y_length`, `Wait` keeps `duration`, and animations print as Community does
+(`FadeIn(Square)`, `AnimationGroup(Group)`). `UpdateFromFunc`/`UpdateFromAlphaFunc`
+call their function when driven by hand with `interpolate(alpha)`.

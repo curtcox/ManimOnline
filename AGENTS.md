@@ -888,3 +888,7 @@ MoveAlongPath defaults to suspend_mobject_updating=False: its live copy moves, t
 Layout helpers (arrange, arrange_in_grid, space_out_submobjects) move `_layout_members()`:
 a NumberLine shaft stands for Community's own points and stays with the parent. Line and
 Arrow get_start/get_end ask an attached tip (its tip_point), never stale endpoint metadata.
+API probes (Community vs lite on single expressions) must evaluate in the scene namespace:
+EXPORTS plus VectorArrow as Vector and `_user_interpolate` as interpolate (as _render_scene).
+PreviewConfig.frame_center exists only on scene cameras (`_camera`); to_dict exports it only
+when nonzero so default frames stay unchanged.
