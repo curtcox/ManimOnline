@@ -870,3 +870,7 @@ next_to/arrange accept z directions. World containers (Cube, VGroup) keep XY piv
 `_layout_targets` records each target's z-extent midpoint (`_layout_depth`) and
 `_apply_layout_targets` shifts by its change. 3D stretch defaults to the center, as
 Community. Polyhedron/Graph updaters return early once become() removed their structure.
+
+MovingCameraScene frame updaters run only when the frame is a scene root (added
+explicitly or by animating it), as in Community's update_mobjects; never append the
+frame to update or static-wait roots implicitly.

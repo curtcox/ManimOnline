@@ -567,7 +567,8 @@ remove_updater, clear_updaters, update, suspend_updating and resume_updating.
 Callbacks receive the object and optionally a parameter named `dt` (seconds).
 They run in scene/family order during play/wait at 15 fps. Animated object families
 are suspended while their animation samples; other callbacks can query sampled
-positions to follow them. Moving camera frames update even when not scene roots.
+positions to follow them. As in Manim, a moving camera frame's updaters run only
+once the frame is in the scene (`self.add(self.camera.frame)` or an animated frame).
 Callbacks remain Python-only and are excluded from exported frame data. See
 **Follow objects each frame** for a spinner, follower and tracking camera.
 This adds object callbacks, not full scene updaters,

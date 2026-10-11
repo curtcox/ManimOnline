@@ -5509,7 +5509,7 @@ self.wait(1)""")
         follower = lite.Square().add_updater(lambda m:m.move_to(dot.get_center()+lite.UP))
         scene.camera.frame.add_updater(lambda m:m.move_to(dot))
         dot.add_updater(lambda m, dt:m.shift(lite.DOWN * dt))
-        scene.add(dot, follower)
+        scene.add(dot, follower, scene.camera.frame)
         scene.play(dot.animate.shift(lite.RIGHT*4), run_time=2, rate_func=lite.linear)
         # As in Manim 0.22, the animation's start/target copies keep running the dot's
         # own (suspended) updater, so it also drifts down: (4, -29/15) at the end.

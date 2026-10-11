@@ -863,6 +863,22 @@ class AnimationApiTests(unittest.TestCase):
             [[14.2222, 10.0, 5.0, -7.0, 14.2222, 8.0], [200.0, 400.0, 200.0, 112.5],
              [1080.0, 8.0, 14.2222, 14.2222]])
 
+    def test_frame_updaters_run_only_once_the_frame_is_in_the_scene(self):
+        result = scene_values(
+            'class S(MovingCameraScene):\n'
+            '    def construct(self):\n'
+            '        m = Square().shift(LEFT)\n'
+            '        self.add(m)\n'
+            '        self.camera.frame.add_updater(lambda f: f.move_to(m))\n'
+            '        self.play(m.animate.shift(RIGHT * 3), run_time=0.5)\n'
+            '        self.before = self.camera.frame.get_center()\n'
+            '        self.add(self.camera.frame)\n'
+            '        self.play(m.animate.shift(UP), run_time=0.5)\n'
+            '        self.after = self.camera.frame.get_center()\n'
+            's = S(); s.render()\n'
+            'result = [s.before, s.after]\n')
+        self.assertEqual(result, [[0.0, 0.0, 0.0], [2.0, 1.0, 0.0]])
+
     def test_depth_layout_stretch_and_polyhedron_become(self):
         result = scene_values(
             'c = Cube(side_length=1).next_to(Dot3D([0, 0, 2]), OUT)\n'

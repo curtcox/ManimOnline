@@ -10,7 +10,7 @@ class UpdaterScene(MovingCameraScene):
         spinner = Square(color=RED).shift(DOWN * 2)
         spinner.add_updater(lambda m, dt: m.rotate(dt * PI / 2))
         self.camera.frame.add_updater(lambda m: m.move_to(dot), call_updater=True)
-        self.add(dot, follower, spinner)
+        self.add(dot, follower, spinner, self.camera.frame)
         self.wait(1)
         self.play(dot.animate.shift(RIGHT * 4), run_time=4, rate_func=linear)
         spinner.clear_updaters()

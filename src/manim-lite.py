@@ -13888,8 +13888,6 @@ class Scene:
     def _update_mobjects(self, dt, overrides=None, scene_updaters=True):
         """Expose sampled geometry to dependent callbacks without committing animations."""
         roots = list(self.mobjects)
-        if isinstance(self.camera, MovingCamera) and self.camera.frame not in roots:
-            roots.append(self.camera.frame)
         scene_updaters = list(getattr(self, 'updaters', [])) if scene_updaters else []
         if not scene_updaters and not any(m.get_family_updaters() for m in roots):
             return
@@ -14256,8 +14254,6 @@ class Scene:
         if stop_condition is not None or self.always_update_mobjects or getattr(self, 'updaters', None):
             return False
         roots = list(self.mobjects)
-        if isinstance(self.camera, MovingCamera) and self.camera.frame not in roots:
-            roots.append(self.camera.frame)
         return not any(member.has_time_based_updater() for root in roots for member in root.get_family())
 
     def wait_until(self, stop_condition, max_time=60):
