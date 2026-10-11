@@ -1276,7 +1276,7 @@ class Mobject:
     def _place_in_world(self, mobject):
         pivot = Vector(mobject._pivot_point())
         world = self._point_to_world(pivot)
-        mobject.scale(self.geometry_scale, about_point=pivot).rotate(self.angle, about_point=pivot)
+        mobject._scale(self.geometry_scale, about_point=pivot).rotate(self.angle, about_point=pivot)
         return mobject.shift(world - pivot)
 
     def _world_member(self, child):
@@ -3436,7 +3436,8 @@ class Mobject:
         c, s = math.cos(-self.angle), math.sin(-self.angle)
         local = center + Vector((offset[0]*c - offset[1]*s, offset[0]*s + offset[1]*c, 0)) * (1 / self.geometry_scale)
         # Turn about the pivot itself: a pure container's bounds center is not covariant.
-        mobject.rotate(-self.angle, about_point=pivot).scale(1 / self.geometry_scale, about_point=pivot)
+        # A pose change only: Arrow.scale would keep its tips at their world size.
+        mobject.rotate(-self.angle, about_point=pivot)._scale(1 / self.geometry_scale, about_point=pivot)
         return mobject.shift(local - pivot)
 
     def generate_target(self, use_deepcopy=False):

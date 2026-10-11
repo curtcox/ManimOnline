@@ -437,3 +437,5 @@ LinearTransformationScene gallery example's second transformation of a labelled 
 shift takes several vectors, space_out_submobjects shrinks members about their world centers
 (rotated Axes), arrange_in_grid places cells up and right from the origin as Community does
 (visible for shapes with their own outline) and raises ZeroDivisionError with no members.
+Members attached to or released from a scaled parent change pose only, so arrows keep their
+world-size tips (Arrow.scale's fixed-size tips no longer apply to re-posing).

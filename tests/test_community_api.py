@@ -1450,6 +1450,16 @@ class AnimationApiTests(unittest.TestCase):
             [2, 1, 0], [-0.756, -0.802, 0.817, 0.736], [0.65, 0.0, 1.25, 0.6],
             [[0.365, 0.26, 0.941, 0.836], [1.18, 0.471, 1.333, 0.624]], 'error']))
 
+    def test_arrow_children_of_scaled_parents_keep_world_tips(self):
+        # Attaching to (or removing from) a scaled, rotated parent must not resize the tips.
+        values = scene_values(
+            'def r(m): return [round(float(x), 3) for x in (*m.get_corner(DL)[:2], *m.get_corner(UR)[:2])]\n'
+            'a = Arc(radius=0.69, angle=3.55).scale(2).rotate(0.3); arr = DoubleArrow(LEFT, RIGHT).shift(UR)\n'
+            'a.add(arr); inside = r(arr); a.remove(arr)\n'
+            'result = [inside, r(arr), r(a)]\n')
+        self.assertEqual(values, plain([[0.25, 0.825, 1.75, 1.175], [0.25, 0.825, 1.75, 1.175],
+                                        [-1.239, -1.081, 1.437, 1.194]]))
+
     def test_become_keeps_scene_attributes(self):
         # Community's become copies points and colors; attributes scene code added remain,
         # so a transformed label keeps its bookkeeping (LinearTransformationScene relies on it).
