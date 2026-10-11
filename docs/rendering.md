@@ -2397,3 +2397,13 @@ Text exposes Community's attributes: `text` (the source without spaces, tabs or
 newlines, aligned with glyph indices), `original_text`, `line_spacing` (in points:
 font_size × (1 + argument)), `font`, `slant`, `weight` and the `t2c`/`t2f`/`t2g`/`t2s`/`t2w`
 dictionaries (t2c values as hex). MarkupText's `text`/`original_text` keep the markup.
+
+Utility and method value diffs (2026-10-11): every exported Community function was called
+with a shared set of arguments, and every public no-argument method of every default-
+constructible Mobject class was called in both libraries. Fixed from those diffs: shoelace is
+Community's open trapezoid integral, scalar and 2D bezier controls, array sigmoid and
+angle_of_vector, the get_3d_vmob_* corner helpers, make_smooth/make_jagged on whole
+families (arrow tips included), Polygram vertex/rounding methods on triangle and square
+tips (which are Triangle/Square instances, as in Community), VGroup path helpers, Mobject
+set_color() defaulting to PURE_YELLOW, anchor-only get_points_defining_boundary on
+VMobjects, empty ArcPolygon, and PMobject rgbas/ingest_submobjects.

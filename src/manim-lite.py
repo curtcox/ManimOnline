@@ -1092,6 +1092,7 @@ class _CommunityTree(type):
 
 
 _VIRTUAL_BASES = {}  # Filled once the classes exist (see _install_scene_calls).
+_NO_COLOR = object()
 
 
 def _last_unique(items):
@@ -2964,7 +2965,11 @@ class Mobject:
         if not math.isfinite(width) or width < 0:
             raise ValueError('Stroke width must be nonnegative and finite')
 
-    def set_color(self, color, family=True):
+    def set_color(self, color=_NO_COLOR, family=True):
+        if color is _NO_COLOR:
+            if isinstance(self, VMobject):
+                raise TypeError("VMobject.set_color() missing 1 required positional argument: 'color'")
+            color = PURE_YELLOW
         color = _paint(color)
         self.color = color
         self.fill_color = self.stroke_color = color
@@ -3702,11 +3707,11 @@ class Mobject:
             setattr(self, attr, func(getattr(self, attr)))
         return self
 
-    def _family_world_points(self):
-        """Every family member's points in this mobject's frame (world for scene code)."""
+    def _family_world_points(self, anchors=False):
+        """Every family member's points (or only anchors) in this mobject's frame (world for scene code)."""
         result = []
         def visit(member, ancestors):
-            points = member.get_points()
+            points = member.get_anchors() if anchors else member.get_points()
             for parent in reversed(ancestors):
                 points = parent._points_to_world(points) if points else points
             result.extend(Vector(p) for p in points)
@@ -3727,6 +3732,9 @@ class Mobject:
         return result
 
     def get_points_defining_boundary(self):
+        # Community's VMobjects use only the family's anchors.
+        if isinstance(self, VMobject):
+            return _point_array([list(p) for p in self._family_world_points(anchors=True)])
         return self.get_all_points()
 
     def get_extremum_along_dim(self, points=None, dim=0, key=0):
@@ -4371,6 +4379,9 @@ class VMobject(Mobject, metaclass=_CommunityTree):
     def change_anchor_mode(self, mode):
         if mode not in ('smooth','jagged'):
             raise ValueError('Anchor mode must be smooth or jagged')
+        for child in self.children:
+            if hasattr(child, 'change_anchor_mode'):
+                child.change_anchor_mode(mode)
         center = self._geometry_center()
         paths = _path_subpaths(self.to_dict(),include_pending=False)
         curves, lengths = [], []
@@ -5847,6 +5858,9 @@ class ArrowTip(VMobject):
 
 
 class ArrowTriangleTip(ArrowTip):
+    get_vertices, get_vertex_groups = Polygram.get_vertices, Polygram.get_vertex_groups
+    round_corners = Polygram.round_corners
+
     def __init__(self, length=.35, width=.35, start_angle=PI,
                  fill_opacity=0, stroke_width=3, **kwargs):
         self._tip_dimension(length,'length')
@@ -5891,6 +5905,9 @@ class ArrowCircleFilledTip(ArrowCircleTip):
 
 
 class ArrowSquareTip(ArrowTip):
+    get_vertices, get_vertex_groups = Polygram.get_vertices, Polygram.get_vertex_groups
+    round_corners = Polygram.round_corners
+
     def __init__(self, length=.35, start_angle=PI, fill_opacity=0,
                  stroke_width=3, **kwargs):
         self._tip_dimension(length,'length')
@@ -7768,6 +7785,21 @@ class VGroup(Group):
     def make_jagged(self):
         return self.change_anchor_mode('jagged')
 
+    def has_new_path_started(self):
+        return len(self.get_points()) % 4 == 1
+
+    def clear_points(self):
+        return self.set_points([])
+
+    def get_direction(self):
+        return VMobject.get_direction(self)
+
+    def reverse_direction(self):
+        # Community reverses only the group's own (normally empty) points.
+        if self.get_points():
+            raise NotImplementedError(f'{type(self).__name__} points cannot be set directly')
+        return self
+
     def scale_handle_to_anchor_distances(self, factor):
         return VMobject.scale_handle_to_anchor_distances(self, factor)
 
@@ -8712,7 +8744,7 @@ class ArcPolygonFromArcs(VMobject):
 class ArcPolygon(ArcPolygonFromArcs):
     def __init__(self, *vertices, angle=PI/4, radius=None, arc_config=None, **kwargs):
         vertices = VMobject._corners(vertices)
-        if not 2 <= len(vertices) <= 256:
+        if len(vertices) == 1 or len(vertices) > 256:
             raise ValueError('Arc polygon requires 2 to 256 vertices')
         if arc_config is None:
             options = {'angle':angle} if radius is None else {'radius':radius}
@@ -10709,6 +10741,8 @@ def _zero(function):
 
 
 def sigmoid(x):
+    if hasattr(x, 'shape') and x.shape:
+        return 1.0 / (1 + sys.modules['numpy'].exp(-x))
     return 1.0 / (1 + math.exp(-x))
 
 
@@ -14893,6 +14927,10 @@ class ZoomedScene(MovingCameraScene):
 
 def angle_of_vector(vector):
     """The XY angle of a vector, as Community's np.angle(complex(x, y))."""
+    if hasattr(vector, 'shape') and len(vector.shape) > 1:
+        if vector.shape[0] < 2:
+            raise ValueError('Vector must have the correct dimensions. (2, n)')
+        return sys.modules['numpy'].arctan2(vector[1], vector[0])
     vector = list(vector)
     return math.atan2(vector[1], vector[0])
 
@@ -20385,6 +20423,26 @@ class PMobject(Mobject):
     def set_points(self, points):
         return self.reset_points().add_points(points)
 
+    def get_array_attrs(self):
+        return ['points', 'rgbas']
+
+    def get_all_rgbas(self):
+        rows = [list(color.to_rgb()) + [alpha] for member in self.get_family() if isinstance(member, PMobject)
+                for color, alpha in zip(member.cloud_colors, member.cloud_opacities)]
+        return _number_array(rows)
+
+    def ingest_submobjects(self):
+        """Community's merge of every family point cloud into this one, dropping the submobjects."""
+        members = [m for m in self.get_family() if isinstance(m, PMobject)]
+        points = [p for m in members for p in m.get_points()]
+        colors = [c for m in members for c in m.cloud_colors]
+        alphas = [a for m in members for a in m.cloud_opacities]
+        self._replace_children([])
+        self.position, self.angle, self.geometry_scale = [0, 0, 0], 0, 1
+        self.cloud = [[p[0], p[1]] for p in points]
+        self.cloud_colors, self.cloud_opacities = colors, alphas
+        return self
+
     def set_color(self, color=PURE_YELLOW, family=True):
         color = ManimColor(color)
         self.cloud_colors = [color] * len(self.cloud)
@@ -21132,6 +21190,9 @@ def complex_func_to_R3_func(complex_func):
 
 
 def center_of_mass(points):
+    points = list(points.tolist() if hasattr(points, 'tolist') else points)
+    if all(isinstance(p, _REAL) for p in points):
+        return sum(points) / len(points)
     points = [list(p) for p in points]
     return [sum(values) / len(points) for values in zip(*points)]
 
@@ -21144,13 +21205,56 @@ def cross2d(a, b):
 
 
 def shoelace(x_y):
-    points = [list(p) for p in x_y]
-    return sum(points[i - 1][0] * points[i][1] - points[i][0] * points[i - 1][1]
-               for i in range(len(points))) / -2 if points else 0.0
+    """Community's open trapezoid integral of y over x (the polygon is not closed)."""
+    points = [list(p) for p in (x_y.tolist() if hasattr(x_y, 'tolist') else x_y)]
+    return sum((b[0] - a[0]) * (a[1] + b[1]) / 2 for a, b in zip(points, points[1:]))
 
 
 def shoelace_direction(x_y):
     return 'CW' if shoelace(x_y) > 0 else 'CCW'
+
+
+def get_3d_vmob_start_corner_index(vmob):
+    return 0
+
+
+def get_3d_vmob_end_corner_index(vmob):
+    return ((len(vmob.get_points()) - 1) // 6) * 3
+
+
+def get_3d_vmob_start_corner(vmob):
+    points = vmob.get_points()
+    return Vector(points[0]) if points else Vector(ORIGIN)
+
+
+def get_3d_vmob_end_corner(vmob):
+    points = vmob.get_points()
+    return Vector(points[get_3d_vmob_end_corner_index(vmob)]) if points else Vector(ORIGIN)
+
+
+def get_3d_vmob_gradient_start_and_end_points(vmob):
+    return get_3d_vmob_start_corner(vmob), get_3d_vmob_end_corner(vmob)
+
+
+def get_3d_vmob_unit_normal(vmob, point_index):
+    """Community's corner normal from the anchors three points before and after."""
+    points = [Vector(p) for p in vmob.get_points()]
+    n_points = len(points)
+    if len(vmob.get_anchors()) <= 2:
+        return Vector(UP)
+    i = point_index
+    im3 = i - 3 if i > 2 else n_points - 4
+    ip3 = i + 3 if i < n_points - 3 else 3
+    unit_normal = get_unit_normal(points[ip3] - points[i], points[im3] - points[i])
+    return Vector(UP) if _norm(unit_normal) == 0 else unit_normal
+
+
+def get_3d_vmob_start_corner_unit_normal(vmob):
+    return get_3d_vmob_unit_normal(vmob, get_3d_vmob_start_corner_index(vmob))
+
+
+def get_3d_vmob_end_corner_unit_normal(vmob):
+    return get_3d_vmob_unit_normal(vmob, get_3d_vmob_end_corner_index(vmob))
 
 
 def perpendicular_bisector(line, norm_vector=OUT):
@@ -21198,12 +21302,21 @@ def thick_diagonal(dim, thickness=2):
 
 
 def bezier(points):
-    """Community's Bézier evaluator for any number of control points."""
-    points = [_point(p) for p in (points.tolist() if hasattr(points, 'tolist') else points)]
-    n = len(points) - 1
+    """Community's Bézier evaluator for any number of scalar or point controls."""
+    rows = list(points.tolist() if hasattr(points, 'tolist') else points)
+    n = len(rows) - 1
+    if rows and all(isinstance(p, _REAL) for p in rows):
+        return lambda t: sum(math.comb(n, k) * (1 - t) ** (n - k) * t ** k * p for k, p in enumerate(rows))
+    rows = [list(p.tolist() if hasattr(p, 'tolist') else p) for p in rows]
+    dim = len(rows[0]) if rows else 3
+    if dim == 3:
+        rows = [_point(p) for p in rows]
     def evaluate(t):
-        return Vector(sum(math.comb(n, k) * (1 - t) ** (n - k) * t ** k * p[i] for k, p in enumerate(points))
-                      for i in range(3))
+        value = [sum(math.comb(n, k) * (1 - t) ** (n - k) * t ** k * p[i] for k, p in enumerate(rows))
+                 for i in range(dim)]
+        if dim == 3:
+            return Vector(value)
+        return sys.modules['numpy'].array(value) if 'numpy' in sys.modules else value
     return evaluate
 
 
@@ -22097,7 +22210,7 @@ EXPORTS = ['config', 'Scene', 'MovingCameraScene', 'ZoomedScene', 'VectorScene',
            'SEMILIGHT', 'BOOK', 'MEDIUM', 'SEMIBOLD', 'ULTRABOLD', 'HEAVY', 'ULTRAHEAVY']
 EXPORTS += [name for name in _PALETTE if name not in EXPORTS]
 # Community utilities (manim.utils.*).
-EXPORTS += ['ManimBanner', 'MANIM_SVG_PATHS', 'SampleSpace', 'TransformAnimations', 'X_AXIS', 'Y_AXIS', 'Z_AXIS', 'DEFAULT_DASH_LENGTH', 'DEFAULT_POINTWISE_FUNCTION_RUN_TIME', 'DEFAULT_WAIT_TIME', 'SCALE_FACTOR_PER_FONT_POINT', 'START_X', 'START_Y', 'integer_interpolate', 'mid', 'inverse_interpolate', 'match_interpolate', 'midpoint', 'normalize', 'rotation_about_z', 'rotation_matrix', 'rotate_vector', 'z_to_vector', 'get_unit_normal', 'get_shaded_rgb', 'compass_directions', 'regular_vertices', 'complex_to_R3', 'R3_to_complex', 'complex_func_to_R3_func', 'center_of_mass', 'cross2d', 'shoelace', 'shoelace_direction', 'perpendicular_bisector', 'cartesian_to_spherical', 'spherical_to_cartesian', 'find_intersection', 'get_winding_number', 'thick_diagonal', 'bezier', 'split_bezier', 'partial_bezier_points', 'subdivide_bezier', 'bezier_remap', 'point_lies_on_bezier', 'proportions_along_bezier_curve_for_point', 'get_smooth_cubic_bezier_handle_points', 'is_closed', 'straight_path', 'path_along_arc', 'clockwise_path', 'counterclockwise_path', 'adjacent_n_tuples', 'adjacent_pairs', 'all_elements_are_instances', 'concatenate_lists', 'list_update', 'list_difference_update', 'listify', 'make_even', 'make_even_by_cycling', 'remove_list_redundancies', 'remove_nones', 'stretch_array_to_length', 'tuplify', 'choose', 'clip', 'binary_search', 'color_to_rgba', 'rgba_to_color', 'color_to_int_rgb', 'color_to_int_rgba', 'merge_dicts_recursively', 'update_dict_recursively', 'tempconfig', 'override_animate', 'override_animation', 'index_labels', 'print_family', 'assert_is_mobject_method', 'turn_animation_into_updater', 'cycle_animation']
+EXPORTS += ['ManimBanner', 'MANIM_SVG_PATHS', 'SampleSpace', 'TransformAnimations', 'X_AXIS', 'Y_AXIS', 'Z_AXIS', 'DEFAULT_DASH_LENGTH', 'DEFAULT_POINTWISE_FUNCTION_RUN_TIME', 'DEFAULT_WAIT_TIME', 'SCALE_FACTOR_PER_FONT_POINT', 'START_X', 'START_Y', 'integer_interpolate', 'mid', 'inverse_interpolate', 'match_interpolate', 'midpoint', 'normalize', 'rotation_about_z', 'rotation_matrix', 'rotate_vector', 'z_to_vector', 'get_unit_normal', 'get_shaded_rgb', 'compass_directions', 'regular_vertices', 'complex_to_R3', 'R3_to_complex', 'complex_func_to_R3_func', 'center_of_mass', 'cross2d', 'shoelace', 'shoelace_direction', 'get_3d_vmob_start_corner_index', 'get_3d_vmob_end_corner_index', 'get_3d_vmob_start_corner', 'get_3d_vmob_end_corner', 'get_3d_vmob_gradient_start_and_end_points', 'get_3d_vmob_unit_normal', 'get_3d_vmob_start_corner_unit_normal', 'get_3d_vmob_end_corner_unit_normal', 'perpendicular_bisector', 'cartesian_to_spherical', 'spherical_to_cartesian', 'find_intersection', 'get_winding_number', 'thick_diagonal', 'bezier', 'split_bezier', 'partial_bezier_points', 'subdivide_bezier', 'bezier_remap', 'point_lies_on_bezier', 'proportions_along_bezier_curve_for_point', 'get_smooth_cubic_bezier_handle_points', 'is_closed', 'straight_path', 'path_along_arc', 'clockwise_path', 'counterclockwise_path', 'adjacent_n_tuples', 'adjacent_pairs', 'all_elements_are_instances', 'concatenate_lists', 'list_update', 'list_difference_update', 'listify', 'make_even', 'make_even_by_cycling', 'remove_list_redundancies', 'remove_nones', 'stretch_array_to_length', 'tuplify', 'choose', 'clip', 'binary_search', 'color_to_rgba', 'rgba_to_color', 'color_to_int_rgb', 'color_to_int_rgba', 'merge_dicts_recursively', 'update_dict_recursively', 'tempconfig', 'override_animate', 'override_animation', 'index_labels', 'print_family', 'assert_is_mobject_method', 'turn_animation_into_updater', 'cycle_animation']
 EXPORTS += ['LineJointType', 'CapStyleType', 'register_font', 'Typst', 'MathTypst',
             'AS2700', 'BS381', 'DVIPSNAMES', 'SVGNAMES', 'X11', 'XKCD', 'quaternion_mult',
             'quaternion_from_angle_axis', 'angle_axis_from_quaternion', 'quaternion_conjugate', 'RendererType',
@@ -22899,7 +23012,10 @@ def _install_scene_calls():
 
 _install_scene_calls()
 _VIRTUAL_BASES.update({VMobject: (VGroup, Text), Animation: (AnimationGroup,),
-                       Transform: (FadeIn, GrowFromPoint, Indicate, Rotate, TransformAnimations)})
+                       Transform: (FadeIn, GrowFromPoint, Indicate, Rotate, TransformAnimations),
+                       Polygram: (ArrowTriangleTip, ArrowSquareTip), RegularPolygram: (ArrowTriangleTip,),
+                       RegularPolygon: (ArrowTriangleTip,), Triangle: (ArrowTriangleTip,),
+                       Polygon: (ArrowSquareTip,), Rectangle: (ArrowSquareTip,), Square: (ArrowSquareTip,)})
 # Scenes see the arrow as Community's Vector (internally Vector is the coordinate tuple).
 VectorArrow.__name__ = VectorArrow.__qualname__ = 'Vector'
 

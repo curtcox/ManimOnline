@@ -1188,6 +1188,41 @@ class AnimationApiTests(unittest.TestCase):
             ['Hiyo', 'Hi\nyo', 39.0, 144.0, '', 'Arial', 'NORMAL', 'NORMAL', {'b': '#FC6255'}, {},
              '<b>ab</b>c', '<b>ab</b>\nc'])
 
+    def test_space_utilities_and_3d_vmobject_corners(self):
+        self.assertEqual(scene_values(
+            'result = [get_3d_vmob_start_corner(Square()), get_3d_vmob_end_corner(Square()),'
+            ' get_3d_vmob_end_corner_index(Square()),'
+            ' get_3d_vmob_start_corner_unit_normal(Square().rotate(0.4, RIGHT)),'
+            ' get_3d_vmob_end_corner_unit_normal(Polygon(ORIGIN, RIGHT, UP + OUT)),'
+            ' get_3d_vmob_unit_normal(Line(), 0),'
+            ' shoelace([[0, 0], [1, 0], [1, 1], [0, 1]]), shoelace_direction(Square().get_start_anchors()),'
+            ' bezier([0, 1, 3])(0.4), bezier([[0, 0], [1, 2], [3, 1]])(0.3), center_of_mass([1, 2, 6])]\n'),
+            [[1.0, 1.0, 0.0], [-1.0, -0.3333, 0.0], 6.0, [0.0, -0.3894, 0.9211],
+             [0.0, -0.7071, 0.7071], [0.0, 1.0, 0.0], -1.0, 'CCW', 0.96, [0.69, 0.93], 3.0])
+
+    def test_family_anchor_modes_tip_polygons_and_container_paths(self):
+        self.assertEqual(scene_values(
+            'a = Arrow(); a.make_smooth()\n'
+            's = Square().rotate(0.3); s.add(Triangle().scale(0.5).shift(RIGHT * 2)); s.make_smooth()\n'
+            't = ArrowSquareTip(); t.round_corners(0.05)\n'
+            'g = VGroup(Square())\n'
+            'p = PGroup(PointCloudDot(), PointCloudDot().shift(RIGHT)); n = len(p.get_all_points())\n'
+            'p.ingest_submobjects()\n'
+            'result = [a.height, a.tip.get_points()[1], s.width, s.height, s[1].get_points()[1],'
+            ' ArrowSquareTip().get_vertices(), len(ArrowTriangleTip().get_vertex_groups()),'
+            ' isinstance(ArrowTriangleTip(), Triangle), isinstance(ArrowSquareTip(), Square),'
+            ' t.width, t.get_num_points(), g.has_new_path_started(), g.get_direction(),'
+            ' g.reverse_direction() is g, g.clear_points() is g, ArcPolygon().width,'
+            ' ValueTracker(2).set_color().get_value(), len(Square().get_points_defining_boundary()),'
+            ' len(VGroup(Square(), Circle()).get_points_defining_boundary()),'
+            ' PMobject().get_array_attrs(), len(p.submobjects), len(p.get_points()), n]\n'),
+            [0.4667, [0.75, 0.1167, 0.0], 4.1581, 3.1615, [1.7113, 0.625, 0.0],
+             [[0.175, 0.175, 0.0], [-0.175, 0.175, 0.0], [-0.175, -0.175, 0.0], [0.175, -0.175, 0.0]],
+             1.0, True, True, 0.35, 32.0, False, 'CCW', True, True, 0.0, 2.0, 8.0, 24.0,
+             ['points', 'rgbas'], 0.0, 2606.0, 2606.0])
+        with self.assertRaises(TypeError):
+            scene_values('result = Square().set_color()\n')
+
 
 if __name__ == '__main__':
     unittest.main()
