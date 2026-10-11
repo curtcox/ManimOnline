@@ -881,3 +881,7 @@ subclasses (`_builder = False`) still build at begin. Transform also updates its
 target (`_target_source`; TransformFromCopy's is the source). Animations with
 `_start_follows_updaters` (Create, FadeIn...) finish as their updated live copy.
 wait_until captures the frame before testing stop_condition.
+Rotate/Grow*/SpinIn/Indicate keep a `_LiveMorph` (Community's starting and target copies)
+only when the family has updaters; Grow/SpinIn/Rotate sample it with their exact path
+formulas, because generic point paths do not act on analytical pose-only shapes.
+MoveAlongPath defaults to suspend_mobject_updating=False: its live copy moves, then updates.

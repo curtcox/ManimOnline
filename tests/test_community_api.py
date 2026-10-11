@@ -882,6 +882,28 @@ class AnimationApiTests(unittest.TestCase):
             'result = s.r\n')
         self.assertEqual(result, [[3.3333, 0.0, 0.0], 2.0213, [-1.4667, 1.0, 0.0], 0.6])
 
+    def test_rotate_grow_indicate_wiggle_and_paths_follow_updaters(self):
+        # Expected values from Manim 0.22 at frame_rate = 15.
+        result = scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        r = []\n'
+            '        def mk():\n'
+            '            a = Square(); a.add_updater(lambda x, dt: x.shift(RIGHT*dt)); return a\n'
+            '        a = mk(); self.add(a); self.play(Rotate(a, PI/2)); r.append(a.get_center()); self.remove(a)\n'
+            '        a = mk(); self.play(SpinInFromNothing(a)); r.append(a.get_center()); self.remove(a)\n'
+            '        a = mk(); self.add(a); self.play(Indicate(a)); r.append(a.get_center()); self.remove(a)\n'
+            '        a = mk(); self.add(a); self.play(Wiggle(a)); r.append(a.get_center()); self.remove(a)\n'
+            '        a = mk(); self.add(a); self.play(FadeOut(a, shift=UP)); r.append(a.get_center())\n'
+            '        a = mk(); self.add(a); self.play(MoveAlongPath(a, Circle()), rate_func=linear); r.append(a.get_center())\n'
+            '        a = Square(); a.add_updater(lambda x, dt: x.rotate(dt)); self.add(a)\n'
+            '        self.play(MoveAlongPath(a, Line(LEFT, RIGHT))); r.append(round(a.width, 4)); self.remove(a)\n'
+            '        self.r = r\n'
+            's = S(); s.render()\n'
+            'result = s.r\n')
+        self.assertEqual(result, [[0.9333, 0.0, 0.0]] * 3 + [[1.9333, 0.0, 0.0], [0.9333, 0.0, 0.0],
+                                                             [1.0, -0.0, 0.0], 2.7975])
+
     def test_frame_updaters_run_only_once_the_frame_is_in_the_scene(self):
         result = scene_values(
             'class S(MovingCameraScene):\n'

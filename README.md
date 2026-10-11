@@ -202,7 +202,9 @@ targets are computed when the builder is created and stored as `mobject.target`,
 two builders for one object inside a single `Succession` both move to the later
 target; play them separately for consecutive relative steps. `ApplyMethod` targets
 resolve at stage start; explicit `Transform` targets are snapshots made when
-constructed. Animation copies and the real target keep running their updaters.
+constructed. Animation copies and the real target keep running their updaters
+(including Rotate, growth, Indicate, Wiggle and FadeTransform); MoveAlongPath does not
+suspend the moving object's updaters, as in Manim.
 
 Sequences prepare against a copied scene and commit live changes in stage order
 at completion. A sequence cannot share animated objects with a simultaneous

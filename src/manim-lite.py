@@ -11667,7 +11667,7 @@ class Animation(metaclass=_CommunityTree):
             self.clean_up_from_scene(scene)
             return
         live = self.__dict__.get('_live_start')
-        if live is not None and self._start_follows_updaters and not self.remover:
+        if live is not None and self._start_follows_updaters and (not self.remover or isinstance(self, FadeIn)):
             self.mobject.become(live)
         if _takes_argument(self.finish):
             self.finish(scene)
@@ -11689,6 +11689,9 @@ class Animation(metaclass=_CommunityTree):
         if live is not None:
             live.update(dt)
             self.start = live.to_dict()
+        morph = self.__dict__.get('_live_morph')
+        if morph is not None:
+            morph.advance(dt)
 
     def begin(self, scene=None):
         if scene is None:
@@ -11842,6 +11845,27 @@ def _snapshot_lerp(start, target):
     return sample
 
 
+class _LiveMorph:
+    """Community's starting and target copies, which keep the mobject's updaters and are
+    updated every frame, morphed (along an optional path) between their current states."""
+    def __init__(self, start, target, path=0):
+        self.start, self.target, self.path, self._plan = start, target, path, None
+
+    @staticmethod
+    def wanted(mobject):
+        return any(m.updaters for m in mobject.get_family())
+
+    def advance(self, dt):
+        self.start.update(dt)
+        self.target.update(dt)
+        self._plan = None
+
+    def sample(self, alpha):
+        if self._plan is None:
+            self._plan = _transform_plan(self.start.to_dict(), self.target.to_dict())
+        return _sample_transform(self._plan, alpha, self.path)
+
+
 def _lookup(data, path):
     for index in path:
         data = data['children'][index]
@@ -11870,13 +11894,42 @@ class GrowFromPoint(Animation):
         super().begin(scene)
         self.original = self.mobject.copy()
         self._growth_plan = None
+        self._live_morph = None
+        if _LiveMorph.wanted(self.original):
+            start = self.original.copy().scale(0)
+            start.move_to(self.point)
+            if self.point_color:
+                start.set_color(self.point_color)
+            self._live_morph = _LiveMorph(start, self.original.copy(), self._growth_path())
+
+    def _growth_path(self):
+        return 0
+
+    def finish(self, scene):
+        morph = self.__dict__.get('_live_morph')
+        if morph is not None:
+            self.mobject.become(morph.target)
 
     def _fixed_tips(self):
         # Arrows keep their tip size when scaled, so Community's pointwise interpolation from
         # the collapsed copy is not a uniform scale about the point.
         return any(isinstance(m, Arrow) and m.get_tips().children for m in self.original.get_family())
 
+    def _live_growth(self, alpha):
+        """The updated target grown from the collapsed copy's current center (Community's
+        straight or spiral path from a single point)."""
+        morph = self._live_morph
+        if self._fixed_tips():
+            return morph.sample(alpha)
+        point = morph.start.get_center()
+        current = morph.target.copy().scale(alpha, about_point=point)
+        if self._growth_path():
+            current.rotate((alpha - 1) * self.angle, about_point=point)
+        return [self._tint(current, alpha).to_dict()]
+
     def sample(self, alpha):
+        if self.__dict__.get('_live_morph') is not None:
+            return self._live_growth(alpha)
         if self._fixed_tips():
             if self.__dict__.get('_growth_plan') is None:
                 start = self.original.copy().scale(0)
@@ -12366,13 +12419,23 @@ class Indicate(Animation):
 
     def begin(self, scene):
         super().begin(scene)
-        self.highlight = self.mobject.copy().scale(self.scale_factor).set_color(self.color).to_dict()
+        highlight = self.mobject.copy().scale(self.scale_factor).set_color(self.color)
+        self.highlight = highlight.to_dict()
         self._lerp = _snapshot_lerp(self.start, self.highlight)
+        self._live_morph = (_LiveMorph(self.mobject.copy(), highlight) if _LiveMorph.wanted(highlight)
+                            else None)
 
     def sample(self, alpha):
+        if self.__dict__.get('_live_morph') is not None:
+            return self._live_morph.sample(alpha)
         if alpha == 0:
             return [_snapshot_copy(self.start)]
         return [self._lerp(alpha)]
+
+    def finish(self, scene):
+        morph = self.__dict__.get('_live_morph')
+        if morph is not None:
+            self.mobject.become(morph.target if abs(self.rate_func(1)) > .5 else morph.start)
 
 
 class Rotate(Animation):
@@ -12405,8 +12468,24 @@ class Rotate(Animation):
         if self.about_edge is not None:
             # The edge is resolved once, at the stage start, like Community's pivot.
             self.about_point = self.original.get_critical_point(self.about_edge)
+        self._live_morph = None
+        if _LiveMorph.wanted(self.original):
+            # Community's Rotate is a Transform along circles about the fixed pivot.
+            self._live_pivot = pivot = (self.about_point if self.about_point is not None
+                                        else self.original.get_center())
+            target = self.original.copy().rotate(self.angle, self.axis, about_point=pivot)
+            self._live_morph = _LiveMorph(self.original.copy(), target)
 
     def sample(self, alpha):
+        morph = self.__dict__.get('_live_morph')
+        if morph is not None:
+            # path_along_circles: blend toward the target turned back about the pivot,
+            # then turn the blend forward by alpha * angle.
+            pivot = self._live_pivot
+            back = morph.target.copy().rotate(-self.angle, self.axis, about_point=pivot)
+            blend = _snapshot_lerp(morph.start.to_dict(), back.to_dict())(alpha)
+            current = _sampled_copy(self.original, [blend])
+            return [current.rotate(alpha * self.angle, self.axis, about_point=pivot).to_dict()]
         current = self.original.copy()
         angle = self.angle * alpha
         if angle % TAU and (self.axis != OUT or self.original._is_3d()):
@@ -12422,6 +12501,10 @@ class Rotate(Animation):
         return [current.to_dict()]
 
     def finish(self, scene):
+        morph = self.__dict__.get('_live_morph')
+        if morph is not None:
+            self.mobject.become(morph.target)
+            return
         final = self.original.copy().rotate(self.angle, self.axis, about_point=self.about_point)
         self.mobject.__dict__ = copy.deepcopy(final.__dict__)
 
@@ -12441,6 +12524,7 @@ class MoveAlongPath(Animation):
             raise TypeError('MoveAlongPath expects a supported shape as its path')
         if mobject is path:
             raise ValueError('The moving object and path must be different objects')
+        kwargs.setdefault('suspend_mobject_updating', False)
         super().__init__(mobject, **kwargs)
         self.path = path
 
@@ -12450,12 +12534,26 @@ class MoveAlongPath(Animation):
         self.path_snapshot.point_from_proportion(0)
         super().begin(scene)
         self.original = self.mobject.copy()
+        self._live, self._dt = (not self.suspend_mobject_updating and _LiveMorph.wanted(self.original)), None
+
+    def _advance_copies(self, dt):
+        if self.__dict__.get('_live'):
+            self._dt = dt
 
     def sample(self, alpha):
-        current = self.original.copy().move_to(self.path_snapshot.point_from_proportion(alpha))
+        point = self.path_snapshot.point_from_proportion(alpha)
+        if self.__dict__.get('_live') and self._dt is not None:
+            # Each frame Community moves the live mobject, then runs its updaters.
+            self.original.move_to(point)
+            self.original.update(self._dt)
+            self._dt = None
+            return [self.original.to_dict()]
+        current = self.original.copy().move_to(point)
         return [current.to_dict()]
 
     def finish(self, scene):
+        if self.__dict__.get('_live'):
+            self.mobject.become(self.original)
         self.mobject.move_to(self.path_snapshot.point_from_proportion(1))
 
 
@@ -12693,8 +12791,17 @@ class FadeTransform(Transform):
 
     def begin(self, scene):
         Animation.begin(self, scene)
-        self._plan_pairs(self.mobject.copy(), self._fit(self.mobject.copy(), self.target),
-                         self._fit(self.target.copy(), self.mobject), self.target.copy())
+        copies = (self.mobject.copy(), self._fit(self.mobject.copy(), self.target),
+                  self._fit(self.target.copy(), self.mobject), self.target.copy())
+        self._fade_live = copies if any(_LiveMorph.wanted(m) for m in copies) else None
+        self._plan_pairs(*copies)
+
+    def _advance_copies(self, dt):
+        copies = self.__dict__.get('_fade_live')
+        if copies is not None:
+            for mobject in copies:
+                mobject.update(dt)
+            self._plan_pairs(*copies)
 
     def _plan_pairs(self, start, source_end, target_start, target_end):
         """Community transforms Group(source, ghost target) into Group(ghost source, target):
@@ -13460,7 +13567,12 @@ class SpinInFromNothing(GrowFromCenter):
         super().__init__(mobject, point_color=point_color, **kwargs)
         self.angle = NumberLine._real(angle, 'Spin angle')
 
+    def _growth_path(self):
+        return spiral_path(self.angle)
+
     def sample(self, alpha):
+        if self.__dict__.get('_live_morph') is not None:
+            return self._live_growth(alpha)
         if self._fixed_tips():
             super().sample(0)
             return _sample_transform(self._growth_plan, alpha, spiral_path(self.angle))
@@ -13493,6 +13605,14 @@ class Wiggle(Animation):
         self.pivots = [center if p is None else Mobject._xy_vector(p, 'Wiggle point')
                        for p in (self.scale_about_point, self.rotate_about_point)]
 
+    def _advance_copies(self, dt):
+        super()._advance_copies(dt)
+        if _LiveMorph.wanted(self.original):
+            self.original.update(dt)
+            center = self.original.get_center()
+            self.pivots = [center if p is None else q for p, q in
+                           zip((self.scale_about_point, self.rotate_about_point), self.pivots)]
+
     def sample(self, alpha):
         current = self.original.copy()
         current.scale(interpolate(1, self.scale_value, there_and_back(alpha)), about_point=self.pivots[0])
@@ -13500,7 +13620,8 @@ class Wiggle(Animation):
         return [current.to_dict()]
 
     def finish(self, scene):
-        pass
+        if _LiveMorph.wanted(self.original):
+            self.mobject.become(self.original)
 
 
 class FocusOn(Transform):
