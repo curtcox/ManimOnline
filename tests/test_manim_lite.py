@@ -1917,7 +1917,7 @@ assert isinstance(t.get_value(), (int, float))""")
         matched=lite.Square().match_style(source)
         self.assertEqual((matched.get_fill_color(),matched.get_stroke_color(),matched.get_fill_opacity(),
                           matched.get_stroke_width(),matched.get_stroke_opacity()),(lite.BLUE,lite.RED,.4,7,1))
-        self.assertEqual(lite.Square().match_color(source).get_color(),lite.RED)
+        self.assertEqual(lite.Square().match_color(source).get_color(),lite.BLUE)
         toward=lite.Square(color=lite.PURE_RED).fade_to(lite.PURE_BLUE,.5)
         self.assertEqual(toward.color,'#7F007F')
         row=lite.VGroup(lite.Dot(lite.RIGHT),lite.Dot(lite.LEFT),lite.Dot())

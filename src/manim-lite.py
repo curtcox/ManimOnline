@@ -3026,7 +3026,13 @@ class Mobject:
         return self
 
     def get_color(self):
-        return self.color
+        # Community's VMobject color: the stroke color when the fill is transparent.
+        if isinstance(self, VMobject) and self.__dict__.get('fill_color') is not None:
+            stops = self.__dict__.get('fill_opacities')
+            if not self.fill_opacity or (stops and not any(stops)):
+                return self.get_stroke_color()
+            return self.get_fill_color()
+        return self.__dict__.get('color')
 
     def get_fill_color(self):
         return self.fill_color
@@ -4055,6 +4061,26 @@ def always_rotate(mobject, rate=20 * DEGREES, **kwargs):
     NumberLine._real(rate, 'Rotation rate')
     mobject.add_updater(lambda m, dt: m.rotate(dt * rate, **kwargs))
     return mobject
+
+
+def _style_property(name, setter):
+    """Community's color/fill_color/stroke_color properties: assignments from scene code
+    restyle the family; the library stores the raw value."""
+    def get(self):
+        if name == 'color' and sys._getframe(1).f_code.co_filename != _LIB_FILE:
+            return self.get_color()
+        return self.__dict__.get(name)
+    def set_(self, value):
+        if sys._getframe(1).f_code.co_filename == _LIB_FILE:
+            self.__dict__[name] = value
+        else:
+            setter(self, value)
+    return property(get, set_)
+
+
+Mobject.color = _style_property('color', lambda mobject, value: mobject.set_color(value))
+Mobject.fill_color = _style_property('fill_color', lambda mobject, value: mobject.set_fill(value))
+Mobject.stroke_color = _style_property('stroke_color', lambda mobject, value: mobject.set_stroke(value))
 
 
 class VMobject(Mobject, metaclass=_CommunityTree):
@@ -5245,7 +5271,10 @@ class Square(Rectangle):
     # Stored analytically; scene code reads and assigns Community's measured side (see _MEASURED).
     @property
     def side_length(self):
-        return self.__dict__['side_length']
+        try:
+            return self.__dict__['side_length']
+        except KeyError:
+            raise AttributeError('side_length') from None
 
     @side_length.setter
     def side_length(self, value):
@@ -7455,6 +7484,23 @@ class Group(Mobject):
 
 class VGroup(Group):
     """Container for the supported vector/text geometry in this runtime."""
+    def change_anchor_mode(self, mode):
+        # Community's VMobject.change_anchor_mode visits family_members_with_points.
+        if mode not in ('smooth', 'jagged'):
+            raise ValueError('Anchor mode must be smooth or jagged')
+        for member in self.family_members_with_points():
+            member.change_anchor_mode(mode)
+        return self
+
+    def make_smooth(self):
+        return self.change_anchor_mode('smooth')
+
+    def make_jagged(self):
+        return self.change_anchor_mode('jagged')
+
+    def scale_handle_to_anchor_distances(self, factor):
+        return VMobject.scale_handle_to_anchor_distances(self, factor)
+
     def add(self, *mobjects):
         # Community unpacks non-Mobject iterables (lists, generators) of members.
         def invalid(value, parameter, index):
@@ -19100,7 +19146,7 @@ class PMobject(Mobject):
         return self
 
     def get_color(self):
-        return self.cloud_colors[0] if self.cloud_colors else self.color
+        return self.cloud_colors[0] if self.cloud_colors else self.__dict__.get('color')
 
     def get_stroke_width(self):
         return self.stroke_width

@@ -512,6 +512,22 @@ class AnimationApiTests(unittest.TestCase):
              [[0.0, 0.0, 0.0], [0.75, 0.0, 0.0], [1.375, 0.625, 0.0], [1.375, 0.625, 0.0],
               [2.0, 1.25, 0.0], [2.0, 2.0, 0.0]], [0.0, 0.0, 0.0], 'YourTextHere'])
 
+    def test_color_properties_group_smoothing_and_transformed_squares(self):
+        self.assertEqual(scene_values(
+            's = Square(); a = [s.color, s.fill_color, s.stroke_color]\n'
+            's.color = RED; b = [s.get_fill_color(), s.get_stroke_color(), s.get_fill_opacity()]\n'
+            's.fill_color = BLUE; c = [s.get_fill_color(), s.get_stroke_color()]\n'
+            's.stroke_color = GREEN; d = [s.get_fill_color(), s.get_stroke_color(), s.color]\n'
+            'g = VGroup(Square(), Circle()); g.color = YELLOW\n'
+            'e = [m.get_stroke_color() for m in g] + [g.color]\n'
+            'source = Circle(color=RED, fill_opacity=.4).set_fill(BLUE)\n'
+            'v = VGroup(Square(), Line(LEFT, RIGHT)); v.make_smooth()\n'
+            'm1 = Square(); scene = Scene(); scene.play(Transform(m1, Rectangle().rotate(0.2)))\n'
+            'result = [a, b, c, d, e, Square().match_color(source).get_color(), len(v[0].points),\n'
+            '          m1.width, m1.height, m1.side_length]\n'),
+            [['#FFFFFF'] * 3, ['#FC6255', '#FC6255', 0.0], ['#58C4DD', '#FC6255'],
+             ['#58C4DD', '#83C167', '#83C167'], ['#F7D96F'] * 3, '#58C4DD', 16.0, 4.3176, 2.7548, 4.0])
+
     def test_dashed_arrows_keep_one_set_of_tips(self):
         self.assertEqual(scene_values(
             'd = DashedVMobject(Arrow(ORIGIN, 2 * UR, color=RED))\n'

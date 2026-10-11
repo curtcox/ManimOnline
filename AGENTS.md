@@ -747,3 +747,7 @@ collections hold mobjects (dict/set), with orientation callbacks kept by id.
 `manim.typing` aliases come from the submodules' module `__getattr__` (`_typing_alias`:
 NDArray with NumPy, list otherwise) so annotations and unions work. An empty exact
 Group/VGroup/Mobject ignores shift (Community moves points; it has none).
+`color`/`fill_color`/`stroke_color` are Mobject properties (`_style_property`): scene-code
+assignment calls set_color/set_fill/set_stroke; library code reads and writes the stored
+value. Scene reads of `color` use Community's get_color (stroke color when the fill is
+transparent). Library code that needs the configured color must read `self.color` (stored).
