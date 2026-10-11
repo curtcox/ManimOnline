@@ -2414,3 +2414,11 @@ Ellipse and path proportions sample each cubic at Community's 10 points (so tang
 MoveAlongPath on ellipses follow the cubic approximation, not the analytic ellipse);
 add_points_as_corners/add_cubic_bezier_curve_to on posed paths append world points; and
 pointless members (NumberPlane's empty groups) no longer affect z extents.
+Running Community's own module tests (tests/module) against the preview found further gaps,
+now fixed: Scene.compile_animation_data/begin_animations with Community's z-ordered
+moving/static split (a parent of a moving member moves), Succession setting up each stage
+only when it begins, extract_mobject_family_members, raw point arrays of any length,
+braces around pointless mobjects, the ConvertToOpenGL metaclass (classes stay Cairo-style),
+QuickHull (NumPy only), XKCD/X11/... palette submodule imports, and manim.config staying
+the live config after a render. Imports of missing capitalized names now raise ImportError
+instead of producing an empty module.

@@ -1249,6 +1249,39 @@ class AnimationApiTests(unittest.TestCase):
             [[0.165, 0.5739, 0.0], 0.6254, 0.8522, [0.0, 1.0, 0.0], 3.4191, [0.0, 1.0, 0.0],
              [-0.3636, 0.4851, 0.0], [0.8477, -0.1679, 0.0], 0.5])
 
+    def test_compiled_animation_data_moving_members_and_empty_brace(self):
+        self.assertEqual(scene_values(
+            's = Scene(); a = Circle().set_z_index(1); b = Circle().set_z_index(1)\n'
+            'l = Line().set_z_index(-1); s.add(a, b)\n'
+            's.compile_animation_data(Succession(b.animate.set_fill(opacity=1), ShowPassingFlash(l)))\n'
+            's.begin_animations()\n'
+            's2 = Scene(); child = Square(); parent = Circle().add(child); other = Square()\n'
+            's2.add(other, parent); s2.compile_animation_data(child.animate.shift(RIGHT))\n'
+            's2.begin_animations()\n'
+            's3 = Scene(); s3.add(Square())\n'
+            'from manim.utils.family import extract_mobject_family_members\n'
+            'result = [a in s.moving_mobjects, len(s.moving_mobjects), len(s.static_mobjects),'
+            ' parent in s2.moving_mobjects, other in s2.static_mobjects, len(s2.moving_mobjects),'
+            ' len(s2.static_mobjects), s3.compile_animation_data(Wait()) is None, s2.duration,'
+            ' Brace(Mobject()).width, Brace(Mobject()).get_center(),'
+            ' len(VMobject().set_points([UP] * 3).get_points()),'
+            ' len(extract_mobject_family_members([parent, other], only_those_with_points=True))]\n'),
+            [True, 3, 0, True, True, 2, 1, True, 1.0, 0.0, [0.0, -0.3365, 0.0], 3, 3])
+        self.assertEqual(scene_values(
+            'from manim.mobject.opengl.opengl_compatibility import ConvertToOpenGL\n'
+            'from manim.utils.color.XKCD import GREEN as XGREEN\n'
+            'class Blob(VMobject, metaclass=ConvertToOpenGL):\n'
+            '    pass\n'
+            'result = [Blob in ConvertToOpenGL._converted_classes, isinstance(Blob(), VMobject),'
+            ' XGREEN.to_hex()]\n'), [True, True, '#15B01A'])
+        with self.assertRaises(ImportError):
+            scene_values('from manim.utils.qhull import NoSuchHull\nresult = 0\n')
+        if HAS_NUMPY:
+            self.assertEqual(scene_values(
+                'from manim.utils.qhull import QuickHull\n'
+                'h = QuickHull(); h.build(np.array([[0, 0], [2, 0], [0, 2], [2, 2], [1, 1]], dtype=float))\n'
+                'result = len(set(h.facets) - h.removed)\n'), 4)
+
 
 if __name__ == '__main__':
     unittest.main()

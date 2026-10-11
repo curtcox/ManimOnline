@@ -4254,8 +4254,6 @@ class VMobject(Mobject, metaclass=_CommunityTree):
 
     def set_points(self, points):
         points = VMobject._corners(points)
-        if len(points) % 4 not in (0, 1):
-            raise ValueError('Cubic points need groups of four, optionally followed by one new anchor')
         self._clear_pose()
         completed = len(points) - len(points) % 4
         self.curves = [points[i:i+4] for i in range(0, completed, 4)]
@@ -4472,7 +4470,7 @@ class VMobject(Mobject, metaclass=_CommunityTree):
         if self._type == 'bezierpath':
             if not vertices:
                 return self
-            start = Vector(self.vertices[0] if self.vertices else self.curves[-1][-1])
+            start = Vector(self.vertices[-1] if self.vertices else self.curves[-1][-1])
             for point in vertices:
                 end = Vector(point)
                 self.curves.append([list(start), list(start + (end-start) * (1/3)),
@@ -4491,7 +4489,7 @@ class VMobject(Mobject, metaclass=_CommunityTree):
         self._materialize_path()
         if self._type == 'bezierpath':
             if self.vertices:
-                self.curves.append([self.vertices[0][:] for _ in range(4)])
+                self.curves.append([self.vertices[-1][:] for _ in range(4)])
                 self.vertices = []
             self.curves = [list(reversed(curve)) for curve in reversed(self.curves)]
             if 'subpath_lengths' in self.__dict__:
@@ -4522,7 +4520,7 @@ class VMobject(Mobject, metaclass=_CommunityTree):
             curves.append([self.vertices[-1][:], *points])
             self._type, self.curves, self.vertices = 'bezierpath', curves, []
         else:
-            start = self.vertices[0] if self.vertices else self.curves[-1][-1]
+            start = self.vertices[-1] if self.vertices else self.curves[-1][-1]
             self.curves.append([start[:], *points])
             self.vertices = []
         self.__dict__.pop('subpath_lengths', None)
@@ -4545,7 +4543,7 @@ class VMobject(Mobject, metaclass=_CommunityTree):
         if self._type == 'bezierpath':
             if not self.curves and not self.vertices:
                 raise ValueError('The path has no points')
-            return self._point_to_world(Vector(self.vertices[0] if self.vertices else self.curves[-1][-1]))
+            return self._point_to_world(Vector(self.vertices[-1] if self.vertices else self.curves[-1][-1]))
         if not self.vertices:
             raise ValueError('The path has no points')
         return self._point_to_world(Vector(self.vertices[-1]))
@@ -8032,7 +8030,8 @@ class Brace(VMobject):
         c, s_ = math.cos(-angle), math.sin(-angle)
         points = [Vector((p[0]*c - p[1]*s_, p[0]*s_ + p[1]*c, 0)) for p in _extent_points(mobject)]
         if not points:
-            raise ValueError('Cannot brace a mobject with no extent')
+            # Community's get_corner of a pointless mobject is the origin.
+            points = [Vector((0, 0, 0))]
         left = Vector((min(p[0] for p in points), min(p[1] for p in points), 0))
         right = Vector((max(p[0] for p in points), left[1], 0))
         target_width = right[0] - left[0]
@@ -13389,6 +13388,16 @@ class Succession(AnimationGroup):
     def objects(self):
         return list(dict.fromkeys(super().objects()))
 
+    def _setup_scene(self, scene):
+        # Community: stages are set up on this scene as they begin, not all at once.
+        if scene is None:
+            return
+        if self.is_introducer():
+            for animation in self.animations:
+                if not animation.is_introducer() and animation.mobject is not None:
+                    scene.add(animation.mobject)
+        self.scene = scene
+
     def prepare(self, scene):
         if not self.animations:
             self.begin()
@@ -13449,6 +13458,7 @@ class Succession(AnimationGroup):
             self.animations[index].finish()
         self._manual_index = index = index + 1
         if index < len(self.animations):
+            self.animations[index]._setup_scene(self.__dict__.get('scene'))
             self.animations[index].begin()
 
     def interpolate(self, alpha):
@@ -14677,8 +14687,23 @@ class Scene:
         return [member for m in self.mobjects for member in m.get_family()]
 
     def get_moving_mobjects(self, *animations):
-        moving = [member for a in animations for m in a.objects() for member in m.get_family()]
-        return list(dict.fromkeys(moving + [m for m in self.get_mobject_family_members() if m.updaters]))
+        """Community: every family member (in z order) from the first that may change."""
+        def collect(items):
+            found = []
+            for animation in items:
+                if getattr(animation, 'mobject', None) is not None:
+                    found.extend(animation.mobject.get_family())
+                if isinstance(animation, AnimationGroup):
+                    found.extend(collect(animation.animations))
+            return found
+        animated = set(map(id, collect(animations)))
+        foreground = set(map(id, self.foreground_mobjects))
+        def moving(mobject):
+            return (id(mobject) in animated or bool(mobject.updaters) or id(mobject) in foreground
+                    or any(moving(child) for child in mobject.submobjects))
+        members = extract_mobject_family_members(self.mobjects, use_z_index=True)
+        index = next((i for i, mobject in enumerate(members) if moving(mobject)), None)
+        return [] if index is None else members[index:]
 
     def get_run_time(self, animations):
         return self.validate_run_time(max(a.run_time for a in animations), self.play, 'total run_time')
@@ -14716,11 +14741,33 @@ class Scene:
         return max(run_time, 1 / FPS)
 
     def get_moving_and_static_mobjects(self, animations):
-        moving = [m for m in self.get_moving_mobjects(*animations)]
-        moving_set = set(map(id, moving))
-        static = [m for m in self.get_mobject_family_members()
-                  if id(m) not in moving_set and not m.has_no_points()]
-        return moving, static
+        everything = extract_mobject_family_members(list_update(self.mobjects, self.foreground_mobjects),
+                                                    use_z_index=True, only_those_with_points=True)
+        moving = extract_mobject_family_members(self.get_moving_mobjects(*animations), use_z_index=True)
+        return moving, list_difference_update(everything, moving)
+
+    def compile_animation_data(self, *animations, **play_kwargs):
+        """Community's play preparation without rendering; None for a static Wait."""
+        if not animations:
+            raise ValueError('Called Scene.play with no animations')
+        self.animations = self.compile_animations(*animations, **play_kwargs)
+        self.add_mobjects_from_animations(self.animations)
+        self.last_t, self.stop_condition = 0, None
+        self.moving_mobjects, self.static_mobjects = [], []
+        self.duration = self.get_run_time(self.animations)
+        if len(self.animations) == 1 and isinstance(self.animations[0], Wait):
+            if not self.should_update_mobjects():
+                self.animations[0].is_static_wait = True
+                return None
+            self.update_mobjects(dt=0)
+            self.stop_condition = self.animations[0].stop_condition
+        return self
+
+    def begin_animations(self):
+        for animation in self.animations:
+            animation._setup_scene(self)
+            animation.begin()
+        self.moving_mobjects, self.static_mobjects = self.get_moving_and_static_mobjects(self.animations)
 
     def get_attrs(self, *keys):
         return [getattr(self, key) for key in keys]
@@ -15967,6 +16014,180 @@ TrueDot = _unavailable('TrueDot', _OPENGL_ONLY)
 OpenGLPMobject = _unavailable('OpenGLPMobject', _OPENGL_ONLY)
 OpenGLPGroup = _unavailable('OpenGLPGroup', _OPENGL_ONLY)
 OpenGLPMPoint = _unavailable('OpenGLPMPoint', _OPENGL_ONLY)
+
+
+class ConvertToOpenGL(_CommunityTree):
+    """Community's renderer-switching metaclass. The preview renders like Cairo, so classes
+    keep their Mobject bases and are only recorded."""
+    _converted_classes = []
+
+    def __new__(mcls, name, bases, namespace, **kwargs):
+        cls = super().__new__(mcls, name, bases, namespace, **kwargs)
+        mcls._converted_classes.append(cls)
+        return cls
+
+
+def _numpy_for(feature):
+    try:
+        import numpy
+    except ImportError:
+        raise ImportError(f'{feature} needs NumPy; import numpy in the scene source to load it') from None
+    return numpy
+
+
+class QuickHullPoint:
+    def __init__(self, coordinates):
+        self.coordinates = coordinates
+
+    def __hash__(self):
+        return hash(self.coordinates.tobytes())
+
+    def __eq__(self, other):
+        if not isinstance(other, QuickHullPoint):
+            raise ValueError
+        return bool(_numpy_for('QuickHull').array_equal(self.coordinates, other.coordinates))
+
+
+class SubFacet:
+    def __init__(self, coordinates):
+        self.coordinates = coordinates
+        self.points = frozenset(QuickHullPoint(c) for c in coordinates)
+
+    def __hash__(self):
+        return hash(self.points)
+
+    def __eq__(self, other):
+        if not isinstance(other, SubFacet):
+            raise ValueError
+        return self.points == other.points
+
+
+class Facet:
+    def __init__(self, coordinates, internal):
+        np = _numpy_for('QuickHull')
+        self.coordinates = coordinates
+        self.center = np.mean(coordinates, axis=0)
+        self.normal = self.compute_normal(internal)
+        self.subfacets = frozenset(SubFacet(np.delete(self.coordinates, i, axis=0))
+                                   for i in range(self.coordinates.shape[0]))
+
+    def compute_normal(self, internal):
+        np = _numpy_for('QuickHull')
+        _, _, vh = np.linalg.svd(self.coordinates - self.center)
+        normal = vh[-1, :]
+        normal /= np.linalg.norm(normal)
+        if np.dot(normal, self.center - internal) < 0:
+            normal *= -1
+        return normal
+
+    def __hash__(self):
+        return hash(self.subfacets)
+
+    def __eq__(self, other):
+        if not isinstance(other, Facet):
+            raise ValueError
+        return self.subfacets == other.subfacets
+
+
+class Horizon:
+    def __init__(self):
+        self.facets = set()
+        self.boundary = []
+
+
+class QuickHull:
+    """Community's QuickHull (manim.utils.qhull) for NumPy point arrays of any dimension.
+    ConvexHull itself uses a deterministic planar hull."""
+    def __init__(self, tolerance=1e-5):
+        self.facets, self.removed, self.outside, self.neighbors = [], set(), {}, {}
+        self.unclaimed = self.internal = None
+        self.tolerance = tolerance
+
+    def _find_initial_simplex(self, points):
+        np = _numpy_for('QuickHull')
+        dimension, indices = points.shape[1], [0]
+        for index in range(1, len(points)):
+            candidate = points[indices + [index]]
+            if np.linalg.matrix_rank(candidate[1:] - candidate[0]) == len(indices):
+                indices.append(index)
+                if len(indices) == dimension + 1:
+                    return points[indices]
+        raise ValueError('The points do not span the full coordinate dimension.')
+
+    def initialize(self, points):
+        np = _numpy_for('QuickHull')
+        simplex = self._find_initial_simplex(points)
+        self.unclaimed = points
+        self.internal = np.mean(simplex, axis=0)
+        for c in range(simplex.shape[0]):
+            facet = Facet(np.delete(simplex, c, axis=0), internal=self.internal)
+            self.classify(facet)
+            self.facets.append(facet)
+        for f in self.facets:
+            for sf in f.subfacets:
+                self.neighbors.setdefault(sf, set()).add(f)
+
+    def classify(self, facet):
+        np = _numpy_for('QuickHull')
+        if not self.unclaimed.size:
+            self.outside[facet] = (None, None)
+            return
+        projections = (self.unclaimed - facet.center) @ facet.normal
+        arg = np.argmax(projections)
+        mask = projections > self.tolerance
+        eye = self.unclaimed[arg] if projections[arg] > self.tolerance else None
+        self.outside[facet] = (self.unclaimed[mask], eye)
+        self.unclaimed = self.unclaimed[~mask]
+
+    def compute_horizon(self, eye, start_facet):
+        horizon = Horizon()
+        self._recursive_horizon(eye, start_facet, horizon)
+        return horizon
+
+    def _recursive_horizon(self, eye, facet, horizon):
+        np = _numpy_for('QuickHull')
+        if not np.dot(facet.normal, eye - facet.center) > 0:
+            return False
+        horizon.facets.add(facet)
+        for subfacet in facet.subfacets:
+            neighbor = (self.neighbors[subfacet] - {facet}).pop()
+            if neighbor not in horizon.facets and not self._recursive_horizon(eye, neighbor, horizon):
+                horizon.boundary.append(subfacet)
+        return True
+
+    def build(self, points):
+        np = _numpy_for('QuickHull')
+        num, dim = points.shape
+        if dim == 0 or num < dim + 1:
+            raise ValueError('Not enough points supplied to build Convex Hull!')
+        if dim == 1:
+            raise ValueError('The Convex Hull of 1D data is its min-max!')
+        self.initialize(points)
+        while True:
+            updated = False
+            for facet in self.facets:
+                if facet in self.removed:
+                    continue
+                outside, eye = self.outside[facet]
+                if eye is None:
+                    continue
+                updated = True
+                horizon = self.compute_horizon(eye, facet)
+                for f in horizon.facets:
+                    self.unclaimed = np.vstack((self.unclaimed, self.outside[f][0]))
+                    self.removed.add(f)
+                    for sf in f.subfacets:
+                        self.neighbors[sf].discard(f)
+                        if self.neighbors[sf] == set():
+                            del self.neighbors[sf]
+                for sf in horizon.boundary:
+                    nf = Facet(np.vstack((sf.coordinates, eye)), internal=self.internal)
+                    self.classify(nf)
+                    self.facets.append(nf)
+                    for nsf in nf.subfacets:
+                        self.neighbors.setdefault(nsf, set()).add(nf)
+            if not updated:
+                break
 MappingCamera = _unavailable('MappingCamera', _PIXEL_CAMERA)
 OldMultiCamera = _unavailable('OldMultiCamera', _PIXEL_CAMERA)
 SplitScreenCamera = _unavailable('SplitScreenCamera', _PIXEL_CAMERA)
@@ -21671,6 +21892,12 @@ def remove_list_redundancies(lst):
     return result[::-1]
 
 
+def extract_mobject_family_members(mobjects, use_z_index=False, only_those_with_points=False):
+    method = Mobject.family_members_with_points if only_those_with_points else Mobject.get_family
+    extracted = remove_list_redundancies(member for mobject in mobjects for member in method(mobject))
+    return sorted(extracted, key=lambda m: m.z_index) if use_z_index else extracted
+
+
 def remove_nones(sequence):
     return [x for x in sequence if x]
 
@@ -22318,10 +22545,16 @@ class _SubmoduleFinder:
     def find_spec(self, fullname, path=None, target=None):
         if not fullname.startswith('manim.') or 'manim' not in sys.modules:
             return None
+        last = fullname.rsplit('.', 1)[-1]
+        if last[:1].isupper() and last not in _COLOR_LIBRARIES:
+            return None  # A missing class (from manim.x import Name), not a module.
         import importlib.machinery
         return importlib.machinery.ModuleSpec(fullname, self, is_package=True)
 
     def create_module(self, spec):
+        last = spec.name.rsplit('.', 1)[-1]
+        if last in _COLOR_LIBRARIES:
+            return globals()[last]
         module = types.ModuleType(spec.name)
         root = sys.modules['manim']
         module.__dict__.update({name: getattr(root, name) for name in root.__all__})
@@ -22926,7 +23159,9 @@ def _typing_alias(name):
 
 _SUBMODULE_ONLY = ('path_along_circles', 'spiral_path', 'EndSceneEarlyException', 'RerunSceneException',
                    'MultiAnimationOverrideException', '_layouts', 'Pixels', 'Percent', 'Degrees', 'Munits',
-                   '_texcode_for_environment', 'get_quadratic_approximation_of_cubic')
+                   '_texcode_for_environment', 'get_quadratic_approximation_of_cubic',
+                   'extract_mobject_family_members', 'ConvertToOpenGL', 'QuickHull', 'QuickHullPoint',
+                   'SubFacet', 'Facet', 'Horizon')
 
 
 class _ModuleNamespace(types.ModuleType):
@@ -23159,13 +23394,16 @@ def render_scene(source, scene_name=None, math_metrics=None, compact=False, typs
     compact=True pools repeated top-level snapshots (decoded by the worker)."""
     global config
     previous = config
-    config = PreviewConfig()
+    config = rendered = PreviewConfig()
     try:
         _set_math_metrics(math_metrics)
         _set_typst_svgs(typst_svgs)
         return _render_scene(source, scene_name, compact)
     finally:
         config = previous
+        module = sys.modules.get('manim')
+        if module is not None and module.__dict__.get('config') is rendered:
+            module.config = previous  # Code run after the render sees the live config.
         for cls in list(_DEFAULT_OVERRIDES):
             _restore_default(cls)
         for name in [name for name in sys.modules if name.startswith('manim.')]:

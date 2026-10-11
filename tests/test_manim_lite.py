@@ -4886,8 +4886,7 @@ assert isinstance(t.get_value(), (int, float))""")
     def test_raw_points_invalid_edits_are_atomic(self):
         path = lite.CubicBezier(lite.ORIGIN,lite.UP,lite.UR,lite.RIGHT).shift(lite.LEFT)
         before = path.to_dict()
-        for points in [[lite.UP]*2, [lite.UP]*3,
-                       [[float('nan'),0]]*4, [[float('inf'),0]]*4]:
+        for points in [[[float('nan'),0]]*4, [[float('inf'),0]]*4]:
             with self.assertRaises((ValueError,NotImplementedError)): path.set_points(points)
             self.assertEqual(path.to_dict(), before)
             with self.assertRaises((ValueError,NotImplementedError)): path.append_points(points)
@@ -4895,6 +4894,8 @@ assert isinstance(t.get_value(), (int, float))""")
         with self.assertRaises(ValueError): path.add_subpath([lite.UP])
         with self.assertRaises(TypeError): path.append_vectorized_mobject(lite.Text('text'))
         self.assertEqual(path.to_dict(), before)
+        # Community keeps incomplete raw point groups.
+        self.assertEqual(len(lite.VMobject().set_points([lite.UP]*3).get_points()), 3)
 
     def test_append_vector_outline_keeps_world_geometry_and_independent_provider(self):
         path = lite.CubicBezier(lite.LEFT,lite.UL,lite.UR,lite.RIGHT).rotate(.3).scale(2)

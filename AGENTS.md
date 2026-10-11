@@ -898,3 +898,10 @@ Text.text is a property: scene code gets Community's stripped string; library co
 via __dict__) keep the drawn string. The raw line-spacing multiplier lives in `_line_spacing`;
 `line_spacing` reports Community's point pitch. Inside manim-lite.py never assume scene code
 sees the drawn string.
+
+Community module tests: copy Manim 0.22's tests/module next to a conftest.py that loads
+manim-lite, calls render_scene once (installing the `manim` module) and supplies the config
+fixtures, then run pytest with --continue-on-collection-errors. Remaining failures are expected
+categories: LaTeX/Typst files, OpenGL, file IO, private helpers, non-finite points and the
+preview's fixed 15 fps. Submodule imports serve the flat namespace; capitalized names other
+than the color palettes are classes, so missing ones raise ImportError.
