@@ -829,3 +829,6 @@ Morphing a curved-tip path into a shape without one aligns its drawn shaft (`sha
 already in a family's own snapshot) and drops `_curved_tip_path`, so frames interpolate
 pointwise like Community instead of refitting to collapsing tips (which diverged). Updater
 exposure drops a stale live `_curved_tip_path` when the sampled snapshot lacks it.
+`_own_shaft` hoists a NumberLine's identity-posed shaft child into the root snapshot (type
+line, ticks as children) when it morphs into a family that is not number-line shaped, so
+alignment follows Community's NumberLine (own line points, ticks submobjects).

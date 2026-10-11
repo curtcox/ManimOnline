@@ -10902,12 +10902,40 @@ def _lerp_pose(result, start, target, alpha):
     result['geometry_scale'], result['angle'] = abs(z), (cmath.phase(z) if z else 0.0)
 
 
+def _own_shaft(snapshot, other):
+    """Community's NumberLine owns its line's points, with ticks (and numbers) as children.
+    Morphing into a differently built family, hoist the shaft so they align the same way."""
+    def shaft(node):
+        if node.get('type') != 'vgroup':
+            return None
+        for index, child in enumerate(node.get('children') or ()):
+            if child.get('_number_line_role') == 'shaft':
+                return index
+        return None
+    index = shaft(snapshot)
+    if index is None or shaft(other) is not None:
+        return snapshot
+    line = snapshot['children'][index]
+    if line.get('children') or any(line.get(key) != value for key, value in
+                                   (('angle', 0), ('geometry_scale', 1))) or any(line.get('position', ())):
+        return snapshot
+    result = _snapshot_copy(snapshot)
+    for key, value in line.items():
+        if key not in ('children', 'position', 'angle', 'geometry_scale', 'geometry_center',
+                       '_number_line_role', 'opacity', 'z_index'):
+            result[key] = _snapshot_copy(value)
+    result['opacity'] = snapshot.get('opacity', 1) * line.get('opacity', 1)
+    result['children'] = [child for k, child in enumerate(result['children']) if k != index]
+    return result
+
+
 def _transform_plan(start, target):
     """Align immutable family snapshots once, before sampling their timeline."""
+    start, target = _own_shaft(start, target), _own_shaft(target, start)
     if start['type'] == 'vgroup' or target['type'] == 'vgroup':
         def as_group(snapshot):
             if snapshot['type'] == 'vgroup':
-                return _snapshot_copy(snapshot)
+                return dict(_snapshot_copy(snapshot), children=_snapshot_copy(snapshot.get('children', [])))
             group = VGroup().to_dict()
             group['children'] = [_snapshot_copy(snapshot)]
             return group

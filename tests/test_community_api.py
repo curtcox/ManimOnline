@@ -813,6 +813,22 @@ class AnimationApiTests(unittest.TestCase):
             [[-1.0, -0.4979, 1.0, 0.0], [-0.8344, -0.5237, 1.0, 0.0828], [-0.3186, -0.6795, 1.2689, 0.5837],
              [0.0125, -0.7962, 1.8834, 0.9587], True])
 
+    def test_number_lines_morph_their_shaft_as_their_own_points(self):
+        self.assertEqual(scene_values(
+            'def b(m):\n'
+            '    return [m.get_left()[0], m.get_bottom()[1], m.get_right()[0], m.get_top()[1]]\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        m = NumberLine(x_range=[0, 4, 1], length=4)\n'
+            '        self.r = []\n'
+            '        self.add(m)\n'
+            '        self.add_updater(lambda dt: self.r.append(b(m)))\n'
+            '        self.play(Transform(m, Star().shift(RIGHT)))\n'
+            's = S(); s.render()\n'
+            'result = [s.r[k] for k in (5, 7, 10)]\n'),
+            [[-1.5373, -0.1248, 1.8458, 0.1542], [-0.7511, -0.3368, 1.5837, 0.4163],
+             [-0.1437, -0.6842, 1.8352, 0.8458]])
+
     def test_rotate_fixes_its_pivot_when_constructed(self):
         self.assertEqual(scene_values(
             's = Square()\n'
