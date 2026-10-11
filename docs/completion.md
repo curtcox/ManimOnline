@@ -414,3 +414,6 @@ manual groups accept mobject-free Wait members.
 A constructor-structure diff then gave NumberLine Community's scene view: own points are
 the shaft cut at the tip base, submobjects are the tip/ticks/labels, and the default tip
 is an ArrowTriangleFilledTip. The internal shaft child remains in `get_family`.
+Circles and arcs now sample `point_from_proportion` on their cubic outline (as Community
+does), a non-default `num_components` sets circle bounds and rotated centers from its
+anchors, and `round_corners` rejects radius lists that do not tile each vertex group.

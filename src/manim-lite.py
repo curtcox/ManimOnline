@@ -2293,9 +2293,9 @@ class Mobject:
         if self._type == 'annulus':
             r = max(self.inner_radius, self.outer_radius)
             return (-r, -r, r, r)
-        if self._type == 'circle':
+        if self._type == 'circle' and 'num_components' not in self.__dict__:
             return (-self.radius, -self.radius, self.radius, self.radius)
-        if self._type == 'arc':
+        if self._type in ('arc', 'circle'):
             # Community's cubic arc: anchors for edges, handles too for sizes.
             curves = _path_curves({'type': 'arc', 'radius': self.radius, 'start_angle': self.start_angle,
                                    'arc_angle': self.arc_angle,
@@ -2434,7 +2434,8 @@ class Mobject:
         # for rotated point-based outlines, whose bounds use rotated points.
         z = sum(self._z_extent()) / 2
         if (math.sin(2 * self.angle) and not self.children and
-                (self._own_bound_points() or self._type in ('arc', 'ellipse'))) or (self.children and self._rotated_family()):
+                (self._own_bound_points() or self._type in ('arc', 'ellipse')
+                 or self._type == 'circle' and 'num_components' in self.__dict__)) or (self.children and self._rotated_family()):
             left, bottom, right, top = self._bounds()
             return Vector(((left + right) / 2, (bottom + top) / 2, z))
         pivot = self._pivot_point()
@@ -2687,8 +2688,9 @@ class Mobject:
         elif self._type in ('circle', 'arc'):
             if not math.isfinite(self.radius) or self.radius < 0:
                 raise ValueError('Path radius must be nonnegative and finite')
-            angle = TAU * alpha if self._type == 'circle' else self.start_angle + self.arc_angle * alpha
-            point = Vector((self.radius * math.cos(angle), self.radius * math.sin(angle), 0))
+            point = _curves_proportion(_path_curves({'type': 'arc', 'radius': self.radius,
+                                                     'start_angle': self.start_angle, 'arc_angle': self.arc_angle,
+                                                     'num_components': self.__dict__.get('num_components', 9)}), alpha)
         else:
             closed = True
             if self._type == 'line':
@@ -2851,7 +2853,7 @@ class Mobject:
             dy = abs(self.geometry_scale) * math.hypot(rx * math.sin(self.angle), ry * math.cos(self.angle))
             return (self.position[0] - dx, self.position[1] - dy,
                     self.position[0] + dx, self.position[1] + dy)
-        if self._type in ('circle', 'annulus') and not self.children:
+        if self._type in ('circle', 'annulus') and not self.children and 'num_components' not in self.__dict__:
             radius = max(self.inner_radius, self.outer_radius) if self._type == 'annulus' else self.radius
             r = abs(radius * self.geometry_scale)
             return (self.position[0] - r, self.position[1] - r, self.position[0] + r, self.position[1] + r)
@@ -5381,8 +5383,12 @@ class Polygram(VMobject):
             raise ValueError('components_per_rounded_corner must be an integer from 2 to 64')
         if radii == [0]:
             return self
+        groups = self.get_vertex_groups()
+        # Community repeats a radius list whole, then zips it strictly with each group's corners.
+        if isinstance(radius, (list, tuple)) and any(len(radii) * -(-len(g) // len(radii)) != len(g) for g in groups):
+            raise ValueError('zip() argument 2 is shorter than argument 1')
         paths, lengths = [], []
-        for group in self.get_vertex_groups():
+        for group in groups:
             vertices = [Vector(v) for v in group]
             arcs = []
             for i, v2 in enumerate(vertices):

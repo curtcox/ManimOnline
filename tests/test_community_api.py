@@ -1371,6 +1371,25 @@ class AnimationApiTests(unittest.TestCase):
             '          [type(m).__name__ for m in line.labels], type(other.labels[0]).__name__]\n')
         self.assertEqual(values, [10, True, True, ['Tex', 'MathTex'], 'Typst'])
 
+    def test_circle_components_and_corner_radius_lists(self):
+        # Manim 0.22: num_components anchors set bounds, centers and sampled proportions;
+        # round_corners zips repeated radius lists strictly with each vertex group.
+        values = scene_values(
+            'c = Circle(num_components=12)\n'
+            'd = Circle(num_components=12).rotate(0.3).shift(UP).scale(2)\n'
+            'out = []\n'
+            'for r in ([0.1, 0.2, 0.3], [0.1, 0.2]):\n'
+            '    try:\n'
+            '        out.append(Square().round_corners(r).width)\n'
+            '    except ValueError:\n'
+            '        out.append("error")\n'
+            'result = [c.width, c.height, list(c.get_center()), list(d.get_center()), d.width,\n'
+            '          list(Circle().point_from_proportion(0.3)), list(Arc(angle=PI, num_components=5).point_from_proportion(0.3)),\n'
+            '          len(c.points), out]\n')
+        self.assertEqual(values, plain([
+            2.0135, 2.0342, [0.0203, 0, 0], [-0.0173, 0.9961, 0], 4.0349,
+            [-0.3095, 0.9509, 0], [0.587, 0.8096, 0], 44, ['error', 2]]))
+
     def test_number_line_scene_structure(self):
         # Manim 0.22: the line owns the shaft points (cut at the tip base); submobjects
         # are the tip and ticks, and indexing/iteration include the line itself.
