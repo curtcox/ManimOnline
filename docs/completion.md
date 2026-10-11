@@ -417,3 +417,5 @@ is an ArrowTriangleFilledTip. The internal shaft child remains in `get_family`.
 Circles and arcs now sample `point_from_proportion` on their cubic outline (as Community
 does), a non-default `num_components` sets circle bounds and rotated centers from its
 anchors, and `round_corners` rejects radius lists that do not tile each vertex group.
+Point equality follows np.allclose for non-finite coordinates, and importing
+`manim.utils.rate_functions` exposes the easing functions kept only in that module.

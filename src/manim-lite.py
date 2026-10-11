@@ -3935,7 +3935,9 @@ class Mobject:
         return numpy.array(tuples, dtype=float).reshape(len(tuples), 4, -1)
 
     def consider_points_equals(self, p0, p1):
-        return all(abs(a - b) <= self.tolerance_for_point_equality + 1e-5 * abs(b) for a, b in zip(p0, p1))
+        # np.allclose: non-finite values match only when equal.
+        return all(abs(a - b) <= self.tolerance_for_point_equality + 1e-5 * abs(b)
+                   if math.isfinite(a) and math.isfinite(b) else a == b for a, b in zip(p0, p1))
 
     def consider_points_equals_2d(self, p0, p1):
         # Community's scalar test: equal infinities match; NaN and infinite differences do not.
@@ -11076,7 +11078,7 @@ def _ease_functions():
 
 globals().update(_ease_functions())
 # In Community's module order (code that iterates rate_functions.__dict__ sees the same order).
-rate_functions = types.SimpleNamespace(sigmoid=sigmoid, unit_interval=_unit_interval, zero=_zero,
+rate_functions = types.SimpleNamespace(sigmoid=sigmoid, unit_interval=_unit_interval, zero=_zero, sqrt=math.sqrt,
                                        **{name: globals()[name] for name in (
     'linear', 'smooth', 'smoothstep', 'smootherstep', 'smoothererstep', 'rush_into', 'rush_from',
     'slow_into', 'double_smooth', 'there_and_back', 'there_and_back_with_pause', 'running_start',
@@ -23308,6 +23310,8 @@ class _SubmoduleFinder:
         root = sys.modules['manim']
         module.__dict__.update({name: getattr(root, name) for name in root.__all__})
         module.__dict__.update({name: globals()[name] for name in _SUBMODULE_ONLY})
+        if isinstance(globals().get(last), types.SimpleNamespace):
+            module.__dict__.update(vars(globals()[last]))  # e.g. rate_functions' ease_* functions
         module.__all__ = list(root.__all__)
         module.__path__ = []
         module.__getattr__ = _submodule_getattr

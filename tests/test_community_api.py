@@ -1390,6 +1390,25 @@ class AnimationApiTests(unittest.TestCase):
             2.0135, 2.0342, [0.0203, 0, 0], [-0.0173, 0.9961, 0], 4.0349,
             [-0.3095, 0.9509, 0], [0.587, 0.8096, 0], 44, ['error', 2]]))
 
+    def test_point_equality_rejects_non_finite_differences(self):
+        # np.allclose semantics (Manim 0.22): infinities match only themselves; NaN never matches.
+        values = scene_values(
+            'v = VMobject(); inf, nan = float("inf"), float("nan")\n'
+            'pts = [[0, 0, 0], [.3, 0, 0], [.6, 0, 0], [1, 0, 0], [inf, 0, 0], [1.3, 0, 0], [1.6, 0, 0], [2, 0, 0]]\n'
+            'result = [v.consider_points_equals([1, 0, 0], [inf, 0, 0]), v.consider_points_equals([inf, 0], [inf, 0]),\n'
+            '          v.consider_points_equals([nan, 0], [nan, 0]), len(v.get_subpaths_from_points(pts)),\n'
+            '          len(v.get_subpath_split_indices_from_points(pts))]\n')
+        self.assertEqual(values, [False, True, False, 2, 2])
+
+    def test_rate_function_submodule_holds_easing_functions(self):
+        # Manim 0.22 keeps ease_* (and sqrt) in manim.utils.rate_functions, not the top level.
+        values = scene_values(
+            'import manim.utils.rate_functions as rf\n'
+            'from manim.utils.rate_functions import ease_in_out_back\n'
+            'result = [rf.ease_in_quad(0.5), ease_in_out_back(0.25), rf.sqrt(0.25), rf.smooth(0.5),\n'
+            '          rate_functions.ease_out_bounce(0.7)]\n')
+        self.assertEqual(values, [0.25, -0.0997, 0.5, 0.5, 0.9306])
+
     def test_number_line_scene_structure(self):
         # Manim 0.22: the line owns the shaft points (cut at the tip base); submobjects
         # are the tip and ticks, and indexing/iteration include the line itself.
