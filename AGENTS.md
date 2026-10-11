@@ -715,6 +715,12 @@ family's parent would otherwise be collected and its members drawn unposed.
 FadeTransform samples two aligned Transform plans (source → fitted ghost, fitted ghost →
 target) and returns `_SourceStates`, so updaters see the source half, not the more
 visible state. GrowArrow scales tips and shaft width from zero, as Community does.
+FadeTransform save_state()s the source when constructed; completion removes it (splitting
+parents off the roots), restores it and appends the target. Transform takes
+replace_mobject_with_target_in_scene (ReplacementTransform sets it).
+FadeTransform save_state()s the source when constructed; completion removes it (splitting
+parents off the roots), restores it and appends the target. Transform takes
+replace_mobject_with_target_in_scene (ReplacementTransform sets it).
 Tests must pass under plain `python3` without NumPy (the browser's default); use
 `point_list` and `HAS_NUMPY` in tests that touch points arrays.
 

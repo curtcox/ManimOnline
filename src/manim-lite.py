@@ -12399,8 +12399,9 @@ def _arc_factor(alpha, path_arc):
 
 class Transform(Animation):
     def __init__(self, mobject, target_mobject=None, path_arc=0, path_arc_axis=OUT, path_func=None,
-                 path_arc_centers=None, **kwargs):
+                 path_arc_centers=None, replace_mobject_with_target_in_scene=False, **kwargs):
         super().__init__(mobject, **kwargs)
+        self.replace_mobject_with_target_in_scene = replace_mobject_with_target_in_scene
         point_path, self._arc = None, path_arc
         self.path_arc_axis, self.path_arc_centers = path_arc_axis, path_arc_centers
         if path_func is None and path_arc_centers is not None:
@@ -12554,12 +12555,26 @@ class Transform(Animation):
         return _sample_transform(plan, rate_func(alpha), self._path, member_alpha)
 
     def finish(self, scene):
-        if abs(self.rate_func(1)) < 1e-9 and not self.reverse_rate_function:
-            # Like Community's final interpolate(rate_func(1)): a there-and-back
-            # transform ends where it started.
-            return
-        # Preserve source and ordered child identities, callbacks and checkpoints.
-        self.mobject.become(self.target)
+        if not (abs(self.rate_func(1)) < 1e-9 and not self.reverse_rate_function):
+            # Like Community's final interpolate(rate_func(1)), a there-and-back transform
+            # ends where it started. Otherwise preserve source and ordered child identities,
+            # callbacks and checkpoints.
+            self.mobject.become(self.target)
+        if self.replace_mobject_with_target_in_scene:
+            # Community: the target takes the mobject's place in the scene (inside its parent
+            # group when nested).
+            replacement = self._target_source
+            if self.mobject in scene.get_mobject_family_members():
+                scene.replace(self.mobject, replacement)
+                if self.mobject in scene.foreground_mobjects:
+                    scene.add()  # Community keeps foreground mobjects drawn last.
+            else:
+                scene.add(replacement)
+
+    def objects(self):
+        if self.replace_mobject_with_target_in_scene:
+            return [self.mobject, self._target_source]
+        return [self.mobject]
 
 
 class TransformFromCopy(Transform):
@@ -12967,6 +12982,10 @@ class FadeTransform(Transform):
         if not isinstance(stretch, bool):
             raise ValueError('stretch must be a boolean')
         self.replacement, self.stretch, self.dim_to_match = target_mobject, stretch, dim_to_match
+        # Community saves the source when the animation is built and restores it at the end
+        # (posed members complete in world coordinates, hence the world-placed copy).
+        mobject.save_state()
+        self._world_saved = _world_copy(mobject) if _posed_ancestors(mobject) else None
 
     def ghost_to(self, source, target):
         """Community's ghost: fit source over target (unless target is empty), then hide it."""
@@ -13020,15 +13039,14 @@ class FadeTransform(Transform):
         return _SourceStates(source + target)
 
     def finish(self, scene):
-        # Community: the mobject ends shaped like its target, which then takes its place
-        # in the scene (inside its parent group when nested).
-        super().finish(scene)
-        if self.mobject in scene.get_mobject_family_members():
-            scene.replace(self.mobject, self.replacement)
-            if self.mobject in scene.foreground_mobjects:
-                scene.add()  # Community keeps foreground mobjects drawn last.
+        # Community's clean_up_from_scene: remove the animated group (splitting any parent
+        # off the scene's roots), restore the source and append the target.
+        scene.remove(self.mobject)
+        if self.mobject in scene._world_members and self._world_saved is not None:
+            self.mobject.become(self._world_saved)
         else:
-            scene.add(self.replacement)
+            self.mobject.restore()
+        scene.add(self.replacement)
 
     def objects(self):
         return [self.mobject, self.replacement]
@@ -13036,22 +13054,8 @@ class FadeTransform(Transform):
 
 class ReplacementTransform(Transform):
     def __init__(self, mobject, target_mobject, **kwargs):
-        super().__init__(mobject, target_mobject, **kwargs)
+        super().__init__(mobject, target_mobject, replace_mobject_with_target_in_scene=True, **kwargs)
         self.replacement = target_mobject
-
-    def finish(self, scene):
-        # Community: the mobject ends shaped like its target, which then takes its place
-        # in the scene (inside its parent group when nested).
-        super().finish(scene)
-        if self.mobject in scene.get_mobject_family_members():
-            scene.replace(self.mobject, self.replacement)
-            if self.mobject in scene.foreground_mobjects:
-                scene.add()  # Community keeps foreground mobjects drawn last.
-        else:
-            scene.add(self.replacement)
-
-    def objects(self):
-        return [self.mobject, self.replacement]
 
 
 class Animate(Transform):
@@ -20235,13 +20239,7 @@ class FadeTransformPieces(FadeTransform):
         pieces = list(group.children) or [group]
         if len(pieces) < count:
             # Community's add_n_more_submobjects: repeated members become faded copies.
-            current = len(pieces)
-            repeats = [(i * current) // count for i in range(count)]
-            padded = []
-            for index, piece in enumerate(pieces):
-                padded.append(piece)
-                padded += [piece.copy().fade(1) for _ in range(1, repeats.count(index))]
-            pieces = padded
+            pieces = FadeTransformPieces._pieces_of(pieces, count)
         return pieces
 
     def begin(self, scene):
@@ -20252,6 +20250,29 @@ class FadeTransformPieces(FadeTransform):
                          Group(*[self._fit(s.copy(), t) for s, t in zip(sources, targets)]),
                          Group(*[self._fit(t.copy(), s) for s, t in zip(sources, targets)]),
                          Group(*[t.copy() for t in targets]))
+
+    def finish(self, scene):
+        super().finish(scene)
+        # Community aligned the source's members with the target's before animating, and
+        # restoring keeps that padding: center points for a childless source, else faded copies.
+        source, count = self.mobject, len(self.replacement.children)
+        if len(source.children) >= count:
+            return
+        if not source.children:
+            center = source.get_center()
+            source.add(*[VectorizedPoint(center) for _ in range(count)])
+        else:
+            source._replace_children(self._pieces_of(source.children, count))
+
+    @staticmethod
+    def _pieces_of(pieces, count):
+        current = len(pieces)
+        repeats = [(i * current) // count for i in range(count)]
+        padded = []
+        for index, piece in enumerate(pieces):
+            padded.append(piece)
+            padded += [piece.copy().fade(1) for _ in range(1, repeats.count(index))]
+        return padded
 
 
 class _IsoPoint:

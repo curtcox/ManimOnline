@@ -1314,6 +1314,32 @@ class AnimationApiTests(unittest.TestCase):
             'Use new_area instead.',
             'The parameter radius of function size has been deprecated and may be removed in a later version.'])
 
+    def test_fade_transform_restores_source_and_appends_target(self):
+        # Values from Manim Community 0.22.
+        self.assertEqual(plain(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        global result\n'
+            '        a = Square().set_fill(RED, 0.5); b = Circle(radius=0.5).shift(UP); x = Dot()\n'
+            '        a.save_state(); a.shift(DOWN); t = FadeTransform(a, b); a.shift(LEFT)\n'
+            '        self.add(a, x); self.play(t)\n'
+            '        roots = [type(m).__name__ for m in self.mobjects]\n'
+            '        p = VGroup(Square(), Circle().shift(RIGHT * 2)); self.add(p)\n'
+            '        self.play(FadeTransform(p[0], Triangle(), replace_mobject_with_target_in_scene=True))\n'
+            '        c = VGroup(Square(), Square()); d = VGroup(*[Circle() for _ in range(5)])\n'
+            '        e = Square(); f = VGroup(Circle(), Circle())\n'
+            '        self.add(c, e); self.play(FadeTransformPieces(c, d), FadeTransformPieces(e, f))\n'
+            '        g = Square(); self.add(g)\n'
+            '        self.play(Transform(g, Circle(), replace_mobject_with_target_in_scene=True))\n'
+            '        result = [a.get_center(), a.width, a.get_fill_opacity(), roots,\n'
+            '                  [type(m).__name__ for m in self.mobjects], len(p),\n'
+            '                  [s.get_stroke_opacity() for s in c], c.width,\n'
+            '                  [type(m).__name__ for m in e.submobjects], e.width, g in self.mobjects]\n'
+            'S().render()\n')),
+            [[0.0, -1.0, 0.0], 2.0, 0.5, ['Dot', 'Circle'],
+             ['Dot', 'Circle', 'Circle', 'Triangle', 'VGroup', 'VGroup', 'Circle'], 2,
+             [1.0, 0.0, 0.0, 1.0, 0.0], 2.0, ['VectorizedPoint', 'VectorizedPoint'], 2.0, False])
+
 
 if __name__ == '__main__':
     unittest.main()

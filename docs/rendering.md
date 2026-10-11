@@ -2426,3 +2426,11 @@ The utilities module tests added normalize for vectors of any length, earclip_tr
 (Community's ring bridging followed by an ear-clipping pass, since mapbox_earcut is native:
 same triangles and area, possibly in another order) and the deprecated/deprecated_params
 decorators from manim.utils.deprecation.
+FadeTransform and FadeTransformPieces now clean up as Community does: the source's state is
+saved when the animation is built and restored at the end, the target is appended to the
+scene (a nested source splits its parent off the roots) and FadeTransformPieces keeps
+Community's alignment padding. Transform accepts replace_mobject_with_target_in_scene.
+FadeTransform and FadeTransformPieces now clean up as Community does: the source's state is
+saved when the animation is built and restored at the end, the target is appended to the
+scene (a nested source splits its parent off the roots) and FadeTransformPieces keeps
+Community's alignment padding. Transform accepts replace_mobject_with_target_in_scene.
