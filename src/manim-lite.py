@@ -12251,10 +12251,43 @@ class _TransformMatching(Animation):
                 self.sliding.append((a.to_dict(), self._posed(a, b).to_dict(), self._posed(b, a).to_dict(), b.to_dict()))
             else:
                 self.plans.append(_transform_plan(a.to_dict(), b.to_dict()))
-        # Unmatched sources fade toward the unmatched targets' center (origin if none).
+        # Unmatched sources fade out together, shifted toward the unmatched targets' center
+        # (origin if none), as Community's FadeOut(fade_source, target_position=fade_target).
         goal = VGroup(*[part.copy() for part in new]).get_center() if new else Vector(ORIGIN)
-        self.leaving = [(part.to_dict(), part.copy().shift(goal - part.get_center()).to_dict()) for part in lost]
+        shift = goal - VGroup(*[part.copy() for part in lost]).get_center() if lost else Vector(ORIGIN)
+        self.leaving = [(part.to_dict(), part.copy().shift(shift).to_dict()) for part in lost]
         self.arriving = [part.to_dict() for part in new]
+        self._piece_paths = None
+        if not self.sliding:
+            paths = self._leaf_paths(self.mobject)
+            pieces = [a for a, _ in pairs] + lost
+            if all(id(part) in paths for part in pieces):
+                self._piece_paths = [paths[id(part)] for part in pieces]
+        # Community fades in a copy of the unmatched targets, added to the scene at begin.
+        self._arrivals = VGroup(*[part.copy() for part in new]) if new else None
+        if self._arrivals is not None:
+            scene._introduce(self._arrivals)
+
+    def states(self, alpha, rate_func=None):
+        self._arrival_states = []
+        result = super().states(alpha, rate_func)
+        if self.__dict__.get('_arrivals') is not None:
+            result[self._arrivals] = self._arrival_states
+        return result
+
+    @staticmethod
+    def _leaf_paths(mobject):
+        """Paths of childless members reached only through identity-pose containers, whose
+        snapshots are world snapshots and can stand in for the member in the root's tree."""
+        paths = {}
+        def visit(node, path):
+            if not node.children:
+                paths[id(node)] = path
+            elif node._world_container():
+                for index, child in enumerate(node.children):
+                    visit(child, path + (index,))
+        visit(mobject, ())
+        return paths
 
     @staticmethod
     def _posed(mobject, reference):
@@ -12265,7 +12298,8 @@ class _TransformMatching(Animation):
 
     def sample(self, alpha):
         arc = self.path_arc if abs(self.path_arc) >= STRAIGHT_PATH_THRESHOLD else 0
-        states = [state for plan in self.plans for state in _sample_transform(plan, alpha, arc)]
+        pieces = [_sample_transform(plan, alpha, arc) for plan in self.plans]
+        states = [state for piece in pieces for state in piece]
         for source, source_end, target_start, target in self.sliding:
             leaving, arriving = interpolate(source, source_end, alpha), interpolate(target_start, target, alpha)
             if arc and 0 < alpha < 1:
@@ -12278,6 +12312,24 @@ class _TransformMatching(Animation):
             state = interpolate(start, end, alpha)
             state['opacity'] = start['opacity'] * (1 - alpha)
             states.append(state)
+            pieces.append([state])
+        paths = self.__dict__.get('_piece_paths')
+        if paths and len(paths) > 1 and all(len(piece) == 1 for piece in pieces):
+            # Community animates the parts inside the source family: one tree keeps them together.
+            tree = _snapshot_copy(self.start)
+            for path, (state,) in zip(paths, pieces):
+                node = tree
+                for index in path[:-1]:
+                    node = node['children'][index]
+                node['children'][path[-1]] = state
+            states = [tree]
+        arrivals = self.__dict__.get('_arrivals')
+        if arrivals is not None:
+            # One group snapshot, so updaters see every arriving part.
+            state = arrivals.to_dict()
+            state['opacity'] *= alpha
+            self._arrival_states = [state]
+            return states
         for start in self.arriving:
             state = copy.deepcopy(start)
             state['opacity'] *= alpha
@@ -12286,6 +12338,8 @@ class _TransformMatching(Animation):
 
     def finish(self, scene):
         scene.remove(self.mobject)
+        if self.__dict__.get('_arrivals') is not None:
+            scene.remove(self._arrivals)
         scene.add(self.target_mobject)
 
     def objects(self):

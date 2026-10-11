@@ -762,6 +762,24 @@ class AnimationApiTests(unittest.TestCase):
             [[-1.4142, -1.4142, 1.4142, 1.4142], [-1.4142, -0.5685, 1.4142, 2.26],
              [-1.0164, -1.0164, 1.0164, 1.0164], [-1.22, -1.22, 1.22, 1.22], [0.0, 2.4142, 0.0, 2.4142]])
 
+    def test_transform_matching_shapes_keeps_parts_in_the_scene(self):
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        self.r = []\n'
+            '        m = VGroup(DashedLine(LEFT, RIGHT * 2), Square().scale(0.5).shift(UP * 2))\n'
+            '        self.add(m)\n'
+            '        def record(dt):\n'
+            '            roots = [r for r in self.mobjects if r.family_members_with_points()]\n'
+            '            self.r.append([min(r.get_left()[0] for r in roots), min(r.get_bottom()[1] for r in roots),\n'
+            '                           max(r.get_right()[0] for r in roots), max(r.get_top()[1] for r in roots)])\n'
+            '        self.add_updater(record)\n'
+            '        self.play(TransformMatchingShapes(m, VGroup(Square(), Circle()).arrange(DOWN)))\n'
+            's = S(); s.render()\n'
+            'result = [s.r[k] for k in (0, 4, 8, 12)] + [len(s.mobjects)]\n'),
+            [[-1.0, -2.125, 2.0, 2.5], [-1.0414, -2.125, 1.9586, 2.4689], [-1.2918, -2.125, 1.7082, 2.2811],
+             [-1.4794, -2.125, 1.5206, 2.1405], 1])
+
     def test_rotate_fixes_its_pivot_when_constructed(self):
         self.assertEqual(scene_values(
             's = Square()\n'

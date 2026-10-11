@@ -817,3 +817,7 @@ Community's begin() runs interpolate(0). AnimationGroup.states lets only animati
 and not finished on the previous update override shared objects. Partly shared families are
 still rejected. Rotate fixes its pivot at the center when constructed and ignores about_edge;
 Rotating resolves about_edge at begin.
+TransformMatching*: unmatched targets fade in as a real `_arrivals` VGroup introduced at begin
+(Community's FadeIn copy) with one group snapshot; unmatched sources fade out by one shared
+shift. When every piece is a childless leaf under identity-pose containers, pieces are folded
+back into one snapshot of the source tree so updaters see the whole family.

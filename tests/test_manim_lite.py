@@ -1289,12 +1289,14 @@ class Demo(Scene):
         self.assertEqual(json.loads(lite.render_scene(source,math_metrics=metrics))['math_estimated'],[])
         with self.assertRaises(ValueError): lite.render_scene(source,math_metrics={classed:[3,1,[[0,0,-1,1]]]})
         result=render('a = MathTex("x^2", "+", "y^2")\nb = MathTex("y^2", "=", "z", "-", "x^2")\nself.add(a)\nself.play(TransformMatchingTex(a, b), rate_func=linear, run_time=2)\nassert self.mobjects == [b]')
-        middle=result['frames'][15]['mobjects']
+        def leaves(node):
+            return [leaf for child in node['children'] for leaf in leaves(child)] if node.get('children') else [node]
+        middle=[leaf for m in result['frames'][15]['mobjects'] for leaf in leaves(m)]
         self.assertEqual(len(middle),8)
         self.assertTrue(all(isinstance(m['part'],int) for m in middle))
         self.assertEqual(result['frames'][-1]['mobjects'][0]['type'],'vgroup')
         shapes=render('a = VGroup(Square(), Circle().shift(RIGHT*2))\nb = VGroup(Circle(radius=2).shift(LEFT), Triangle())\nself.add(a)\nself.play(TransformMatchingShapes(a, b))')
-        self.assertEqual([m['type'] for m in shapes['frames'][7]['mobjects']],['circle','square','polygon'])
+        self.assertEqual([leaf['type'] for m in shapes['frames'][7]['mobjects'] for leaf in leaves(m)],['square','circle','polygon'])
         with self.assertRaises(TypeError): lite.TransformMatchingTex(lite.Square(),lite.Circle()).begin(lite.Scene())
 
     def test_scene_bounds_match_community_reference_fixture(self):
