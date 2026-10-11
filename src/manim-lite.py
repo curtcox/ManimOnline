@@ -6340,8 +6340,8 @@ class Text(Mobject):
 
     def _explode(self):
         """Split into Community-style glyph children placed by the same ink layout."""
-        if self._type != 'text' or '_number_format' in self.__dict__:
-            return
+        if self._type != 'text' or '_number_format' in self.__dict__ or '_char_index' in self.__dict__:
+            return  # Glyphs are leaves, like Community's glyph VMobjects.
         layout = _text_layout(self.__dict__)
         em = layout['em'] / 1000
         style = {key: self.__dict__[key] for key in ('color', 'fill_color', 'stroke_color', 'fill_opacity',
@@ -6396,10 +6396,14 @@ class Text(Mobject):
         Mobject.submobjects.fset(self, mobjects)
 
     def __iter__(self):
+        if '_char_index' in self.__dict__:
+            return iter([self])  # Community's glyph has points, so split() is [glyph].
         self._explode()
         return iter(self.split())
 
     def __len__(self):
+        if '_char_index' in self.__dict__:
+            return 1
         self._explode()
         return len(self.split())
 

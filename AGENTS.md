@@ -556,6 +556,7 @@ Read `examples/text_effects_scene.py` for glyph-level Text. Text._explode turns 
 text leaf into a vgroup of single-glyph Text children (pose moved onto glyphs,
 _char_index kept) only when indexed/iterated or styled per glyph; keep leaves
 unexploded otherwise to limit frame size.
+Glyphs (with _char_index) never explode again; they iterate as [glyph] like Community's.
 
 Read `examples/chart_scene.py` for BarChart value changes and PolarPlane azimuth
 labels. PolarPlane.get_vector takes plane coordinates (as in Community), not world

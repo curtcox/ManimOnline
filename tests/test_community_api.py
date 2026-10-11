@@ -625,6 +625,14 @@ class AnimationApiTests(unittest.TestCase):
             'result = [g.anims_with_timings.tolist()[1][1:], half, s.get_stroke_opacity()]\n'),
             [[1.0, 2.0], 0.5, 1.0])
 
+    def test_text_glyphs_are_leaves(self):
+        self.assertEqual(scene_values(
+            'def depth(m):\n'
+            '    return 1 + max([depth(c) for c in m.submobjects], default=0)\n'
+            't = Text("ab")\n'
+            'result = [depth(t), len(t[0].submobjects), len(list(t[0])), depth(Table([["a", "b"]]))]\n'),
+            [2.0, 0.0, 1.0, 5.0])
+
     def test_animation_role_flags_match_community(self):
         self.assertEqual(scene_values(
             'result = [[a.introducer, a.remover] for a in (\n'
