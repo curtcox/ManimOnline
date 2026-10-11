@@ -2407,3 +2407,6 @@ families (arrow tips included), Polygram vertex/rounding methods on triangle and
 tips (which are Triangle/Square instances, as in Community), VGroup path helpers, Mobject
 set_color() defaulting to PURE_YELLOW, anchor-only get_points_defining_boundary on
 VMobjects, empty ArcPolygon, and PMobject rgbas/ingest_submobjects.
+A second pass called methods with sample arguments on posed shapes: Arc bounds now come from
+Community's cubic points (anchors for edges, handles for sizes) instead of the exact circle,
+and set_points_as_corners/set_points_smoothly take world coordinates on transformed shapes.

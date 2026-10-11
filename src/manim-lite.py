@@ -2270,13 +2270,12 @@ class Mobject:
         if self._type == 'circle':
             return (-self.radius, -self.radius, self.radius, self.radius)
         if self._type == 'arc':
-            angles = [self.start_angle, self.start_angle + self.arc_angle]
-            for angle in (0, PI / 2, PI, 3 * PI / 2):
-                distance = ((angle - self.start_angle) % TAU if self.arc_angle >= 0
-                            else (self.start_angle - angle) % TAU)
-                if distance <= abs(self.arc_angle):
-                    angles.append(angle)
-            points = [(self.radius * math.cos(a), self.radius * math.sin(a)) for a in angles]
+            # Community's cubic arc: anchors for edges, handles too for sizes.
+            curves = _path_curves({'type': 'arc', 'radius': self.radius, 'start_angle': self.start_angle,
+                                   'arc_angle': self.arc_angle,
+                                   'num_components': self.__dict__.get('num_components', 9)})
+            points = ([point for curve in curves for point in curve] if _BOUNDS_WITH_HANDLES else
+                      [point for curve in curves for point in (curve[0], curve[-1])])
             return (min(p[0] for p in points), min(p[1] for p in points),
                     max(p[0] for p in points), max(p[1] for p in points))
         if self._type == 'square':
@@ -4249,20 +4248,11 @@ class VMobject(Mobject, metaclass=_CommunityTree):
         points = VMobject._corners(points)
         if len(points) % 4 not in (0, 1):
             raise ValueError('Cubic points need groups of four, optionally followed by one new anchor')
-        # Children of a posed parent are stored locally: place them in the world first,
-        # since the parent's pose is about to become the identity.
-        if self.children and (self.angle or self.geometry_scale != 1 or any(self.position)):
-            # Pin the pivot: placing one child must not move the frame of the next.
-            self._sampled_geometry_center = list(self._geometry_center())
-            for child in self.children:
-                self._place_in_world(child)
+        self._clear_pose()
         completed = len(points) - len(points) % 4
         self.curves = [points[i:i+4] for i in range(0, completed, 4)]
         self.vertices = points[completed:]
         self._type = 'bezierpath'
-        # Raw point arrays are world coordinates, just as native stored points.
-        self.position, self.angle, self.geometry_scale = list(ORIGIN), 0, 1
-        self.__dict__.pop('_sampled_geometry_center', None)
         self.__dict__.pop('subpath_lengths', None)
         # Explicit points are the drawn shaft, as in Community: tips no longer refit it.
         self.__dict__.pop('_curved_tip_path', None)
@@ -4369,8 +4359,21 @@ class VMobject(Mobject, metaclass=_CommunityTree):
             existing = existing[:-1]
         return VMobject.set_points(self, existing + incoming)
 
+    def _clear_pose(self):
+        """Raw point arrays are world coordinates, just as native stored points."""
+        # Children of a posed parent are stored locally: place them in the world first,
+        # since the parent's pose is about to become the identity.
+        if self.children and (self.angle or self.geometry_scale != 1 or any(self.position)):
+            # Pin the pivot: placing one child must not move the frame of the next.
+            self._sampled_geometry_center = list(self._geometry_center())
+            for child in self.children:
+                self._place_in_world(child)
+        self.position, self.angle, self.geometry_scale = list(ORIGIN), 0, 1
+        self.__dict__.pop('_sampled_geometry_center', None)
+
     def set_points_as_corners(self, points):
         vertices = self._corners(points)
+        self._clear_pose()
         self._type, self.vertices = 'polyline', vertices
         self.__dict__.pop('curves', None)
         self.__dict__.pop('subpath_lengths', None)
@@ -5106,7 +5109,7 @@ class Arc(TipableVMobject):
             self.num_components = int(num_components)
         self.position = list(center)
 
-    def get_arc_center(self):
+    def get_arc_center(self, warning=True):
         return self._point_to_world(ORIGIN)
 
     def stop_angle(self):
@@ -6054,7 +6057,7 @@ class CurvedArrow(ArcBetweenPoints):
         self.tip_style = copy.deepcopy(tip_style or {})
         self.add_tip(tip_shape=tip_shape)
 
-    def get_arc_center(self):
+    def get_arc_center(self, warning=True):
         return self._point_to_world(Vector(self.__dict__.get('_curve_arc_center',ORIGIN)))
 
 

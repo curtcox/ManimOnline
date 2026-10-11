@@ -1223,6 +1223,19 @@ class AnimationApiTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             scene_values('result = Square().set_color()\n')
 
+    def test_arc_bounds_use_cubic_points_and_corner_points_are_world(self):
+        self.assertEqual(scene_values(
+            'a = Arc(radius=2, start_angle=0.2, angle=2)\n'
+            'b = Arc(radius=1.5, start_angle=-1, angle=-3).rotate(0.4).scale(1.3).shift(RIGHT)\n'
+            's = Square().rotate(0.3).shift(LEFT); s.set_points_as_corners([LEFT, UP, RIGHT])\n'
+            'c = Circle().scale(2).shift(UP); c.set_points_smoothly([LEFT, UP, RIGHT])\n'
+            'result = [a.get_center(), a.width, a.height, a.get_top(), b.get_center(), b.height,'
+            ' b.get_corner(UL), Arc(angle=2).height, s.get_center(), s.height, s.get_points()[0],'
+            ' c.get_center(), c.width, c.height]\n'),
+            [[0.3916, 1.1914, 0.0], 3.1371, 1.6082, [0.3916, 1.9854, 0.0], [0.7784, -0.2901, 0.0],
+             2.8273, [-0.9979, 1.1048, 0.0], 1.0034, [0.0, 0.5, 0.0], 1.0, [-1.0, 0.0, 0.0],
+             [0.0, 0.5, 0.0], 2.0, 1.0])
+
 
 if __name__ == '__main__':
     unittest.main()
