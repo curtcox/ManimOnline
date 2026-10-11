@@ -155,8 +155,10 @@ endpoint; never bridge disconnected contours with an SVG segment.
 Read `examples/point_array_scene.py` for raw cubic construction, world-space
 point queries, animated handle edits and copied outline append. Validate array
 length/XY coordinates before mutation; bake transforms before raw appends or
-start_new_path so changing bounds cannot move earlier geometry. Returned points
-are independent lists; NumPy indexing and mutable points attributes remain open.
+start_new_path so changing bounds cannot move earlier geometry. Scene code gets
+`points`/`get_points()` as LivePoints ndarrays (`_point_array(owner=...)`): item writes,
+views and `out=` ufuncs call set_points in world coordinates. Inside the library
+get_points still returns lists; arithmetic results are plain arrays.
 
 Read `examples/partial_curve_scene.py` for exact subcurve extraction, closed-loop
 wrapping and animated partial replacement. Partial fractions allocate by cubic
@@ -304,7 +306,7 @@ DOT and ordinary VGroup behavior when extending this shared path.
 Read `examples/angle_path_scene.py` for own-path queries, movement, dotted-angle
 to corner morphs and restoration. Defining line references are exposed via
 `.lines`/`get_lines` but excluded from frame JSON. Keep the own path independent
-of dot geometry when editing or extracting points. Mutable NumPy point arrays and glyph-level family geometry are still open.
+of dot geometry when editing or extracting points. Glyph-level family geometry is still open.
 
 
 Read `examples/shape_family_scene.py` for common Mobject child mutation, nested

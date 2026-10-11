@@ -70,7 +70,7 @@ self.onmessage = event => {
       if (type !== 'render-manim') throw new Error(`Unknown message type: ${type}`);
       const { runtime, source } = await initPyodide();
       // `from manim import *` exports np; load NumPy only for sources that use it.
-      if (/\b(?:np|numpy)\b/.test(code)) {
+      if (/\b(?:np|numpy)\b|\.points\b|\bget_points\s*\(/.test(code)) {
         self.postMessage({ id, type: 'numpy-loading' });
         await runtime.loadPackage('numpy');
       }

@@ -49,7 +49,7 @@ contours and ordered per-contour alignment now support ring-to-outline morphs;
 Annulus retains analytical radii for same-type transforms. Automatic contour
 correspondence remains open. Raw get/set/append/clear points, subpath append and
 copied outline append now have transformed-world-coordinate tests and animate
-support. Full NumPy semantics, mutable points attributes and glyph geometry remain open.
+support. Writable points arrays now behave like Community's buffer; glyph geometry remains open.
 Exact pointwise_become_partial/get_subcurve now support transformed geometry,
 ordered disconnected contours, closed-outline wrapping and animated replacement.
 ShowPassingFlash now travels over exact outline portions, including simultaneous
@@ -99,7 +99,7 @@ verified; successful individual feature commits do not close the overall goal.
 Angle, RightAngle and Elbow now add signed quadrant-selected marks, optional dots,
 construction-time queries and moving-line redraw. Angle now owns its editable
 cubic path with the optional dot child, with own-point queries and restored
-path/dot morphing. Mutable NumPy points and glyph-level family semantics remain open.
+path/dot morphing. Glyph-level family semantics remain open.
 
 
 ArcBetweenPoints now supplies signed minor/major endpoint arcs, signed-radius
@@ -242,7 +242,8 @@ for identity-pose groups. TransformMatching*, ApplyWave and Homotopy remain open
 
 
 NumPy is available as `np` (lazy Pyodide package) and preview APIs accept NumPy
-arrays/scalars. In-place mutation of NumPy point arrays remains unsupported.
+arrays/scalars. `points` and `get_points()` arrays write back on item assignment,
+in-place arithmetic and `out=` ufuncs (views included), like Community's points buffer.
 
 
 Brace family, Tex (text mode via MathJax), Title, BulletedList, Vector,

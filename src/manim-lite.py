@@ -218,7 +218,7 @@ def _world_args(args, kwargs):
             {key: _world_view(value) for key, value in kwargs.items()})
 
 
-def _scene_call(function, reference=False):
+def _scene_call(function, reference=False, live_points=False):
     """Run a method called from scene code in Community's world coordinates."""
     @functools.wraps(function)
     def call(self, *args, **kwargs):
@@ -227,12 +227,13 @@ def _scene_call(function, reference=False):
         if reference:
             args, kwargs = _world_args(args, kwargs)
         token = _enter_world(self) if self in _PARENTS else None
-        if token is None:
-            return function(self, *args, **kwargs)
         try:
-            return function(self, *args, **kwargs)
+            result = function(self, *args, **kwargs)
         finally:
-            _exit_world(token)
+            if token is not None:
+                _exit_world(token)
+        # Community's get_points returns the points buffer itself.
+        return _point_array([list(Vector(p)) for p in result], owner=self) if live_points else result
     call._scene_call = True
     return call
 
@@ -2916,8 +2917,9 @@ class Mobject:
     def points(self):
         """World-space points as an (n, 3) array (a NumPy array when NumPy is loaded).
 
-        This is a copy: write back with ``mobject.points = array`` or set_points."""
-        return _point_array(self._point_rows())
+        Item assignment and in-place arithmetic on the array (or its views) write the
+        points back, as Community's points buffer does."""
+        return _point_array(self._point_rows(), owner=self)
 
     @points.setter
     def points(self, value):
@@ -2990,12 +2992,65 @@ class Mobject:
             result['gradient_points'] = [[cx - ox, cy - oy], [cx + ox, cy + oy]]
 
 
-def _point_array(rows):
+def _point_array(rows, owner=None):
     try:
         import numpy
     except ImportError:
         return rows
-    return numpy.array(rows, dtype=float).reshape(len(rows), 3)
+    array = numpy.array(rows, dtype=float).reshape(len(rows), 3)
+    if owner is None:
+        return array
+    live = array.view(_live_points_class())
+    live._owner, live._root = owner, live
+    return live
+
+
+_LIVE_POINTS = []
+
+
+def _live_points_class():
+    """An ndarray whose writes (through views too) set its owner's points."""
+    if _LIVE_POINTS:
+        return _LIVE_POINTS[0]
+    import numpy
+
+    class LivePoints(numpy.ndarray):
+        _owner = _root = None
+
+        def __array_finalize__(self, obj):
+            # Views write through to their root; fresh arrays (results) are plain data.
+            self._root = getattr(obj, '_root', None) if self.base is not None else None
+
+        def _sync(self):
+            root = self._root
+            if root is not None and root._owner is not None:
+                rows = numpy.asarray(root).tolist()
+                owner = root._owner
+                token = _enter_world(owner) if owner in _PARENTS else None
+                try:
+                    owner.set_points(rows)
+                finally:
+                    if token is not None:
+                        _exit_world(token)
+
+        def __setitem__(self, key, value):
+            super().__setitem__(key, value)
+            self._sync()
+
+        def __array_ufunc__(self, ufunc, method, *inputs, out=None, **kwargs):
+            plain = lambda value: value.view(numpy.ndarray) if isinstance(value, LivePoints) else value
+            if out is not None:
+                kwargs['out'] = tuple(plain(value) for value in out)
+            result = getattr(ufunc, method)(*(plain(value) for value in inputs), **kwargs)
+            if out is None:
+                return result
+            for value in out:
+                if isinstance(value, LivePoints):
+                    value._sync()
+            return out[0] if len(out) == 1 else out
+
+    _LIVE_POINTS.append(LivePoints)
+    return LivePoints
 
 
 def _point_rows_of(points):
@@ -19497,7 +19552,7 @@ def _install_scene_calls():
             if name.startswith('_') or name in _NO_WORLD_CALL or name.startswith(_STYLE_PREFIXES):
                 continue
             if isinstance(value, types.FunctionType) and not hasattr(value, '_scene_call'):
-                setattr(cls, name, _scene_call(value, name in _REFERENCE_METHODS))
+                setattr(cls, name, _scene_call(value, name in _REFERENCE_METHODS, name == 'get_points'))
             elif isinstance(value, property) and name in _WORLD_PROPERTIES:
                 fget = value.fget and _scene_call(value.fget)
                 fset = value.fset and _scene_call(value.fset)

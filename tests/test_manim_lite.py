@@ -339,6 +339,28 @@ class Demo(Scene):
             self.assertAlmostEqual(drawn[1], scene.centers[index][1])
         self.assertAlmostEqual(scene.centers[7][1], 2 + lite.smooth(7 / 15))
 
+    def test_points_arrays_write_back_like_communitys_buffer(self):
+        square = lite.Square()
+        square.points[:, 0] *= 2
+        self.assertAlmostEqual(square.get_width(), 4)
+        points = square.get_points()
+        self.assertEqual(points.shape, (16, 3))
+        points[:, 1] += 1
+        self.assertAlmostEqual(square.get_center()[1], 1)
+        square.points += lite.RIGHT
+        self.assertAlmostEqual(square.get_center()[0], 1)
+        heights = square.get_points()[:, 1]
+        heights *= 0
+        self.assertAlmostEqual(square.get_height(), 0)
+        total = square.get_points() + 1  # Results are plain data.
+        total[0] = 50
+        self.assertNotEqual(square.get_points()[0][0], 50)
+        arrow = lite.Arrow(lite.LEFT, lite.RIGHT, buff=0).rotate(lite.PI / 2).shift(lite.UP)
+        before = arrow.tip.get_center()
+        tip = arrow.tip.get_points()
+        tip[:, 0] += 1  # World coordinates for a posed family's member.
+        self.assertPointAlmostEqual(arrow.tip.get_center(), lite.Vector(before) + lite.RIGHT)
+
     def test_removing_a_posed_family_member_keeps_the_rest_in_place(self):
         source = """from manim import *
 class Demo(Scene):
@@ -1886,20 +1908,20 @@ assert isinstance(t.get_value(), (int, float))""")
 
     def test_function_mapping_controls_contours_and_atomic_failure(self):
         line=lite.Line((1,1,0),(3,1,0)).rotate(.2)
-        old=line.get_points()
+        old=line.get_points().tolist()
         warp=lambda p:(p[0],p[1]+p[0]**2,0)
         line.apply_function(warp)
         self.assertEqual(line._type,'bezierpath')
-        for actual,point in zip(line.get_points(),self.community_mapped(old,warp)):
+        for actual,point in zip(line.get_points().tolist(),self.community_mapped(old,warp)):
             self.assertPointAlmostEqual(actual,point)
         polygon=lite.Polygon((1,1,0),(3,1,0),(2,2,0))
-        old=polygon.get_points()
+        old=polygon.get_points().tolist()
         polygon.apply_function(warp)
-        for actual,point in zip(polygon.get_points(),self.community_mapped(old,warp)):
+        for actual,point in zip(polygon.get_points().tolist(),self.community_mapped(old,warp)):
             self.assertPointAlmostEqual(actual,point)
         for index,point in enumerate(old):
             if index%4 in (0,3):  # Anchors map exactly.
-                self.assertPointAlmostEqual(polygon.get_points()[index],warp(point))
+                self.assertPointAlmostEqual(polygon.get_points().tolist()[index],warp(point))
         # Only actual geometry points reach user callbacks, not the container origin.
         safe=lite.VGroup(lite.Line((1,1,0),(2,1,0)))
         safe.apply_function(lambda p:(1/p[0],p[1],0))
@@ -1917,7 +1939,7 @@ assert isinstance(t.get_value(), (int, float))""")
             with self.assertRaises(ValueError): ring.apply_function(function)
             self.assertEqual(ring.to_dict(),before)
         ring.apply_function(lambda p:lite.OUT)
-        self.assertTrue(all(point==[0,0,1] for point in ring.get_points()))
+        self.assertTrue(all(point==[0,0,1] for point in ring.get_points().tolist()))
         with self.assertRaises(TypeError): ring.apply_function(2)
         with self.assertRaises(TypeError): ring.apply_complex_function(2)
 
@@ -2538,7 +2560,7 @@ assert isinstance(t.get_value(), (int, float))""")
             self.assertPointAlmostEqual(tip.tip_point,point)
             self.assertPointAlmostEqual(tip.base,base)
             self.assertAlmostEqual(tip.length,length)
-            self.assertEqual(tip.get_points()[0],tip.get_points()[-1])
+            self.assertEqual(tip.get_points().tolist()[0],tip.get_points().tolist()[-1])
             tip.save_state().rotate(.4).scale(-2).shift(lite.UP)
             self.assertAlmostEqual(tip.length,2*length)
             self.assertPointAlmostEqual(tip.vector,tip.tip_point-tip.base)
@@ -2554,7 +2576,7 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertPointAlmostEqual(tip.tip_point,(1,0,0))
         self.assertPointAlmostEqual(tip.base,(-1,0,0))
         a,b=lite.ArrowSquareTip(start_angle=0),lite.ArrowSquareTip(start_angle=2)
-        self.assertEqual(a.get_points(),b.get_points())
+        self.assertEqual(a.get_points().tolist(),b.get_points().tolist())
 
     def test_circle_square_tip_validation_and_arrow_attachment(self):
         import math
@@ -2806,11 +2828,11 @@ assert isinstance(t.get_value(), (int, float))""")
     def test_child_motion_before_parent_transform_initializes_compensation(self):
         host = lite.Circle().add(lite.Dot(lite.RIGHT*4))
         host.rotate(.5).scale(2)
-        points = host.get_points()
+        points = host.get_points().tolist()
         host.children[0].shift(lite.LEFT*8)
         host.rotate(.2)
         # Rotation occurs around the updated family center, after child compensation.
-        self.assertNotEqual(host.get_points(),points)
+        self.assertNotEqual(host.get_points().tolist(),points)
         self.assertNotIn('_family_pivot_cache',host.to_dict())
         parent = lite.Rectangle().add(lite.Dot(lite.RIGHT*3))
         parent.rotate(.5)
@@ -3042,7 +3064,7 @@ assert isinstance(t.get_value(), (int, float))""")
         polygon.restore()
         self.assertTrue(polygon.is_closed())
         self.assertEqual(polygon.position,[0,0,0])
-        self.assertEqual(lite.ArcPolygonFromArcs().get_points(),[])
+        self.assertEqual(lite.ArcPolygonFromArcs().get_points().tolist(),[])
 
     def test_arc_polygon_creation_and_morph_include_own_path_and_children(self):
         result = render("p = ArcPolygon((-1,0),(1,0),(0,2),angle=PI/3,fill_opacity=.5)\nself.play(Create(p,lag_ratio=0),run_time=1)\nself.play(Transform(p,ArcPolygon((-1,0),(1,0),(0,2),angle=0,fill_opacity=.8)),run_time=2)")
@@ -3139,7 +3161,7 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertEqual(len(angle.lines),2)
         self.assertEqual(angle.get_num_curves(),8)
         self.assertPointAlmostEqual(angle.point_from_proportion(.5),(2**-.5,2**-.5,0))
-        points = angle.get_points()
+        points = angle.get_points().tolist()
         before = angle.to_dict()
         angle.save_state().rotate(lite.PI/2,about_point=lite.ORIGIN).shift(lite.RIGHT)
         self.assertPointAlmostEqual(angle.get_start(),(1,1,0))
@@ -3152,7 +3174,7 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertLess(partial.get_arc_length(),angle.get_arc_length())
         edited = angle.copy().set_points_as_corners([lite.ORIGIN,lite.RIGHT,lite.UP])
         self.assertEqual(edited._type,'polyline')
-        self.assertEqual(angle.get_points(),points)
+        self.assertEqual(angle.get_points().tolist(),points)
         self.assertEqual(len(edited.children),1)
         json.dumps(edited.to_dict(),allow_nan=False)
 
@@ -3352,7 +3374,7 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertIsInstance(dashes,lite.VMobject)
         self.assertIsInstance(dashes,lite.VGroup)
         self.assertEqual(len(dashes),4)
-        self.assertEqual(dashes.get_points(),[])
+        self.assertEqual(dashes.get_points().tolist(),[])
         self.assertPointAlmostEqual(dashes[0].get_start(),(0,0,0))
         self.assertPointAlmostEqual(dashes[-1].get_end(),(4,0,0))
         self.assertAlmostEqual(sum(child.get_arc_length() for child in dashes),2)
@@ -3400,7 +3422,7 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertEqual(len(wrapped),1)
         child = wrapped[0]
         a,b = child._dash_interval
-        self.assertEqual(child.get_points(),source.get_subcurve(a,b).get_points())
+        self.assertEqual(child.get_points().tolist(),source.get_subcurve(a,b).get_points().tolist())
         for offset in (0,.1,.5):
             full = lite.DashedVMobject(source,num_dashes=1,dashed_ratio=1,dash_offset=offset)
             self.assertEqual(len(full),1)
@@ -3408,7 +3430,7 @@ assert isinstance(t.get_value(), (int, float))""")
             self.assertPointAlmostEqual(full[0].get_start(),full[0].get_end())
         negative = lite.DashedVMobject(source,num_dashes=4,dash_offset=-.1)
         positive = lite.DashedVMobject(source,num_dashes=4,dash_offset=.9)
-        self.assertEqual([child.get_points() for child in negative],[child.get_points() for child in positive])
+        self.assertEqual([child.get_points().tolist() for child in negative],[child.get_points().tolist() for child in positive])
         self.assertEqual(source.to_dict(),before)
 
     def test_dashed_vmobject_open_phase_clipping_and_overflow(self):
@@ -3476,7 +3498,7 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertIsInstance(line,lite.VGroup)
         self.assertEqual(len(line),20)
         self.assertEqual(line._calculate_num_dashes(),20)
-        self.assertEqual(line.get_points(),[])
+        self.assertEqual(line.get_points().tolist(),[])
         self.assertPointAlmostEqual(line.get_start(),lite.LEFT)
         self.assertPointAlmostEqual(line.get_end(),lite.RIGHT)
         self.assertPointAlmostEqual(line.get_first_handle(),(-1+.05/3,0,0))
@@ -3612,7 +3634,7 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertPointAlmostEqual(area.vertices[1],axes.i2gp(-.7,graph))
         self.assertPointAlmostEqual(area.vertices[-2],axes.i2gp(1.3,graph))
         self.assertPointAlmostEqual(area.vertices[-1],axes.c2p(1.3,0))
-        interior = [point for point in graph.get_points() if -.7 <= axes.p2c(point)[0] <= 1.3]
+        interior = [point for point in graph.get_points().tolist() if -.7 <= axes.p2c(point)[0] <= 1.3]
         self.assertEqual(area.vertices[2:-2],interior)
         self.assertEqual(area.fill_color,lite.RED)
         self.assertEqual(area.fill_opacity,.4)
@@ -3633,7 +3655,7 @@ assert isinstance(t.get_value(), (int, float))""")
         expected = []
         for curve in (graph,other):
             points = [list(axes.i2gp(-.5,curve))]
-            points += [point for point in curve.get_points() if -.5 <= axes.p2c(point)[0] <= 1]
+            points += [point for point in curve.get_points().tolist() if -.5 <= axes.p2c(point)[0] <= 1]
             points += [list(axes.i2gp(1,curve))]
             expected.append(points)
         self.assertEqual(area.vertices,expected[0]+expected[1][::-1])
@@ -4660,7 +4682,7 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertEqual(partial.get_end(),lite.RIGHT*12)
         self.assertEqual(len(partial.get_subpaths()),2)
         path.pointwise_become_partial(path,.25,.75)
-        self.assertEqual(path.get_points(),partial.get_points())
+        self.assertEqual(path.get_points().tolist(),partial.get_points().tolist())
         path.restore()
         self.assertEqual(path.get_start(),lite.ORIGIN)
         self.assertEqual(path.get_end(),lite.RIGHT*14)
@@ -4719,11 +4741,12 @@ assert isinstance(t.get_value(), (int, float))""")
         for alpha, expected in zip((0,.25,.5,.75,1), before):
             for actual, value in zip(curve.point_from_proportion(alpha), expected):
                 self.assertAlmostEqual(actual, value)
+        # Community's points buffer: writes through returned arrays (and views) edit the curve.
         points[0][0] = 999
-        self.assertNotEqual(curve.get_points()[0][0], 999)
-        returned = curve.get_points()
-        returned[1][0] = 999
-        self.assertNotEqual(curve.get_points()[1][0], 999)
+        self.assertEqual(curve.get_points()[0][0], 999)
+        copied = curve.get_points().copy()
+        copied[1][0] = -999
+        self.assertNotEqual(curve.get_points()[1][0], -999)
         self.assertEqual(len(lite.Circle().get_points()), 32)
         self.assertEqual(len(lite.Annulus().get_points()), 64)
 
@@ -4742,7 +4765,7 @@ assert isinstance(t.get_value(), (int, float))""")
         for query in (path.get_start,path.get_end):
             with self.assertRaises(ValueError): query()
         path.restore()
-        self.assertEqual(path.get_points(), [list(lite.UP)])
+        self.assertEqual(path.get_points().tolist(), [list(lite.UP)])
         self.assertEqual(path.stroke_width, 7)
         self.assertEqual(path.color, lite.RED)
         self.assertEqual(path.updaters, [callback])
@@ -4762,17 +4785,17 @@ assert isinstance(t.get_value(), (int, float))""")
 
     def test_append_vector_outline_keeps_world_geometry_and_independent_provider(self):
         path = lite.CubicBezier(lite.LEFT,lite.UL,lite.UR,lite.RIGHT).rotate(.3).scale(2)
-        original = path.get_points()
+        original = path.get_points().tolist()
         ring = lite.Annulus(inner_radius=.5,outer_radius=1,arc_center=lite.UP*3)
-        incoming = ring.get_points()
+        incoming = ring.get_points().tolist()
         path.start_new_path(lite.DOWN)
         path.append_vectorized_mobject(ring)
-        self.assertEqual(path.get_points(), original + incoming)
+        self.assertEqual(path.get_points().tolist(), original + incoming)
         self.assertEqual(len(path.get_subpaths()), 3)
         ring.shift(lite.RIGHT*5)
-        self.assertEqual(path.get_points(), original + incoming)
+        self.assertEqual(path.get_points().tolist(), original + incoming)
         self.assertEqual(path.color, lite.WHITE)
-        path.add_subpath(lite.CubicBezier(lite.DOWN,lite.DL,lite.DR,lite.DOWN).get_points())
+        path.add_subpath(lite.CubicBezier(lite.DOWN,lite.DL,lite.DR,lite.DOWN).get_points().tolist())
         self.assertEqual(len(path.get_subpaths()), 4)
 
     def test_point_array_gallery_edits_appends_and_restores(self):
@@ -4783,7 +4806,7 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertEqual([len(p) for p in lite._path_subpaths(edited)], [1,8,8])
         final = result['frames'][-1]['mobjects'][0]
         seed = lite.CubicBezier((-3,-1),(-1,2),(1,-2),(3,1)).rotate(lite.PI/6)
-        self.assertEqual(final['curves'], [seed.get_points()])
+        self.assertEqual(final['curves'], [seed.get_points().tolist()])
         self.assertEqual(final['color'], lite.BLUE)
 
     def test_disconnected_path_construction_pending_anchor_and_sampling(self):
@@ -7379,13 +7402,13 @@ class Demo(Scene):
         tip.add(lite.Dot(lite.UP))
         tip.save_state()
         saved = tip.to_dict()
-        original = tip.get_points()
+        original = tip.get_points().tolist()
         copied = tip.copy().shift(lite.RIGHT)
         self.assertNotEqual(copied.tip_point,tip.tip_point)
         tip.reverse_direction()
         tip.restore()
         self.assertEqual(tip.to_dict(),saved)
-        self.assertEqual(tip.get_points(),original)
+        self.assertEqual(tip.get_points().tolist(),original)
         partial = tip.get_subcurve(0,.5)
         self.assertPointAlmostEqual(partial.get_start(),tip.tip_point)
         tip.clear_points()

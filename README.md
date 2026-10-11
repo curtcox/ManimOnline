@@ -679,7 +679,7 @@ matching, boolean geometry and full point-array editing remain open.
 the hole into a rounded rectangle and restores both original contours.
 
 Supported outlines expose `get_points()`, `get_num_points()` and `has_points()`.
-get_points returns independent lists of world-space anchors/handles, four points
+get_points returns world-space anchors/handles as an (n, 3) array, four points
 per completed cubic plus an optional unfinished anchor. Primitive outlines use
 the same cubic conversion as morphing; a single corner anchor stays one point.
 Objects without supported outline geometry return no points.
@@ -693,9 +693,9 @@ existing geometry, preserving styles, callbacks and checkpoints. start_new_path
 also bakes existing transforms before adding its world-space anchor, so changing
 the bounds does not move earlier rotated curves. append_vectorized_mobject copies
 a supported outline and drops the receiver's unfinished anchor, retaining receiver
-styles. These editing methods work in animate chains and with Restore. Returned
-lists are copies; NumPy point-array indexing and direct mutable points attributes
-remain open. **Edit cubic point arrays** builds a transformed curve from raw
+styles. These editing methods work in animate chains and with Restore. As in
+Community, writing into `mob.points` or a `get_points()` array (including slices,
+`+=` and NumPy `out=`) edits the mobject. **Edit cubic point arrays** builds a transformed curve from raw
 points, animates its handles, appends a ring and restores the curve.
 
 `get_subcurve(a,b)` returns an independent exact cubic portion of a supported
@@ -1063,7 +1063,7 @@ independently; automatic matching of unrelated edges remains unfinished.
 
 Try **Follow and restore an editable angle path**
 (`examples/angle_path_scene.py`) for movement along the angle, morphing into a
-corner, and restoration of the original path and dot. Mutable NumPy point-array attributes and glyph-level family geometry remain unfinished.
+corner, and restoration of the original path and dot. Glyph-level family geometry remains unfinished.
 
 
 ### Children on ordinary shapes
