@@ -807,3 +807,6 @@ lerped parent pose composed with lerped member poses would curve Community's str
 VMobject.set_points drops `_curved_tip_path`: explicit points are the drawn shaft and tips no
 longer refit them (Community). Exposed draw_progress samples cut curved arrows from the
 shaft trimmed by their whole tips, computed before the tips themselves are exposed partially.
+SpiralIn saves, restores and moves each shape in world coordinates (`_in_world`), so an
+arrow's tip spirals with Community's path; get_center_of_mass uses family world points.
+Open: Community leaves an arrow's shaft in place when its tip moves alone; Lite refits it.

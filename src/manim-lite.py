@@ -2415,7 +2415,7 @@ class Mobject:
         return self.point_from_proportion(0.5) if self.has_points() else self.get_center()
 
     def get_center_of_mass(self):
-        points = [Vector(p) for member in self.get_family() for p in member.get_points()]
+        points = [Vector(p) for p in self._family_world_points()]
         if not points:
             return self.get_center()
         return Vector(sum(p[i] for p in points) / len(points) for i in range(3))
@@ -16247,23 +16247,31 @@ class SpiralIn(Animation):
         self.shapes = shapes.copy()
         self.scale_factor, self.fade_in_fraction = scale_factor, fade_in_fraction
         self.shape_center = shapes.get_center()
-        self.moves = []
-        for shape in shapes:
+        self.moves, self._saved_shapes = [], []
+        def place(shape):
             final = shape.get_center()
             initial = final + (final - self.shape_center) * scale_factor
             shape.move_to(initial)
             self.moves.append((final, initial))
+            # Community's save_state per shape: a shape's family is saved as it is now, so a
+            # shape with children restores them before the children's own turn.
+            self._saved_shapes.append(shape.copy())
+        # Members of posed families (e.g. an arrow's tip) move in world coordinates.
+        for shape in shapes:
+            _in_world(shape, place)
         super().__init__(shapes, introducer=True, **kwargs)
 
     def _place(self, group, alpha):
-        for original, shape, (final, initial) in zip(self.shapes, group, self.moves):
-            shape.move_to(initial)
+        def place(shape, original, state, final, initial):
+            shape.become(state)
             fill, stroke = original.fill_opacity, original.stroke_opacity
             shape.shift((final - initial) * alpha)
             shape.rotate(TAU * alpha, about_point=self.shape_center)
             shape.rotate(-TAU * alpha, about_point=shape.get_center_of_mass())
             shape.set_fill(opacity=min(fill, alpha * fill / self.fade_in_fraction))
             shape.set_stroke(opacity=min(stroke, alpha * stroke / self.fade_in_fraction))
+        for original, shape, state, (final, initial) in zip(self.shapes, list(group), self._saved_shapes, self.moves):
+            _in_world(shape, place, original, state, final, initial)
         return group
 
     def sample(self, alpha):

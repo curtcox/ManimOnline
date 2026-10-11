@@ -729,6 +729,20 @@ class AnimationApiTests(unittest.TestCase):
             [[-0.1472, [-0.87, -0.1472, 0.0], 4.0], [-0.4441, [-0.3667, -0.4441, 0.0], 16.0],
              [-0.4999, [0.021, -0.4988, 0.0], 20.0], [-0.3409, -0.4989, -0.497, -0.497]])
 
+    def test_spiral_in_moves_arrow_tips_in_world_space(self):
+        self.assertEqual(scene_values(
+            'def b(m):\n'
+            '    return [m.get_left()[0], m.get_bottom()[1], m.get_right()[0], m.get_top()[1]]\n'
+            'm = Arrow(LEFT, RIGHT * 2)\n'
+            'a = SpiralIn(m, rate_func=linear); a.begin(); a.interpolate(0.1)\n'
+            'n = Arrow(LEFT, RIGHT * 2)\n'
+            'n.rotate(0.6, about_point=[0.5, 0, 0])\n'
+            'c = n.get_center_of_mass()\n'
+            'n.rotate(-0.6, about_point=c)\n'
+            'result = [b(m), b(m.tip), m.get_start(), c, n.get_start()]\n'),
+            [[-0.8873, 0.4225, 7.8176, 5.322], [7.4676, 4.972, 7.8176, 5.322],
+             [-0.8873, 0.4225, 0.0], [1.0932, 0.4058, 0.0], [-0.8755, 0.4058, 0.0]])
+
     def test_lagged_start_map_animates_shapes_once_with_their_children(self):
         self.assertEqual(scene_values(
             'class S(Scene):\n'
