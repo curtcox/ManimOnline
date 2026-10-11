@@ -18446,7 +18446,8 @@ def _svg_compose(m, n):
 
 
 def _svg_arc_cubics(start, rx, ry, phi, large, sweep, end):
-    """Cubic approximations (at most 90 degrees each) of an SVG elliptical arc."""
+    """Community's arc approximation: svgelements' quadratics (at most 36 degrees of the
+    ellipse parameter each, control point pushed out by (4 - cos(step)) / 3), raised to cubics."""
     (x1, y1), (x2, y2) = start, end
     if (x1, y1) == (x2, y2):
         return []
@@ -18473,18 +18474,21 @@ def _svg_arc_cubics(start, rx, ry, phi, large, sweep, end):
         delta += TAU
     elif not sweep and delta > 0:
         delta -= TAU
-    count = max(1, math.ceil(abs(delta) / (PI / 2) - 1e-9))
+    count = max(1, math.ceil(abs(delta) / (TAU * 0.1)))
     step = delta / count
-    k = 4 / 3 * math.tan(step / 4)
-    point = lambda t: (cx + rx * math.cos(t) * cos - ry * math.sin(t) * sin, cy + rx * math.cos(t) * sin + ry * math.sin(t) * cos)
-    deriv = lambda t: (-rx * math.sin(t) * cos - ry * math.cos(t) * sin, -rx * math.sin(t) * sin + ry * math.cos(t) * cos)
-    curves = []
+    push = (4 - math.cos(step)) / 3
+    offset = lambda t, k=1: (k * (rx * math.cos(t) * cos - ry * math.sin(t) * sin),
+                             k * (rx * math.cos(t) * sin + ry * math.sin(t) * cos))
+    curves, p0 = [], (x1, y1)
     for i in range(count):
         t0, t1 = theta + i * step, theta + (i + 1) * step
-        p0, p3 = point(t0), point(t1)
-        d0, d1 = deriv(t0), deriv(t1)
-        curves.append((p0, (p0[0] + k * d0[0], p0[1] + k * d0[1]), (p3[0] - k * d1[0], p3[1] - k * d1[1]), p3))
-    curves[-1] = curves[-1][:3] + ((x2, y2),)
+        dx, dy = offset(t1)
+        p3 = (x2, y2) if i == count - 1 else (cx + dx, cy + dy)
+        dx, dy = offset((t0 + t1) / 2, push)
+        control = (cx + dx, cy + dy)
+        curves.append((p0, ((p0[0] + 2 * control[0]) / 3, (p0[1] + 2 * control[1]) / 3),
+                       ((2 * control[0] + p3[0]) / 3, (2 * control[1] + p3[1]) / 3), p3))
+        p0 = p3
     return curves
 
 
@@ -18638,6 +18642,10 @@ class SVGMobject(VGroup):
 
     def _parse(self, markup):
         from xml.etree import ElementTree
+        import re
+        # A DOCTYPE naming only an external DTD (never fetched) declares nothing; internal
+        # subsets and entity declarations stay rejected.
+        markup = re.sub(r'<!DOCTYPE[^\[<>]*>', '', markup, count=1)
         if '<!ENTITY' in markup or '<!DOCTYPE' in markup:
             raise ValueError('SVG markup with DTDs or entities is not supported')
         try:

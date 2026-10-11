@@ -839,3 +839,6 @@ straight path), since lerping radius and scale separately is not linear in the p
 Recursive inversion (`_member_states`) keeps a NumberLine's shaft child first, as its own points.
 Animation-driven updaters (`turn_animation_into_updater`) apply `_sampled_copy(partial=True)`:
 partly drawn outlines become pointwise partial geometry, so live bounds follow Community.
+SVG arcs follow svgelements (`_svg_arc_cubics`): parameter slices of at most 36 degrees as
+quadratics with the (4 - cos(step)) / 3 control push, raised to cubics. A DOCTYPE without an
+internal subset is stripped before parsing; ENTITY/internal subsets stay rejected.

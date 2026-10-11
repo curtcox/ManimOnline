@@ -838,11 +838,23 @@ self.play(d[2].animate.shift(UP*2))""")
         self.assertEqual([round(v,2) for v in raw.get_center()[:2]],[45.66,53.13])
         arc=lite.VMobjectFromSVGPath('M 0 0 A 1 1 0 0 1 2 0 l 0 1 h -2 z')
         self.assertAlmostEqual(arc.get_top()[1],1)
-        self.assertAlmostEqual(arc.get_bottom()[1],-1)
+        self.assertAlmostEqual(arc.get_bottom()[1],-0.9510565162951536)
         for bad in ('<svg><rect width="x"/></svg>','<html/>','<svg><path d="L 1 1"/></svg>'):
             with self.assertRaises(ValueError): lite.SVGMobject(bad)
         with self.assertRaises(NotImplementedError): lite.SVGMobject('logo.svg')
         with self.assertRaises(ValueError): lite.SVGMobject('<!DOCTYPE svg [<!ENTITY a "b">]><svg/>')
+        with self.assertRaises(ValueError): lite.SVGMobject('<!DOCTYPE svg SYSTEM "a.dtd"><!DOCTYPE svg [<!ENTITY a "b">]><svg/>')
+        plain=lite.SVGMobject('<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"\n "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">'
+                              '<svg><rect width="2" height="1"/></svg>')
+        self.assertEqual(len(plain), 1)
+
+    def test_svg_arcs_follow_svgelements_quadratics(self):
+        shape=lite.SVGMobject('<svg width="100" height="100"><path d="M 0 50 L 10 50 A 30 20, 0, 0 0, 90 50 L 100 50"/></svg>')
+        points=[[round(v,3) for v in p[:2]] for p in point_list(shape[0])]
+        self.assertEqual(len(points), 28)
+        self.assertEqual(points[4:8], [[-2.924,0.927],[-2.946,0.5],[-2.76,0.118],[-2.365,-0.219]])
+        self.assertEqual(points[13:15], [[-0.301,-1.073],[0.301,-1.073]])
+        self.assertAlmostEqual(shape.get_height(), 2)
 
     def test_image_mobject_sizes_encoding_and_rendering(self):
         image=lite.ImageMobject([[0,100,30,200],[255,0,5,33]])
