@@ -11864,6 +11864,17 @@ def _own_shaft(snapshot, other):
             result[key] = _snapshot_copy(value)
     result['opacity'] = snapshot.get('opacity', 1) * line.get('opacity', 1)
     result['children'] = [child for k, child in enumerate(result['children']) if k != index]
+    if result.get('type') == 'line' and not snapshot.get('_shaft_fixed'):
+        # Community's own points end at the tip bases (Lite's shaft reaches the tip points).
+        for child in result['children']:
+            if child.get('_number_line_role') != 'tip':
+                continue
+            curves = _path_curves(child)
+            if not curves:
+                continue
+            middle = len(curves) / 2
+            base = VMobject._bezier_point(curves[min(int(middle), len(curves) - 1)], middle - int(middle))
+            result['start' if child.get('_tip_at_start') else 'end'] = list(_snapshot_pose(child)[0](base))
     return result
 
 
