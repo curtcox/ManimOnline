@@ -1735,5 +1735,27 @@ class AnimationApiTests(unittest.TestCase):
         self.assertEqual(values, [5.0, 2.0, [-0.2918, -0.1135, 0.0435, 0.2848], 'MathTex', 5.0, True])
 
 
+    def test_partial_parent_exposure_keeps_member_frames(self):
+        source = (
+            'from manim import *\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        x = ValueTracker(-3)\n'
+            '        child = Dot(LEFT*3, radius=.2)\n'
+            '        child.add_updater(lambda dot: dot.move_to((x.get_value(), .5, 0)))\n'
+            '        host = Rectangle(width=3, height=1.5).add(child, Dot(radius=.2)).rotate(PI/6).scale(.8)\n'
+            '        self.centers = []\n'
+            '        self.add_updater(lambda dt: self.centers.append(list(child.get_center())))\n'
+            '        self.play(Create(host), run_time=2)\n'
+            '        TRACE.extend(self.centers[8:11])\n')
+        trace = []
+        lite.render_scene('from manim import *\nclass Empty(Scene):\n    pass\n')
+        namespace = {'TRACE': trace}
+        exec(compile(source, '<test>', 'exec'), namespace)
+        namespace['S']().render()
+        # Community 0.22: the undrawn dot sits at its first point while the rectangle completes.
+        self.assertEqual(plain(trace), [[-2.8614, 0.58, 0.0]] * 3)
+
+
 if __name__ == '__main__':
     unittest.main()

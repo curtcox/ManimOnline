@@ -14939,7 +14939,7 @@ def _expose_snapshot(saved, mobject, snapshot):
     """Temporarily give a live mobject (and its members) a sampled snapshot's geometry."""
     if mobject in saved or snapshot.get('_shared_copy'):
         return
-    saved[mobject] = mobject.__dict__
+    saved[mobject] = (mobject.__dict__, _PARENTS.get(mobject))
     mobject.__dict__ = dict(mobject.__dict__)
     for key, value in snapshot.items():
         if key not in ('type', 'children', 'geometry_center'):
@@ -15216,8 +15216,13 @@ class Scene:
                     blocked.update(mobject.get_family())
             yield blocked
         finally:
-            for mobject, state in saved.items():
+            for mobject, (state, parent) in saved.items():
                 mobject.__dict__ = state
+                # Partial exposure (pointwise_become_partial on a copy) may relink members.
+                if parent is not None:
+                    _PARENTS[mobject] = parent
+                else:
+                    _PARENTS.pop(mobject, None)
 
     def _update_mobjects(self, dt, overrides=None, scene_updaters=True):
         """Expose sampled geometry to dependent callbacks without committing animations."""
