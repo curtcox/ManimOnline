@@ -517,7 +517,17 @@ class Demo(Scene):
                     lambda: lite.ArrowVectorField(func,x_range=[-100,100,.1]),
                     lambda: lite.ArrowVectorField(func,min_color_scheme_value=1,max_color_scheme_value=1)):
             with self.assertRaises((TypeError,ValueError)): bad()
-        with self.assertRaises(NotImplementedError): lite.ArrowVectorField(func,three_dimensions=True)
+        # Manim 0.22: 3D grids, arrows with tilted tips, and z_range defaulting to y_range.
+        spatial=lite.ArrowVectorField(lambda p: (-p[1],p[0],.5*p[2]),x_range=[-1,1,1],y_range=[-1,1,1],z_range=[-1,1,1])
+        self.assertEqual(len(spatial),27)
+        stream=lite.StreamLines(lambda p: (-p[1],p[0],.3),x_range=[-1,1,1],y_range=[-1,1,1],z_range=[0,1,1],virtual_time=1)
+        for point,expected,places in ((spatial[0].get_end(),(-.7547,-1.2453,-1.1226),4),
+                                      (spatial[0].tip.base,(-.816,-1.184,-1.092),3),
+                                      (point_list(stream.stream_lines[0])[-1],(.5159,-1.3995,.0855),4)):
+            for value,target in zip(point,expected):
+                self.assertAlmostEqual(value,target,places=places)
+        self.assertEqual(lite.ArrowVectorField(lambda p: p,three_dimensions=True,x_range=[0,1,1],y_range=[0,1,1]).z_range,[0,2,1])
+        self.assertEqual(len(stream.stream_lines),18)
         with self.assertRaises(ValueError): lite.ArrowVectorField(lambda p: (math.nan,0,0),x_range=[0,1],y_range=[0,1])
 
     def test_stream_lines_trace_noisy_starts_and_flow(self):

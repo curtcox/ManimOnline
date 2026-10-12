@@ -394,6 +394,16 @@ def _snapshot_copy(value):
     return copy.deepcopy(value)
 
 
+def _node_copy(node):
+    """Copy a snapshot's node dicts and child lists, sharing all other values: for samplers
+    that only assign node keys. Frame data is never mutated in place."""
+    result = dict(node)
+    children = node.get('children')
+    if children:
+        result['children'] = [_node_copy(child) for child in children]
+    return result
+
+
 def _partial_cubics(points, a, b):
     """Cubic curves covering parameters a..b (0 <= a <= b <= 1) of a flat 4-point-per-curve list."""
     count = len(points) // 4
@@ -1871,7 +1881,8 @@ class Mobject:
             # Scaling z (or stretching a 3D family at all) bakes the points about the center.
             if about_point is None and about_edge is None:
                 about_point = self.get_center()
-            return self._map_points_3d(function, about_point, about_edge)
+            matrix = [[factor if i == j == dim else int(i == j) for j in range(3)] for i in range(3)]
+            return self._map_points_3d(function, about_point, about_edge, matrix=matrix)
         return self._apply_xy_map(function,about_point,about_edge,linear=True)
 
     def apply_matrix(self, matrix, *, about_point=None, about_edge=None):
@@ -1887,7 +1898,7 @@ class Mobject:
             about_point = ORIGIN
         if full[2] != [0, 0, 1] or self._is_3d():
             pivot = self._pivot_3d(about_point, about_edge)
-            return self._map_points_3d(lambda point: _apply_rows(full, point), pivot)
+            return self._map_points_3d(lambda point: _apply_rows(full, point), pivot, matrix=full)
         return self._apply_xy_map(lambda point:[sum(a*b for a,b in zip(row,point)) for row in full],
                                   about_point,about_edge,linear=True)
 
@@ -2089,13 +2100,16 @@ class Mobject:
                 return True
         return False
 
-    def _map_points_3d(self, function, about_point=None, about_edge=None, eps=None, in_place=False):
+    def _map_points_3d(self, function, about_point=None, about_edge=None, eps=None, in_place=False,
+                       matrix=None):
         """Apply an arbitrary 3D point map, baking geometry into world points.
 
         Path leaves become 'bezierpath' curves with an identity pose; other
         leaves move their anchor. All results are validated before the family
         is mutated (the work happens on a copy committed through become), unless
-        in_place is set by a constructor that discards the object on failure."""
+        in_place is set by a constructor that discards the object on failure.
+        A 3x3 matrix (the linear part of function) maps path points directly,
+        as Community's apply_points_function does, instead of the handle rule."""
         if isinstance(self, CameraFrame):
             raise NotImplementedError('Camera point mapping is not implemented')
         pivot = self._pivot_3d(about_point, about_edge)
@@ -2111,6 +2125,19 @@ class Mobject:
             if not all(math.isfinite(value) for value in result):
                 raise ValueError('Mapped geometry must be finite')
             return list(result)
+        if matrix is not None:
+            (a, b, c), (d, e, f), (g, h, i) = [[float(v) for v in row] for row in matrix]
+            px, py, pz = (float(v) for v in pivot)
+            def batch(points):
+                result = []
+                for p in points:
+                    x, y, z = p[0] - px, p[1] - py, p[2] - pz
+                    result.append([a * x + b * y + c * z + px, d * x + e * y + f * z + py,
+                                   g * x + h * y + i * z + pz])
+                if not all(math.isfinite(v) for point in result for v in point):
+                    raise ValueError('Mapped geometry must be finite')
+                return result
+            mapped.batch = batch
         in_place = in_place or _MAP_IN_PLACE
         target = self if in_place else self.copy()
         if eps is None:
@@ -2139,20 +2166,26 @@ class Mobject:
             if (self.angle or self.geometry_scale != 1) and '_sampled_geometry_center' not in self.__dict__:
                 # Every control point maps about the same pivot; it is unpinned below.
                 self._sampled_geometry_center = list(self._geometry_center())
-            snapshot = _snapshot_copy(self.__dict__)
+            snapshot = dict(self.__dict__)
             snapshot['type'] = kind
             paths = _path_subpaths(snapshot, include_pending=False)
-            # Community's apply_function pulls handles to a small fraction of
-            # their anchor distance, maps, then scales back up.
-            def mapped_curve(curve):
-                a0, h1, h2, a1 = (Vector(p) for p in curve)
-                m0 = mapped(self._point_to_world(a0))
-                m1 = mapped(self._point_to_world(a1))
-                near1 = mapped(self._point_to_world(a0 + (h1 - a0) * eps))
-                near2 = mapped(self._point_to_world(a1 + (h2 - a1) * eps))
-                return [m0, [m0[i] + (near1[i] - m0[i]) / eps for i in range(3)],
-                        [m1[i] + (near2[i] - m1[i]) / eps for i in range(3)], m1]
-            self.curves = [mapped_curve(curve) for path in paths for curve in path]
+            world = self._points_to_world([p for path in paths for curve in path for p in curve])
+            batch = getattr(mapped, 'batch', None)
+            if batch is None:
+                # Community's apply_function pulls handles to a small fraction of
+                # their anchor distance, maps, then scales back up.
+                curves = []
+                for k in range(0, len(world), 4):
+                    a0, h1, h2, a1 = world[k:k + 4]
+                    m0, m1 = mapped(a0), mapped(a1)
+                    near1 = mapped([a0[i] + (h1[i] - a0[i]) * eps for i in range(3)])
+                    near2 = mapped([a1[i] + (h2[i] - a1[i]) * eps for i in range(3)])
+                    curves.append([m0, [m0[i] + (near1[i] - m0[i]) / eps for i in range(3)],
+                                   [m1[i] + (near2[i] - m1[i]) / eps for i in range(3)], m1])
+                self.curves = curves
+            else:
+                flat = batch(world)
+                self.curves = [flat[k:k + 4] for k in range(0, len(flat), 4)]
             pending = (self.vertices if kind == 'bezierpath' else
                        self.vertices if kind == 'polyline' and len(self.vertices) == 1 else [])
             self.vertices = [mapped(self._point_to_world(Vector(p))) for p in pending]
@@ -3033,7 +3066,8 @@ class Mobject:
             pivot = self._pivot_3d(about_point, about_edge)
             if fz != 1 or self._is_3d():
                 pivot = self.get_center() if pivot is None else pivot
-                return self._map_points_3d(lambda p: [p[0] * fx, p[1] * fy, p[2] * fz], pivot)
+                return self._map_points_3d(lambda p: [p[0] * fx, p[1] * fy, p[2] * fz], pivot,
+                                           matrix=[[fx, 0, 0], [0, fy, 0], [0, 0, fz]])
             return self.apply_matrix([[fx, 0], [0, fy]],
                                      about_point=self.get_center() if pivot is None else pivot)
         if not math.isfinite(scale_factor):
@@ -3042,7 +3076,8 @@ class Mobject:
         if self._is_3d():
             # Baked 3D points cannot use the XY pose path; scale about the 3D pivot.
             pivot = self.get_center() if about_point is None else about_point
-            return self._map_points_3d(lambda p: Vector(p) * scale_factor, pivot)
+            return self._map_points_3d(lambda p: Vector(p) * scale_factor, pivot,
+                                       matrix=[[scale_factor, 0, 0], [0, scale_factor, 0], [0, 0, scale_factor]])
         if self._world_container():
             pivot = self.get_center() if about_point is None else Vector(about_point)
             for child in self.children:
@@ -3083,7 +3118,7 @@ class Mobject:
             pivot = self._pivot_3d(about_point, about_edge)
             pivot = self.get_center() if pivot is None else pivot
             matrix = rotation_matrix(angle, axis)
-            return self._map_points_3d(lambda p: _apply_rows(matrix, p), pivot)
+            return self._map_points_3d(lambda p: _apply_rows(matrix, p), pivot, matrix=matrix)
         angle = angle if axis[2] > 0 else -angle
         if self._is_3d():
             # Pose rotation ignores z of children and cannot mix with baked 3D
@@ -3093,7 +3128,7 @@ class Mobject:
             pivot = self._pivot_3d(about_point, about_edge)
             pivot = self.get_center() if pivot is None else pivot
             matrix = rotation_about_z(angle)
-            return self._map_points_3d(lambda p: _apply_rows(matrix, p), pivot)
+            return self._map_points_3d(lambda p: _apply_rows(matrix, p), pivot, matrix=matrix)
         about_point = self._pivot(about_point, about_edge)
         if type(self) in (Group, VGroup, Mobject) and self._world_container():
             # Like shift and scale, a pure container turns its members about one pivot,
@@ -4289,7 +4324,7 @@ class Mobject:
         center = self._geometry_center()
         result = _snapshot_copy({key: value for key, value in self.__dict__.items()
                                 if (key in _POINT_KEYS and type(value) is list or not _holds_mobject(value) and not callable(value)) and
-                                key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache', '_flow_points', '_name', '_mobject_points', '_scene_keys') and
+                                key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache', '_flow_points', '_name', '_mobject_points', '_scene_keys', '_init_positioning_axis') and
                                 key not in self._frame_excluded})
         result['type'] = result.pop('_type')
         result['geometry_center'] = list(center)
@@ -5269,9 +5304,58 @@ class TipableVMobject(VMobject):
         anchor = Vector(curve[0] if at_start else curve[-1])
         handle = Vector(curve[1] if at_start else curve[-2])
         vector = anchor-handle
-        angle = math.atan2(vector[1],vector[0]) if any(vector) else self._world_minus_x()
-        tip.rotate(angle-tip.tip_angle)
+        if vector[2]:
+            self._turn_tip_3d(tip, vector)
+        else:
+            angle = math.atan2(vector[1],vector[0]) if any(vector) else self._world_minus_x()
+            tip.rotate(angle-tip.tip_angle)
         tip.shift(anchor-tip.tip_point)
+
+    def _turn_tip_3d(self, tip, vector):
+        """Community's position_tip for a direction off the XY plane: turn by the azimuth of
+        handle - anchor, then tilt about the horizontal axis by the elevation. Community tilts
+        only the first tip it positions (_init_positioning_axis); internal re-aims level the
+        tip first, standing in for Community's whole-family rotations."""
+        public = self.__dict__.get('_public_tip')
+        if not public:
+            self._level_tip(tip)
+        back = -Vector(vector)
+        azimuth = math.atan2(back[1], back[0])
+        tip.rotate(azimuth - PI - tip.tip_angle)
+        if not (public and self.__dict__.get('_init_positioning_axis')):
+            polar = math.acos(max(-1.0, min(1.0, back[2] / _norm(back))))
+            tip.rotate(PI / 2 - polar, axis=Vector((math.sin(azimuth), -math.cos(azimuth), 0)))
+
+    @staticmethod
+    def _level_tip(tip):
+        """Turn a tip tilted off the XY plane back into a horizontal direction, about the
+        axis in its plane perpendicular to its direction."""
+        direction = tip.vector
+        if not direction[2]:
+            return
+        points = [Vector(curve[0]) for curve in _path_curves(tip.to_dict())]
+        normal = [0.0, 0.0, 0.0]
+        for p, q in zip(points, points[1:] + points[:1]):
+            normal[0] += (p[1] - q[1]) * (p[2] + q[2])
+            normal[1] += (p[2] - q[2]) * (p[0] + q[0])
+            normal[2] += (p[0] - q[0]) * (p[1] + q[1])
+        axis = Vector((
+            normal[1] * direction[2] - normal[2] * direction[1],
+            normal[2] * direction[0] - normal[0] * direction[2],
+            normal[0] * direction[1] - normal[1] * direction[0]))
+        if _norm(axis) <= 1e-12 * max(1.0, _norm(Vector(normal)) * _norm(direction)):
+            azimuth = math.atan2(direction[1], direction[0])
+            axis = Vector((-math.sin(azimuth), math.cos(azimuth), 0))
+        axis = axis * (1 / _norm(axis))
+        elevation = math.atan2(direction[2], math.hypot(direction[0], direction[1]))
+        def turned(angle):
+            # Rodrigues: the z component of the direction after turning about the axis.
+            cross_z = axis[0] * direction[1] - axis[1] * direction[0]
+            dot = sum(a * d for a, d in zip(axis, direction))
+            return (direction[2] * math.cos(angle) + cross_z * math.sin(angle)
+                    + axis[2] * dot * (1 - math.cos(angle)))
+        angle = min((elevation, -elevation), key=lambda a: abs(turned(a)))
+        tip.rotate(angle, axis=axis)
 
     def _world_minus_x(self):
         """The local angle of world -x: Community points direction-less tips that way."""
@@ -5301,7 +5385,12 @@ class TipableVMobject(VMobject):
         self._validate_children([tip])
         self._geometry_center()
         # Tip coordinates, like other children, are local to this parent.
-        self._orient_tip(tip,at_start)
+        self.__dict__['_public_tip'] = True
+        try:
+            self._orient_tip(tip,at_start)
+        finally:
+            self.__dict__.pop('_public_tip', None)
+        self.__dict__['_init_positioning_axis'] = True
         return tip
 
     def create_tip(self, tip_shape=None, tip_length=None, tip_width=None, at_start=False):
@@ -6186,8 +6275,11 @@ class Line(TipableVMobject):
         if self._type not in ('line', 'arrow'):
             return TipableVMobject._orient_tip(self, tip, at_start)  # Edited into a free path.
         vector = Vector(self.start)-Vector(self.end) if at_start else Vector(self.end)-Vector(self.start)
-        angle = math.atan2(vector[1],vector[0]) if any(vector) else self._world_minus_x()
-        tip.rotate(angle-tip.tip_angle)
+        if vector[2]:
+            self._turn_tip_3d(tip, vector)
+        else:
+            angle = math.atan2(vector[1],vector[0]) if any(vector) else self._world_minus_x()
+            tip.rotate(angle-tip.tip_angle)
         tip.shift(Vector(self.start if at_start else self.end)-tip.tip_point)
 
     @staticmethod
@@ -6313,11 +6405,23 @@ class Line(TipableVMobject):
             return [(dx * math.cos(self.angle) + dy * math.sin(self.angle)) / scale,
                     (-dx * math.sin(self.angle) + dy * math.cos(self.angle)) / scale, dz / scale]
         local_start, local_end = self._endpoints(local(start), local(end))
+        old = Vector(self.end)-Vector(self.start)
         self.start, self.end = list(local_start), list(local_end)
         self.geometry_scale = scale
+        new = Vector(self.end)-Vector(self.start)
         for at_start in (False,True):
             tip = self._tip(at_start)
-            if tip is not None:
+            if tip is None:
+                continue
+            if (old[2] or new[2]) and any(old) and any(new):
+                # Community rotates the family by the minimal turn between the directions.
+                axis = Vector((old[1]*new[2]-old[2]*new[1], old[2]*new[0]-old[0]*new[2],
+                               old[0]*new[1]-old[1]*new[0]))
+                cosine = sum(a*b for a, b in zip(old, new))/(_norm(old)*_norm(new))
+                tip.rotate(math.acos(max(-1.0, min(1.0, cosine))),
+                           axis=axis*(1/_norm(axis)) if _norm(axis) else OUT)
+                tip.shift(Vector(self.start if at_start else self.end)-tip.tip_point)
+            else:
                 self._orient_tip(tip,at_start)
         self.__dict__.pop('_family_pivot_cache',None)
         pivot = self._geometry_center()
@@ -8987,7 +9091,7 @@ class BulletedList(VGroup):
 class VectorArrow(Arrow):
     """Community's Vector: an arrow from the origin, exported to scenes as Vector."""
     def __init__(self, direction=RIGHT, buff=0, **kwargs):
-        direction = Mobject._xy_vector(direction, 'Vector direction')
+        direction = Mobject._finite_vector(direction, 'Vector direction')
         super().__init__(ORIGIN, direction, buff=buff, **kwargs)
 
     def coordinate_label(self, integer_labels=True, n_dim=2, color=None, **kwargs):
@@ -13301,7 +13405,7 @@ class Create(Animation):
         return self.sample_members(alpha, linear)
 
     def sample_members(self, alpha, rate_func):
-        return [self._member_states(_snapshot_copy(self.start), alpha, rate_func,
+        return [self._member_states(_node_copy(self.start), alpha, rate_func,
                                     lambda node, a, path: self._reveal(node, a))]
 
     def finish(self, scene=None):
@@ -15545,10 +15649,11 @@ class Scene:
         """Community's restructuring: drop members and split groups that contain them."""
         result = []
         def visit(items, removing):
+            ids = {id(m) for m in removing}
             for mobject in items:
-                if mobject in removing:
+                if id(mobject) in ids:
                     continue
-                hit = [m for m in removing if m in mobject.get_family()]
+                hit = [m for m in mobject.get_family() if id(m) in ids]
                 if not hit:
                     result.append(mobject)
                     continue
@@ -15770,23 +15875,34 @@ class Scene:
         snapshot: Community interpolates animations in order, so the last one wins."""
         if len(result) != 1:
             return result
-        rank = {id(key): index for index, key in enumerate(overrides)}
-        own = rank[id(mobject)]
         def routes(node, path=()):
             for index, child in enumerate(node.children):
                 route = path + ((index, len(node.children)),)
                 yield route, child
                 yield from routes(child, route)
+        # One index per frame: member id -> (rank, override key, route from the key).
+        cached = self.__dict__.get('_later_index')
+        if cached is None or cached[0] is not overrides or cached[1] != len(overrides):
+            index, rank = {}, {}
+            for position, key in enumerate(overrides):
+                rank[id(key)] = position
+                if len(overrides[key]) != 1:
+                    continue
+                index.setdefault(id(key), []).append((position, key, ()))
+                for route, child in routes(key):
+                    index.setdefault(id(child), []).append((position, key, route))
+            shared = any(len(entries) > 1 for entries in index.values())
+            cached = self.__dict__['_later_index'] = (overrides, len(overrides), index, rank, shared)
+        _, _, index, rank, shared = cached
+        if not shared:
+            return result
+        own = rank[id(mobject)]
         members = {id(child): route for route, child in routes(mobject)}
         latest = {}
-        for key in overrides:
-            if rank[id(key)] <= own or len(overrides[key]) != 1:
-                continue
-            if id(key) in members:
-                latest[id(key)] = (rank[id(key)], key, ())
-            for route, child in routes(key):
-                if id(child) in members:
-                    latest[id(child)] = (rank[id(key)], key, route)
+        for member_id in members:
+            for position, key, route in index.get(member_id, ()):
+                if position > own and (member_id not in latest or position > latest[member_id][0]):
+                    latest[member_id] = (position, key, route)
         if not latest:
             return result
         def follow(state, route):
@@ -15982,6 +16098,7 @@ class Scene:
                     previous = overrides
         finally:
             self._static_frames = None
+            self.__dict__.pop('_later_index', None)
             for animation in (self.__dict__.pop('_deferred_updates', None) or {}).values():
                 animation._deferring = False
         self._mark_restores(animations)
@@ -17352,7 +17469,12 @@ class ThreeDScene(Scene):
                 return [float(v) for v in func()]
             return list(_bbox_center(points)) if points else [0.0, 0.0, 0.0]
 
-        def emit_path(node, world_map, opacity, group):
+        # Snapshots are never mutated, so world curves of a curve list (shared by
+        # sampled copies across frames) under one pose chain are mapped once per render
+        # and the identical lists pool once.
+        cache = self.__dict__.setdefault('_emit_cache', {})
+
+        def emit_path(node, world_map, map_key, opacity, group):
             kind = node['type']
             out = dict(node)
             out['children'] = []
@@ -17361,15 +17483,30 @@ class ThreeDScene(Scene):
                 # Identity pose: the stored curves already are world points.
                 world = None
             else:
-                paths = _path_subpaths(node, include_pending=False)
-                pending = (node.get('vertices') or []) if (kind == 'bezierpath' or
-                           (kind == 'polyline' and len(node.get('vertices') or []) == 1)) else []
-                mapping = world_map or (lambda point: [point[0], point[1], point[2] if len(point) > 2 else 0])
-                out['curves'] = [[mapping(point) for point in curve] for path in paths for curve in path]
-                out['vertices'] = [mapping(point) for point in pending]
-                out.pop('subpath_lengths', None)
-                if len(paths) > 1:
-                    out['subpath_lengths'] = [len(path) for path in paths]
+                curves, vertices = node.get('curves'), node.get('vertices')
+                key = None
+                if kind == 'bezierpath' and type(curves) is list:
+                    key = (id(curves), id(vertices), tuple(node.get('subpath_lengths') or ()), map_key)
+                    hit = cache.get(key)
+                    if hit is not None and hit[0] is curves and hit[1] is vertices:
+                        out['curves'], out['vertices'] = hit[2], hit[3]
+                        out.pop('subpath_lengths', None)
+                        if hit[4] is not None:
+                            out['subpath_lengths'] = hit[4]
+                        key = False
+                if key is not False:
+                    paths = _path_subpaths(node, include_pending=False)
+                    pending = (vertices or []) if (kind == 'bezierpath' or
+                               (kind == 'polyline' and len(vertices or []) == 1)) else []
+                    mapping = world_map or (lambda point: [point[0], point[1], point[2] if len(point) > 2 else 0])
+                    out['curves'] = [[mapping(point) for point in curve] for path in paths for curve in path]
+                    out['vertices'] = [mapping(point) for point in pending]
+                    out.pop('subpath_lengths', None)
+                    if len(paths) > 1:
+                        out['subpath_lengths'] = [len(path) for path in paths]
+                    if key is not None:
+                        cache[key] = (curves, vertices, out['curves'], out['vertices'],
+                                      out.get('subpath_lengths'))
                 if kind in ('line', 'arrow'):
                     for key in ('start', 'end', 'shaft_start', 'shaft_end'):
                         if node.get(key) is not None:
@@ -17414,21 +17551,23 @@ class ThreeDScene(Scene):
             return (not node.get('angle') and node.get('geometry_scale', 1) == 1 and
                     not any(node.get('position') or ()))
 
-        def walk(node, parent_map, opacity, group):
+        def walk(node, parent_map, opacity, group, parent_key=()):
             if identity(node):
-                world_map = parent_map
+                world_map, map_key = parent_map, parent_key
             else:
                 pose, _ = _snapshot_pose(node)
                 world_map = pose if parent_map is None else (lambda point, pose=pose: parent_map(pose(point)))
+                map_key = parent_key + ((tuple(node['position']), tuple(node.get('geometry_center', ORIGIN)),
+                                         node['geometry_scale'], node['angle']),)
             node_opacity = opacity * node.get('opacity', 1)
             kind = node['type']
             if kind in _PATH_TYPES:
-                emit_path(node, world_map, node_opacity, group)
+                emit_path(node, world_map, map_key, node_opacity, group)
                 for child in node.get('children', []):
-                    walk(child, world_map, node_opacity, group)
+                    walk(child, world_map, node_opacity, group, map_key)
             elif kind in ('vgroup', 'mobject', 'valuetracker'):
                 for child in node.get('children', []):
-                    walk(child, world_map, node_opacity, group)
+                    walk(child, world_map, node_opacity, group, map_key)
             elif kind == 'pointcloud':
                 # World points (the renderer projects each one); members are clouds too.
                 out = dict(node, children=[], opacity=node_opacity)
@@ -17441,7 +17580,7 @@ class ThreeDScene(Scene):
                     leaves.append(out)
                     group.append(out)
                 for child in node.get('children', []):
-                    walk(child, world_map, node_opacity, group)
+                    walk(child, world_map, node_opacity, group, map_key)
             else:
                 emit_leaf(node, world_map, node_opacity, group)
 
@@ -17933,7 +18072,8 @@ class Cone(Surface):
         self._set_start_and_end_attributes(self.direction)
         if show_base:
             self.add(self.base_circle)
-        self._rotate_to_direction()
+        with _maps_in_place():
+            self._rotate_to_direction()
 
     def func(self, u, v):
         r, phi = u, v
@@ -22696,12 +22836,13 @@ def _field_vector(value, name='Vector field output'):
 
 def _field_ranges(x_range, y_range, z_range, three_dimensions):
     """Community's [start, stop, step] lists, with the stop extended by one step (np.arange is exclusive)."""
-    if three_dimensions or z_range:
-        raise NotImplementedError('3D vector fields are not supported in the browser preview')
     ranges = []
-    for values, default, name in ((x_range, config.frame_width / 2, 'x_range'),
-                                  (y_range, config.frame_height / 2, 'y_range')):
-        values = [math.floor(-default), math.ceil(default)] if not values else list(values)
+    specs = [(x_range, config.frame_width / 2, 'x_range'), (y_range, config.frame_height / 2, 'y_range')]
+    if three_dimensions or z_range:
+        # Community copies the given (or default) y range when z_range is omitted.
+        specs.append((z_range if z_range else y_range, config.frame_height / 2, 'z_range'))
+    for values, default, name in specs:
+        values = [math.floor(-default), math.ceil(default)] if values is None or not len(values) else list(values)
         if len(values) == 2:
             values.append(.5)
         if len(values) != 3 or any(isinstance(v, bool) or not isinstance(v, _REAL) or not math.isfinite(v) for v in values):
@@ -22710,9 +22851,10 @@ def _field_ranges(x_range, y_range, z_range, three_dimensions):
             raise ValueError('Vector field ' + name + ' step must be positive')
         values[1] += values[2]
         ranges.append(values)
-    ranges.append([0, .5, .5])
+    if len(ranges) == 2:
+        ranges.append([0, .5, .5])
     counts = [max(0, math.ceil((stop - start) / step)) for start, stop, step in ranges]
-    if counts[0] * counts[1] > _FIELD_POINT_LIMIT:
+    if counts[0] * counts[1] * counts[2] > _FIELD_POINT_LIMIT:
         raise ValueError('Vector fields are limited to %d sample points' % _FIELD_POINT_LIMIT)
     axes = [[start + index * step for index in range(count)] for (start, stop, step), count in zip(ranges, counts)]
     return ranges, axes
@@ -22854,8 +22996,9 @@ class ArrowVectorField(VectorField):
         norm = math.sqrt(sum(v * v for v in output))
         if norm != 0:
             output = output * (_plain_number(self.length_func(norm)) / norm)
-        vector = VectorArrow(Vector((output[0], output[1], 0)), **self.vector_config)
-        vector.shift(Vector((point[0], point[1], 0)))
+        vector = VectorArrow(Vector((output[0], output[1], output[2] if len(output) > 2 else 0)),
+                             **self.vector_config)
+        vector.shift(Vector((point[0], point[1], point[2] if len(point) > 2 else 0)))
         vector.set_color(self.color if self.single_color else self.pos_to_color(point))
         return vector
 
@@ -22884,7 +23027,8 @@ class StreamLines(VectorField):
             if isinstance(value, bool) or not isinstance(value, numbers.Integral) or value < 1:
                 raise ValueError(name + ' must be a positive integer')
         max_steps = math.ceil(virtual_time / dt) + 1
-        lines = n_repeats * len(axes[0]) * len(axes[1])
+        spatial = bool(three_dimensions or z_range)
+        lines = n_repeats * len(axes[0]) * len(axes[1]) * len(axes[2])
         if lines > _FIELD_POINT_LIMIT or lines * max_steps > 200000:
             raise ValueError('StreamLines is limited to %d lines and 200000 traced steps' % _FIELD_POINT_LIMIT)
         self.noise_factor = self.y_range[2] / 2 if noise_factor is None else noise_factor
@@ -22916,7 +23060,8 @@ class StreamLines(VectorField):
             line = StreamLine()
             line.duration = max_steps * dt  # Community records the full step budget.
             step = max(1, int(len(points) / max_anchors_per_line))
-            plane = [Vector((p[0], p[1], 0)) for p in points[::step]]
+            # A flat field's z noise is invisible in Community's 2D projection.
+            plane = points[::step] if spatial else [Vector((p[0], p[1], 0)) for p in points[::step]]
             # A fresh line has no callbacks to preserve, so skip set_points_smoothly's copy/become.
             line.set_points_as_corners(plane if len(plane) > 1 else plane * 2).make_smooth()
             if self.single_color:

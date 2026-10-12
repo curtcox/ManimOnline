@@ -1025,3 +1025,15 @@ order as the uncached path. `_enter_world`/`_exit_world` clear an active memo wh
 Throwaway samples may bake 3D maps in place under `_maps_in_place()` (Rotate's live morph);
 `_sampled_copy` shares one memo over its bottom-up walk, dropping each node's position-dependent
 `('bounds', id, flag)` entries after its pose fix.
+3D arrows: tips with a z direction turn through `_turn_tip_3d` (Community's azimuth rotation,
+then a polar tilt; detached position_tip tips level first via `_level_tip` and skip the tilt
+once `_init_positioning_axis` is set, which stays out of frames). put_start_and_end_on with z
+turns tips by the minimal rotation between the old and new directions. Vector fields read
+z_range/three_dimensions (ArrowVectorField keeps output z; StreamLines spatial flows).
+Linear 3D maps (rotate, scale, stretch, apply_matrix) pass `matrix=` to `_map_points_3d` and
+map points directly, as Community's apply_points_function does; only apply_function uses the
+handle-scaling rule. Cone bakes its direction rotations in place. ThreeDScene's
+`_root_frame_data` caches world curves by (curve-list identity, pose chain) in
+`_emit_cache`, so shared snapshot lists map once and pool once. `Scene._later_members` keeps
+a per-frame member index (`_later_index`); Create samples copy nodes with `_node_copy`, which
+shares unchanged arrays, so never mutate snapshot lists in place.
