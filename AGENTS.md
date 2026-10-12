@@ -950,8 +950,9 @@ Property setters that check their caller must use `_from_scene()`, which skips t
 
 Transform completion becomes `_aligned_target(target)`: the mobject keeps Community's aligned
 family (the larger member count, faded repeats/center points) and member point counts (the
-member with fewer curves is subdivided; analytic types survive when unchanged). The root's own
-points are not aligned. Uncreate and reversed Write leave the mobject collapsed onto each
+member with fewer curves is subdivided; analytic types survive when unchanged), root included:
+Create/Uncreate trace by curve index, so later traces follow Community. align_points keeps
+explicit subpath_lengths for multi-contour results. Scene become leaves root points unaligned. Uncreate and reversed Write leave the mobject collapsed onto each
 outline's first point even when removed (Community's final pointwise_become_partial(0, 0)).
 put_start_and_end_on semantics apply to the whole family: pop_tips maps added members with the
 shaft onto the tip points, add_tip maps them about the fixed end (Arrow.scale's inner pop and

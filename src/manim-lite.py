@@ -4508,7 +4508,7 @@ class VMobject(Mobject, metaclass=_CommunityTree):
                 path = path[:-4]
             return path
         first, second = subpaths(a, self), subpaths(b, mobject)
-        new_a, new_b = [], []
+        new_a, new_b, lengths = [], [], []
         for n in range(max(len(first), len(second))):
             sp1, sp2 = nth(first, n), nth(second, n)
             for path, other, out in ((sp1, sp2, new_a), (sp2, sp1, new_b)):
@@ -4516,8 +4516,12 @@ class VMobject(Mobject, metaclass=_CommunityTree):
                 if extra:
                     path = [Vector(p) for p in self.insert_n_curves_to_point_list(extra, path)]
                 out.extend(path)
-        self.set_points(new_a)
-        mobject.set_points(new_b)
+            lengths.append(max(len(sp1), len(sp2)) // 4)
+        for target, points in ((self, new_a), (mobject, new_b)):
+            target.set_points(points)
+            if len(lengths) > 1 and sum(lengths) * 4 == len(points):
+                # Lite draws separate contours from explicit subpath lengths.
+                target.subpath_lengths = list(lengths)
         return self
 
     def interpolate(self, mobject1, mobject2, alpha, path_func=None):
@@ -13245,7 +13249,7 @@ class Transform(_PathOptions, Animation):
             # aligned family structure and point counts.
             target = self.target
             if self.mobject._alignable() and target._alignable():
-                target = self.mobject._aligned_target(target)
+                target = self.mobject._aligned_target(target, root_points=True)
             self.mobject.become(target)
         if self.replace_mobject_with_target_in_scene:
             # Community: the target takes the mobject's place in the scene (inside its parent

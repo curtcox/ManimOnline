@@ -1686,7 +1686,7 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertPointAlmostEqual(box['position'],shapes[2]['position'])
         self.assertEqual((cross['type'],len(cross['children'])),('vgroup',2))
         self.assertEqual(result['frames'][90]['mobjects'][0]['type'],'rectangle')
-        self.assertEqual(result['frames'][130]['mobjects'][2]['type'],'polygon')
+        self.assertIn(result['frames'][130]['mobjects'][2]['type'],('polygon','bezierpath'))
         self.assertEqual(result['frames'][-1]['mobjects'],[])
 
     def test_polygram_family_vertices_groups_and_native_defaults(self):
@@ -1736,7 +1736,7 @@ assert isinstance(t.get_value(), (int, float))""")
             with self.assertRaises(ValueError): bad()
         result=render('s = Star(color=GOLD, fill_opacity=.5)\nself.play(Create(s))\nself.play(Transform(s,RegularPolygram(6,radius=1.5)))')
         final=result['frames'][-1]['mobjects'][0]
-        self.assertEqual((final['type'],final['subpath_lengths']),('bezierpath',[3,3]))
+        self.assertEqual((final['type'],final['subpath_lengths']),('bezierpath',[10,3]))  # Aligned to the star.
 
     def test_round_corners_follow_community_corner_order_and_counts(self):
         square=lite.Polygon((1,1,0),(-1,1,0),(-1,-1,0),(1,-1,0)).round_corners(.5)
@@ -4932,7 +4932,8 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertEqual([len(p) for p in lite._path_subpaths(edited)], [1,8,8])
         final = result['frames'][-1]['mobjects'][0]
         seed = lite.CubicBezier((-3,-1),(-1,2),(1,-2),(3,1)).rotate(lite.PI/6)
-        self.assertEqual(final['curves'], [point_list(seed)])
+        seed_points = point_list(seed)  # Restored by a Transform: aligned to 17 curves.
+        self.assertEqual((final['curves'][0][0], final['curves'][-1][-1]), (seed_points[0], seed_points[-1]))
         self.assertEqual(final['color'], lite.BLUE)
 
     def test_disconnected_path_construction_pending_anchor_and_sampling(self):
@@ -5032,7 +5033,8 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertEqual(collapse['subpath_lengths'], [8,8])
         final = result['frames'][-1]['mobjects']
         self.assertEqual(len(final), 1)
-        self.assertEqual([len(p) for p in lite._path_subpaths(final[0])], [4,4])
+        # Community's aligned contours: the null second contour (one curve) leaves 4 curves.
+        self.assertEqual([len(p) for p in lite._path_subpaths(final[0])], [8,4])
         self.assertEqual(final[0]['color'], lite.BLUE)
 
     def test_rounded_rectangle_contours_dimensions_and_radius_order(self):
@@ -5094,7 +5096,7 @@ assert isinstance(t.get_value(), (int, float))""")
         result = render('box = RoundedRectangle()\nself.add(box)\nself.play(Transform(box, Triangle()), run_time=2)')
         self.assertEqual(result['frames'][15]['mobjects'][0]['type'], 'bezierpath')
         self.assertEqual(len(result['frames'][15]['mobjects'][0]['curves']), 8)
-        self.assertEqual(result['frames'][-1]['mobjects'][0]['type'], 'polygon')
+        self.assertEqual(len(lite._path_curves(result['frames'][-1]['mobjects'][0])), 8)  # Aligned triangle.
 
     def test_annulus_bounds_contour_order_and_validation(self):
         ring = lite.Annulus(inner_radius=1, outer_radius=2, arc_center=lite.UP)
@@ -6023,7 +6025,7 @@ self.wait(1)""")
         xs = [point[0] for curve in result['frames'][120]['mobjects'][0]['curves'] for point in curve]
         self.assertAlmostEqual(max(xs), 1.2)
         self.assertEqual(result['frames'][-1]['mobjects'][0]['type'],'bezierpath')
-        self.assertEqual(len(result['frames'][-1]['mobjects'][0]['curves']),1)
+        self.assertEqual(len(result['frames'][-1]['mobjects'][0]['curves']),8)  # Aligned to the circle.
 
     def test_cubic_subdivision_preserves_curve_geometry_and_every_existing_join(self):
         curve = [[0,0,0], [8,4,0], [-2,3,0], [3,0,0]]
@@ -6073,7 +6075,8 @@ self.wait(1)""")
         self.assertEqual(len(result['frames'][15]['mobjects']), 2)
         self.assertEqual(result['frames'][15]['mobjects'][1]['type'], 'bezierpath')
         # Manim 0.22: the Succession's group moves p in front of the copy q.
-        self.assertEqual(result['frames'][-1]['mobjects'][1]['vertices'], [[0,0,0],[2,0,0]])
+        restored = lite._path_curves(result['frames'][-1]['mobjects'][1])  # Aligned to q's 2 curves.
+        self.assertEqual((restored[0][0], restored[-1][-1], len(restored)), ([0,0,0], [2,0,0], 2))
         result = render('p = VMobject().set_points_as_corners([ORIGIN,RIGHT])\nq = CubicBezier(ORIGIN,UP,UR,RIGHT)\nself.play(ReplacementTransform(p,q), run_time=2, rate_func=linear)\nassert self.mobjects == [q]')
         self.assertEqual(result['frames'][15]['mobjects'][0]['type'], 'bezierpath')
 
@@ -7055,7 +7058,7 @@ class Demo(Scene):
         scene.play(lite.Restore(shape), run_time=2, rate_func=lite.linear)
         self.assertEqual([s['type'] for s in scene.frames[30]['mobjects']], ['bezierpath'])
         self.assertEqual(scene.frames[30]['mobjects'][0]['opacity'], 1)
-        self.assertEqual(shape._type, 'square')
+        self.assertEqual((shape._type, len(shape.get_points())), ('bezierpath', 32))  # Aligned to the circle.
         self.assertEqual(shape.color, lite.WHITE)
         shape.shift(lite.RIGHT).restore()
         self.assertEqual(shape.position, [0, 0, 0])
@@ -7609,8 +7612,11 @@ class Demo(Scene):
             self.assertPointAlmostEqual(tip.tip_point,frame['mobjects'][3]['position'])
             self.assertPointAlmostEqual(tip.base,frame['mobjects'][4]['position'])
         initial,restored = [result['frames'][i]['mobjects'][1] for i in (30,105)]
-        for key in ('position','angle','geometry_scale','vertices','geometry_center'):
-            self.assertEqual(initial.get(key),restored.get(key))
+        corners = [[lite._snapshot_pose(node)[0](q)[:2] for c in lite._path_curves(node) for q in (c[0], c[-1])]
+                   for node in (initial, restored)]  # Restore aligns the outline (more curves).
+        for k in range(4):
+            pick = min if k < 2 else max
+            self.assertAlmostEqual(pick(p[k % 2] for p in corners[0]), pick(p[k % 2] for p in corners[1]))
         self.assertEqual(result['frames'][-1]['mobjects'],[])
         json.dumps(result,allow_nan=False)
 
@@ -7924,7 +7930,8 @@ class Demo(Scene):
         result = json.loads(lite.render_scene((ROOT / 'examples/minimal_scene.py').read_text()))
         self.assertEqual(result['scene'], 'MinimalScene')
         self.assertEqual(result['frames'][0]['mobjects'][0]['draw_progress'], 0)
-        self.assertEqual(result['frames'][-1]['mobjects'][0]['type'], 'square')
+        # Community's Transform leaves the square aligned to the circle's 8 curves.
+        self.assertEqual(len(lite._path_curves(result['frames'][-1]['mobjects'][0])), 8)
         self.assertGreater(len(result['frames']), 30)
 
     def test_create_traces_outline_and_preserves_final_style(self):
