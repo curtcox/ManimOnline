@@ -13080,15 +13080,25 @@ class ShrinkToCenter(GrowFromCenter):
         super().__init__(mobject, **kwargs)
         self.remover = remover
 
+    def _growth_start(self):
+        return self.original.copy().scale(0)  # ScaleInPlace(0): no move_to (tips stay put).
+
     def sample(self, alpha):
         if self._fixed_tips():
+            morph = self.__dict__.get('_live_morph')
+            if morph is not None:
+                return morph.sample(1 - alpha)  # The updated copies, collapsing pointwise.
             if self.__dict__.get('_growth_plan') is None:
                 self._growth_plan = _transform_plan(self.original.to_dict(), self.original.copy().scale(0).to_dict())
             return _sample_transform(self._growth_plan, alpha)
         return super().sample(1 - alpha)
 
     def finish(self, scene):
-        self.mobject.scale(0)
+        morph = self.__dict__.get('_live_morph')
+        if morph is not None:
+            self.mobject.become(morph.start)  # Community's updated, collapsed target copy.
+        else:
+            self.mobject.scale(0)
         if self.remover:
             scene.remove(self.mobject)
 
@@ -13636,6 +13646,40 @@ class Rotating(Rotate):
                  run_time=5, rate_func=linear, **kwargs):
         super().__init__(mobject, angle, axis, about_point,
                          run_time=run_time, rate_func=rate_func, **kwargs)
+
+    def begin(self, scene):
+        edge_pivot = self.about_point is None and self.about_edge is not None
+        super().begin(scene)
+        self._turning = None
+        if self.__dict__.get('_live_morph') is not None:
+            # Community's Rotating turns its updated starting copy each frame about the
+            # copy's current center (or edge) unless a point was given.
+            self._live_morph = None
+            self._turning = (self.original, edge_pivot)
+
+    def _advance_copies(self, dt):
+        if self.__dict__.get('_turning') is not None:
+            self._turning[0].update(dt)
+        else:
+            super()._advance_copies(dt)
+
+    def _turned(self, alpha):
+        live, edge_pivot = self._turning
+        current = live.copy()
+        pivot = (current.get_critical_point(self.about_edge) if edge_pivot else
+                 self.about_point if self.about_point is not None else current.get_center())
+        return current.rotate(alpha * self.angle, self.axis, about_point=pivot)
+
+    def sample(self, alpha):
+        if self.__dict__.get('_turning') is not None:
+            return [self._turned(alpha).to_dict()]
+        return super().sample(alpha)
+
+    def finish(self, scene):
+        if self.__dict__.get('_turning') is not None:
+            self.mobject.become(self._turned(self.rate_func(1)))
+            return
+        super().finish(scene)
 
 
 class MoveAlongPath(Animation):
@@ -14730,8 +14774,13 @@ class GrowArrow(GrowFromPoint):
             return super().sample(alpha)
         # Community starts from scale(0, scale_tips=True), whose stroke width is zero, and
         # interpolates points and the shaft width linearly toward the original.
-        current.scale(alpha, scale_tips=True, about_point=self.point)
-        current.stroke_width = alpha * self.original.stroke_width
+        point, morph = self.point, self.__dict__.get('_live_morph')
+        if morph is not None:
+            # The updated copies: the target scaled from the collapsed copy's point.
+            current, point = morph.target.copy(), morph.start.get_center()
+        width = current.stroke_width
+        current.scale(alpha, scale_tips=True, about_point=point)
+        current.stroke_width = alpha * width
         return [self._tint(current, alpha).to_dict()]
 
 
@@ -14805,6 +14854,9 @@ class FocusOn(Transform):
         start = Dot(radius=config.frame_width / 2 + config.frame_height / 2, stroke_width=0,
                     fill_color=color, fill_opacity=0)
         target = Dot(radius=0, stroke_width=0).set_fill(color, opacity=opacity).move_to(point)
+        if isinstance(focus_point, Mobject):
+            # Community's little dot follows the focus mobject with an updater.
+            target.add_updater(lambda dot: dot.move_to(focus_point))
         kwargs.setdefault('remover', True)
         super().__init__(start, target, run_time=run_time, **kwargs)
 
@@ -14854,8 +14906,20 @@ class ShowIncreasingSubsets(Animation):
         self.all_submobs = list(group.children)
         for member in self.all_submobs:
             member.set_opacity(0)
-        super().__init__(group, reverse_rate_function=reverse_rate_function, **kwargs)
+        super().__init__(group, reverse_rate_function=reverse_rate_function,
+                         suspend_mobject_updating=suspend_mobject_updating, **kwargs)
         self.int_func = int_func
+
+    def begin(self, scene):
+        super().begin(scene)
+        # Only opacities change: an unsuspended mobject keeps running its updaters.
+        self._live = (self.mobject.copy() if not self.suspend_mobject_updating
+                      and _LiveMorph.wanted(self.mobject) else None)
+
+    def _advance_copies(self, dt):
+        if self.__dict__.get('_live') is not None:
+            self._live.update(dt)
+        super()._advance_copies(dt)
 
     def _index(self, alpha):
         return int(self.int_func(alpha * len(self.all_submobs)))
@@ -14868,13 +14932,16 @@ class ShowIncreasingSubsets(Animation):
             member.set_opacity(0)
 
     def sample(self, alpha):
-        current = self.mobject.copy()
+        live = self.__dict__.get('_live')
+        current = (live if live is not None else self.mobject).copy()
         members = [current.children[self.mobject.children.index(m)] for m in self.all_submobs
                    if m in self.mobject.children]
         self.update_submobject_list(self._index(alpha), members)
         return [current.to_dict()]
 
     def finish(self, scene):
+        if self.__dict__.get('_live') is not None:
+            self.mobject.become(self._live)
         members = [m for m in self.all_submobs if m in self.mobject.children]
         self.update_submobject_list(self._index(self.rate_func(1)), members)
 

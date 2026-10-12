@@ -1864,5 +1864,26 @@ class AnimationApiTests(unittest.TestCase):
         self.assertEqual(plain(found), [3.0, -3.0])
 
 
+    def test_shrink_rotating_subsets_and_focus_follow_updaters(self):
+        source = (
+            'from manim import *\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        a, b, c, d = Square(), Square(), Square(), Square()\n'
+            '        for m in (a, b, c, d):\n'
+            '            m.add_updater(lambda m, dt: m.shift(RIGHT * dt))\n'
+            '        self.add(a, b, c, d)\n'
+            '        self.play(ShrinkToCenter(a), Rotating(b, run_time=1), ShowIncreasingSubsets(c), FocusOn(d))\n'
+            '        FOUND.extend([a.get_x(), b.get_x(), c.get_x(), d.get_x()])\n')
+        found = []
+        lite.render_scene('from manim import *\nclass Empty(Scene):\n    pass\n')
+        namespace = {'FOUND': found}
+        exec(compile(source, '<test>', 'exec'), namespace)
+        namespace['S']().render()
+        # Community 0.22: the shrinking copy, the rotating copy and the subset-showing mobject
+        # keep moving with their updaters; FocusOn (2 s) does not animate d itself.
+        self.assertEqual(plain(found), [1.9333, 1.9333, 1.9333, 1.9333])
+
+
 if __name__ == '__main__':
     unittest.main()
