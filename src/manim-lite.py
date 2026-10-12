@@ -15326,6 +15326,11 @@ class Scene:
         # Community's last frame does (e.g. MaintainPositionRelativeTo a moving object).
         for animation in sorted(animations, key=lambda a: isinstance(a, UpdateFromFunc)):
             animation._complete(self)
+            mobject = animation.__dict__.get('mobject') if _is_a(animation, Animation) else None
+            if (mobject is not None and animation.suspend_mobject_updating and
+                    isinstance(mobject, Mobject) and not mobject.updating_suspended):
+                # Community's finish resumes the mobject's updaters, which runs update(0).
+                mobject.update(0)
         # Community resumes the animated objects' updaters and runs update_mobjects(0)
         # (not scene updaters), so dependents such as Graph edges catch up.
         self._update_mobjects(0, scene_updaters=False)
@@ -15614,8 +15619,8 @@ class Scene:
         self.setup()
         self.construct()
         self.tear_down()
-        self._update_mobjects(0, scene_updaters=False)
-        # A final state is seekable without advancing the scene clock.
+        # A final state is seekable without advancing the scene clock (Community runs no
+        # updaters after construct returns).
         self.capture(advance_time=False)
         def lay_out(node):
             if node.get('type') == 'text' and 'layout' not in node:
