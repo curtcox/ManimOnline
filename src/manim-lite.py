@@ -10836,7 +10836,8 @@ class Axes(VGroup, CoordinateSystem):
             options['u_range'] = u_range
         if v_range is not None:
             options['v_range'] = v_range
-        surface = Surface(lambda u, v: self.c2p(u, v, function(u, v)), **options)
+        memo = {}  # The axes stay put while the surface samples them (one shared frame).
+        surface = Surface(lambda u, v: _memo_query(memo, self.c2p, u, v, function(u, v)), **options)
         if colorscale:
             surface.set_fill_by_value(axes=self.copy(), colorscale=colorscale, axis=colorscale_axis)
         return surface
@@ -24208,21 +24209,35 @@ def _pooled_json(result, default):
             key = index[text] = len(pool)
             pool.append(text)
         return key
-    def intern(node):
-        node = dict(node)
+    # Frame data is never mutated and stays alive while encoding, so snapshots and arrays
+    # reused across frames (static roots, shared geometry) are encoded once, by identity.
+    seen_nodes, seen_arrays = {}, {}
+    def array(value):
+        hit = seen_arrays.get(id(value))
+        if hit is not None and hit[0] is value:
+            return hit[1]
+        # Geometry arrays travel at 1e-5 scene units (far below a pixel); planar
+        # point lists as flat XY pairs, grouped k per item (curves), if possible.
+        text = dumps(_flat_xy(value) or _rounded_array(value))
+        result = {'$pool': store(text)} if len(text) > 400 else value
+        seen_arrays[id(value)] = (value, result)
+        return result
+    def intern(original):
+        hit = seen_nodes.get(id(original))
+        if hit is not None and hit[0] is original:
+            return hit[1]
+        node = dict(original)
         for name, value in node.items():
             # Large arrays (curves, vertices) often outlive style-only changes such as
             # draw_progress or opacity, so they are pooled as {"$pool": index} too.
             if name != 'children' and type(value) is list and len(value) >= 8:
-                # Geometry arrays travel at 1e-5 scene units (far below a pixel); planar
-                # point lists as flat XY pairs, grouped k per item (curves), if possible.
-                text = dumps(_flat_xy(value) or _rounded_array(value))
-                if len(text) > 400:
-                    node[name] = {'$pool': store(text)}
+                node[name] = array(value)
         children = node.get('children')
         if isinstance(children, list) and children:
             node['children'] = [intern(child) for child in children]
-        return store(dumps(node))
+        key = store(dumps(node))
+        seen_nodes[id(original)] = (original, key)
+        return key
     frames = [dumps(dict(frame, mobjects=[intern(m) for m in frame['mobjects']])) for frame in result['frames']]
     head = dumps({key: value for key, value in result.items() if key != 'frames'})
     return head[:-1] + ', "pool": [' + ', '.join(pool) + '], "frames": [' + ', '.join(frames) + ']}'
