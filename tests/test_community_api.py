@@ -1514,6 +1514,11 @@ class AnimationApiTests(unittest.TestCase):
             'out.append(R(g) + [R(x) for x in g.submobjects])\n'
             'h = VGroup(Circle(), Dot(), Dot(LEFT*2)); h.become(VGroup(Square().rotate(.3), Dot(UP)))\n'
             'out.append(R(h) + [R(x) for x in h.submobjects] + [x.get_fill_opacity() for x in h.submobjects])\n'
+            'm = VGroup(Dot(), Dot(RIGHT), Dot(UP)); m.become(Square()); m.submobjects[2].shift(UP * 0.98)\n'
+            'out.append(R(m) + [R(x) for x in m.submobjects])\n'
+            'p = VGroup(Dot(), VGroup(Dot(), Dot()))\n'
+            'p.become(VGroup(Circle(), Square().scale(.5).add(Dot(RIGHT*3)).rotate(.7)))\n'
+            'out.append(R(p) + [R(x) for x in p.submobjects] + [R(x) for x in p[1].submobjects])\n'
             'result = out\n')
         self.assertEqual(values, plain([
             [-0.675, -0.675, 0.675, 0.675, 2, 3], [-0.88, -0.687, 1.98, -0.028, 2, 3],
@@ -1523,7 +1528,11 @@ class AnimationApiTests(unittest.TestCase):
             [-2.08, -1.15, 1.0, 1.0, 4, 5, [-1.0, -1.0, 1.0, 1.0, 0, 1], [-0.08, -0.08, 0.08, 0.08, 0, 1],
              [-2.08, -0.08, -1.92, 0.08, 0, 1], [-0.15, -1.15, 0.15, -0.85, 0, 1]],
             [-1.251, -1.251, 1.251, 1.251, 3, 4, [-1.251, -1.251, 1.251, 1.251, 0, 1],
-             [-1.251, -1.251, 1.251, 1.251, 0, 1], [-0.08, 0.92, 0.08, 1.08, 0, 1], 0.0, 0.0, 1.0]]))
+             [-1.251, -1.251, 1.251, 1.251, 0, 1], [-0.08, 0.92, 0.08, 1.08, 0, 1], 0.0, 0.0, 1.0],
+            [-1.0, -1.0, 1.0, 1.98, 3, 4, [-1.0, -1.0, 1.0, 1.0, 0, 1], [-1.0, -1.0, 1.0, 1.0, 0, 1],
+             [-1.0, -0.02, 1.0, 1.98, 0, 1]],
+            [-1.0, -1.536, 2.678, 1.181, 2, 5, [-1.0, -1.0, 1.0, 1.0, 0, 1], [-0.401, -1.536, 2.678, 1.181, 2, 3],
+             [2.518, 1.022, 2.678, 1.181, 0, 1], [-0.401, -1.536, 1.008, -0.127, 0, 1]]]))
 
     def test_become_keeps_scene_attributes(self):
         # Community's become copies points and colors; attributes scene code added remain,

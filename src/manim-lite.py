@@ -3507,22 +3507,29 @@ class Mobject:
                     for entry in [item] + [repeat(item) for _ in range(1, factor)]]
         def align(source, target):
             has_points, sources = source[0], list(source[1])
-            members = list(target.children)
             point = lambda: VectorizedPoint(target._geometry_center())
             if has_points and not target.has_points():
                 sources.append((True, []))
             elif target.has_points() and not has_points:
-                members.append(point())
+                if target in _PARENTS and _posed_ancestors(target):
+                    target._replace_children(list(target.children) + [point()])
+                else:
+                    # push_self_into_submobjects: a pointless group of the members and a
+                    # childless copy, in the (unposed) parent's frame.
+                    leaf = target.copy()
+                    if isinstance(leaf, TipableVMobject):
+                        leaf._freeze_shaft()
+                    leaf._replace_children([])
+                    target = VGroup(*[_world_view(child) for child in target.children], leaf)
+            members = list(target.children)
             count = len(sources) - len(members)
             members = padded(members, count, point, lambda item: item.copy().fade(1))
             sources = padded(sources, -count, lambda: (True, []), lambda item: item)
-            for pair in zip(sources, members):
-                align(*pair)
-            if len(members) != len(target.children):
+            members = [align(*pair) for pair in zip(sources, members)]
+            if len(members) != len(target.children) or any(a is not b for a, b in zip(members, target.children)):
                 target._replace_children(members)
-        target = mobject.copy()
-        align(shape(self), target)
-        return target
+            return target
+        return align(shape(self), mobject.copy())
 
     def become(self, mobject, match_height=False, match_width=False, match_depth=False, match_center=False,
                stretch=False):

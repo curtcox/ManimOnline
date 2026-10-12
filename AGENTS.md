@@ -941,7 +941,9 @@ get_start/get_end (and so n2p) follow the tip points, or the cut end once a tip 
 Mobject.__setattr__ records attribute names that scene code adds (`_scene_keys`, not in
 frames); become keeps them as Community does (its become copies only points and colors).
 Scene-code become first pads a copy of the target like Community's align_data
-(`_aligned_target`: faded repeats, center VectorizedPoints, pushed points), so receivers keep
+(`_aligned_target`: faded repeats, center VectorizedPoints, and push_self_into_submobjects as a
+VGroup of world-view members plus a childless shaft-frozen copy; under posed ancestors the push
+falls back to a center point), so receivers keep
 the larger structure; library become (Transform completion, restore) does not. Families with
 text, SVG or NumberLine scene views are left unaligned (`_alignable`).
 Property setters that check their caller must use `_from_scene()`, which skips that frame.
