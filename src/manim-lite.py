@@ -3476,8 +3476,53 @@ class Mobject:
                 raise NotImplementedError('Please override in a child class.')
             if isinstance(self, VMobject) and not isinstance(mobject, VMobject):
                 raise AttributeError(f"{type(mobject).__name__} object has no attribute 'fill_rgbas'")
+            if self._alignable() and mobject._alignable():
+                mobject = self._aligned_target(mobject)
         become = Mobject.become
         return getattr(become, '__wrapped__', become)(self, mobject, *args, **kwargs)
+
+    def _alignable(self):
+        """Whether Lite's family matches Community's submobject structure (no text, SVG or
+        NumberLine scene views), so align_data's padding can be reproduced."""
+        return isinstance(self, VMobject) and not any(
+            isinstance(member, (Text, SVGMobject, Code, Paragraph)) or hasattr(type(member), '_scene_get_points')
+            for member in self.get_family())
+
+    def _aligned_target(self, mobject):
+        """Community's become runs align_data first: a pointless member facing one with
+        points pushes that one into its own submobjects, and the shorter child list is
+        padded with faded repeats (or center points), so the receiver keeps the larger
+        structure. Returns a padded copy for Lite's index-preserving become."""
+        def shape(member):
+            return member.has_points(), [shape(child) for child in member.children]
+        def padded(items, count, point, repeat):
+            if count <= 0:
+                return items
+            if not items:
+                return [point() for _ in range(count)]
+            total, factors = len(items) + count, [0] * len(items)
+            for k in range(total):
+                factors[k * len(items) // total] += 1
+            return [entry for item, factor in zip(items, factors)
+                    for entry in [item] + [repeat(item) for _ in range(1, factor)]]
+        def align(source, target):
+            has_points, sources = source[0], list(source[1])
+            members = list(target.children)
+            point = lambda: VectorizedPoint(target._geometry_center())
+            if has_points and not target.has_points():
+                sources.append((True, []))
+            elif target.has_points() and not has_points:
+                members.append(point())
+            count = len(sources) - len(members)
+            members = padded(members, count, point, lambda item: item.copy().fade(1))
+            sources = padded(sources, -count, lambda: (True, []), lambda item: item)
+            for pair in zip(sources, members):
+                align(*pair)
+            if len(members) != len(target.children):
+                target._replace_children(members)
+        target = mobject.copy()
+        align(shape(self), target)
+        return target
 
     def become(self, mobject, match_height=False, match_width=False, match_depth=False, match_center=False,
                stretch=False):

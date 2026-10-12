@@ -1497,6 +1497,34 @@ class AnimationApiTests(unittest.TestCase):
             [[-0.405, 0.93], [-0.405, 0.93], [-0.2462, 0.5025], [0.2625, 0.5025]],
             [[1.1592, 0.175], [-0.0289, 0.0], [-0.0289, 0.0]]]))
 
+    def test_become_aligns_family_structure(self):
+        # align_data pads the shorter child list (faded repeats or center points) and pushes
+        # a member with points under a pointless one, so receivers keep the larger structure.
+        values = scene_values(
+            'R = lambda m: [round(float(v), 3) for v in (*m.get_corner(DL)[:2], *m.get_corner(UR)[:2])]'
+            ' + [len(m.submobjects), len(m.get_family())]\n'
+            'out = []\n'
+            'a = VGroup(Square(1.32), Circle(1.32).shift(RIGHT*2)); a.become(SurroundingRectangle(Square(1.15)))\n'
+            'out.append(R(a))\n'
+            'b = DoubleArrow(LEFT, RIGHT*2.73); b.become(CurvedArrow(LEFT, RIGHT*2.1).set_height(.67)); out.append(R(b))\n'
+            'd = Cross(scale_factor=.5); d.become(Dot([-.07, -1.43, 0]).stretch(1.83, 1)); out.append(R(d))\n'
+            'f = VGroup(Square(), VGroup(Circle(), Dot()).shift(RIGHT))\n'
+            'f.become(VGroup(Triangle(), Square().shift(UP)).rotate(.4)); out.append(R(f) + [R(x) for x in f.submobjects])\n'
+            'g = Square().rotate(.5).shift(UR); g.become(VGroup(Circle(), Dot(), Dot(LEFT*2), Square(.3).shift(DOWN)))\n'
+            'out.append(R(g) + [R(x) for x in g.submobjects])\n'
+            'h = VGroup(Circle(), Dot(), Dot(LEFT*2)); h.become(VGroup(Square().rotate(.3), Dot(UP)))\n'
+            'out.append(R(h) + [R(x) for x in h.submobjects] + [x.get_fill_opacity() for x in h.submobjects])\n'
+            'result = out\n')
+        self.assertEqual(values, plain([
+            [-0.675, -0.675, 0.675, 0.675, 2, 3], [-0.88, -0.687, 1.98, -0.028, 2, 3],
+            [-0.15, -1.576, 0.01, -1.284, 2, 3],
+            [-1.408, -0.739, 1.284, 2.291, 2, 5, [-0.311, -0.739, 1.284, 0.98, 0, 1],
+             [-1.408, -0.33, 1.213, 2.291, 2, 3]],
+            [-2.08, -1.15, 1.0, 1.0, 4, 5, [-1.0, -1.0, 1.0, 1.0, 0, 1], [-0.08, -0.08, 0.08, 0.08, 0, 1],
+             [-2.08, -0.08, -1.92, 0.08, 0, 1], [-0.15, -1.15, 0.15, -0.85, 0, 1]],
+            [-1.251, -1.251, 1.251, 1.251, 3, 4, [-1.251, -1.251, 1.251, 1.251, 0, 1],
+             [-1.251, -1.251, 1.251, 1.251, 0, 1], [-0.08, 0.92, 0.08, 1.08, 0, 1], 0.0, 0.0, 1.0]]))
+
     def test_become_keeps_scene_attributes(self):
         # Community's become copies points and colors; attributes scene code added remain,
         # so a transformed label keeps its bookkeeping (LinearTransformationScene relies on it).

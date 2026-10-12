@@ -5406,8 +5406,10 @@ self.wait(1)""")
         self.assertIsNot(group[0].children[0],group[1].children[0])
         self.assertEqual(group[0].children[0].to_dict()['type'],'square')
         self.assertEqual(group[1].children[0].to_dict()['type'],'polygon')
+        # align_data pads an empty target with points, so the members stay (degenerate).
         group.become(lite.VGroup())
-        self.assertEqual(len(group),0)
+        self.assertEqual(len(group),2)
+        self.assertEqual(len(group.get_family()),5)
 
     def test_redraw_rebuilds_sampled_geometry_and_copies_update_themselves(self):
         tracker=lite.ValueTracker(1)

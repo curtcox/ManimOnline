@@ -427,7 +427,7 @@ Plain Group/Mobject boundaries (critical points, centers, container scale/rotate
 and next_to targets) include Bezier handles as in Community; VGroup keeps anchors.
 Fuzzing also found two deferred structural differences: Community cuts an arrow shaft
 once when its tip is attached (now matched with frozen shafts, see below), and become keeps
-extra degenerate children from submobject alignment (Lite replaces the family).
+extra degenerate children from submobject alignment (now reproduced for scene-code become).
 Removing an arrow tip directly now leaves the shaft cut, scene-code get_family matches
 Community (no NumberLine shaft), and become raises Community's errors for Group/Mobject
 receivers and VMobject-to-Mobject targets. Community 0.22 also fails restore() on a Group or
@@ -444,3 +444,8 @@ tips leaves the shaft where it was cut, and add_tip, pop_tips, put_start_and_end
 Arrow.scale re-cut it. A stretched tip's `base` is its length-weighted midpoint, as in
 Community. NumberLine tip edits follow the same model, so n2p tracks a moved tip and a
 removed tip leaves the shaft cut. Remaining fuzz mismatches are mostly become structure.
+
+Scene-code become reproduces Community's align_data padding, so receivers keep their larger
+family (faded or point members) with Community's child counts and order. Transform completion
+and text/SVG families still use Lite's structure. Seeded fuzz runs now differ in a handful of
+programs per 400 (mostly DoubleArrow edge cases and nested become inside arranged families).

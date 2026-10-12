@@ -940,4 +940,8 @@ a tip edit, tip removal or layout freezes it at the tip bases; then `_logical_en
 get_start/get_end (and so n2p) follow the tip points, or the cut end once a tip is gone.
 Mobject.__setattr__ records attribute names that scene code adds (`_scene_keys`, not in
 frames); become keeps them as Community does (its become copies only points and colors).
+Scene-code become first pads a copy of the target like Community's align_data
+(`_aligned_target`: faded repeats, center VectorizedPoints, pushed points), so receivers keep
+the larger structure; library become (Transform completion, restore) does not. Families with
+text, SVG or NumberLine scene views are left unaligned (`_alignable`).
 Property setters that check their caller must use `_from_scene()`, which skips that frame.
