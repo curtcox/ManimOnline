@@ -180,6 +180,16 @@ def _place(mobject, frame, inverse=False):
     return mobject
 
 
+def _scene_tip_call(owner, method, tip=None, *args, **kwargs):
+    """Scene code handles detached tips in world coordinates; tip factories work in the
+    owner's local frame."""
+    frame = _world_frame([owner])
+    if frame is not None and tip is not None:
+        _place(tip, frame, inverse=True)
+    result = method(owner, *args, **kwargs) if tip is None else method(owner, tip, *args, **kwargs)
+    return _place(result, frame) if frame is not None else result
+
+
 def _pose_snapshot(state, frame, inverse=True):
     """A frame snapshot in world coordinates re-posed into the parent frame (or, with
     inverse=False, a parent-frame snapshot posed in world coordinates)."""
@@ -5244,6 +5254,12 @@ class TipableVMobject(VMobject):
         tip.scale(1/abs(self.geometry_scale))
         return self.position_tip(tip,at_start)
 
+    def _scene_create_tip(self, *args, **kwargs):
+        return _scene_tip_call(self, type(self).create_tip, None, *args, **kwargs)
+
+    def _scene_position_tip(self, tip, *args, **kwargs):
+        return _scene_tip_call(self, type(self).position_tip, tip, *args, **kwargs)
+
     def add_tip(self, tip=None, tip_shape=None, tip_length=None, tip_width=None, at_start=False):
         if not isinstance(at_start,bool):
             raise ValueError('at_start must be a boolean')
@@ -10277,6 +10293,12 @@ class NumberLine(VGroup):
         tip = self.get_unpositioned_tip(tip_shape, tip_length, tip_width)
         tip.scale(1 / abs(self.geometry_scale))
         return self.position_tip(tip, at_start)
+
+    def _scene_create_tip(self, *args, **kwargs):
+        return _scene_tip_call(self, type(self).create_tip, None, *args, **kwargs)
+
+    def _scene_position_tip(self, tip, *args, **kwargs):
+        return _scene_tip_call(self, type(self).position_tip, tip, *args, **kwargs)
 
     def add_tip(self, tip=None, tip_shape=None, tip_length=None, tip_width=None, at_start=False):
         """Community's add_tip; the shaft keeps its length, so number_to_point is unchanged."""

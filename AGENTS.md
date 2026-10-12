@@ -424,7 +424,9 @@ Read `examples/tip_style_scene.py` for tip_style, tip_width and detached factori
 Line.get_unpositioned_tip merges generated styles then copied tip_style; exact
 ArrowTriangleFilledTip gets generated width from tip_width/default tip length.
 create_tip compensates parent scale and position_tip uses the existing local
-orientation helper. Neither attaches children. add_tip reuses them and supplied
+orientation helper (local frame); scene calls go through `_scene_tip_call`, so
+scene code receives and passes detached tips in world coordinates, as in Community.
+Neither attaches children. add_tip reuses them and supplied
 tip objects keep their style/size. CurvedArrow inherits these helpers and initializes
 its copied style mapping before attachment. get_tip can return a lone start tip;
 role-specific tip/start_tip properties require the matching attached role.
