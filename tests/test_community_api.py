@@ -1908,5 +1908,27 @@ class AnimationApiTests(unittest.TestCase):
         self.assertEqual(plain(found), [1.0667, 1.1333, 1.2])
 
 
+    def test_fade_transform_target_copy_is_a_scene_member(self):
+        source = (
+            'from manim import *\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o, d = Circle(), Dot()\n'
+            '        self.add(o, d)\n'
+            '        seen = []\n'
+            '        self.add_updater(lambda dt: seen.append([type(m).__name__ for m in self.get_mobject_family_members()]))\n'
+            '        self.play(FadeTransform(o, Square()))\n'
+            '        FOUND.extend([seen[5], [type(m).__name__ for m in self.mobjects]])\n')
+        found = []
+        lite.render_scene('from manim import *\nclass Empty(Scene):\n    pass\n')
+        namespace = {'FOUND': found}
+        exec(compile(source, '<test>', 'exec'), namespace)
+        namespace['S']().render()
+        # Community 0.22 adds Group(source, target copy) as a root while the animation runs,
+        # so the source moves after the dot and the morphing copy is in the scene (Community
+        # also lists the Group itself; the preview keeps its members as roots).
+        self.assertEqual(found, [['Dot', 'Circle', 'Square'], ['Dot', 'Square']])
+
+
 if __name__ == '__main__':
     unittest.main()

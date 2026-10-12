@@ -13982,6 +13982,13 @@ class FadeTransform(Transform):
                   self._fit(self.target.copy(), self.mobject), self.target.copy())
         self._fade_live = copies if any(_LiveMorph.wanted(m) for m in copies) else None
         self._plan_pairs(*copies)
+        self._ghost = self._ghost_states = None
+        if scene is not None and isinstance(scene, Scene) and self.mobject in scene.mobjects:
+            # Community adds Group(mobject, target copy) as a root: the source moves to the
+            # end and the morphing target copy is a scene member until the animation ends.
+            self._ghost = self.target.copy()
+            self._ghost.clear_updaters()
+            scene.add(self.mobject, self._ghost)
 
     def _advance_copies(self, dt):
         copies = self.__dict__.get('_fade_live')
@@ -14010,11 +14017,24 @@ class FadeTransform(Transform):
             state['opacity'] *= 1 - alpha
         for state in target:
             state['opacity'] *= alpha
+        if self.__dict__.get('_ghost') is not None:
+            self._ghost_states = target  # Drawn (and exposed) as the target copy's root.
+            return _SourceStates(source)
         return _SourceStates(source + target)
+
+    def states(self, alpha, rate_func=None):
+        result = super().states(alpha, rate_func)
+        ghost = self.__dict__.get('_ghost')
+        if ghost is not None:
+            held = alpha < 1 or self.__dict__.get('_holding')
+            result[ghost] = (self._ghost_states or []) if held else []
+        return result
 
     def finish(self, scene):
         # Community's clean_up_from_scene: remove the animated group (splitting any parent
         # off the scene's roots), restore the source and append the target.
+        if self.__dict__.get('_ghost') is not None:
+            scene.remove(self._ghost)
         scene.remove(self.mobject)
         if self.mobject in scene._world_members and self._world_saved is not None:
             self.mobject.become(self._world_saved)
