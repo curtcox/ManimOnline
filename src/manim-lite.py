@@ -3616,12 +3616,22 @@ class Mobject:
         def replace(source, replacement):
             replacements[id(replacement)] = source
             used.add(source)
-            children = []
-            for index, child in enumerate(replacement.children):
+            children, live, count = [], source.children, len(replacement.children)
+            if 0 < len(live) < count and type(source) in (Group, VGroup, Mobject):
+                # align_data pads the receiver too: each member's (faded) copies follow it.
+                # (Role-structured families such as NumberLine keep their slots.)
+                slots, seen = [], set()
+                for index in range(count):
+                    origin = live[index * len(live) // count]
+                    slots.append(origin.copy() if origin in seen else origin)
+                    seen.add(origin)
+            else:
+                slots = [live[index] if index < len(live) else None for index in range(count)]
+            for child, slot in zip(replacement.children, slots):
                 if id(child) in replacements:
                     member = replacements[id(child)]
                 else:
-                    member = source.children[index] if index < len(source.children) else child.copy()
+                    member = slot if slot is not None else child.copy()
                     if member in used:
                         member = child.copy()
                     replace(member, child)
@@ -14961,8 +14971,21 @@ def _expose_snapshot(saved, mobject, snapshot):
         except (TypeError, ValueError):
             shaft = None
     children = []
-    for index, child in enumerate(sampled_children):
-        member = mobject.children[index] if index < len(mobject.children) else Mobject()
+    live, count = mobject.children, len(sampled_children)
+    if 0 < len(live) < count and type(mobject) in (Group, VGroup, Mobject):
+        # Community aligns the live family itself: add_n_more_submobjects puts each
+        # member's (faded) copies right after it.
+        slots, seen = [], set()
+        for index in range(count):
+            source = index * len(live) // count
+            slots.append(None if source in seen else live[source])
+            seen.add(source)
+    else:
+        slots = [live[index] if index < len(live) else None for index in range(count)]
+    for child, member in zip(sampled_children, slots):
+        if member is None:
+            member = (VGroup() if child.get('type') == 'vgroup' else
+                      VMobject() if child.get('type') in _PATH_TYPES else Mobject())
         _expose_snapshot(saved, member, child)
         children.append(member)
     mobject.children = children

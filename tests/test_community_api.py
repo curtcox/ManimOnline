@@ -1757,5 +1757,27 @@ class AnimationApiTests(unittest.TestCase):
         self.assertEqual(plain(trace), [[-2.8614, 0.58, 0.0]] * 3)
 
 
+    def test_padded_receivers_repeat_their_own_members(self):
+        source = (
+            'from manim import *\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        shapes = VGroup(Circle().shift(LEFT), VGroup(Square().shift(RIGHT)))\n'
+            '        target = VGroup(Square(), Triangle(), VGroup(Circle(), Line()))\n'
+            '        self.play(Transform(shapes, target))\n'
+            '        a = VGroup(Dot(), Square())\n'
+            '        a.become(VGroup(Dot(), Dot(), Dot(), Circle()))\n'
+            '        OUT.extend([[type(m).__name__ for m in shapes], [type(m).__name__ for m in shapes[2]],\n'
+            '                    [type(m).__name__ for m in a]])\n')
+        found = []
+        lite.render_scene('from manim import *\nclass Empty(Scene):\n    pass\n')
+        namespace = {'OUT': found}
+        exec(compile(source, '<test>', 'exec'), namespace)
+        namespace['S']().render()
+        # Community 0.22's align_data puts each member's faded copies right after it.
+        self.assertEqual(found, [['Circle', 'Circle', 'VGroup'], ['Square', 'Square'],
+                                 ['Dot', 'Dot', 'Square', 'Square']])
+
+
 if __name__ == '__main__':
     unittest.main()
