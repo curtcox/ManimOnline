@@ -11771,15 +11771,15 @@ def _align_path_snapshots(start, target):
     if start['type'] not in path_types or target['type'] not in path_types:
         return None
     pointwise = False
-    if start['type'] == target['type'] and start['type'] not in ('polyline', 'polygon', 'bezierpath'):
-        # Matching primitives retain their analytical interpolation, unless both the local
+    if start['type'] == target['type']:
+        # Matching shapes retain their (local) interpolation, unless both the local
         # geometry and the pose's scale or turn change: lerping each separately is not
         # Community's pointwise straight path (e.g. radius 1 at scale 0.7 into radius 0.5).
         pointwise = (start['type'] != 'arrow' and
                      (start.get('geometry_scale', 1), start.get('angle', 0)) !=
                      (target.get('geometry_scale', 1), target.get('angle', 0)) and
                      _path_curves(start) != _path_curves(target))
-        if not pointwise:
+        if not pointwise and start['type'] not in ('polyline', 'polygon', 'bezierpath'):
             return None
     # Align untrimmed curved-arrow geometry; capture fits it to sampled tips.
     start,target = _snapshot_copy(start),_snapshot_copy(target)
@@ -11960,9 +11960,17 @@ def _transform_plan(start, target):
         return ('group_world' if world else 'group', start, target, children)
     if start.get('children') or target.get('children'):
         own_start,own_target = _snapshot_copy(start),_snapshot_copy(target)
-        if bool(start.get('_shaft_fixed')) != bool(target.get('_shaft_fixed')):
+        def tips(node):
+            return {child.get('_tip_role'): child for child in node.get('children') or ()
+                    if child.get('_tip_role') in ('start', 'end')}
+        def reshaped():
+            first, last = tips(start), tips(target)
+            return any(role in last and (first[role]['type'] != last[role]['type'] or
+                                         _path_curves(first[role]) != _path_curves(last[role]))
+                       for role in first)
+        if bool(start.get('_shaft_fixed')) != bool(target.get('_shaft_fixed')) or reshaped():
             # Community moves shaft points on their own: a refit shaft (which follows its tip
-            # bases) and a cut one interpolate between their drawn ends, not the tips'.
+            # bases) interpolates between its drawn ends, not with cut or reshaped tips.
             for own,source in ((own_start,start),(own_target,target)):
                 if own['type'] in ('line','arrow') and not own.get('_shaft_fixed'):
                     drawn = _refresh_tip_shafts(_snapshot_copy(source))

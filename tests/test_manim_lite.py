@@ -2427,6 +2427,8 @@ assert isinstance(t.get_value(), (int, float))""")
                     tip._type=child['type']
                     tip.children=[]
                     tip._sampled_geometry_center=lite.Vector(child['geometry_center'])
+                    if arrow.get('_shaft_fixed'):
+                        continue  # Reshaping tips (Restore): the shaft moves pointwise, as in Community.
                     self.assertPointAlmostEqual(arrow['shaft_'+child['_tip_role']],tip.base)
         self.assertEqual(result['frames'][-1]['mobjects'],[])
 
@@ -2813,7 +2815,8 @@ assert isinstance(t.get_value(), (int, float))""")
                 tip._type=child['type']
                 tip.children=[]
                 tip._sampled_geometry_center=lite.Vector(child['geometry_center'])
-                self.assertPointAlmostEqual(arrow['shaft_'+role],restored._tip_base(tip))
+                if not arrow.get('_shaft_fixed'):  # Reshaping tips: the shaft moves pointwise.
+                    self.assertPointAlmostEqual(arrow['shaft_'+role],restored._tip_base(tip))
                 tips.append(tip)
             # As in Manim, the end is the sampled tip's point.
             restored.children=tips
