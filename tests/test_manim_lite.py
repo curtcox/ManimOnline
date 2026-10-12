@@ -7502,9 +7502,35 @@ class Demo(Scene):
         self.assertEqual(square['position'], [1, 1, 0])
 
     def test_group_rejects_conflicts_invalid_timing_and_excess_duration(self):
-        # One object may be animated twice (Community); partly shared families may not.
-        with self.assertRaisesRegex(ValueError, 'one animation'):
-            render('d = Dot()\nself.play(FadeIn(VGroup(d)), FadeOut(d))')
+        # One object may be animated twice, and so may shared members (Community: the later
+        # animation wins); frame bounds of these cases match Manim 0.22.
+        self.assertEqual(render('d = Dot()\nself.play(FadeIn(VGroup(d)), FadeOut(d))')['frames'][-1]['mobjects'], [])
+        frames = render('a, b = Square().shift(LEFT*2), Circle().shift(RIGHT*2)\ng = VGroup(a, b)\nself.add(g)\n'
+                        'self.play(FadeOut(g), a.animate.shift(UP))')['frames']
+        group = frames[8]['mobjects'][0]
+        square, circle = group['children']
+        self.assertEqual((group['opacity'], square.get('opacity', 1)), (1, 1))  # Not dimmed by the fade.
+        self.assertLess(circle['opacity'], 1)
+        self.assertGreater(square['position'][1], 0.2)
+        frames = render('a = Square()\ng = VGroup(a, Circle())\nself.add(g)\n'
+                        'self.play(a.animate.shift(UP), g.animate.shift(DOWN))')['frames']
+        self.assertLess(frames[8]['mobjects'][0]['children'][0]['position'][1], -0.2)
+        # FadeOut/ShowPassingFlash clean-up resets the family to its start (Community's
+        # interpolate(0)); groups clean up after every member finished.
+        setup = 'a, b = Square().shift(LEFT*2), Circle().shift(RIGHT*2)\ng = VGroup(a, b)\nself.add(g)\n'
+        for play in ('self.play(a.animate.shift(UP), FadeOut(g))',
+                     'self.play(AnimationGroup(FadeOut(g), a.animate.shift(UP)))',
+                     'self.play(a.animate.shift(UP), ShowPassingFlash(g))'):
+            final = render(setup + play + '\nself.add(a)')['frames'][-1]['mobjects'][-1]
+            self.assertAlmostEqual(final['position'][1], 0)
+        final = render(setup + 'self.play(FadeOut(g), a.animate.shift(UP))\nself.add(a)')['frames'][-1]['mobjects'][-1]
+        self.assertAlmostEqual(final['position'][1], 1)
+        # A member animation that has not begun leaves its object to an ongoing group move.
+        frames = render(setup + 'self.play(LaggedStart(g.animate.shift(DOWN), a.animate.shift(UP*2), '
+                        'lag_ratio=0.5))')['frames']
+        self.assertLess(frames[4]['mobjects'][0]['children'][0]['position'][1], -0.01)
+        overlap = render('d = Dot()\nself.play(FadeIn(VGroup(d, Square())), FadeOut(VGroup(d, Circle())))')
+        self.assertEqual(len(overlap['frames']), 16)
         for body in ('d = Dot()\nself.play(LaggedStart(FadeIn(d), FadeOut(d), lag_ratio=1))',
                      'd = Dot()\nself.play(AnimationGroup(FadeIn(d)), FadeOut(d))',
                      'a, b = Dot(), Square()\nself.play(ReplacementTransform(a, b), FadeIn(b))'):

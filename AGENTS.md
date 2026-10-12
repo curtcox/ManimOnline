@@ -828,8 +828,14 @@ Several animations may drive one object (Community): `Scene._prepare_in_order` a
 earlier animation's states(0) to the live object (`_sampled_copy(partial=True)` turns
 draw_progress into pointwise_become_partial geometry) before preparing the next, as
 Community's begin() runs interpolate(0). AnimationGroup.states lets only animations begun
-and not finished on the previous update override shared objects. Partly shared families are
-still rejected. Rotate fixes its pivot at the center when constructed and ignores about_edge;
+and not finished on the previous update override shared objects; waiting/finished members
+rank first. Partly shared families (a group and its member, overlapping groups) are allowed:
+`Scene._later_members` splices each live member's state from the latest-ranked override
+containing it (overrides order = animation order) and pushes ancestor fade opacity down to
+the other members. Restoring animations (`_restores_start`: FadeOut, ShowPassingFlash) reset
+the live family to their start on completion when another animation of the play drives it
+(`Scene._mark_restores`); groups restore after all members finish, as Community's
+clean_up_from_scene runs after finish(). Rotate fixes its pivot at the center when constructed and ignores about_edge;
 Rotating resolves about_edge at begin.
 TransformMatching*: unmatched targets fade in as a real `_arrivals` VGroup introduced at begin
 (Community's FadeIn copy) with one group snapshot; unmatched sources fade out by one shared

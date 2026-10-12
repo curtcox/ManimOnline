@@ -12846,6 +12846,16 @@ class Animation(metaclass=_CommunityTree):
         if self.remover:
             scene.remove(self.mobject)
 
+    # Community's clean_up_from_scene returns these to their starting copy (FadeOut's
+    # interpolate(0), ShowPassingFlash's full partial). Sampling never edits the live object,
+    # so this only matters when another animation of the play did (Scene._mark_restores).
+    _restores_start = False
+
+    def _restore_start(self):
+        start = self.__dict__.get('start')
+        if self.__dict__.pop('_shared_restore', False) and isinstance(start, dict):
+            self.mobject.become(_sampled_copy(self.mobject, [start]))
+
     # Animations drawn from their starting copy, which (as Community's starting_mobject)
     # keeps the mobject's updaters and is updated every frame.
     _start_follows_updaters = False
@@ -13352,6 +13362,8 @@ class ShowPassingFlash(Animation):
             return piece.to_dict()
         return [clip(self.original, self.start)]
 
+    _restores_start = True
+
     def finish(self, scene):
         # Sampling never changes live geometry, so the removed object is reusable.
         scene.remove(self.mobject)
@@ -13480,6 +13492,7 @@ class Unwrite(Write):
 
 class FadeOut(FadeIn):
     _fading_in = False
+    _restores_start = True
 
     def __init__(self, *mobjects, **kwargs):
         kwargs.setdefault('remover', True)
@@ -14500,10 +14513,14 @@ class AnimationGroup:
                 result.update(states)
             else:
                 waiting.update(states)
-        for mobject, states in waiting.items():
-            result.setdefault(mobject, states)
+        # Waiting and finished members rank first, so an ongoing animation of a shared
+        # family wins (Scene._later_members), as Community leaves them unchanged.
         self._states_time = time
-        return result
+        if not waiting:
+            return result
+        ordered = {mobject: states for mobject, states in waiting.items() if mobject not in result}
+        ordered.update(result)
+        return ordered
 
     def finish(self, scene=None):
         if scene is None:
@@ -14532,6 +14549,11 @@ class AnimationGroup:
     def _complete(self, scene):
         self._on_finish(scene)
         self.finish(scene)
+
+    def _restore_start(self):
+        # Community cleans members up after every member finished.
+        for animation in self.animations:
+            animation._restore_start()
 
     def _advance_copies(self, dt):
         # Community's update_mobjects: only animations begun and not finished by the previous
@@ -15616,8 +15638,10 @@ class Scene:
                 if states:
                     # Crossfades have two visual objects; geometry queries use the
                     # more visible one. Continuous morphs have a single snapshot.
+                    # Overrides follow animation order: a later animation of a family or
+                    # of one of its members re-exposes what an earlier one exposed.
                     _expose_snapshot(saved, mobject, states[0] if isinstance(states, _SourceStates)
-                                     else max(states, key=lambda state:state['opacity']))
+                                     else max(states, key=lambda state:state['opacity']), again=True)
                     blocked.update(mobject.get_family())
             yield blocked
         finally:
@@ -15731,11 +15755,84 @@ class Scene:
             objects.extend(data)
         return objects
 
+    def _later_members(self, mobject, result, overrides):
+        """Members also driven by a later animation of the same play() (on themselves or on
+        another family holding them) show that animation's state inside this family's
+        snapshot: Community interpolates animations in order, so the last one wins."""
+        if len(result) != 1:
+            return result
+        rank = {id(key): index for index, key in enumerate(overrides)}
+        own = rank[id(mobject)]
+        def routes(node, path=()):
+            for index, child in enumerate(node.children):
+                route = path + ((index, len(node.children)),)
+                yield route, child
+                yield from routes(child, route)
+        members = {id(child): route for route, child in routes(mobject)}
+        latest = {}
+        for key in overrides:
+            if rank[id(key)] <= own or len(overrides[key]) != 1:
+                continue
+            if id(key) in members:
+                latest[id(key)] = (rank[id(key)], key, ())
+            for route, child in routes(key):
+                if id(child) in members:
+                    latest[id(child)] = (rank[id(key)], key, route)
+        if not latest:
+            return result
+        def follow(state, route):
+            for index, count in route:
+                children = state.get('children') or []
+                if len(children) != count:
+                    return None  # The sampled family no longer mirrors the live one.
+                state = children[index]
+            return state
+        def faded(node, factor):
+            if factor == 1:
+                return node
+            return dict(node, opacity=node.get('opacity', 1) * factor)
+        def replace(node, route, state):
+            if not route:
+                return state
+            (index, count), rest = route[0], route[1:]
+            children = node.get('children') or []
+            if len(children) != count:
+                return None
+            child = replace(children[index], rest, state)
+            if child is None:
+                return None
+            # A group opacity (fades) would dim the spliced member too: push it down onto
+            # the other members and this node's own paint instead.
+            factor = node.get('opacity', 1)
+            result = dict(node, children=[faded(other, factor) for other in children[:index]] + [child] +
+                          [faded(other, factor) for other in children[index + 1:]])
+            if factor != 1:
+                result['opacity'] = 1
+                for key in ('fill_opacity', 'stroke_opacity'):
+                    value = node.get(key)
+                    if isinstance(value, list):
+                        result[key] = [v * factor for v in value]
+                    elif isinstance(value, _REAL):
+                        result[key] = value * factor
+            return result
+        root = result[0]
+        # Outer members first, so a nested member's own later state is spliced last.
+        for member_id, (_, key, route) in sorted(latest.items(), key=lambda item: (item[1][0], len(members[item[0]]))):
+            state = follow(_refresh_tip_shafts(overrides[key][0]), route)
+            if state is None:
+                continue
+            if not route and key in self._world_members:
+                state = _pose_snapshot(state, self._world_members[key])
+            root = replace(root, members[member_id], state) or root
+        return [root]
+
     def _root_states(self, root, overrides):
         world = self._world_members
         def states(mobject, nested=True):
             if overrides and mobject in overrides:
                 result = [_refresh_tip_shafts(state) for state in overrides[mobject]]
+                if len(overrides) > 1 and mobject.children:
+                    result = self._later_members(mobject, result, overrides)
             elif mobject in world:
                 result = [mobject.to_dict()]
             elif not any((overrides and member in overrides) or member in world
@@ -15878,10 +15975,12 @@ class Scene:
             self._static_frames = None
             for animation in (self.__dict__.pop('_deferred_updates', None) or {}).values():
                 animation._deferring = False
+        self._mark_restores(animations)
         # Update-function animations finish last, seeing their neighbors' final states as
         # Community's last frame does (e.g. MaintainPositionRelativeTo a moving object).
         for animation in sorted(animations, key=lambda a: isinstance(a, UpdateFromFunc)):
             animation._complete(self)
+            animation._restore_start()
             mobject = animation.__dict__.get('mobject') if _is_a(animation, Animation) else None
             if (mobject is not None and animation.suspend_mobject_updating and
                     isinstance(mobject, Mobject) and not mobject.updating_suspended):
@@ -15891,19 +15990,32 @@ class Scene:
         # (not scene updaters), so dependents such as Graph edges catch up.
         self._update_mobjects(0, scene_updaters=False)
 
+    @staticmethod
+    def _mark_restores(animations):
+        """Flag restoring animations (_restores_start) whose family another animation of
+        the play also drives."""
+        leaves = []
+        def walk(animation):
+            if isinstance(animation, AnimationGroup):
+                for member in animation.animations:
+                    walk(member)
+            else:
+                leaves.append(animation)
+        for animation in animations:
+            walk(animation)
+        if len(leaves) < 2 or not any(a._restores_start for a in leaves):
+            return
+        families = [{id(m) for o in a.objects() if isinstance(o, Mobject) for m in o.get_family()}
+                    for a in leaves]
+        for index, animation in enumerate(leaves):
+            if animation._restores_start:
+                animation._shared_restore = any(families[index] & family for other, family
+                                                in enumerate(families) if other != index)
+
     def validate(self, *animations):
-        # Community lets several animations drive one object (the last one updated wins).
+        # Community lets several animations drive one object or shared members (the last
+        # one updated wins; see _later_members).
         objects = list({id(m): m for a in animations for m in a.objects()}.values())
-        def family(mobject):
-            return [mobject] + [m for child in mobject.children for m in family(child)]
-        # A member shared inside one family is allowed (Community de-duplicates
-        # families); separately animated objects must not share members.
-        seen = set()
-        for obj in objects:
-            members = {id(m) for m in family(obj)}
-            if members & seen:
-                raise ValueError('Use one animation per object in each play() call')
-            seen |= members
         for obj in objects:
             chain = _posed_ancestors(obj)
             if chain and _world_frame(chain) is None:
