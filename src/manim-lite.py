@@ -11917,17 +11917,26 @@ def _transform_plan(start, target):
         own_start['children'],own_target['children'] = [],[]
         first,last = VGroup().to_dict(),VGroup().to_dict()
         first['children'],last['children'] = start['children'],target['children']
-        for empty,full,own in ((first,last,start),(last,first,target)):
+        for empty,full,own,other in ((first,last,start,target),(last,first,target,start)):
             if not empty['children'] and full['children'] and own.get('type') in _PATH_TYPES:
                 # Community pads a childless family with point mobjects at its center
-                # (get_point_mobject): the other family's members collapse into it.
+                # (get_point_mobject): the other family's members collapse into it. A point
+                # has no orientation, so it keeps its counterpart's parent-frame angle.
                 center = own.get('geometry_center', ORIGIN)
+                forward, inverse = _snapshot_pose(own) if 'position' in own else (None, None)
+                anchors = [forward(p) for curve in _path_curves(own) for p in (curve[0], curve[-1])] if inverse else []
+                if anchors:
+                    # get_point_mobject sits at the bounding-box center of the posed outline.
+                    middle = [(min(p[k] for p in anchors) + max(p[k] for p in anchors)) / 2 for k in range(3)]
+                    center = inverse(middle)
+                turn = other.get('angle', 0) - own.get('angle', 0)
                 points = []
                 for child in full['children']:
                     point = _snapshot_copy(child)
                     pivot = point.get('geometry_center', ORIGIN)
                     point['position'] = [center[0]-pivot[0],center[1]-pivot[1],point['position'][2]]
                     point['geometry_scale'],point['opacity'] = 0,0
+                    point['angle'] = point.get('angle', 0) + turn
                     point.pop('children',None)
                     points.append(point)
                 empty['children'] = points
