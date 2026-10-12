@@ -1513,7 +1513,11 @@ class Mobject:
         return Group if self._type in ('mobject','valuetracker') else VGroup
 
     def family_members_with_points(self):
-        return [member for member in self.get_family() if member.has_points()]
+        if sys._getframe(1).f_code.co_filename == _LIB_FILE:
+            return [member for member in self._family() if member.has_points()]
+        # Scene code sees Community's members: a NumberLine has its own (shaft) points.
+        return [member for member in self._family() if member.__dict__.get('_number_line_role') != 'shaft'
+                and _call_as_scene(member.has_points)]
 
     def get_family(self, recurse=True):
         family = self._family()
@@ -1653,10 +1657,10 @@ class Mobject:
                 child.shift(direction)
             self.__dict__.pop('_family_pivot_cache', None)
             return self
-        if (type(self) in (Group, VGroup, Mobject) and not self.children and self.angle == 0 and
-                self.geometry_scale == 1 and not any(self.position) and
-                not self.__dict__.get('_mobject_points')):
-            return self  # Community moves points; an empty container has none to move.
+        if ((type(self) in (Group, VGroup, Mobject) or _is_a(self, VMobject) and self._type in ('bezierpath', 'polyline')) and
+                not self.children and self.angle == 0 and self.geometry_scale == 1 and not any(self.position) and
+                not self.__dict__.get('_mobject_points') and not self.get_points()):
+            return self  # Community moves points; an empty container or path has none to move.
         self.position = list(Vector(self.position) + direction)
         return self
 
@@ -2045,7 +2049,12 @@ class Mobject:
         target._bake_3d_map(mapped)
         return self.become(target)
 
-    def _bake_3d_map(self, mapped):
+    def _bake_3d_map(self, mapped, eps=None):
+        if eps is None:
+            # Community's VMobject.apply_function scales every member's handles by the
+            # receiver's factor; Mobject.apply_function (Group) maps handles directly.
+            eps = (getattr(self, 'pre_function_handle_to_anchor_scale_factor', 0.01)
+                   if isinstance(self, VMobject) else 1)
         # Children of a posed parent are stored parent-locally; release them into
         # world coordinates first, so each member's own pose spans its geometry.
         if self.children and (self.angle or self.geometry_scale != 1 or any(self.position)):
@@ -2054,7 +2063,7 @@ class Mobject:
             if self._type in ('vgroup', 'mobject', 'valuetracker'):
                 self.position, self.angle, self.geometry_scale = [0, 0, 0], 0, 1
         for child in list(self.children):
-            child._bake_3d_map(mapped)
+            child._bake_3d_map(mapped, eps)
         kind = self._type
         if kind in _PATH_TYPES:
             snapshot = _snapshot_copy(self.__dict__)
@@ -2062,7 +2071,6 @@ class Mobject:
             paths = _path_subpaths(snapshot, include_pending=False)
             # Community's apply_function pulls handles to a small fraction of
             # their anchor distance, maps, then scales back up.
-            eps = getattr(self, 'pre_function_handle_to_anchor_scale_factor', 0.01)
             def mapped_curve(curve):
                 a0, h1, h2, a1 = (Vector(p) for p in curve)
                 m0 = mapped(self._point_to_world(a0))
@@ -3494,7 +3502,7 @@ class Mobject:
         padded with faded repeats (or center points), so the receiver keeps the larger
         structure. Returns a padded copy for Lite's index-preserving become."""
         def shape(member):
-            return member.has_points(), [shape(child) for child in member.children]
+            return member.has_points(), [shape(child) for child in member.children], member
         def padded(items, count, point, repeat):
             if count <= 0:
                 return items
@@ -3505,11 +3513,15 @@ class Mobject:
                 factors[k * len(items) // total] += 1
             return [entry for item, factor in zip(items, factors)
                     for entry in [item] + [repeat(item) for _ in range(1, factor)]]
-        def align(source, target):
-            has_points, sources = source[0], list(source[1])
+        def plain(member):
+            return (_is_a(member, VMobject) and not hasattr(type(member), '_scene_get_points') and
+                    not (isinstance(member, TipableVMobject) and member._tips_by_role()))
+        def align(source, target, root=False):
+            has_points, sources, receiver = source[0], list(source[1]), source[2]
             point = lambda: VectorizedPoint(target._geometry_center())
             if has_points and not target.has_points():
-                sources.append((True, []))
+                sources.append((True, [], receiver))
+                has_points = False
             elif target.has_points() and not has_points:
                 if target in _PARENTS and _posed_ancestors(target):
                     target._replace_children(list(target.children) + [point()])
@@ -3521,15 +3533,19 @@ class Mobject:
                         leaf._freeze_shaft()
                     leaf._replace_children([])
                     target = VGroup(*[_world_view(child) for child in target.children], leaf)
+            elif has_points and not root and receiver is not None and plain(receiver) and plain(target):
+                # align_data recurses with point alignment below the root: the member with
+                # fewer curves per subpath (or fewer subpaths) is subdivided to match.
+                receiver.copy().align_points(target)
             members = list(target.children)
             count = len(sources) - len(members)
             members = padded(members, count, point, lambda item: item.copy().fade(1))
-            sources = padded(sources, -count, lambda: (True, []), lambda item: item)
+            sources = padded(sources, -count, lambda: (True, [], None), lambda item: item)
             members = [align(*pair) for pair in zip(sources, members)]
             if len(members) != len(target.children) or any(a is not b for a, b in zip(members, target.children)):
                 target._replace_children(members)
             return target
-        return align(shape(self), mobject.copy())
+        return align(shape(self), mobject.copy(), True)
 
     def become(self, mobject, match_height=False, match_width=False, match_depth=False, match_center=False,
                stretch=False):
@@ -5160,12 +5176,17 @@ class TipableVMobject(VMobject):
         role = 'start' if at_start else 'end'
         old = self._tip(at_start)
         other = self._tip(not at_start)
-        if other is not None and self.__dict__.get('_curved_tip_path'):
+        curved = self.__dict__.get('_curved_tip_path')
+        if other is not None and (curved or self._type == 'line'):
             # Community's reset_endpoints_based_on_tip runs put_start_and_end_on on the whole
             # family: the existing tip turns and scales about its own point with the path.
+            # (Arrow.scale keeps tip sizes, so arrows are unaffected.)
             fixed = Vector(other.tip_point)
-            shaft = self._tip_shaft_curves(role)
-            moving = Vector(shaft[0][0] if at_start else shaft[-1][-1])
+            if curved:
+                shaft = self._tip_shaft_curves(role)
+                moving = Vector(shaft[0][0] if at_start else shaft[-1][-1])
+            else:
+                moving = Vector(self.start if at_start else self.end)
             base = Vector(tip.base)
             current, target = complex(*(moving - fixed)[:2]), complex(*(base - fixed)[:2])
             # A closed path's ends coincide up to rounding; that span cannot be refit.
@@ -9666,6 +9687,9 @@ class NumberLine(VGroup):
     def _scene_has_points(self):
         return bool(self._shaft_points())
 
+    def _scene_get_num_curves(self):
+        return len(self._shaft_points()) // 4
+
     def _scene_split(self):
         return ([self] if self._shaft_points() else []) + self._layout_members()
 
@@ -11724,6 +11748,15 @@ def _transform_plan(start, target):
         return ('group_world' if world else 'group', start, target, children)
     if start.get('children') or target.get('children'):
         own_start,own_target = _snapshot_copy(start),_snapshot_copy(target)
+        if bool(start.get('_shaft_fixed')) != bool(target.get('_shaft_fixed')):
+            # Community moves shaft points on their own: a refit shaft (which follows its tip
+            # bases) and a cut one interpolate between their drawn ends, not the tips'.
+            for own,source in ((own_start,start),(own_target,target)):
+                if own['type'] in ('line','arrow') and not own.get('_shaft_fixed'):
+                    drawn = _refresh_tip_shafts(_snapshot_copy(source))
+                    own['start'] = drawn.get('shaft_start',own['start'])
+                    own['end'] = drawn.get('shaft_end',own['end'])
+                    own['_shaft_fixed'] = True
         own_start['children'],own_target['children'] = [],[]
         first,last = VGroup().to_dict(),VGroup().to_dict()
         first['children'],last['children'] = start['children'],target['children']
@@ -13647,10 +13680,15 @@ class Animate(Transform):
                 not callable(getattr(self.mobject, name, None))):
             raise NotImplementedError(f'animate.{name} is not supported yet')
         def apply(*args, **kwargs):
-            getattr(self.target, name)(*args, **kwargs)
+            # The scene called this method (on the target copy): it gets scene-code semantics.
+            _call_as_scene(getattr(self.target, name), *args, **kwargs)
             self.operations.append((name, args, kwargs))
             return self
         return apply
+
+
+# Runs a call whose caller frame is not library code, so _scene_call applies scene semantics.
+_call_as_scene = eval(compile('lambda function, *args, **kwargs: function(*args, **kwargs)', '<scene call>', 'eval'))
 
 
 def _built(animation):
@@ -24354,7 +24392,11 @@ _VIRTUAL_BASES.update({VMobject: (VGroup, Text), Animation: (AnimationGroup,),
                        Transform: (FadeIn, GrowFromPoint, Indicate, Rotate, TransformAnimations),
                        Polygram: (ArrowTriangleTip, ArrowSquareTip), RegularPolygram: (ArrowTriangleTip,),
                        RegularPolygon: (ArrowTriangleTip,), Triangle: (ArrowTriangleTip,),
-                       Polygon: (ArrowSquareTip,), Rectangle: (ArrowSquareTip,), Square: (ArrowSquareTip,)})
+                       Polygon: (ArrowSquareTip,), Rectangle: (ArrowSquareTip,), Square: (ArrowSquareTip,),
+                       ScreenRectangle: (CameraFrame,)})
+# Community's moving-camera frame is a ScreenRectangle.
+CameraFrame.__name__ = CameraFrame.__qualname__ = 'ScreenRectangle'
+CameraFrame.aspect_ratio = ScreenRectangle.aspect_ratio
 # Scenes see the arrow as Community's Vector (internally Vector is the coordinate tuple).
 VectorArrow.__name__ = VectorArrow.__qualname__ = 'Vector'
 

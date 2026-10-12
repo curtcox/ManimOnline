@@ -1672,6 +1672,31 @@ class AnimationApiTests(unittest.TestCase):
         with self.assertRaises(NotImplementedError):
             lite.Code(code_file='missing_listing.py')
 
+    def test_tip_shafts_become_alignment_and_surface_handles(self):
+        values = scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        m = DoubleArrow(LEFT, RIGHT)\n'
+            '        self.add(m)\n'
+            '        self.lefts = []\n'
+            '        self.add_updater(lambda dt: self.lefts.append(m.get_left()[0]))\n'
+            '        self.play(m.animate.arrange(DOWN), run_time=0.4)\n'
+            'scene = S(); scene.render()\n'
+            'line = Line(LEFT*2, RIGHT*2).add_tip(tip_shape=ArrowCircleFilledTip)\n'
+            'line.add_tip(at_start=True, tip_shape=ArrowSquareTip)\n'
+            'circle = Circle().shift(OUT)\n'
+            'circle.become(Sphere(radius=0.5, resolution=(6, 6)).shift(LEFT))\n'
+            'face = Sphere(radius=0.5, resolution=(6, 6)).get_family()[9]\n'
+            'empty = VMobject(); empty.shift(RIGHT); empty.to_edge(LEFT)\n'
+            'cam = MovingCameraScene().camera.frame\n'
+            'result = [scene.lefts[1:5], line.submobjects[0].width, circle.get_top()[1],\n'
+            '          [len(m.points) for m in circle.get_family()[:2]], list(face.points[1]),\n'
+            '          list(empty.get_center()), type(cam).__name__, isinstance(cam, ScreenRectangle),\n'
+            '          [type(m).__name__ for m in Axes().family_members_with_points()[:2]]]\n')
+        self.assertEqual(values, [[-0.7226, -0.5996, -0.4875, -0.548], 0.3067, 0.4985, [0.0, 32.0],
+                                  [0.0856, 0.4506, -0.25], [0.0, 0.0, 0.0], 'ScreenRectangle', True,
+                                  ['NumberLine', 'ArrowTriangleFilledTip']])
+
 
 if __name__ == '__main__':
     unittest.main()
