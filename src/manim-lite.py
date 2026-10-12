@@ -13033,9 +13033,10 @@ class GrowFromPoint(_PathOptions, Animation):
             self.mobject.become(morph.target)
 
     def _fixed_tips(self):
-        # Arrows keep their tip size when scaled, so Community's pointwise interpolation from
-        # the collapsed copy is not a uniform scale about the point.
-        return any(isinstance(m, Arrow) and m.get_tips().children for m in self.original.get_family())
+        # An arrow keeps its tip size when it is scaled itself (Arrow.scale), so Community's
+        # pointwise interpolation from the collapsed copy is not a uniform scale about the
+        # point. A group scales every point, its arrows' tips included.
+        return isinstance(self.original, Arrow) and bool(self.original.get_tips().children)
 
     def _live_growth(self, alpha):
         """The updated target grown from the collapsed copy's current center (Community's
@@ -14869,13 +14870,32 @@ class Wiggle(Animation):
         cls = type(self)
         return any(getattr(cls, name) is not getattr(Wiggle, name) for name in self._COMMUNITY_HOOKS)
 
+    _EXACT_PIVOT_MEMBERS = 64
+
+    def interpolate_mobject(self, alpha):
+        # Community re-measures the live center for every member (quadratic per frame); large
+        # families (vector fields) measure it once per frame, which differs only marginally.
+        self._frame_pivots = None
+        if (type(self).get_scale_about_point is Wiggle.get_scale_about_point and
+                type(self).get_rotate_about_point is Wiggle.get_rotate_about_point and
+                len(self.mobject.get_family()) > self._EXACT_PIVOT_MEMBERS):
+            center = _call_as_scene(self.mobject.get_center)
+            self._frame_pivots = [center if p is None else p
+                                  for p in (self.scale_about_point, self.rotate_about_point)]
+        try:
+            super().interpolate_mobject(alpha)
+        finally:
+            self._frame_pivots = None
+
     def interpolate_submobject(self, submobject, starting_submobject, alpha):
         # Community's per-member wiggle, run as scene code (members in world coordinates).
+        # Each pivot is measured after the previous step, as Community evaluates its arguments.
+        pivots = self.__dict__.get('_frame_pivots')
         _call_as_scene(submobject.set_points, _call_as_scene(starting_submobject.get_points))
         _call_as_scene(submobject.scale, interpolate(1, self.scale_value, there_and_back(alpha)),
-                       about_point=_call_as_scene(self.get_scale_about_point))
+                       about_point=pivots[0] if pivots else _call_as_scene(self.get_scale_about_point))
         _call_as_scene(submobject.rotate, wiggle(alpha, self.n_wiggles) * self.rotation_angle,
-                       about_point=_call_as_scene(self.get_rotate_about_point))
+                       about_point=pivots[1] if pivots else _call_as_scene(self.get_rotate_about_point))
         return self
 
     def get_scale_about_point(self):
