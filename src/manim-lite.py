@@ -5201,10 +5201,10 @@ class TipableVMobject(VMobject):
         old = self._tip(at_start)
         other = self._tip(not at_start)
         curved = self.__dict__.get('_curved_tip_path')
-        if other is not None and (curved or self._type == 'line'):
+        if other is not None and (curved or self._type in ('line', 'arrow')):
             # Community's reset_endpoints_based_on_tip runs put_start_and_end_on on the whole
             # family: the existing tip turns and scales about its own point with the path.
-            # (Arrow.scale keeps tip sizes, so arrows are unaffected.)
+            # (Arrow.scale keeps tip sizes; a tip whose base passes the other tip turns it over.)
             fixed = Vector(other.tip_point)
             if curved:
                 shaft = self._tip_shaft_curves(role)
@@ -5216,7 +5216,8 @@ class TipableVMobject(VMobject):
             # A closed path's ends coincide up to rounding; that span cannot be refit.
             if target and abs(current) > 1e-9 * abs(target):
                 factor = target / current
-                other.scale(abs(factor), about_point=fixed)
+                if self._type != 'arrow':
+                    other.scale(abs(factor), about_point=fixed)
                 other.rotate(cmath.phase(factor), about_point=fixed)
         tip._tip_role = role
         self._replace_children([child for child in self.children if child is not old and child is not tip]+[tip])
@@ -5224,10 +5225,24 @@ class TipableVMobject(VMobject):
         return self
 
     def pop_tips(self):
-        self._unfreeze_shaft(orient=False)
+        # Community's pop_tips: remove the tips, then put_start_and_end_on(their points).
+        points = {role: Vector(tip.tip_point) for role, tip in self._tips_by_role().items()}
+        self.__dict__.pop('_shaft_fixed', None)
         tips = self.get_tips()
         self.remove(*tips.children)
         self.explicit_tips = True
+        if self._type in ('line', 'arrow'):
+            self._set_own_ends(points)
+        elif points and self._type == 'bezierpath' and self.curves:
+            curves = self.curves
+            first, last = Vector(curves[0][0]), Vector(curves[-1][-1])
+            start, end = points.get('start', first), points.get('end', last)
+            if first == last and isinstance(self, Line):
+                # A collapsed line is regenerated between the points (Line.put_start_and_end_on).
+                fitted = [[list(start + (end - start) * (k / 3)) for k in range(4)]]
+            else:
+                fitted = _fit_curve_endpoints(curves, start, end)
+            self._set_own_ends({}, fitted)
         return tips
 
     def _tip_base(self, tip, current=False):
@@ -5294,7 +5309,8 @@ class TipableVMobject(VMobject):
             return
         tips = self._tips_by_role()
         points = {role: Vector(tip.tip_point) for role, tip in tips.items()}
-        if self.__dict__.get('_curved_tip_path'):
+        if self.__dict__.get('_curved_tip_path') or self._type == 'bezierpath':
+            # put_start_and_end_on: a similarity takes the shaft's ends to the tip points.
             curves = self.curves
             if curves:
                 self._set_own_ends({}, _fit_curve_endpoints(curves, points.get('start', curves[0][0]),
@@ -6336,26 +6352,30 @@ class Arrow(Line):
             super().scale(factor,**kwargs)
             self._set_stroke_width_from_length()
             return self
-        self._unfreeze_shaft()
-        # Community pops the tips and scales the bare line (so default pivots come from
-        # its endpoints), then re-adds the tips, whose endpoint refit resets the width
-        # from the shaft between the tip bases.
-        about_point,about_edge = kwargs.pop('about_point',None),kwargs.pop('about_edge',None)
+        about_point,about_edge = kwargs.get('about_point'),kwargs.get('about_edge')
         if about_point is not None and about_edge is not None:
             raise ValueError('Pass about_point or about_edge, not both')
-        if about_point is None:
-            start,end = self.get_start_and_end()
-            edge = Vector(ORIGIN if about_edge is None else about_edge)
-            about_point = Vector((s+e)/2+(edge[i] > 0)*abs(e-s)/2-(edge[i] < 0)*abs(e-s)/2
-                                 for i,(s,e) in enumerate(zip(start,end)))
         if factor == 0:
             # The collapsed shaft has no direction: Community turns each tip to point along -x.
+            self._unfreeze_shaft()
+            if about_point is None:
+                start,end = self.get_start_and_end()
+                edge = Vector(ORIGIN if about_edge is None else about_edge)
+                about_point = Vector((s+e)/2+(edge[i] > 0)*abs(e-s)/2-(edge[i] < 0)*abs(e-s)/2
+                                     for i,(s,e) in enumerate(zip(start,end)))
             Line.put_start_and_end_on(self,about_point,about_point)
             self.stroke_width = 0
             return self
-        super().scale(factor,about_point=about_point,**kwargs)
-        for tip in self.get_tips().children:
-            tip.scale(1/abs(factor),about_point=tip.tip_point)
+        # Community pops the tips, scales the bare line (so default pivots come from its
+        # endpoints) and re-adds the tips at its new ends, whose refit resets the width
+        # from the shaft between the tip bases.
+        end_tip,start_tip = self._tip(),self._tip(True)
+        self.pop_tips()
+        super().scale(factor,**kwargs)
+        if end_tip is not None:
+            self.add_tip(tip=end_tip)
+        if start_tip is not None:
+            self.add_tip(tip=start_tip,at_start=True)
         self._cut_shaft()
         self._geometry_center()
         self.stroke_width = min(self.initial_stroke_width,self.max_stroke_width_to_length_ratio*self._shaft_length())
