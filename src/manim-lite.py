@@ -5210,32 +5210,83 @@ class TipableVMobject(VMobject):
         old = self._tip(at_start)
         other = self._tip(not at_start)
         curved = self.__dict__.get('_curved_tip_path')
-        if other is not None and (curved or self._type in ('line', 'arrow')):
+        if curved or self._type in ('line', 'arrow'):
             # Community's reset_endpoints_based_on_tip runs put_start_and_end_on on the whole
-            # family: the existing tip turns and scales about its own point with the path.
+            # family: the other tip and any added members turn and scale about the fixed end.
             # (Arrow.scale keeps tip sizes; a tip whose base passes the other tip turns it over.)
-            fixed = Vector(other.tip_point)
             if curved:
                 shaft = self._tip_shaft_curves(role)
                 moving = Vector(shaft[0][0] if at_start else shaft[-1][-1])
+                fixed = Vector(shaft[-1][-1] if at_start else shaft[0][0])
             else:
                 moving = Vector(self.start if at_start else self.end)
+                fixed = Vector(self.end if at_start else self.start)
+            if other is not None:
+                fixed = Vector(other.tip_point)
             base = Vector(tip.base)
             current, target = complex(*(moving - fixed)[:2]), complex(*(base - fixed)[:2])
+            members = [child for child in self.children if child is not tip and child is not old and
+                       (child is other or child.__dict__.get('_tip_role') not in ('start', 'end'))]
             # A closed path's ends coincide up to rounding; that span cannot be refit.
-            if target and abs(current) > 1e-9 * abs(target):
+            if members and target and abs(current) > 1e-9 * abs(target):
                 factor = target / current
-                if self._type != 'arrow':
-                    other.scale(abs(factor), about_point=fixed)
-                other.rotate(cmath.phase(factor), about_point=fixed)
+                extra = 1
+                if self._type == 'arrow' and other is not None and at_start:
+                    # Arrow.scale inside put_start_and_end_on pops the end tip (re-fitting the
+                    # members to its point) and re-adds it (re-fitting them to its base).
+                    drawn = self._drawn_ends()
+                    span, cut = abs(complex(*(fixed - moving)[:2])), abs(complex(*(drawn[1] - moving)[:2]))
+                    length = span - cut
+                    if cut and abs(factor) * span:
+                        extra = span / cut * (abs(factor) * span - length) / (abs(factor) * span)
+                for member in members:
+                    if member is other:
+                        if self._type != 'arrow':
+                            member.scale(abs(factor), about_point=fixed)
+                        member.rotate(cmath.phase(factor), about_point=fixed)
+                    else:
+                        member.scale(abs(factor) * extra, about_point=moving)
+                        member.rotate(cmath.phase(factor), about_point=moving)
+                        member.shift(base - moving)
         tip._tip_role = role
         self._replace_children([child for child in self.children if child is not old and child is not tip]+[tip])
         self.explicit_tips = True
         return self
 
+    def _drawn_ends(self):
+        """The drawn shaft's ends in this path's frame (Community's own first and last points)."""
+        tips = self._tips_by_role()
+        if self._type in ('line', 'arrow'):
+            ends = [Vector(self.start), Vector(self.end)]
+            if not self.__dict__.get('_shaft_fixed'):
+                for index, role in enumerate(('start', 'end')):
+                    if role in tips:
+                        base = self._tip_base(tips[role])
+                        ends[index] = ends[index] if base is None else Vector(base)
+            return ends
+        if self._type == 'bezierpath':
+            curves = (self._tip_shaft_curves() if self.__dict__.get('_curved_tip_path') and tips and
+                      not self.__dict__.get('_shaft_fixed') else self.curves)
+            return [Vector(curves[0][0]), Vector(curves[-1][-1])] if curves else None
+        if self._type == 'polyline' and len(self.vertices) > 1:
+            return [Vector(self.vertices[0]), Vector(self.vertices[-1])]
+        return None
+
     def pop_tips(self):
-        # Community's pop_tips: remove the tips, then put_start_and_end_on(their points).
+        # Community's pop_tips: remove the tips, then put_start_and_end_on(their points),
+        # which moves any other members with the shaft.
         points = {role: Vector(tip.tip_point) for role, tip in self._tips_by_role().items()}
+        drawn = self._drawn_ends() if points else None
+        members = [child for child in self.children if child.__dict__.get('_tip_role') not in ('start', 'end')]
+        if drawn and members:
+            current = complex(*(drawn[1] - drawn[0])[:2])
+            wanted = complex(*(points.get('end', drawn[1]) - points.get('start', drawn[0]))[:2])
+            if current and wanted:
+                factor, pivot = wanted / current, drawn[0]
+                for member in members:
+                    member.scale(abs(factor), about_point=pivot)
+                    member.rotate(cmath.phase(factor), about_point=pivot)
+                    member.shift(points.get('start', drawn[0]) - pivot)
         self.__dict__.pop('_shaft_fixed', None)
         tips = self.get_tips()
         self.remove(*tips.children)
