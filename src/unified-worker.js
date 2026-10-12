@@ -86,6 +86,8 @@ self.onmessage = event => {
       if (/\bCode\s*\(/.test(code)) await runtime.loadPackage('pygments');
       // By URL: the lock file's networkx entry pulls in matplotlib, which import networkx never needs.
       if (/\b(?:networkx|nx)\b/.test(code)) await runtime.loadPackage(NETWORKX_WHEEL);
+      // Scenes that draw or save images with Pillow; ImageMobject itself decodes PNG without it.
+      if (/\bPIL\b/.test(code)) await runtime.loadPackage('pillow');
       self.postMessage({ id, type: 'pyodide-ready' });
       // Rebuild the compatibility definitions and use a fresh source namespace.
       await runtime.runPythonAsync(source);

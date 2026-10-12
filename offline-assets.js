@@ -1,6 +1,6 @@
 /** Exact offline dependencies. Bump VERSION whenever any listed local file changes. */
 const OfflineAssets = {
-  VERSION: 'manimonline-offline-v279',
+  VERSION: 'manimonline-offline-v280',
   local: [
     'examples/three_d_scene.py',
     'examples/banner_scene.py',
@@ -84,7 +84,8 @@ const OfflineAssets = {
   // Cached after first use (e.g. NumPy for scripts that import it), never required for readiness.
   optional: ['https://cdn.jsdelivr.net/pyodide/v0.27.0/full/numpy-2.0.2-cp312-cp312-pyodide_2024_0_wasm32.whl',
     'https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pygments-2.17.2-py3-none-any.whl',
-    'https://cdn.jsdelivr.net/pyodide/v0.27.0/full/networkx-3.4.2-py3-none-any.whl'],
+    'https://cdn.jsdelivr.net/pyodide/v0.27.0/full/networkx-3.4.2-py3-none-any.whl',
+    'https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pillow-10.2.0-cp312-cp312-pyodide_2024_0_wasm32.whl'],
   urls(scope) { return [...this.local.map(path => new URL(path, scope).href), ...this.remote]; },
   key(request, scope) {
     if (request.method !== 'GET') return null;

@@ -1530,6 +1530,8 @@ PNG/JPEG/GIF data URI; both also read files that scene code wrote to Pyodide's f
 system. PNG images decode to pixel arrays (for `get_pixel_array` and `invert`). Shapes, styles, transforms,
 `use`, viewBox, sizing and centering follow Community; `<text>` is skipped as there.
 `Circle`/`Ellipse` now default to RED like Community (Dot stays WHITE).
+Sources that import `PIL` get Pyodide's Pillow package, so a scene can draw or save an
+image file and then show it with `ImageMobject`.
 
 The **Typing, boundaries and implicit curves** example covers `TypeWithCursor`,
 `UntypeWithCursor`, `AnimatedBoundary`, `ChangeSpeed` (Community's speed curves,
