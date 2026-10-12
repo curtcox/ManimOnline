@@ -298,9 +298,10 @@ BarChart and PolarPlane are implemented with Community reference checks;
 nonlinear polar warping (`apply_complex_function` on planes) remains open.
 
 VectorField, ArrowVectorField and StreamLines are implemented with Community
-reference checks for positions, colors and traced lines. Raster background
-images, 3D fields and per-pixel stream coloring remain open; frame size limits
-dense stream fields.
+reference checks for positions, colors and traced lines. 3D arrow fields and
+spatial StreamLines (z_range/three_dimensions) follow Community, including 3D
+vector tips. Raster background images and per-pixel stream coloring remain open;
+frame size limits dense stream fields.
 
 ConvexHull, Cutout, TangentialArc, ArcBrace, VDict, ScreenRectangle family,
 VectorizedPoint, ComplexValueTracker, UnitInterval, CurvesAsSubmobjects,
@@ -350,6 +351,8 @@ subcaptions are recorded only.
   is not modelled. Polyhedra, 3D text planes and OpenGL-only surfaces remain open.
 - Polyhedron, Tetrahedron, Octahedron, Icosahedron, Dodecahedron and ConvexHull3D match
   Manim 0.22 geometry (vertex dots, face counts, bounds, vertex-driven face updates).
+- 3D frames whose solids move by an affine map (Rotate, rotating updaters) reuse earlier
+  geometry with a per-frame transform; a corpus polyhedron scene went from 60 MiB to 14 MiB.
 
 Community docstring corpus (2026-10-09): of Manim 0.22's 395 `.. manim::` docstring
 examples, Community renders 372 here (with TinyTeX) and manim-lite renders 376; only the
