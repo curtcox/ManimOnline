@@ -1787,5 +1787,25 @@ class AnimationApiTests(unittest.TestCase):
         self.assertEqual([v[:2] for v in values], [[-3.9795, -0.9801], [-2.0199, 0.9795]])
 
 
+    def test_transforms_into_arrows_keep_aligned_shaft_points(self):
+        source = (
+            'from manim import *\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = Circle(radius=0.7)\n'
+            '        self.add(o)\n'
+            '        self.play(Transform(o, Arrow(LEFT, RIGHT * 2)))\n'
+            '        FOUND.append(len(o.get_points()))\n'
+            '        self.play(o.animate.become(Triangle()))\n'
+            '        FOUND.append(len(o.get_points()))\n')
+        found = []
+        lite.render_scene('from manim import *\nclass Empty(Scene):\n    pass\n')
+        namespace = {'FOUND': found}
+        exec(compile(source, '<test>', 'exec'), namespace)
+        namespace['S']().render()
+        # Community 0.22: the circle's eight curves subdivide the shaft, then the triangle.
+        self.assertEqual(found, [32, 32])
+
+
 if __name__ == '__main__':
     unittest.main()

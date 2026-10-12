@@ -3556,9 +3556,10 @@ class Mobject:
                 factors[k * len(items) // total] += 1
             return [entry for item, factor in zip(items, factors)
                     for entry in [item] + [repeat(item) for _ in range(1, factor)]]
-        def plain(member):
+        def pointy(member):
+            # Tipped paths align their own (shaft) points; refit curved shafts do not.
             return (_is_a(member, VMobject) and not hasattr(type(member), '_scene_get_points') and
-                    not (isinstance(member, TipableVMobject) and member._tips_by_role()))
+                    not member.__dict__.get('_curved_tip_path'))
         def align(source, target, root=False):
             has_points, sources, receiver = source[0], list(source[1]), source[2]
             point = lambda: VectorizedPoint(target._geometry_center())
@@ -3576,14 +3577,19 @@ class Mobject:
                         leaf._freeze_shaft()
                     leaf._replace_children([])
                     target = VGroup(*[_world_view(child) for child in target.children], leaf)
-            elif (has_points and (root_points or not root) and receiver is not None and plain(receiver)
-                  and plain(target)):
+            elif (has_points and (root_points or not root) and receiver is not None and pointy(receiver)
+                  and pointy(target)):
                 # align_data recurses with point alignment below the root: the member with
                 # fewer curves per subpath (or fewer subpaths) is subdivided to match.
+                tipped = isinstance(target, TipableVMobject) and bool(target._tips_by_role())
                 aligned = target.copy()
+                if tipped:
+                    aligned._freeze_shaft()  # Community's own points are the cut shaft.
                 aligned._replace_children([])
                 receiver.copy().align_points(aligned)
                 if len(aligned.get_points()) != len(target.get_points()):
+                    if tipped:
+                        target._freeze_shaft()
                     lengths = aligned.__dict__.get('subpath_lengths')
                     VMobject.set_points(target, aligned.get_points())
                     if lengths:
