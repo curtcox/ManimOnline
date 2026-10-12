@@ -1779,5 +1779,13 @@ class AnimationApiTests(unittest.TestCase):
                                  ['Dot', 'Dot', 'Square', 'Square']])
 
 
+    def test_rotated_point_clouds_bound_their_points(self):
+        values = scene_values(
+            'disk = PointCloudDot(center=LEFT * 3, radius=1.5).scale(.7).rotate(.6)\n'
+            'result = [disk.get_critical_point(DL), disk.get_critical_point(UR)]\n')
+        # Community 0.22 bounds the turned points, not the turned bounding box.
+        self.assertEqual([v[:2] for v in values], [[-3.9795, -0.9801], [-2.0199, 0.9795]])
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -2873,6 +2873,8 @@ class Mobject:
                     [p for curve in curves for p in (curve[0], curve[-1])]) + getattr(self, 'vertices', [])
         if self.__dict__.get('_mobject_points'):
             return self._mobject_points
+        if self._type == 'pointcloud':
+            return [(p[0], p[1], 0) for p in self.cloud] or None
         if self._type in ('square', 'rectangle', 'triangle'):
             return [curve[0] for curve in _path_curves(self.to_dict() if self._type == 'triangle' else
                     {'type': self._type, 'side_length': getattr(self, 'side_length', 0),
