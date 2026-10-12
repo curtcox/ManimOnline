@@ -131,6 +131,15 @@ class MobjectUtilityTests(unittest.TestCase):
             '          s.get_stroke_color(), s.get_fill_opacity(), c.get_style(simple=True)["stroke_width"]]\n')
         self.assertEqual(result, [[[0.9882, 0.3843, 0.3333, 0.5]], [1.0], '#FC6255', '#FC6255', 0.5, 4])
 
+    def test_unknown_keywords_raise_type_error(self):
+        for build, message in ((lambda: lite.ParametricFunction(lambda t: (t, t, 0), t_min=-3),
+                                "Mobject.__init__() got an unexpected keyword argument 't_min'"),
+                               (lambda: lite.Square().set_style(glow=1),
+                                "VMobject.set_style() got an unexpected keyword argument 'glow'")):
+            with self.assertRaises(TypeError) as caught:
+                build()
+            self.assertEqual(str(caught.exception), message)
+
     def test_default_stroke_widths(self):
         result = scene_values(
             'result = [m.stroke_width for m in (Circle(), Line(), Arc(), VGroup(), Axes(), NumberLine(),\n'

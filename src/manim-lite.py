@@ -1177,6 +1177,12 @@ class _UpdaterBuilder:
         return add_updater
 
 
+class _UnexpectedKeyword(TypeError, NotImplementedError):
+    """Community's TypeError for an unknown keyword, still marked as unsupported here."""
+    def __init__(self, function, keywords):
+        super().__init__(f'{function}() got an unexpected keyword argument {next(iter(keywords))!r}')
+
+
 class Mobject:
     # Subclass bookkeeping (e.g. Graph adjacency) that frames never store.
     _frame_excluded = ()
@@ -1191,7 +1197,7 @@ class Mobject:
                  shade_in_3d=False, joint_type=None, cap_style=None, sheen_factor=0,
                  sheen_direction=None, name=None, **kwargs):
         if kwargs:
-            raise NotImplementedError('Unsupported options: ' + ', '.join(kwargs))
+            raise _UnexpectedKeyword('Mobject.__init__', kwargs)
         if name is not None:
             self.name = name
         if joint_type is not None:
@@ -3217,7 +3223,7 @@ class Mobject:
         unsupported = [key for key in kwargs if not key.startswith('background_stroke') and
                        key not in ('sheen_factor', 'sheen_direction', 'background_image')]
         if unsupported:
-            raise NotImplementedError('Unsupported style options: ' + ', '.join(unsupported))
+            raise _UnexpectedKeyword(f'{"V" if _is_a(self, VMobject) else ""}Mobject.set_style', unsupported)
         def single(value):
             # get_style() lists one entry per gradient stop, None for transparent black.
             if isinstance(value, (list, tuple)) and value and not isinstance(value[0], _REAL):
