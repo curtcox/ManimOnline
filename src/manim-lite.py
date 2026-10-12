@@ -15499,21 +15499,29 @@ class Scene:
                 self._elapsed_frames += count
             follows = [any(m.updaters for obj in animation.objects() for m in obj.get_family())
                        for animation in animations]
+            previous = {}
+            if any(follows) and not self._skipping and count:
+                # Community's begin() interpolates every animation to alpha 0 first.
+                for animation in animations:
+                    previous.update(animation.states(0))
             for frame in range(0 if self._skipping else count):
                 time = frame / FPS
                 overrides = {}
                 for animation, duration, follow in zip(animations, durations, follows):
                     dt = 0 if frame == 0 else 1 / FPS
-                    if follow and overrides:
+                    if follow and (overrides or previous):
                         # Community updates each animation's copies after the earlier
-                        # animations of the play have been interpolated for this frame.
-                        with self._exposing(overrides):
+                        # animations of the play have been interpolated for this frame;
+                        # the others (this one included) still show the previous frame.
+                        with self._exposing({**previous, **overrides}):
                             animation._advance_copies(dt)
                     else:
                         animation._advance_copies(dt)
                     overrides.update(animation.states(time / duration if duration else 1))
                 self._update_mobjects(0 if frame == 0 else 1 / FPS, overrides)
                 self.capture(overrides)
+                if any(follows):
+                    previous = overrides
         finally:
             self._static_frames = None
         # Update-function animations finish last, seeing their neighbors' final states as

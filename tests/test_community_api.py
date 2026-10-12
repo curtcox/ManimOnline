@@ -1807,5 +1807,25 @@ class AnimationApiTests(unittest.TestCase):
         self.assertEqual(found, [32, 32])
 
 
+    def test_animation_copies_see_the_previous_frame(self):
+        source = (
+            'from manim import *\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        d = Dot()\n'
+            '        d.add_updater(lambda m: m.next_to(d, UP))\n'
+            '        self.add(d)\n'
+            '        self.play(Create(d))\n'
+            '        FOUND.append(d.get_top()[1])\n')
+        found = []
+        lite.render_scene('from manim import *\nclass Empty(Scene):\n    pass\n')
+        namespace = {'FOUND': found}
+        exec(compile(source, '<test>', 'exec'), namespace)
+        namespace['S']().render()
+        # Community 0.22: Create's updated starting copy follows the dot as the previous frame
+        # left it (collapsed to its first point at alpha 0), so it climbs every frame.
+        self.assertEqual(plain(found), [6.6289])
+
+
 if __name__ == '__main__':
     unittest.main()
