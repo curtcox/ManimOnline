@@ -3607,6 +3607,9 @@ class Mobject:
                 children.append(member)
             retained = {key:source.__dict__[key] for key in ('updaters','updating_suspended','_saved_state')
                         if key in source.__dict__}
+            if '_tip_role' in source.__dict__ and '_tip_role' not in replacement.__dict__:
+                # Community's tip attributes keep referring to the same member.
+                retained['_tip_role'] = source.__dict__['_tip_role']
             # Community's become copies points and colors only: scene-added attributes stay
             # (unless the library stores the target's geometry under the same name).
             scene_keys, target_keys = source.__dict__.get('_scene_keys', ()), replacement.__dict__.get('_scene_keys', ())
@@ -6123,7 +6126,7 @@ class Line(TipableVMobject):
         return start, end
 
     def get_start(self):
-        if self._type not in ('line','arrow','vgroup'):
+        if self._type not in ('line','arrow','vgroup') or 'start' not in self.__dict__:
             # A line given explicit points (e.g. a partial arrow) still ends at its tips.
             return (TipableVMobject if self._tip(True) is not None else Mobject).get_start(self)
         if self._tip(True) is not None:
@@ -6132,7 +6135,7 @@ class Line(TipableVMobject):
         return self._point_to_world(Vector(self.start))
 
     def get_end(self):
-        if self._type not in ('line','arrow','vgroup'):
+        if self._type not in ('line','arrow','vgroup') or 'start' not in self.__dict__:
             # A line given explicit points (e.g. a partial arrow) still ends at its tips.
             return (TipableVMobject if self._tip() is not None else Mobject).get_end(self)
         if self._tip() is not None:
@@ -6387,6 +6390,9 @@ class StealthTip(ArrowTip):
 
 
 class Arrow(Line):
+    # Defaults for arrows whose instance attributes a become() replaced (Community keeps them).
+    initial_stroke_width, max_stroke_width_to_length_ratio, max_tip_length_to_length_ratio = 6, 5, .25
+
     def __init__(self, start=LEFT, end=RIGHT, buff=.25, stroke_width=6, tip_length=.35,
                  tip_shape=None, max_tip_length_to_length_ratio=.25,
                  max_stroke_width_to_length_ratio=5, **kwargs):
@@ -6455,7 +6461,16 @@ class Arrow(Line):
         # from the shaft between the tip bases.
         end_tip,start_tip = self._tip(),self._tip(True)
         self.pop_tips()
-        super().scale(factor,**kwargs)
+        if factor == 0:
+            # Collapse the points (not the pose), so the tips can be re-added at the point.
+            pivot = (Vector(about_point) if about_point is not None else
+                     self.get_critical_point(Vector(about_edge)) if about_edge is not None else self.get_center())
+            for member in list(self.children):
+                member.scale(0, about_point=pivot)
+            if self._type in _PATH_TYPES and self.get_points():
+                VMobject.set_points(self, [pivot] * 4)
+        else:
+            super().scale(factor,**kwargs)
         if end_tip is not None:
             self.add_tip(tip=end_tip)
         if start_tip is not None:
@@ -11783,6 +11798,14 @@ def _align_path_snapshots(start, target):
         cuts = sorted(set(itertools.accumulate(lengths1)) | set(itertools.accumulate(lengths2)))
         spans = list(zip([0] + cuts[:-1], cuts))
         paths1, paths2 = [flat1[a:b] for a, b in spans], [flat2[a:b] for a, b in spans]
+    elif sum(lengths1) != sum(lengths2):
+        # Community drops trailing null curves before pairing (manim issue 1959).
+        def trimmed(path):
+            while len(path) > 1 and all(math.dist(point, path[-2][-1]) <= 1e-9 * max(1, math.hypot(*path[-2][-1]))
+                                        for point in path[-1]):
+                path = path[:-1]
+            return path
+        paths1, paths2 = [trimmed(path) for path in paths1], [trimmed(path) for path in paths2]
     if (start['type'] == target['type'] and not pointwise and not drawn and
             (len(paths1) == len(paths2) == 1 and len(paths1[0]) == len(paths2[0]) if start['type'] == 'bezierpath'
              else len(start['vertices']) == len(target['vertices']))):
