@@ -1649,8 +1649,24 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertAlmostEqual(lite.Integer(42).get_height(),.3372,delta=.005)
         label=lite.Text('Title').to_edge(lite.UP)
         self.assertAlmostEqual(label.get_top()[1],3.5)
-        for bad in ({'font_size':0},{'line_spacing':float('nan')},{'font':'x;y'},{'slant':'WIDE'},{'weight':'FAT'}):
+        for bad in ({'font_size':0},{'line_spacing':float('nan')},{'font':'x;y'}):
             with self.assertRaises(ValueError): lite.Text('x',**bad)
+        for bad in ({'slant':'WIDE'},{'weight':'FAT'},{'weight':lite.SEMILIGHT}):
+            with self.assertRaises(AttributeError): lite.Text('x',**bad)
+
+    def test_text_faces_and_kerning_match_community(self):
+        # Manim Community 0.22 with Liberation Sans registered: Bold for SEMIBOLD and heavier,
+        # Italic for ITALIC and OBLIQUE, HarfBuzz kerning within each face.
+        for options,width in (({},3.3354),({'weight':lite.MEDIUM},3.3354),({'weight':lite.SEMIBOLD},3.6028),
+                              ({'weight':lite.HEAVY},3.6028),({'slant':lite.ITALIC},3.4422),
+                              ({'slant':lite.OBLIQUE,'weight':lite.BOLD},3.6909)):
+            self.assertAlmostEqual(lite.Text('Hello World',**options).width,width,delta=.001)
+        self.assertAlmostEqual(lite.Text('AVATAR').width,2.4371,delta=.001)
+        self.assertAlmostEqual(lite.MarkupText('Hello <b>World</b>').width,3.4819,delta=.001)
+        centers=[g.get_center()[0] for g in lite.Text('Hello World',t2w={'World':lite.BOLD})]
+        for actual,expected in zip(centers,(-1.5547,-1.1294,-0.8692,-0.7211,-0.4619,0.2232,0.7294,1.0797,1.2847,1.573)):
+            self.assertAlmostEqual(actual,expected,delta=.001)
+        self.assertNotIn('_faces',lite.Text('Hi',weight=lite.BOLD).to_dict())
         styled=lite.Text('x',font='Inter',weight=lite.BOLD,slant=lite.ITALIC).to_dict()
         self.assertEqual((styled['font'],styled['weight'],styled['slant']),('Inter','BOLD','ITALIC'))
 
