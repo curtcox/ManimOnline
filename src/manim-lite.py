@@ -14828,11 +14828,14 @@ class AddTextLetterByLetter(Animation):
         if (not isinstance(text, Text) or isinstance(text, MathTex) or text._type not in ('text', 'vgroup')
                 or '_number_format' in text.__dict__):
             raise TypeError('Letter-by-letter animations expect Text')
-        glyphs = sum(1 for char in text.text if not char.isspace())
+        # Community counts the glyph submobjects (len(text)).
+        glyphs = (len(text.children) if text._type == 'vgroup' else
+                  sum(1 for char in text.__dict__['text'] if not char.isspace()))
         if not glyphs:
             raise ValueError(f'The text mobject {text} does not seem to contain any characters.')
         if run_time is None:
-            run_time = max(0.06, time_per_char * glyphs)
+            # The minimum time per character is one frame, so every letter appears.
+            run_time = max(1 / FPS, time_per_char) * glyphs
         kwargs.setdefault('introducer', True)
         super().__init__(text, run_time=run_time, rate_func=rate_func, **kwargs)
         self.int_func = int_func
@@ -15406,7 +15409,17 @@ class Scene:
         self._static_frames = ({} if not self._world_members and self._static_frames_safe(animations)
                                else None)
         try:
-            for frame in range(count):
+            if self._skipping and count:
+                # Community's skipped animations jump to their end in one update.
+                total = max(durations)
+                for animation in animations:
+                    animation._advance_copies(total)
+                overrides = {}
+                for animation in animations:
+                    overrides.update(animation.states(1))
+                self._update_mobjects(total, overrides)
+                self._elapsed_frames += count
+            for frame in range(0 if self._skipping else count):
                 time = frame / FPS
                 overrides = {}
                 for animation in animations:
@@ -15497,6 +15510,13 @@ class Scene:
                     self.capture()
             finally:
                 self._static_frames = None
+            return
+        if self._skipping and count:
+            # Community's skipped wait jumps to its end in one update.
+            self._update_mobjects(0, scene_updaters=False)
+            self._update_mobjects(duration)
+            self._elapsed_frames += count
+            self._update_mobjects(0, scene_updaters=False)
             return
         safe = stop_condition is None and self._static_frames_safe()
         self._static_frames = {} if safe else None
@@ -18107,18 +18127,18 @@ class SpiralIn(Animation):
 
 
 class AddTextWordByWord(AddTextLetterByLetter):
-    """Reveal whole words of a Text in order (Community's version reveals characters)."""
+    """Community 0.22's AddTextWordByWord: a Succession over the text's glyphs (iterating a
+    Text yields glyphs, not words) that never hides them, so the whole text shows at once
+    for (time_per_char + 0.005) seconds per glyph."""
     def __init__(self, text_mobject, run_time=None, time_per_char=0.06, **kwargs):
+        glyphs = (len(text_mobject.children) if isinstance(text_mobject, Text) and text_mobject._type == 'vgroup'
+                  else sum(1 for char in getattr(text_mobject, '__dict__', {}).get('text', '') if not char.isspace()))
+        if run_time is None:
+            run_time = glyphs * (time_per_char + 0.005)
         super().__init__(text_mobject, run_time=run_time, time_per_char=time_per_char, **kwargs)
-        self.word_ends = []
-        count = 0
-        for word in text_mobject.text.split():
-            count += len(word)
-            self.word_ends.append(count)
 
     def _shown(self, alpha, count):
-        words = max(0, min(len(self.word_ends), int(self.int_func(alpha * len(self.word_ends)))))
-        return min(count, self.word_ends[words - 1]) if words else 0
+        return count
 
 
 class _MT19937:
