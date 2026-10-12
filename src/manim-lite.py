@@ -4385,8 +4385,9 @@ def always_redraw(func):
     mobject = func()
     if not isinstance(mobject, Mobject):
         raise TypeError('always_redraw factory must return a Mobject')
-    # Use the updater argument so copies regenerate themselves, not the original.
-    return mobject.add_updater(lambda current: current.become(func()))
+    # Community's updater rebuilds the original (a closure), even when it runs on a copy such
+    # as an animation's starting copy, which therefore keeps its shape.
+    return mobject.add_updater(lambda _: mobject.become(func()))
 
 
 def always(method, *args, **kwargs):

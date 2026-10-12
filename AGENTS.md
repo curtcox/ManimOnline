@@ -118,8 +118,8 @@ validation and identity for in-place arithmetic.
 
 Read `examples/redraw_scene.py` for factory-driven geometry, suspension/resumption,
 and freezing callbacks. become must preserve source callbacks/checkpoints and
-independent target geometry. Redraw copies update the callback argument; do not
-capture a fixed original object in the regeneration callback.
+independent target geometry. As in Community, the always_redraw callback rebuilds the
+original object (a closure), even when run on a copy, so animation copies keep their shape.
 
 Read `examples/numeric_scene.py` for DecimalNumber/Integer tracker labels,
 formatted intermediate animation values and restoration. Numeric labels are one
