@@ -1450,6 +1450,8 @@ class Mobject:
             if not count:
                 raise ZeroDivisionError('division by zero')  # Community: ceil(0 / ceil(sqrt(0)))
             cols = max(1,math.ceil(math.sqrt(count)))
+        if not count:
+            raise ValueError('max() iterable argument is empty')  # Community measures empty cells.
         if rows is None:
             rows = max(1,math.ceil(count/cols))
         if cols is None:
@@ -2656,9 +2658,14 @@ class Mobject:
         return bool(points) and all(abs(a-b) <= 1e-6 for a,b in zip(points[0],points[-1]))
 
     def pointwise_become_partial(self, vmobject, a, b):
-        if not isinstance(vmobject, Mobject) or vmobject._type not in (
-                'polyline', 'polygon', 'bezierpath', 'circle', 'arc', 'ellipse',
-                'square', 'rectangle', 'triangle', 'line', 'annulus', 'arrow'):
+        outlines = ('polyline', 'polygon', 'bezierpath', 'circle', 'arc', 'ellipse',
+                    'square', 'rectangle', 'triangle', 'line', 'annulus', 'arrow')
+        if isinstance(vmobject, VMobject) and vmobject._type not in outlines and not vmobject.get_points():
+            # Community: a source without points of its own (a VGroup) leaves none.
+            if self._type in outlines and self.get_points():
+                VMobject.set_points(self, [])
+            return self
+        if not isinstance(vmobject, Mobject) or vmobject._type not in outlines:
             raise TypeError('Partial geometry expects a supported vector outline')
         if any(isinstance(v,bool) or not isinstance(v,_REAL) or not math.isfinite(v)
                for v in (a,b)):
@@ -4572,6 +4579,8 @@ class VMobject(Mobject, metaclass=_CommunityTree):
         for child in self.children:
             if hasattr(child, 'change_anchor_mode'):
                 child.change_anchor_mode(mode)
+        if self._type not in _PATH_TYPES:
+            return self  # No points of its own (e.g. after becoming a group).
         center = self._geometry_center()
         paths = _path_subpaths(self.to_dict(),include_pending=False)
         curves, lengths = [], []
@@ -5243,6 +5252,10 @@ class TipableVMobject(VMobject):
             else:
                 fitted = _fit_curve_endpoints(curves, start, end)
             self._set_own_ends({}, fitted)
+        elif points and self._type == 'polyline' and len(self.vertices) > 1:
+            vertices = [Vector(p) for p in self.vertices]
+            start, end = points.get('start', vertices[0]), points.get('end', vertices[-1])
+            self._set_own_ends({}, vertices=_fit_curve_endpoints([vertices], start, end)[0])
         return tips
 
     def _tip_base(self, tip, current=False):
@@ -5257,11 +5270,13 @@ class TipableVMobject(VMobject):
         index = len(curves) / 2
         return tip._point_to_world(VMobject._bezier_point(curves[min(int(index), len(curves) - 1)], index - int(index)))
 
-    def _set_own_ends(self, ends, curves=None):
-        """Replace own endpoints (or curves) in place, keeping the family where it is."""
+    def _set_own_ends(self, ends, curves=None, vertices=None):
+        """Replace own endpoints (or curves, or polyline vertices) in place, keeping the family where it is."""
         before = self._geometry_center()
         if curves is not None:
             self.curves = curves
+        if vertices is not None:
+            self.vertices = vertices
         for role, point in ends.items():
             setattr(self, role, list(point))
         self.__dict__.pop('_family_pivot_cache', None)
@@ -5991,6 +6006,8 @@ class Line(TipableVMobject):
         self.buff = buff
 
     def _orient_tip(self, tip, at_start):
+        if self._type not in ('line', 'arrow'):
+            return TipableVMobject._orient_tip(self, tip, at_start)  # Edited into a free path.
         vector = Vector(self.start)-Vector(self.end) if at_start else Vector(self.end)-Vector(self.start)
         angle = math.atan2(vector[1],vector[0]) if any(vector) else math.pi
         tip.rotate(angle-tip.tip_angle)
@@ -24479,6 +24496,33 @@ _VIRTUAL_BASES.update({VMobject: (VGroup, Text), Animation: (AnimationGroup,),
                        ScreenRectangle: (CameraFrame,)})
 # Community's moving-camera frame is a ScreenRectangle.
 CameraFrame.__name__ = CameraFrame.__qualname__ = 'ScreenRectangle'
+
+
+def _shaft_edit(name):
+    """Community edits a NumberLine's own points: Lite edits the (cut) shaft child as scene code."""
+    def edit(self, *args, **kwargs):
+        self._freeze_shaft()
+        _call_as_scene(getattr(self._part('shaft'), name), *args, **kwargs)
+        return self
+    edit.__name__ = name
+    return edit
+
+
+for _name in ('add_line_to', 'add_points_as_corners', 'add_quadratic_bezier_curve_to', 'add_cubic_bezier_curve_to',
+              'add_cubic_bezier_curves', 'add_smooth_curve_to', 'append_points', 'set_points_as_corners',
+              'set_points_smoothly', 'start_new_path', 'close_path', 'set_anchors_and_handles', 'add_subpath'):
+    setattr(NumberLine, _name, _shaft_edit(_name))
+NumberLine._scene_set_points = _shaft_edit('set_points')
+NumberLine._scene_insert_n_curves = _shaft_edit('insert_n_curves')
+
+
+def _scene_insert_n_curves(self, n):
+    if not _call_as_scene(self.get_num_points):
+        raise ValueError('not enough values to unpack (expected 3, got 1)')  # Community has no points to remap.
+    return self.insert_n_curves(n)
+
+
+Mobject._scene_insert_n_curves = _scene_insert_n_curves
 CameraFrame.aspect_ratio = ScreenRectangle.aspect_ratio
 # Scenes see the arrow as Community's Vector (internally Vector is the coordinate tuple).
 VectorArrow.__name__ = VectorArrow.__qualname__ = 'Vector'

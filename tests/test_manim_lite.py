@@ -4825,7 +4825,7 @@ assert isinstance(t.get_value(), (int, float))""")
         for a,b in [(True,.5), (float('nan'),1), (0,float('inf')),('0',1),(.8,.2)]:
             with self.assertRaises(ValueError): source.pointwise_become_partial(source,a,b)
             self.assertEqual(source.to_dict(),before)
-        with self.assertRaises(TypeError): source.pointwise_become_partial(lite.Text('text'),0,1)
+        with self.assertRaises(TypeError): source.pointwise_become_partial(lite.Group(),0,1)
         self.assertEqual(source.to_dict(),before)
         source.pointwise_become_partial(source,-1,2)
         self.assertEqual(source.get_num_curves(),1)
