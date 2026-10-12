@@ -13142,6 +13142,13 @@ class Create(Animation):
         return [self._member_states(_snapshot_copy(self.start), alpha, rate_func,
                                     lambda node, a, path: self._reveal(node, a))]
 
+    def finish(self, scene=None):
+        result = super().finish(scene)
+        if scene is not None and self.reverse_rate_function:
+            # Community's last frame (pointwise_become_partial(start, 0, 0)) stays on the mobject.
+            _collapse_drawn(self.mobject)
+        return result
+
 
 class ShowPassingFlash(Animation):
     """Move a temporary cubic-parameter window over supported vector outlines."""
@@ -13208,12 +13215,6 @@ class Uncreate(Create):
         super().__init__(mobject, reverse_rate_function=reverse_rate_function, introducer=False,
                          remover=remover, **kwargs)
 
-    def finish(self, scene=None):
-        result = super().finish(scene)
-        if scene is not None and self.reverse_rate_function:
-            # Community's last frame (pointwise_become_partial(start, 0, 0)) stays on the mobject.
-            _collapse_drawn(self.mobject)
-        return result
 
 
 def _collapse_drawn(mobject, unfill=False):

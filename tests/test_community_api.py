@@ -1930,5 +1930,17 @@ class AnimationApiTests(unittest.TestCase):
         self.assertEqual(found, [['Dot', 'Circle', 'Square'], ['Dot', 'Square']])
 
 
+    def test_reversed_create_ends_collapsed(self):
+        values = scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        self.play(Create(Square(), reverse_rate_function=True))\n'
+            '        self.result = self.mobjects[0].height\n'
+            's = S(); s.render()\n'
+            'result = [s.result]\n')
+        # Community 0.22's final interpolate is at alpha 0: the square stays a point.
+        self.assertEqual(values, [0.0])
+
+
 if __name__ == '__main__':
     unittest.main()
