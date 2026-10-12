@@ -6650,7 +6650,8 @@ class Demo(Scene):
         result = render('a = Dot()\nb = Square().shift(RIGHT * 3)\nc = Circle().shift(LEFT * 3)\nself.play(AnimationGroup(Succession(AnimationGroup(FadeIn(a), Create(b)), Succession(Rotate(b, PI, rate_func=linear), FadeOut(a))), Create(c, run_time=4)))')
         self.assertEqual(result['duration'], 4)
         self.assertEqual(result['frames'][15]['mobjects'][0]['opacity'], 1)
-        self.assertAlmostEqual(result['frames'][22]['mobjects'][1]['angle'], lite.PI * 7 / 15)
+        # Community draws the nested group's square before the dot (Group(Square, Dot)).
+        self.assertAlmostEqual(result['frames'][22]['mobjects'][0]['angle'], lite.PI * 7 / 15)
         self.assertEqual(len(result['frames'][45]['mobjects']), 2)
         self.assertEqual(len(result['frames'][-1]['mobjects']), 2)
 

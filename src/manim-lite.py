@@ -14300,7 +14300,22 @@ class AnimationGroup:
         self.finish(scene)
 
     def _advance_copies(self, dt):
-        for animation in self.animations:
+        # Community's update_mobjects: only animations begun and not finished by the previous
+        # interpolation update their copies. begin() suspends the group's (non-introducer)
+        # members before the animations begin, so copies of those members never update.
+        previous = self.__dict__.get('_states_time')
+        frozen = set()
+        if self.suspend_mobject_updating:
+            # The members of Community's group (built here without creating the Group).
+            members = (self._group.children if self._group is not None else
+                       [a.mobject for a in self.animations if not a.introducer and isinstance(a.mobject, Mobject)])
+            for member in members:
+                frozen.update(id(m) for m in member.get_family())
+        for animation, (start, duration) in zip(self.animations, self.timings):
+            if previous is None or previous < start or (duration and previous >= start + duration):
+                continue
+            if frozen and any(id(m) in frozen for m in animation.objects()):
+                continue
             animation._advance_copies(dt)
 
 
@@ -14349,6 +14364,11 @@ class Succession(AnimationGroup):
             self._scene.validate(animation)
             animation.prepare(self._scene)
             self._hidden.difference_update(animation.objects())
+
+    def _advance_copies(self, dt):
+        # Community updates only the active stage's copies.
+        if 0 <= self.__dict__.get('_active', -1) < len(self.animations):
+            self.animations[self._active]._advance_copies(dt)
 
     def states(self, alpha, rate_func=None):
         time = self.natural_duration if alpha >= 1 else (rate_func or self.rate_func)(max(0, alpha)) * self.natural_duration
@@ -21824,19 +21844,28 @@ class ChangeSpeed(AnimationGroup):
             previous, init = node, final
         self.scaled_total_time = current
         super().__init__(anim, run_time=self.scaled_total_time * anim.run_time, **kwargs)
-
-    def get_scaled_total_time(self):
-        return self.scaled_total_time
         self._internal = True  # Community's ChangeSpeed is a plain Animation of anim's mobject.
         self._progress = 0.0
 
+    def get_scaled_total_time(self):
+        return self.scaled_total_time
+
     def _remap(self, t):
-        x = self.rate_func_inner(t) * self.scaled_total_time
+        # Community's np.piecewise: the last segment whose bounds hold wins, a time no segment
+        # covers maps to 0, and an integer rate (smooth(1) and linear(1) return int 1) makes
+        # an integer array, truncating the remapped time (so 0.999... finishes at 0).
+        x, total, result = self.rate_func_inner(t), self.scaled_total_time, 0.0
         for start, length, duration, node, init, final in self.segments:
-            if x <= start + length or (start, length) == self.segments[-1][:2]:
-                u = (x - start) / duration if duration else 0
-                return ((final ** 2 - init ** 2) * u * u / 4 + init * u) * duration + node
-        return 1.0
+            if start / total <= x <= (start + length) / total:
+                u = (total * x - start) / duration
+                result = ((final ** 2 - init ** 2) * u ** 2 / 4 + init * u) * duration + node
+        if isinstance(x, numbers.Integral) and not isinstance(x, bool):
+            result = float(int(result))
+        return result
+
+    def _advance_copies(self, dt):
+        # Community's ChangeSpeed is a plain Animation: the wrapped animation updates its copies.
+        self.anim._advance_copies(dt)
 
     def prepare(self, scene):
         if self.affects_speed_updaters:
@@ -21849,12 +21878,19 @@ class ChangeSpeed(AnimationGroup):
         if self.affects_speed_updaters:
             ChangeSpeed.dt = (progress - self._progress) * self.anim.run_time
         self._progress = progress
-        return self.anim.states(progress, lambda t: t) if isinstance(self.anim, Animation) else \
-            self.anim.states(progress, lambda t: t)
+        return self.anim.states(progress, lambda t: t)
 
     def finish(self, scene):
         ChangeSpeed.is_changing_dt = False
+        # Community finishes the animation through the remapped rate function, so when
+        # rounding leaves t = 1 uncovered the mobject ends at the animation's start.
+        final = self._remap(1.0)  # Community's finish passes a float through its rate function.
+        end = (self.anim.states(final, lambda t: t)
+               if final != 1 and isinstance(self.anim, Animation) and not self.anim.remover else None)
         super().finish(scene)
+        for mobject, states in (end or {}).items():
+            if states:
+                mobject.become(_sampled_copy(mobject, states))
 
     @classmethod
     def add_updater(cls, mobject, update_function, index=None, call_updater=False):

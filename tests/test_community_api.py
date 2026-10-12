@@ -1845,5 +1845,24 @@ class AnimationApiTests(unittest.TestCase):
         self.assertEqual(plain(found), [1.9333])
 
 
+    def test_change_speed_finishes_through_community_piecewise(self):
+        source = (
+            'from manim import *\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        d, e = Dot(LEFT * 3), Dot(LEFT * 3)\n'
+            '        self.play(ChangeSpeed(d.animate.shift(RIGHT * 6), {0.3: .2, 0.7: 3}, rate_func=linear))\n'
+            '        self.play(ChangeSpeed(e.animate.shift(RIGHT * 6), {0.3: .2, 0.7: 3}))\n'
+            '        FOUND.extend([d.get_x(), e.get_x()])\n')
+        found = []
+        lite.render_scene('from manim import *\nclass Empty(Scene):\n    pass\n')
+        namespace = {'FOUND': found}
+        exec(compile(source, '<test>', 'exec'), namespace)
+        namespace['S']().render()
+        # Community 0.22: smooth(1) returns the integer 1, so np.piecewise truncates the
+        # remapped 0.999... to 0 and the dot ends where it started; linear(1.0) does not.
+        self.assertEqual(plain(found), [3.0, -3.0])
+
+
 if __name__ == '__main__':
     unittest.main()
