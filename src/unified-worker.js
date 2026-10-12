@@ -28,13 +28,13 @@ function expandPooledScene(scene) {
   // Children and arrays were pooled before their parents, so each index is resolved.
   pool.forEach((node, position) => {
     if (!node || typeof node !== 'object' || Array.isArray(node)) return;
-    if ('$xy' in node) {
-      // Planar points travel as flat XY pairs, optionally grouped k per item (curves).
-      const flat = node.$xy, k = node.k ?? 0;
-      if (!Array.isArray(flat) || flat.length % 2 || !flat.every(Number.isFinite) ||
-          !Number.isInteger(k) || k < 0 || k > 64 || (k && (flat.length / 2) % k)) throw new Error('Invalid pooled frame data.');
+    if ('$xy' in node || '$xyz' in node) {
+      // Points travel as flat XY pairs (planar) or XYZ triples, optionally grouped k per item (curves).
+      const planar = '$xy' in node, flat = planar ? node.$xy : node.$xyz, k = node.k ?? 0, d = planar ? 2 : 3;
+      if (!Array.isArray(flat) || flat.length % d || !flat.every(Number.isFinite) ||
+          !Number.isInteger(k) || k < 0 || k > 64 || (k && (flat.length / d) % k)) throw new Error('Invalid pooled frame data.');
       const points = [];
-      for (let i = 0; i < flat.length; i += 2) points.push([flat[i], flat[i + 1], 0]);
+      for (let i = 0; i < flat.length; i += d) points.push([flat[i], flat[i + 1], planar ? 0 : flat[i + 2]]);
       if (!k) pool[position] = points;
       else {
         const groups = [];
@@ -47,6 +47,13 @@ function expandPooledScene(scene) {
       if (!Number.isInteger(index) || index < 0 || index >= position) throw new Error('Invalid pooled frame data.');
       return pool[index];
     };
+    if ('$base' in node) {
+      // A node's style fields are pooled once and shared; its geometry and children follow.
+      const { $base, ...own } = node;
+      const base = resolve($base);
+      if (!base || typeof base !== 'object' || Array.isArray(base)) throw new Error('Invalid pooled frame data.');
+      node = pool[position] = Object.assign({}, base, own);
+    }
     for (const [name, value] of Object.entries(node)) {
       if (value && typeof value === 'object' && !Array.isArray(value) && '$pool' in value) node[name] = resolve(value.$pool);
     }

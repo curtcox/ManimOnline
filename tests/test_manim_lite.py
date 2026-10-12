@@ -554,11 +554,16 @@ self.play(stream.end_animation())""")
         def expand(data):
             pool=data.pop('pool')
             for position,node in enumerate(pool):
-                if isinstance(node,dict) and '$xy' in node:
-                    points=[[x,y,0] for x,y in zip(node['$xy'][::2],node['$xy'][1::2])]
+                if isinstance(node,dict) and ('$xy' in node or '$xyz' in node):
+                    flat=node.get('$xy',node.get('$xyz'))
+                    points=([[x,y,0] for x,y in zip(flat[::2],flat[1::2])] if '$xy' in node else
+                            [list(flat[i:i+3]) for i in range(0,len(flat),3)])
                     k=node.get('k',0)
                     pool[position]=[points[i:i+k] for i in range(0,len(points),k)] if k else points
                 elif isinstance(node,dict):
+                    if '$base' in node:
+                        self.assertLess(node['$base'],position)
+                        node=pool[position]={**pool[node.pop('$base')],**node}
                     for name,value in list(node.items()):
                         if isinstance(value,dict) and '$pool' in value:
                             self.assertLess(value['$pool'],position)
@@ -569,7 +574,7 @@ self.play(stream.end_animation())""")
             for frame in data['frames']:
                 frame['mobjects']=[pool[index] for index in frame['mobjects']]
             return data
-        for name in ('vector_field_scene','chart_scene','text_layout_scene'):
+        for name in ('vector_field_scene','chart_scene','text_layout_scene','three_d_scene'):
             if name == 'vector_field_scene' and not HAS_NUMPY:
                 continue  # Its functions use np.
             source=(ROOT/'examples'/(name+'.py')).read_text()

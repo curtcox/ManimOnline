@@ -636,7 +636,9 @@ The renderer draws views as clipped, transformed re-renders (no pixels). Assigni
 Read `examples/linear_transformation_scene.py` for LinearTransformationScene. path_arc
 is per point in `_arc_geometry` (parent frame, then inverse sampled pose). Scene
 updaters run after mobject updaters inside the exposed sample pass. Keep transport
-encodings (`$pool`, `$xy`) confined to `_pooled_json`/`expandPooledScene`.
+encodings (`$pool`, `$xy`, `$xyz`, `$base`) confined to `_pooled_json`/`expandPooledScene`.
+Geometry arrays (`_GEOMETRY_KEYS`) are always rounded and pooled; the rest of such a node is a
+shared `$base`, so per-face styles of rebuilt surfaces are sent once.
 
 Read `examples/banner_scene.py` for ManimBanner, SampleSpace and utilities. Mobject.add
 adopts world-placed members into posed parents and remove releases them (see `_adopt`,
@@ -1011,3 +1013,6 @@ Previews allow 120 s / 1800 frames (MAX_FRAMES, `_TOO_LONG`); the worker still r
 over 32 MiB. play() sets any keyword on its animations (Community's compile_animations), and
 config.frame_rate/renderer are validated and ignored. With NumPy loaded, scene code gets
 Community's ndarray results from the space-ops/bezier utilities listed in `_ARRAY_EXPORTS`.
+Surface evaluates func under one bounds memo (`_memo_query`) and bakes in place; inside a memo
+window Axes.coords_to_point reuses cached axis frames (`_c2p_frame`) with the same arithmetic
+order as the uncached path. `_enter_world`/`_exit_world` clear an active memo when they move a member.

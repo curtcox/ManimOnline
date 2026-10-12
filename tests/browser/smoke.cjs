@@ -29,6 +29,17 @@ const NUMPY = [
   '        self.play(Create(square), FadeIn(dots))',
   '',
 ].join('\n');
+const THREE_D = [
+  'from manim import *',
+  '',
+  'class Depth(ThreeDScene):',
+  '    def construct(self):',
+  '        self.set_camera_orientation(phi=60 * DEGREES, theta=-45 * DEGREES)',
+  '        surface = Surface(lambda u, v: (u, v, u * v / 4), u_range=[-2, 2], v_range=[-2, 2], resolution=8)',
+  '        cloud = PMobject().add_points([(x / 4, 0, x / 4) for x in range(-8, 9)], color=YELLOW)',
+  '        self.play(Create(surface), FadeIn(cloud), run_time=0.5)',
+  '',
+].join('\n');
 
 async function open(browser, source) {
   const page = await browser.newPage();
@@ -91,8 +102,10 @@ async function checkManim(browser, source) {
       await checkDot(browser);
       const manim = await checkManim(browser, MANIM);
       const numpy = await checkManim(browser, NUMPY).catch(error => { throw new Error('NumPy scene: ' + error.message); });
+      const depth = await checkManim(browser, THREE_D).catch(error => { throw new Error('3D scene: ' + error.message); });
       console.log(name + ': DOT ok; Manim ' + manim.frames + ' frames, ' + manim.paths +
                   ' shapes; NumPy scene ' + numpy.frames + ' frames, ' + numpy.paths +
+                  ' shapes; 3D scene ' + depth.frames + ' frames, ' + depth.paths +
                   ' shapes; video encoders ' + JSON.stringify(manim.codecs));
     } catch (error) {
       failed = true;

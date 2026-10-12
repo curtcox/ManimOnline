@@ -49,3 +49,19 @@ test('flat XY pool entries expand to planar points and grouped curves', () => {
     assert.throws(() => expandPooledScene({ pool: [bad], frames: [] }), /Invalid pooled/);
   }
 });
+
+test('flat XYZ entries and pooled bases expand to full nodes', () => {
+  const scene = expandPooledScene({
+    pool: [{ $xyz: [0, 0, 1, 1, 0, 2, 1, 1, 3, 0, 1, 4], k: 4 }, { type: 'bezierpath', fill_color: '#FF0000' },
+           { $base: 1, curves: { $pool: 0 }, children: [] }, { $base: 1, curves: { $pool: 0 }, children: [] }],
+    frames: [{ mobjects: [2, 3], camera: {} }]
+  });
+  const [first, second] = scene.frames[0].mobjects;
+  assert.deepEqual(first, { type: 'bezierpath', fill_color: '#FF0000', curves: [[[0, 0, 1], [1, 0, 2], [1, 1, 3], [0, 1, 4]]], children: [] });
+  assert.equal(first.curves, second.curves);
+  for (const bad of [{ $xyz: [1, 2, 3, 4] }, { $xyz: [0, 0, 0, 1, 1, 1], k: 4 }]) {
+    assert.throws(() => expandPooledScene({ pool: [bad], frames: [] }), /Invalid pooled/);
+  }
+  assert.throws(() => expandPooledScene({ pool: [{ $base: 0 }], frames: [] }), /Invalid pooled/);
+  assert.throws(() => expandPooledScene({ pool: [[1], { $base: 0 }], frames: [] }), /Invalid pooled/);
+});

@@ -239,6 +239,8 @@ def _enter_world(mobject):
         _unpin(pinned)
         return None
     _place(mobject, frame)
+    if _BOUNDS_MEMO:
+        _BOUNDS_MEMO.clear()  # A batch memo (_memo_query) must not outlive the move.
     _IN_WORLD.add(id(mobject))
     return (mobject, chain[0], frame, pinned)
 
@@ -258,6 +260,8 @@ def _exit_world(token):
     # A member that left its parent (e.g. a remover) keeps its world placement.
     if any(child is mobject for child in parent.children):
         _place(mobject, frame, inverse=True)
+    if _BOUNDS_MEMO:
+        _BOUNDS_MEMO.clear()
     _unpin(pinned)
 
 
@@ -2067,12 +2071,13 @@ class Mobject:
                 return True
         return False
 
-    def _map_points_3d(self, function, about_point=None, about_edge=None, eps=None):
+    def _map_points_3d(self, function, about_point=None, about_edge=None, eps=None, in_place=False):
         """Apply an arbitrary 3D point map, baking geometry into world points.
 
         Path leaves become 'bezierpath' curves with an identity pose; other
         leaves move their anchor. All results are validated before the family
-        is mutated (the work happens on a copy committed through become)."""
+        is mutated (the work happens on a copy committed through become), unless
+        in_place is set by a constructor that discards the object on failure."""
         if isinstance(self, CameraFrame):
             raise NotImplementedError('Camera point mapping is not implemented')
         pivot = self._pivot_3d(about_point, about_edge)
@@ -2088,12 +2093,12 @@ class Mobject:
             if not all(math.isfinite(value) for value in result):
                 raise ValueError('Mapped geometry must be finite')
             return list(result)
-        target = self.copy()
+        target = self if in_place else self.copy()
         if eps is None:
             eps = (getattr(self, 'pre_function_handle_to_anchor_scale_factor', 0.01)
                    if isinstance(self, VMobject) else 1)
         target._bake_3d_map(mapped, eps)
-        return self.become(target)
+        return self if in_place else self.become(target)
 
     def _bake_3d_map(self, mapped, eps=None):
         if eps is None:
@@ -10626,6 +10631,20 @@ class Axes(VGroup, CoordinateSystem):
             return _number_array([[point[i] for point in points] for i in range(3)])
         for value in coords:
             NumberLine._real(value,'Axes coordinate')
+        if _BOUNDS_MEMO is not None:
+            # Batch sampling (plots, surfaces): the steps below on cached axis frames,
+            # in the same order, so results match bit for bit.
+            origin, entries = self._c2p_frame()
+            point = None
+            for (start, vector, axis), value in zip(entries, coords):
+                number = axis._real(axis.scaling.inverse_function(axis._real(value,'NumberLine value')),
+                                    'NumberLine value')
+                t = (number-axis.x_min)/(axis.x_max-axis.x_min)
+                image = [start[i]+vector[i]*t for i in range(3)]
+                if not all(math.isfinite(v) for v in image):
+                    raise ValueError('NumberLine coordinates must be finite')
+                point = image if point is None else [point[i]+image[i]-origin[i] for i in range(3)]
+            return self._point_to_world(Vector(point))
         # Community sums each axis's offset from the origin; coordinates beyond
         # the axis count (z on 2D Axes) are ignored.
         axes = self._coordinate_axes()
@@ -10634,6 +10653,20 @@ class Axes(VGroup, CoordinateSystem):
         for axis, value in zip(axes[1:], coords[1:]):
             point = point + axis.n2p(value) - origin
         return self._point_to_world(point)
+
+    def _c2p_frame(self):
+        """coords_to_point's origin and each axis's (start, vector, axis) in this Axes'
+        frame, shared within one memo window."""
+        memo = _BOUNDS_MEMO
+        key = ('c2p', id(self))
+        if memo is not None and key in memo:
+            return memo[key]
+        axes = self._coordinate_axes()
+        origin = list(axes[0].n2p(self._axis_shift(axes[0])))
+        result = (origin, [(*map(list, axis._world_frame()), axis) for axis in axes])
+        if memo is not None:
+            memo[key] = result
+        return result
 
     def _axis_shift(self, axis):
         """Community's origin shift, taken over the axis's scaled range."""
@@ -17523,6 +17556,8 @@ SplitScreenCamera = _unavailable('SplitScreenCamera', _PIXEL_CAMERA)
 
 class ThreeDVMobject(VMobject):
     """Community's ThreeDVMobject: a VMobject shaded by the 3D camera."""
+    # Surface's per-face grid bookkeeping; the renderer never reads it.
+    _frame_excluded = ('u_index', 'v_index', 'u1', 'u2', 'v1', 'v2')
     def __init__(self, shade_in_3d=True, **kwargs):
         super().__init__(shade_in_3d=shade_in_3d, **kwargs)
 
@@ -17575,7 +17610,10 @@ class Surface(VGroup):
         self.list_of_faces = []
         self._func = func
         self._setup_in_uv_space()
-        self.apply_function(lambda p: func(p[0], p[1]))
+        # Samples of one surface share a bounds memo, as plot_surface does (axes.c2p in
+        # func would otherwise recompute the axes' world frame for every point).
+        memo = {}
+        self._map_points_3d(lambda p: _memo_query(memo, func, p[0], p[1]), ORIGIN, in_place=True)
         if self.should_make_jagged:
             self.make_jagged()
 
@@ -24336,8 +24374,9 @@ def _rounded_array(value):
     return value
 
 
-def _flat_xy(value):
-    """{'$xy': [x0, y0, ...], 'k': k} for planar points, or k-point groups of them."""
+def _flat_points(value):
+    """{'$xy': [x0, y0, ...], 'k': k} for planar points, or k-point groups of them;
+    {'$xyz': [x0, y0, z0, ...], 'k': k} when any point leaves the plane."""
     first = value[0]
     if type(first) is not list or not first:
         return None
@@ -24348,12 +24387,13 @@ def _flat_xy(value):
         points = [p for item in value for p in item]
     else:
         points, k = value, 0
+    if any(type(p) is not list or len(p) != 3 for p in points):
+        return None
+    planar = all(p[2] == 0 for p in points)
     flat = []
     append = flat.append
     for p in points:
-        if type(p) is not list or len(p) != 3 or p[2] != 0:
-            return None
-        for v in (p[0], p[1]):
+        for v in ((p[0], p[1]) if planar else p):
             kind = type(v)
             if kind is float:
                 append(round(v, 5))
@@ -24361,7 +24401,15 @@ def _flat_xy(value):
                 append(v)
             else:
                 return None
-    return {'$xy': flat, 'k': k} if k else {'$xy': flat}
+    result = {'$xy' if planar else '$xyz': flat}
+    if k:
+        result['k'] = k
+    return result
+
+
+# Point-list attributes whose arrays are pooled at any size; the rest of such a node (its
+# style) is pooled separately as {'$base': index}, so styles repeat across frames once.
+_GEOMETRY_KEYS = frozenset(('curves', 'vertices', 'shaft_curves', 'cloud'))
 
 
 def _pooled_json(result, default):
@@ -24387,8 +24435,8 @@ def _pooled_json(result, default):
             return hit[1]
         # Geometry arrays travel at 1e-5 scene units (far below a pixel); planar
         # point lists as flat XY pairs, grouped k per item (curves), if possible.
-        text = dumps(_flat_xy(value) or _rounded_array(value))
-        result = {'$pool': store(text)} if len(text) > 400 else value
+        text = dumps(_flat_points(value) or _rounded_array(value))
+        result = {'$pool': store(text)} if len(text) > 64 else _rounded_array(value)
         seen_arrays[id(value)] = (value, result)
         return result
     def intern(original):
@@ -24399,11 +24447,17 @@ def _pooled_json(result, default):
         for name, value in node.items():
             # Large arrays (curves, vertices) often outlive style-only changes such as
             # draw_progress or opacity, so they are pooled as {"$pool": index} too.
-            if name != 'children' and type(value) is list and len(value) >= 8:
+            if name != 'children' and type(value) is list and (len(value) >= 8 or value and name in _GEOMETRY_KEYS):
                 node[name] = array(value)
         children = node.get('children')
         if isinstance(children, list) and children:
             node['children'] = [intern(child) for child in children]
+        geometry = {name: node.pop(name) for name in _GEOMETRY_KEYS
+                    if type(node.get(name)) is dict}
+        if geometry:
+            if 'children' in node:
+                geometry['children'] = node.pop('children')
+            node = {'$base': store(dumps(node)), **geometry}
         key = store(dumps(node))
         seen_nodes[id(original)] = (original, key)
         return key
