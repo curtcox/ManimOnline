@@ -9917,10 +9917,11 @@ class NumberLine(VGroup):
     def _logical_end(self, at_start):
         """Community's get_start/get_end: tip points, else the shaft. Lite's shaft reaches the
         tip points until a tip edit freezes the cut (`_freeze_shaft`)."""
-        if self.__dict__.get('_shaft_fixed'):
-            tips = self._tips(at_start)
-            if tips:
-                return Vector(tips[-1].tip_point)
+        # (Unfrozen, the shaft reaches the tip points anyway; while partially drawn it does not,
+        # but Community's ends still come from the tips' first points.)
+        tips = self._tips(at_start)
+        if tips and isinstance(tips[-1], ArrowTip):
+            return Vector(tips[-1].tip_point)
         shaft = self._part('shaft')
         return shaft.get_start() if at_start else shaft.get_end()
 
@@ -10860,10 +10861,14 @@ class Axes(VGroup, CoordinateSystem):
             if show_signed_area and top < baseline:
                 fill = invert_color(fill)
             fill = fill.to_hex()
-            bottom,upper = min(baseline,top),max(baseline,top)
-            # Keep Rectangle identity but use four XY corners for transformed axes.
-            outline = Polygon(self.c2p(right,upper),self.c2p(x,upper),
-                              self.c2p(x,bottom),self.c2p(right,bottom),
+            # Community: Rectangle().replace(points, stretch=True) over the two baseline corners
+            # and the graph point, an axis-aligned box even on transformed axes.
+            corners = [Vector(self.c2p(x,baseline)),Vector(self.c2p(x+width_scale_factor*dx,baseline)),
+                       Vector(self.i2gp(sample,graph))]
+            left_x,right_x = min(p[0] for p in corners),max(p[0] for p in corners)
+            low_y,high_y = min(p[1] for p in corners),max(p[1] for p in corners)
+            depth = sum(p[2] for p in corners)/3
+            outline = Polygon((right_x,high_y,depth),(left_x,high_y,depth),(left_x,low_y,depth),(right_x,low_y,depth),
                               color=fill,fill_opacity=fill_opacity,
                               stroke_color=fill if blend else stroke_color,stroke_width=stroke_width)
             rectangles.add(Rectangle().become(outline))
@@ -10965,7 +10970,7 @@ class Axes(VGroup, CoordinateSystem):
         if include_secant_line:
             vector = p2-p1
             length = math.hypot(*vector)
-            if length == 0:
+            if length <= 1e-12 * max(1, math.hypot(*p1), math.hypot(*p2)):
                 raise ValueError('Cannot extend a collapsed secant')
             center = (p1+p2)*.5
             NumberLine._real(length,'Secant span',positive=True)
@@ -24688,6 +24693,7 @@ Mobject._scene_insert_n_curves = _scene_insert_n_curves
 CameraFrame.aspect_ratio = ScreenRectangle.aspect_ratio
 # Scenes see the arrow as Community's Vector (internally Vector is the coordinate tuple).
 VectorArrow.__name__ = VectorArrow.__qualname__ = 'Vector'
+_SecantSlopeGroup.__name__ = _SecantSlopeGroup.__qualname__ = 'VGroup'  # Community returns a VGroup.
 
 
 def _render_scene(source, scene_name=None, compact=False):

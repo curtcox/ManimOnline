@@ -3981,12 +3981,19 @@ assert isinstance(t.get_value(), (int, float))""")
         before = graph.to_dict(),axes.to_dict()
         cells = axes.get_riemann_rectangles(graph,x_range=[-1,1],dx=.5,width_scale_factor=1)
         for rect,x in zip(cells,(-1,-.5,0,.5)):
-            self.assertPointAlmostEqual(rect.vertices[2],axes.c2p(x,x*x-1))
+            # Community replaces a Rectangle over the baseline corners and the graph point:
+            # an axis-aligned box even on rotated axes.
+            points = [axes.c2p(x,0),axes.c2p(x+.5,0),axes.c2p(x,x*x-1)]
+            self.assertPointAlmostEqual(rect.get_critical_point(lite.DL),
+                                        (min(p[0] for p in points),min(p[1] for p in points),0))
+            self.assertPointAlmostEqual(rect.get_critical_point(lite.UR),
+                                        (max(p[0] for p in points),max(p[1] for p in points),0))
         clone = cells.copy().set_color(lite.RED)
         self.assertNotEqual(clone[0].fill_color,cells[0].fill_color)
         self.assertEqual((graph.to_dict(),axes.to_dict()),before)
+        corner = cells[0].get_critical_point(lite.DL)
         cells.save_state().shift(lite.RIGHT).restore()
-        self.assertPointAlmostEqual(cells[0].vertices[2],axes.c2p(-1,0))
+        self.assertPointAlmostEqual(cells[0].get_critical_point(lite.DL),corner)
 
     def test_riemann_validation_precedes_callbacks_and_rejects_invalid_results(self):
         axes = lite.Axes()

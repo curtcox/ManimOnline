@@ -227,8 +227,8 @@ do not remove integral-domain singularities; adaptive/symbolic calculus remains 
 
 
 Read `examples/riemann_scene.py` for signed Riemann cells, coarse/fine group
-transforms and a bounding function. Keep Rectangle identities while serializing
-four polygon corners in the current axes basis. Preflight ranges, counts and
+transforms and a bounding function. Keep Rectangle identities; each cell is Community's
+axis-aligned box around its two baseline corners and graph point (even on rotated axes). Preflight ranges, counts and
 styles before callback sampling; no source graph/axis mutation. Preserve native
 open partition ends, left-input bounding baselines and signed color inversion.
 Cell colors support hex gradients; continuous regions are described below.
@@ -964,3 +964,5 @@ SurroundingRectangle/BackgroundRectangle measure like Community's Group(*mobject
 points, handles included (`_union_bounds(handles=True)`). Updater timing: an animation's
 finish resumes its mobject (update(0)) before the scene's update_mobjects(0); nothing runs
 after construct returns.
+NumberLine get_start/get_end ask an attached tip's point first (also while partially drawn),
+so c2p stays fixed during Create(axes), as in Community.
