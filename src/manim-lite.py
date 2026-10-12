@@ -3867,11 +3867,19 @@ class Mobject:
             setattr(self, attr, func(getattr(self, attr)))
         return self
 
-    def _family_world_points(self, anchors=False):
-        """Every family member's points (or only anchors) in this mobject's frame (world for scene code)."""
+    def _family_world_points(self, anchors=False, scene=False):
+        """Every family member's points (or only anchors) in this mobject's frame (world for scene code).
+        scene: Community's structure, where a NumberLine's own points are its cut shaft."""
         result = []
         def visit(member, ancestors):
-            points = member.get_anchors() if anchors else member.get_points()
+            if scene and member.__dict__.get('_number_line_role') == 'shaft':
+                points = []
+            elif scene and isinstance(member, NumberLine):
+                points = member._shaft_points()
+                if anchors:
+                    points = [p for k in range(0, len(points) - 3, 4) for p in (points[k], points[k + 3])]
+            else:
+                points = member.get_anchors() if anchors else member.get_points()
             for parent in reversed(ancestors):
                 points = parent._points_to_world(points) if points else points
             result.extend(Vector(p) for p in points)
@@ -3896,6 +3904,18 @@ class Mobject:
         if isinstance(self, VMobject):
             return _point_array([list(p) for p in self._family_world_points(anchors=True)])
         return self.get_all_points()
+
+    def _scene_get_all_points(self):
+        return _point_array([list(p) for p in self._family_world_points(scene=True)])
+
+    def _scene_get_points_defining_boundary(self):
+        return _point_array([list(p) for p in self._family_world_points(anchors=isinstance(self, VMobject), scene=True)])
+
+    def _scene_get_center_of_mass(self):
+        points = [Vector(p) for p in self._family_world_points(scene=True)]
+        if not points:
+            return self.get_center()
+        return Vector(sum(p[i] for p in points) / len(points) for i in range(3))
 
     def get_extremum_along_dim(self, points=None, dim=0, key=0):
         rows = self._family_world_points() if points is None else [list(p) for p in points]
@@ -10064,6 +10084,27 @@ class NumberLine(VGroup):
         tips = self.get_tips()
         self.remove(*tips.children)
         return tips
+
+
+def _shaft_reader(name):
+    """A NumberLine scene view of a VMobject query on its own (shaft) points."""
+    def read(self, *args, **kwargs):
+        proxy = VMobject()
+        proxy.set_points(self._shaft_points())
+        return getattr(proxy, name)(*args, **kwargs)
+    read.__name__ = '_scene_' + name
+    return read
+
+
+for _name in ('point_from_proportion', 'proportion_from_point', 'get_arc_length', 'get_anchors',
+              'get_start_anchors', 'get_end_anchors', 'get_anchors_and_handles', 'get_subpaths',
+              'get_last_point', 'get_first_handle', 'get_last_handle', 'get_nth_curve_points',
+              'get_nth_curve_function', 'get_nth_curve_length', 'get_nth_curve_length_pieces',
+              'get_nth_curve_function_with_length', 'get_cubic_bezier_tuples', 'get_curve_functions',
+              'get_curve_functions_with_lengths', 'is_closed', 'has_new_path_started', 'get_direction'):
+    setattr(NumberLine, '_scene_' + _name, _shaft_reader(_name))
+NumberLine._scene_get_first_handle = lambda self: self._shaft_points()[1]
+NumberLine._scene_get_last_handle = lambda self: self._shaft_points()[-2]
 
 
 class CoordinateSystem:

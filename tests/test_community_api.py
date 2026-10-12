@@ -1697,6 +1697,14 @@ class AnimationApiTests(unittest.TestCase):
                                   [0.0856, 0.4506, -0.25], [0.0, 0.0, 0.0], 'ScreenRectangle', True,
                                   ['NumberLine', 'ArrowTriangleFilledTip']])
 
+    def test_number_line_own_point_queries(self):
+        values = scene_values(
+            'n = NumberLine(x_range=[-3, 3, 1], length=6, include_tip=True).rotate(0.3).shift(UP)\n'
+            'result = [n.point_from_proportion(0.25), n.get_arc_length(), n.get_anchors(), n.get_last_handle(),\n'
+            '          len(n.get_all_points()), n.get_center_of_mass(), n.proportion_from_point(n.n2p(0))]\n')
+        self.assertEqual(values, [[-1.5166, 0.5309, 0.0], 5.65, [[-2.866, 0.1134, 0.0], [2.5316, 1.7831, 0.0]],
+                                  [0.7324, 1.2266, 0.0], 40.0, [0.4896, 1.1515, 0.0], 0.531])
+
 
 if __name__ == '__main__':
     unittest.main()

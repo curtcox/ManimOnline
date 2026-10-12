@@ -4585,7 +4585,8 @@ assert isinstance(t.get_value(), (int, float))""")
         vector = line.get_vector()
         normal = lite.Vector((-vector[1],vector[0],0))
         self.assertAlmostEqual(line.p2n(line.n2p(4)+normal),4)
-        self.assertPointAlmostEqual(line.point_from_proportion(.5),line.n2p(5))
+        # Community's own points end at the tip base, so the midpoint precedes n2p(5).
+        self.assertPointAlmostEqual(line.point_from_proportion(.5),(start+line.get_tip().base)/2)
         self.assertPointAlmostEqual(line.get_unit_vector(),line.n2p(6)-line.n2p(5))
 
     def test_number_line_ticks_anchor_origin_and_tip_preserves_end(self):
