@@ -1838,19 +1838,19 @@ class Mobject:
         return self._apply_xy_map(lambda point:[sum(a*b for a,b in zip(row,point)) for row in full],
                                   about_point,about_edge,linear=True)
 
-    def apply_function(self, function, *, about_point=None, about_edge=None):
+    def apply_function(self, function, *, about_point=None, about_edge=None, _eps=None):
         if not callable(function):
             raise TypeError('apply_function expects a callable point map')
         if about_point is None and about_edge is None:
             about_point = ORIGIN
         if self._is_3d():
-            return self._map_points_3d(function, about_point, about_edge)
+            return self._map_points_3d(function, about_point, about_edge, _eps)
         try:
-            return self._apply_xy_map(function,about_point,about_edge)
+            return self._apply_xy_map(function,about_point,about_edge,eps=_eps)
         except NotImplementedError as error:
             if 'preserve the XY plane' not in str(error):
                 raise
-            return self._map_points_3d(function, about_point, about_edge)
+            return self._map_points_3d(function, about_point, about_edge, _eps)
 
     def apply_points_function(self, func, about_point=None, about_edge=None, works_on_bounding_box=False):
         return self.apply_function(func, about_point=about_point, about_edge=about_edge)
@@ -1863,7 +1863,12 @@ class Mobject:
             return (value.real,value.imag,point[2])
         return self.apply_function(point_map,about_point=about_point,about_edge=about_edge)
 
-    def _apply_xy_map(self, function, about_point=None, about_edge=None, *, linear=False):
+    def _apply_xy_map(self, function, about_point=None, about_edge=None, *, linear=False, eps=None):
+        if eps is None:
+            # Community's VMobject.apply_function pulls handles toward their anchors by the
+            # receiver's factor; Mobject.apply_function (Group) maps every point directly.
+            eps = (getattr(self, 'pre_function_handle_to_anchor_scale_factor', 0.01)
+                   if isinstance(self, VMobject) else 1)
         if about_point is not None:
             pivot = Vector(about_point)
         else:
@@ -1937,9 +1942,9 @@ class Mobject:
                     def curve_map(curve):
                         a0, h1, h2, a1 = (Vector(point) for point in curve)
                         m0, m1 = local(a0), local(a1)
-                        near1, near2 = local(a0 + (h1 - a0) * .01), local(a1 + (h2 - a1) * .01)
-                        return [m0, [m0[i] + (near1[i] - m0[i]) * 100 for i in range(3)],
-                                [m1[i] + (near2[i] - m1[i]) * 100 for i in range(3)], m1]
+                        near1, near2 = local(a0 + (h1 - a0) * eps), local(a1 + (h2 - a1) * eps)
+                        return [m0, [m0[i] + (near1[i] - m0[i]) / eps for i in range(3)],
+                                [m1[i] + (near2[i] - m1[i]) / eps for i in range(3)], m1]
                     new.curves = [curve_map(curve) for path in paths for curve in path]
                 pending = (old.vertices if kind == 'bezierpath' else
                            old.vertices if kind == 'polyline' and len(old.vertices)==1 else [])
@@ -2029,7 +2034,7 @@ class Mobject:
                 return True
         return False
 
-    def _map_points_3d(self, function, about_point=None, about_edge=None):
+    def _map_points_3d(self, function, about_point=None, about_edge=None, eps=None):
         """Apply an arbitrary 3D point map, baking geometry into world points.
 
         Path leaves become 'bezierpath' curves with an identity pose; other
@@ -2051,7 +2056,10 @@ class Mobject:
                 raise ValueError('Mapped geometry must be finite')
             return list(result)
         target = self.copy()
-        target._bake_3d_map(mapped)
+        if eps is None:
+            eps = (getattr(self, 'pre_function_handle_to_anchor_scale_factor', 0.01)
+                   if isinstance(self, VMobject) else 1)
+        target._bake_3d_map(mapped, eps)
         return self.become(target)
 
     def _bake_3d_map(self, mapped, eps=None):
@@ -3873,7 +3881,7 @@ class Mobject:
             about_point = self.get_critical_point(ORIGIN if about_edge is None else about_edge)
         def point_map(point):
             return list(func(_point_array([list(point)]))[0])
-        return self.apply_function(point_map, about_point=about_point)
+        return self.apply_function(point_map, about_point=about_point, _eps=1)  # Points map directly.
 
     def apply_to_family(self, func):
         for member in self.family_members_with_points():
