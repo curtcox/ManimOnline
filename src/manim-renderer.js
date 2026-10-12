@@ -173,7 +173,27 @@ const ManimRenderer = {
       return '#' + [1, 3, 5].map(i => Math.trunc(Math.min(1, Math.max(0, parseInt(color.slice(i, i + 2), 16) / 255 + light)) * 255)
         .toString(16).toUpperCase().padStart(2, '0')).join('');
     };
-    const entries = leaves.map(leaf => {
+    // A rigid3d leaf is shared base geometry under a per-frame affine map (rows, then shift).
+    const placed = leaf => {
+      const m = leaf.rigid3d;
+      if (m === undefined) return leaf;
+      if (!Array.isArray(m) || m.length !== 12 || !m.every(Number.isFinite)) throw new Error('Invalid 3D transform');
+      const map = p => {
+        const x = p[0], y = p[1], z = p[2] ?? 0;
+        return [m[0] * x + m[1] * y + m[2] * z + m[9], m[3] * x + m[4] * y + m[5] * z + m[10],
+          m[6] * x + m[7] * y + m[8] * z + m[11]];
+      };
+      const out = { ...leaf };
+      delete out.rigid3d;
+      if (Array.isArray(leaf.curves)) out.curves = leaf.curves.map(curve => curve.map(map));
+      if (Array.isArray(leaf.vertices)) out.vertices = leaf.vertices.map(map);
+      for (const key of ['start', 'end', 'shaft_start', 'shaft_end']) {
+        if (point3(leaf[key])) out[key] = map(leaf[key]);
+      }
+      return out;
+    };
+    const entries = leaves.map(original => {
+      const leaf = placed(original);
       const fixed = Boolean(leaf._fixed_in_frame);
       const orient = point3(leaf.orient_center) ? leaf.orient_center : null;
       const out = { ...leaf };

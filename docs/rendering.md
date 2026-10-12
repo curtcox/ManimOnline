@@ -19,6 +19,9 @@ compatibility definitions and executes source in a fresh namespace per render.
 provides playback, replay, and seeking. Preview generation is limited to 1800 timed
 samples plus a terminal frame (120 seconds at 15 fps), with a 32 MiB serialized
 result limit. These bounds do not limit arbitrary Python memory allocation.
+ThreeDScene frames that move a solid rigidly (or by any affine map) reuse earlier
+point lists with a per-frame transform, so rotating polyhedra and surfaces stay
+within that limit; non-rigid deformations still serialize every frame's points.
 
 The established direction in `todo/master_plan.md` is in-browser execution and
 frame playback. Full native Manim in WebAssembly has not been demonstrated.

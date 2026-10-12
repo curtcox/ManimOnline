@@ -69,6 +69,21 @@ test('full renders project ThreeDScene frames and reject invalid cameras', () =>
   assert.throws(() => renderer.render(broken), /Invalid 3D camera/);
 });
 
+test('rigid3d leaves project their mapped geometry', () => {
+  const frame = frames.square_projection;
+  const [leaf] = frame.mobjects;
+  // A quarter turn about OUT plus a shift, applied to the shared base curves.
+  const turned = { ...leaf, rigid3d: [0, -1, 0, 1, 0, 0, 0, 0, 1, 0.5, 0, 0] };
+  const moved = { ...leaf, curves: leaf.curves.map(curve => curve.map(([x, y, z]) => [0.5 - y, x, z])) };
+  const [a] = renderer.projectThreeD([turned], frame.camera.three_d);
+  const [b] = renderer.projectThreeD([moved], frame.camera.three_d);
+  assert.equal(a.rigid3d, undefined);
+  a.curves.flat().forEach((point, i) => close(point, b.curves.flat()[i]));
+  assert.equal(a.fill_color, b.fill_color);
+  assert.throws(() => renderer.projectThreeD([{ ...leaf, rigid3d: [1, 2] }], frame.camera.three_d),
+    /Invalid 3D transform/);
+});
+
 test('point cloud leaves project every world point', () => {
   const three = { phi: Math.PI / 2, theta: -Math.PI / 2, gamma: 0, zoom: 1, focal_distance: 20,
     frame_center: [0, 0, 0], light_source: [-7, -9, 10] };

@@ -1037,3 +1037,8 @@ handle-scaling rule. Cone bakes its direction rotations in place. ThreeDScene's
 `_emit_cache`, so shared snapshot lists map once and pool once. `Scene._later_members` keeps
 a per-frame member index (`_later_index`); Create samples copy nodes with `_node_copy`, which
 shares unchanged arrays, so never mutate snapshot lists in place.
+`_RigidFrames` compresses ThreeDScene frames: when a root's (or, failing that, a child
+subtree's) world leaves are one affine image of an earlier frame's, they reuse that frame's
+point lists plus a shared `rigid3d` [3x3 rows, shift] that projectThreeD applies first. Every
+point is checked (1e-6); text, clouds, fixed-orientation and z_index_as_group leaves are left
+alone. This keeps rotating solids under the worker's 32 MiB limit.

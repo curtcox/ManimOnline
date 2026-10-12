@@ -17551,23 +17551,27 @@ class ThreeDScene(Scene):
             return (not node.get('angle') and node.get('geometry_scale', 1) == 1 and
                     not any(node.get('position') or ()))
 
-        def walk(node, parent_map, opacity, group, parent_key=()):
+        def chain(node, parent_map, parent_key):
             if identity(node):
-                world_map, map_key = parent_map, parent_key
-            else:
-                pose, _ = _snapshot_pose(node)
-                world_map = pose if parent_map is None else (lambda point, pose=pose: parent_map(pose(point)))
-                map_key = parent_key + ((tuple(node['position']), tuple(node.get('geometry_center', ORIGIN)),
-                                         node['geometry_scale'], node['angle']),)
+                return parent_map, parent_key
+            pose, _ = _snapshot_pose(node)
+            world_map = pose if parent_map is None else (lambda point, pose=pose: parent_map(pose(point)))
+            return world_map, parent_key + ((tuple(node['position']), tuple(node.get('geometry_center', ORIGIN)),
+                                             node['geometry_scale'], node['angle']),)
+
+        def walk(node, parent_map, opacity, group, parent_key=()):
+            """Emit a subtree's leaves; returns its (start, end, child spans) in group."""
+            start, spans = len(group), []
+            world_map, map_key = chain(node, parent_map, parent_key)
             node_opacity = opacity * node.get('opacity', 1)
             kind = node['type']
             if kind in _PATH_TYPES:
                 emit_path(node, world_map, map_key, node_opacity, group)
                 for child in node.get('children', []):
-                    walk(child, world_map, node_opacity, group, map_key)
+                    spans.append(walk(child, world_map, node_opacity, group, map_key))
             elif kind in ('vgroup', 'mobject', 'valuetracker'):
                 for child in node.get('children', []):
-                    walk(child, world_map, node_opacity, group, map_key)
+                    spans.append(walk(child, world_map, node_opacity, group, map_key))
             elif kind == 'pointcloud':
                 # World points (the renderer projects each one); members are clouds too.
                 out = dict(node, children=[], opacity=node_opacity)
@@ -17580,13 +17584,15 @@ class ThreeDScene(Scene):
                     leaves.append(out)
                     group.append(out)
                 for child in node.get('children', []):
-                    walk(child, world_map, node_opacity, group, map_key)
+                    spans.append(walk(child, world_map, node_opacity, group, map_key))
             else:
                 emit_leaf(node, world_map, node_opacity, group)
+            return start, len(group), spans
 
-        for root in roots:
+        mobject = root
+        for index, root in enumerate(roots):
             group = []
-            walk(root, None, 1, group)
+            span = walk(root, None, 1, group)
             if any(leaf.get('_z_index_as_group') for leaf in group):
                 # Community's z_index_group reference: the root's world bounds center.
                 points = [point for leaf in group for point in
@@ -17597,7 +17603,165 @@ class ThreeDScene(Scene):
                 for leaf in group:
                     if leaf.get('_z_index_as_group'):
                         leaf['depth_center'] = center
+            else:
+                _RigidFrames.fit_tree(self.__dict__.setdefault('_rigid_refs', {}), mobject, index, group, span)
         return leaves
+
+
+class _RigidFrames:
+    """ThreeDScene frame compression: when a root's world leaves are one affine image of an
+    earlier frame's leaves (Rotate, updaters turning or moving a solid), the leaves reuse
+    that frame's point lists, which pool once, with the map as 'rigid3d' [rows, shift] that
+    the renderer applies before projecting. Every point is checked against the map."""
+    ENDS = ('start', 'end', 'shaft_start', 'shaft_end')
+    GEOMETRY = ('curves', 'vertices') + ENDS
+    TOLERANCE = 1e-6
+
+    @staticmethod
+    def points(group):
+        signature, points = [], []
+        for leaf in group:
+            if ('anchor3d' in leaf or 'cloud' in leaf or 'orient_center' in leaf or
+                    'shaft_curves' in leaf or 'depth_center' in leaf):
+                return None, None
+            curves, vertices = leaf.get('curves') or (), leaf.get('vertices') or ()
+            ends = tuple(key for key in _RigidFrames.ENDS if leaf.get(key) is not None)
+            signature.append((leaf['type'], len(curves), tuple(len(c) for c in curves) if curves and
+                              any(len(c) != 4 for c in curves) else 4, len(vertices), ends,
+                              tuple(leaf.get('subpath_lengths') or ())))
+            points.extend(p for curve in curves for p in curve)
+            points.extend(vertices)
+            points.extend(leaf[key] for key in ends)
+        return tuple(signature), points
+
+    @staticmethod
+    def basis(points):
+        """Indices of a well-spread frame (p0, p1, p2[, p3]) and the inverse of its edge
+        matrix; planar point sets use the edge normal as the third direction."""
+        if len(points) < 3:
+            return None
+        xyz = [(p[0], p[1], p[2] if len(p) > 2 else 0) for p in points]
+        p0 = xyz[0]
+        d1 = [sum((a - b) ** 2 for a, b in zip(p, p0)) for p in xyz]
+        i1 = max(range(len(xyz)), key=d1.__getitem__)
+        if d1[i1] < 1e-12:
+            return None
+        a1 = [a - b for a, b in zip(xyz[i1], p0)]
+        def cross(u, v):
+            return [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]]
+        areas = [sum(c * c for c in cross([a - b for a, b in zip(p, p0)], a1)) for p in xyz]
+        i2 = max(range(len(xyz)), key=areas.__getitem__)
+        if areas[i2] < 1e-12 * d1[i1] * d1[i1]:
+            return None
+        a2 = [a - b for a, b in zip(xyz[i2], p0)]
+        normal = cross(a1, a2)
+        heights = [abs(sum(n * (a - b) for n, a, b in zip(normal, p, p0))) for p in xyz]
+        i3 = max(range(len(xyz)), key=heights.__getitem__)
+        size = math.sqrt(sum(n * n for n in normal))
+        planar = heights[i3] < 1e-9 * size * math.sqrt(d1[i1])
+        a3 = normal if planar else [a - b for a, b in zip(xyz[i3], p0)]
+        inverse = _RigidFrames.invert([a1, a2, a3])
+        if inverse is None:
+            return None
+        return (0, i1, i2, None if planar else i3), inverse, size
+
+    @staticmethod
+    def invert(columns):
+        (a, d, g), (b, e, h), (c, f, i) = columns
+        det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
+        if not det or not math.isfinite(det):
+            return None
+        return [[(e * i - f * h) / det, (c * h - b * i) / det, (b * f - c * e) / det],
+                [(f * g - d * i) / det, (a * i - c * g) / det, (c * d - a * f) / det],
+                [(d * h - e * g) / det, (b * g - a * h) / det, (a * e - b * d) / det]]
+
+    MIN_POINTS = 12
+
+    @staticmethod
+    def fit_tree(refs, mobject, index, group, span):
+        """Fit a root's leaves; where they are not one affine image, fit each child subtree
+        (a polyhedron's vertex dots turn rigidly while its rebuilt faces do not)."""
+        def visit(span, key):
+            start, end, children = span
+            if end > start and _RigidFrames.fit(refs, mobject, key, group[start:end]):
+                return
+            for position, child in enumerate(children):
+                visit(child, key + (position,))
+        visit(span, (id(mobject), index))
+
+    @staticmethod
+    def fit(refs, mobject, key, group):
+        """Compress group in place; True when its subtrees need no separate fit."""
+        names = _RigidFrames.GEOMETRY
+        record = refs.get(key)
+        if record is not None and record['mobject'] is not mobject:
+            record = None
+        if (record is not None and len(record['geometry']) == len(group) and
+                all(leaf.get(name) is ref.get(name) for leaf, ref in zip(group, record['geometry'])
+                    for name in names)):
+            return True  # Unchanged point lists: the leaves already pool.
+        signature, points = _RigidFrames.points(group)
+        if signature is None:
+            refs.pop(key, None)
+            return False
+        if len(points) < _RigidFrames.MIN_POINTS:
+            return True
+        if record is None or record['signature'] != signature or record.get('basis', True) is None:
+            # Leaves may later be compressed by subtree fits, so keep their own lists.
+            refs[key] = {'mobject': mobject, 'signature': signature, 'points': points,
+                         'geometry': [{name: leaf[name] for name in names if name in leaf} for leaf in group]}
+            return False
+        if 'basis' not in record:
+            record['basis'] = _RigidFrames.basis(record['points'])
+        matrix = _RigidFrames.solve(record, points)
+        if matrix is None:
+            refs[key] = {'mobject': mobject, 'signature': signature, 'points': points,
+                         'geometry': [{name: leaf[name] for name in names if name in leaf} for leaf in group]}
+            return False
+        still = all(abs(v - w) < 1e-12 for v, w in zip(matrix, (1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)))
+        for leaf, ref in zip(group, record['geometry']):
+            leaf.update(ref)
+            if not still:
+                leaf['rigid3d'] = matrix
+        return True
+
+    @staticmethod
+    def solve(record, points):
+        """The affine map taking the reference points onto points, or None."""
+        basis = record['basis']
+        if basis is None:
+            return None
+        (i0, i1, i2, i3), inverse, size = basis
+        xyz = lambda p: (p[0], p[1], p[2] if len(p) > 2 else 0)
+        q0, q1, q2 = xyz(points[i0]), xyz(points[i1]), xyz(points[i2])
+        b1 = [a - b for a, b in zip(q1, q0)]
+        b2 = [a - b for a, b in zip(q2, q0)]
+        if i3 is None:
+            n = [b1[1] * b2[2] - b1[2] * b2[1], b1[2] * b2[0] - b1[0] * b2[2], b1[0] * b2[1] - b1[1] * b2[0]]
+            length = math.sqrt(sum(c * c for c in n))
+            if not length:
+                return None
+            # The normal's length scales like the plane's, so a similarity stays one.
+            b3 = [c / math.sqrt(length / size) for c in n]
+        else:
+            b3 = [a - b for a, b in zip(xyz(points[i3]), q0)]
+        columns = (b1, b2, b3)
+        m = [[sum(columns[k][r] * inverse[k][c] for k in range(3)) for c in range(3)] for r in range(3)]
+        reference = record['points']
+        p0 = xyz(reference[i0])
+        shift = [q0[r] - sum(m[r][c] * p0[c] for c in range(3)) for r in range(3)]
+        (m00, m01, m02), (m10, m11, m12), (m20, m21, m22) = m
+        s0, s1, s2 = shift
+        tolerance = _RigidFrames.TOLERANCE
+        for p, q in zip(reference, points):
+            x, y, z = p[0], p[1], p[2] if len(p) > 2 else 0
+            if (abs(m00 * x + m01 * y + m02 * z + s0 - q[0]) > tolerance or
+                    abs(m10 * x + m11 * y + m12 * z + s1 - q[1]) > tolerance or
+                    abs(m20 * x + m21 * y + m22 * z + s2 - (q[2] if len(q) > 2 else 0)) > tolerance):
+                return None
+        if not all(math.isfinite(v) for row in m for v in row) or not all(math.isfinite(v) for v in shift):
+            return None
+        return [m00, m01, m02, m10, m11, m12, m20, m21, m22, s0, s1, s2]
 
 
 def _linspace(start, stop, count):
@@ -24697,9 +24861,9 @@ def _flat_points(value):
     return result
 
 
-# Point-list attributes whose arrays are pooled at any size; the rest of such a node (its
+# Point-list attributes (and the per-frame rigid3d map) whose arrays are pooled at any size; the rest of such a node (its
 # style) is pooled separately as {'$base': index}, so styles repeat across frames once.
-_GEOMETRY_KEYS = frozenset(('curves', 'vertices', 'shaft_curves', 'cloud'))
+_GEOMETRY_KEYS = frozenset(('curves', 'vertices', 'shaft_curves', 'cloud', 'rigid3d'))
 
 
 def _pooled_json(result, default):

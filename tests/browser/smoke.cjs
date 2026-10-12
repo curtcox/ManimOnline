@@ -37,7 +37,9 @@ const THREE_D = [
   '        self.set_camera_orientation(phi=60 * DEGREES, theta=-45 * DEGREES)',
   '        surface = Surface(lambda u, v: (u, v, u * v / 4), u_range=[-2, 2], v_range=[-2, 2], resolution=8)',
   '        cloud = PMobject().add_points([(x / 4, 0, x / 4) for x in range(-8, 9)], color=YELLOW)',
-  '        self.play(Create(surface), FadeIn(cloud), run_time=0.5)',
+  '        cube = Cube(side_length=1).shift(3 * LEFT)',
+  '        self.play(Create(surface), FadeIn(cloud), FadeIn(cube), run_time=0.5)',
+  '        self.play(Rotate(cube, angle=PI / 3, axis=UP), run_time=0.5)',
   '',
 ].join('\n');
 

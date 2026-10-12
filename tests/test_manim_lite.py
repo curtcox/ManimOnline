@@ -3,6 +3,7 @@ import json
 import math
 from pathlib import Path
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('manim_lite', ROOT / 'src/manim-lite.py')
@@ -8382,6 +8383,43 @@ class ThreeDTests(PointTestCase):
         # z_index_as_group leaves share their root's world bounds center.
         self.assertEqual(first['depth_center'], second['depth_center'])
         self.assertPointAlmostEqual(first['depth_center'], (0, 0, -1))
+
+    def test_rigid_motion_reuses_earlier_leaf_geometry(self):
+        class Demo(lite.ThreeDScene):
+            def construct(self):
+                cube = lite.Cube()
+                ico = lite.Icosahedron(edge_length=1).shift(2 * lite.LEFT)
+                ico.add_updater(lambda m, dt: m.rotate(dt, axis=lite.UP))
+                self.add(cube, ico)
+                self.play(lite.Rotate(cube, angle=lite.PI, axis=lite.UP + lite.RIGHT), run_time=0.5)
+        def render():
+            scene = Demo()
+            scene.render()
+            return scene.frames
+        packed = render()
+        with mock.patch.object(lite._RigidFrames, 'fit_tree', lambda *args: None):
+            plain = render()
+        def placed(leaf):
+            m = leaf.get('rigid3d')
+            def move(p):
+                return [m[3 * i] * p[0] + m[3 * i + 1] * p[1] + m[3 * i + 2] * p[2] + m[9 + i] for i in range(3)]
+            return [[move(p) for p in curve] for curve in leaf['curves']] if m else leaf['curves']
+        moved = 0
+        for frame, reference in zip(packed, plain):
+            self.assertEqual(len(frame['mobjects']), len(reference['mobjects']))
+            for leaf, expected in zip(frame['mobjects'], reference['mobjects']):
+                moved += 'rigid3d' in leaf
+                self.assertEqual({k: v for k, v in leaf.items() if k not in ('curves', 'vertices', 'rigid3d')},
+                                 {k: v for k, v in expected.items() if k not in ('curves', 'vertices')})
+                for curve, other in zip(placed(leaf), expected['curves']):
+                    for p, q in zip(curve, other):
+                        self.assertPointAlmostEqual(p, q)
+        self.assertGreater(moved, 0)
+        # Cube faces turning rigidly reuse earlier point lists (pooled once), and so do the
+        # vertex dots of the icosahedron, whose rebuilt faces are not rigid.
+        earlier = {id(leaf['curves']) for frame in packed[:4] for leaf in frame['mobjects']}
+        shared = sum(id(leaf['curves']) in earlier for leaf in packed[4]['mobjects'] if 'rigid3d' in leaf)
+        self.assertGreater(shared, 6 + 12 * 60)
 
     def test_move_camera_animates_trackers(self):
         class Demo(lite.ThreeDScene):
