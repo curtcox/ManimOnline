@@ -1767,11 +1767,11 @@ class AnimationApiTests(unittest.TestCase):
             '        self.play(Transform(shapes, target))\n'
             '        a = VGroup(Dot(), Square())\n'
             '        a.become(VGroup(Dot(), Dot(), Dot(), Circle()))\n'
-            '        OUT.extend([[type(m).__name__ for m in shapes], [type(m).__name__ for m in shapes[2]],\n'
+            '        FOUND.extend([[type(m).__name__ for m in shapes], [type(m).__name__ for m in shapes[2]],\n'
             '                    [type(m).__name__ for m in a]])\n')
         found = []
         lite.render_scene('from manim import *\nclass Empty(Scene):\n    pass\n')
-        namespace = {'OUT': found}
+        namespace = {'FOUND': found}
         exec(compile(source, '<test>', 'exec'), namespace)
         namespace['S']().render()
         # Community 0.22's align_data puts each member's faded copies right after it.
