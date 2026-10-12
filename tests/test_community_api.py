@@ -1885,5 +1885,28 @@ class AnimationApiTests(unittest.TestCase):
         self.assertEqual(plain(found), [1.9333, 1.9333, 1.9333, 1.9333])
 
 
+    def test_unsuspended_animations_update_in_scene_order(self):
+        source = (
+            'from manim import *\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        p = Dot().add_updater(lambda m, dt: m.shift(UP * dt))\n'
+            '        self.add(p)\n'
+            '        o = Square().add_updater(lambda m: m.next_to(p, RIGHT))\n'
+            '        self.add(o)\n'
+            '        tops = []\n'
+            '        self.add_updater(lambda dt: tops.append(o.get_top()[1]))\n'
+            '        self.play(MoveAlongPath(o, Circle()))\n'
+            '        FOUND.extend(tops[1:4])\n')
+        found = []
+        lite.render_scene('from manim import *\nclass Empty(Scene):\n    pass\n')
+        namespace = {'FOUND': found}
+        exec(compile(source, '<test>', 'exec'), namespace)
+        namespace['S']().render()
+        # Community 0.22: MoveAlongPath leaves updating on, and the square's updater runs after
+        # the dot moved in the same frame.
+        self.assertEqual(plain(found), [1.0667, 1.1333, 1.2])
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -13704,8 +13704,16 @@ class MoveAlongPath(Animation):
         if self.__dict__.get('_live'):
             self._dt = dt
 
+    def _deferred_update(self, dt):
+        self.original.update(dt)
+        return self.original.to_dict()
+
     def sample(self, alpha):
         point = self.path_snapshot.point_from_proportion(alpha)
+        if self.__dict__.get('_live') and self.__dict__.get('_deferring'):
+            # The scene runs the updaters in its update pass (see Scene._update_mobjects).
+            self.original.move_to(point)
+            return [self.original.to_dict()]
         if self.__dict__.get('_live') and self._dt is not None:
             # Each frame Community moves the live mobject, then runs its updaters.
             self.original.move_to(point)
@@ -14913,13 +14921,17 @@ class ShowIncreasingSubsets(Animation):
     def begin(self, scene):
         super().begin(scene)
         # Only opacities change: an unsuspended mobject keeps running its updaters.
-        self._live = (self.mobject.copy() if not self.suspend_mobject_updating
-                      and _LiveMorph.wanted(self.mobject) else None)
+        self._live = not self.suspend_mobject_updating and _LiveMorph.wanted(self.mobject)
+        self._live_copy = self.mobject.copy() if self._live else None
 
     def _advance_copies(self, dt):
-        if self.__dict__.get('_live') is not None:
-            self._live.update(dt)
+        if self.__dict__.get('_live') and not self.__dict__.get('_deferring'):
+            self._live_copy.update(dt)
         super()._advance_copies(dt)
+
+    def _deferred_update(self, dt):
+        self._live_copy.update(dt)
+        return self.sample(self._alpha_shown)[0]
 
     def _index(self, alpha):
         return int(self.int_func(alpha * len(self.all_submobs)))
@@ -14932,7 +14944,8 @@ class ShowIncreasingSubsets(Animation):
             member.set_opacity(0)
 
     def sample(self, alpha):
-        live = self.__dict__.get('_live')
+        self._alpha_shown = alpha
+        live = self.__dict__.get('_live_copy')
         current = (live if live is not None else self.mobject).copy()
         members = [current.children[self.mobject.children.index(m)] for m in self.all_submobs
                    if m in self.mobject.children]
@@ -14940,8 +14953,8 @@ class ShowIncreasingSubsets(Animation):
         return [current.to_dict()]
 
     def finish(self, scene):
-        if self.__dict__.get('_live') is not None:
-            self.mobject.become(self._live)
+        if self.__dict__.get('_live_copy') is not None:
+            self.mobject.become(self._live_copy)
         members = [m for m in self.all_submobs if m in self.mobject.children]
         self.update_submobject_list(self._index(self.rate_func(1)), members)
 
@@ -15075,11 +15088,13 @@ class DefaultSectionType:
     NORMAL = 'default.normal'
 
 
-def _expose_snapshot(saved, mobject, snapshot):
-    """Temporarily give a live mobject (and its members) a sampled snapshot's geometry."""
-    if mobject in saved or snapshot.get('_shared_copy'):
+def _expose_snapshot(saved, mobject, snapshot, again=False):
+    """Temporarily give a live mobject (and its members) a sampled snapshot's geometry
+    (again=True re-exposes an already exposed family with a newer snapshot)."""
+    if snapshot.get('_shared_copy') or (mobject in saved and not again):
         return
-    saved[mobject] = (mobject.__dict__, _PARENTS.get(mobject))
+    if mobject not in saved:
+        saved[mobject] = (mobject.__dict__, _PARENTS.get(mobject))
     mobject.__dict__ = dict(mobject.__dict__)
     for key, value in snapshot.items():
         if key not in ('type', 'children', 'geometry_center'):
@@ -15121,7 +15136,7 @@ def _expose_snapshot(saved, mobject, snapshot):
                 member = (VGroup() if child.get('type') == 'vgroup' else
                           VMobject() if child.get('type') in _PATH_TYPES else Mobject())
             _PARENTS[member] = weakref.ref(mobject)
-        _expose_snapshot(saved, member, child)
+        _expose_snapshot(saved, member, child, again)
         children.append(member)
     mobject.children = children
     if shaft is not None and not (progress is not None and progress < 1):
@@ -15363,6 +15378,7 @@ class Scene:
     def _exposing(self, overrides):
         """Expose sampled animation states on the live mobjects; yields the animated families."""
         saved, blocked = {}, set()
+        outer, self._exposure_saved = self.__dict__.get('_exposure_saved'), saved
         try:
             for mobject, states in (overrides or {}).items():
                 blocked.update(mobject.get_family())
@@ -15374,6 +15390,7 @@ class Scene:
                     blocked.update(mobject.get_family())
             yield blocked
         finally:
+            self._exposure_saved = outer
             for mobject, (state, parent) in saved.items():
                 mobject.__dict__ = state
                 # Partial exposure (pointwise_become_partial on a copy) may relink members.
@@ -15388,9 +15405,19 @@ class Scene:
         scene_updaters = list(getattr(self, 'updaters', [])) if scene_updaters else []
         if not scene_updaters and not any(m.get_family_updaters() for m in roots):
             return
+        deferred = self.__dict__.get('_deferred_updates') or {}
         with self._exposing(overrides) as blocked:
             seen = set()
             def visit(mobject):
+                animation = deferred.get(mobject)
+                if animation is not None and overrides is not None and mobject in overrides and mobject not in seen:
+                    # A non-suspending animation's mobject runs its updaters here, after the
+                    # interpolation and in scene order (Community's update_mobjects).
+                    seen.add(mobject)
+                    snapshot = animation._deferred_update(dt)
+                    overrides[mobject] = [snapshot]
+                    _expose_snapshot(self._exposure_saved, mobject, snapshot, again=True)
+                    return
                 if mobject in seen or mobject in blocked or mobject.updating_suspended:
                     return
                 seen.add(mobject)
@@ -15594,6 +15621,11 @@ class Scene:
                 self._elapsed_frames += count
             follows = [any(m.updaters for obj in animation.objects() for m in obj.get_family())
                        for animation in animations]
+            self._deferred_updates = {animation.mobject: animation for animation in animations
+                                      if _is_a(animation, Animation) and animation.__dict__.get('_live')
+                                      and hasattr(animation, '_deferred_update')}
+            for animation in self._deferred_updates.values():
+                animation._deferring = True
             previous = {}
             if any(follows) and not self._skipping and count:
                 # Community's begin() interpolates every animation to alpha 0 first.
@@ -15619,6 +15651,8 @@ class Scene:
                     previous = overrides
         finally:
             self._static_frames = None
+            for animation in (self.__dict__.pop('_deferred_updates', None) or {}).values():
+                animation._deferring = False
         # Update-function animations finish last, seeing their neighbors' final states as
         # Community's last frame does (e.g. MaintainPositionRelativeTo a moving object).
         for animation in sorted(animations, key=lambda a: isinstance(a, UpdateFromFunc)):
