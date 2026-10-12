@@ -315,6 +315,9 @@ def _scene_call(function, reference=False, live_points=False):
             if (isinstance(owner, (TipableVMobject, NumberLine))
                     and any(child is self for child in owner.children)):
                 owner._freeze_shaft()
+        if function.__name__ in _OWN_POINT_EDITS and isinstance(self, TipableVMobject) and self._tips_by_role():
+            # Community edits the shaft as cut when the tips were attached.
+            self._freeze_shaft()
         # A class may present Community's structure to scene code with a _scene_<name> variant.
         result = _in_world(self, getattr(type(self), '_scene_' + function.__name__, function), *args, **kwargs)
         # Community's get_points returns the points buffer itself.
@@ -4560,6 +4563,7 @@ class VMobject(Mobject, metaclass=_CommunityTree):
         self._type, self.vertices = 'polyline', vertices
         self.__dict__.pop('curves', None)
         self.__dict__.pop('subpath_lengths', None)
+        self.__dict__.pop('_curved_tip_path', None)
         return self
 
     def change_anchor_mode(self, mode):
@@ -5413,7 +5417,22 @@ class Arc(TipableVMobject):
         self.position = list(center)
 
     def get_arc_center(self, warning=True):
-        return self._point_to_world(ORIGIN)
+        """Community's estimate: the intersection of the normals at the first curve's anchors
+        (the true center for circular arcs, not for ellipses or edited outlines)."""
+        points = self.get_points()
+        if len(points) < 4:
+            raise IndexError('The arc has no curves')
+        a1, h1, h2, a2 = (Vector(p) for p in points[:4])
+        if a1 == a2:
+            return a1
+        n1, n2 = Vector((a1[1] - h1[1], h1[0] - a1[0], 0)), Vector((a2[1] - h2[1], h2[0] - a2[0], 0))
+        try:
+            return line_intersection((a1, a1 + n1), (a2, a2 + n2))
+        except ValueError:
+            if warning:
+                warnings.warn("Can't find Arc center, using ORIGIN instead", stacklevel=2)
+            self._failed_to_get_center = True
+            return Vector(ORIGIN)
 
     def stop_angle(self):
         end = Vector(self.get_points()[-1]) - self.get_arc_center()
@@ -6370,7 +6389,7 @@ class CurvedArrow(ArcBetweenPoints):
             raise TypeError('tip_style must be a dictionary')
         ArrowTip._tip_dimension(tip_length,'length')
         super().__init__(start_point,end_point,**kwargs)
-        center = Arc.get_arc_center(self)
+        center = self._point_to_world(ORIGIN)
         points = Mobject.get_points(self)
         VMobject.set_points(self,points)
         self._curve_arc_center = list(center)
@@ -6378,10 +6397,6 @@ class CurvedArrow(ArcBetweenPoints):
         self.tip_length = tip_length
         self.tip_style = copy.deepcopy(tip_style or {})
         self.add_tip(tip_shape=tip_shape)
-
-    def get_arc_center(self, warning=True):
-        return self._point_to_world(Vector(self.__dict__.get('_curve_arc_center',ORIGIN)))
-
 
 
 class CurvedDoubleArrow(CurvedArrow):
@@ -24357,6 +24372,13 @@ def register_font(font_file):
 
 _STYLE_PREFIXES = ('set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_style', 'set_sheen',
                    'get_color', 'get_fill', 'get_stroke', 'get_opacity', 'match_style', 'set_z_index')
+# Scene calls that edit a path's own points: a tipped path's shaft is frozen at its cut first.
+_OWN_POINT_EDITS = frozenset(('add_line_to', 'add_points_as_corners', 'add_quadratic_bezier_curve_to',
+                              'add_cubic_bezier_curve_to', 'add_cubic_bezier_curves', 'add_smooth_curve_to',
+                              'append_points', 'set_points', 'set_points_as_corners', 'set_points_smoothly',
+                              'set_anchors_and_handles', 'start_new_path', 'add_subpath', 'close_path',
+                              'append_vectorized_mobject', 'insert_n_curves', 'make_smooth', 'make_jagged',
+                              'change_anchor_mode', 'resize_points', 'clear_points', 'reset_points'))
 _NO_WORLD_CALL = frozenset(('add_updater', 'remove_updater', 'clear_updaters', 'update', 'get_updaters',
                             'suspend_updating', 'resume_updating', 'get_time_based_updaters',
                             'has_time_based_updater', 'get_family_updaters', 'get_family', 'to_dict',

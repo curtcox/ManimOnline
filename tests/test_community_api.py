@@ -1705,6 +1705,16 @@ class AnimationApiTests(unittest.TestCase):
         self.assertEqual(values, [[-1.5166, 0.5309, 0.0], 5.65, [[-2.866, 0.1134, 0.0], [2.5316, 1.7831, 0.0]],
                                   [0.7324, 1.2266, 0.0], 40.0, [0.4896, 1.1515, 0.0], 0.531])
 
+    def test_arc_center_estimate_and_tipped_point_edits(self):
+        values = scene_values(
+            'e = Ellipse(width=3, height=1).rotate(0.5).shift(DOWN)\n'
+            'c = CurvedArrow(LEFT * 2, RIGHT * 2, angle=1.2)\n'
+            'd = CurvedArrow(LEFT * 2, RIGHT * 2, angle=1.2).add_line_to(UP)\n'
+            'f = CurvedArrow(LEFT * 2, RIGHT * 2, angle=1.2).set_points_as_corners([LEFT, UP, RIGHT])\n'
+            'result = [e.get_arc_center(), c.get_arc_center(), d.get_center(), d.height, f.get_center(), f.width]\n')
+        self.assertEqual(values, [[0.8274, -0.548, 0.0], [0.0, 2.6135, 0.0], [0.0, 0.1636, 0.0], 1.6816,
+                                  [0.5, 0.329, 0.0], 3.0])
+
 
 if __name__ == '__main__':
     unittest.main()
