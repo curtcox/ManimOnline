@@ -11893,7 +11893,8 @@ def _align_path_snapshots(start, target):
         # Matching shapes retain their (local) interpolation, unless both the local
         # geometry and the pose's scale or turn change: lerping each separately is not
         # Community's pointwise straight path (e.g. radius 1 at scale 0.7 into radius 0.5).
-        pointwise = (start['type'] != 'arrow' and
+        # Baked arrow shafts (both _shaft_fixed) are plain straight paths here.
+        pointwise = ((start['type'] != 'arrow' or start.get('_shaft_fixed') and target.get('_shaft_fixed')) and
                      (start.get('geometry_scale', 1), start.get('angle', 0)) !=
                      (target.get('geometry_scale', 1), target.get('angle', 0)) and
                      _path_curves(start) != _path_curves(target))
@@ -12097,7 +12098,8 @@ def _transform_plan(start, target):
             return any(role in last and (first[role]['type'] != last[role]['type'] or
                                          _path_curves(first[role]) != _path_curves(last[role]))
                        for role in first)
-        if bool(start.get('_shaft_fixed')) != bool(target.get('_shaft_fixed')) or reshaped():
+        if (bool(start.get('_shaft_fixed')) != bool(target.get('_shaft_fixed')) or reshaped()
+                or set(tips(start)) != set(tips(target))):
             # Community moves shaft points on their own: a refit shaft (which follows its tip
             # bases) interpolates between its drawn ends, not with cut or reshaped tips.
             for own,source in ((own_start,start),(own_target,target)):
