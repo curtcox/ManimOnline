@@ -12005,14 +12005,25 @@ def _own_shaft(snapshot, other):
     if index is None or shaft(other) is not None:
         return snapshot
     line = snapshot['children'][index]
-    if line.get('children') or any(line.get(key) != value for key, value in
-                                   (('angle', 0), ('geometry_scale', 1))) or any(line.get('position', ())):
+    posed = (any(line.get('position') or ()) or line.get('angle', 0) != 0 or line.get('geometry_scale', 1) != 1)
+    if line.get('children') or posed and (line.get('type') != 'line' or line.get('curves') or
+                                          any(key in line for key in ('shaft_curves', 'shaft_start'))):
         return snapshot
+    if posed:
+        forward = _snapshot_pose(line)[0]
+        moved = lambda point: list(forward(point))
     result = _snapshot_copy(snapshot)
     for key, value in line.items():
         if key not in ('children', 'position', 'angle', 'geometry_scale', 'geometry_center',
                        '_number_line_role', 'opacity', 'z_index'):
             result[key] = _snapshot_copy(value)
+    if posed:
+        # A posed shaft (e.g. a shifted or resized live copy) bakes its pose into its points.
+        for key in ('start', 'end'):
+            if key in result:
+                result[key] = moved(result[key])
+        if result.get('vertices'):
+            result['vertices'] = [moved(point) for point in result['vertices']]
     result['opacity'] = snapshot.get('opacity', 1) * line.get('opacity', 1)
     result['children'] = [child for k, child in enumerate(result['children']) if k != index]
     if result.get('type') == 'line' and not snapshot.get('_shaft_fixed'):
