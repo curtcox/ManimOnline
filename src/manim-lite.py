@@ -12875,14 +12875,19 @@ class FadeIn(_PathOptions, Animation):
             moved.shift(point - self.mobject.get_center())
         elif self.shift_vector is not None:
             moved.shift(self.shift_vector * (-1 if self._fading_in else 1))
-        if self.scale_factor != 1:
+        if self.scale_factor != 1 or self._rescales():
             moved.scale(self.scale_factor)
         return moved
+
+    def _rescales(self):
+        # Community always scales the faded copy; Arrow.scale(1) re-adds tips, which moves
+        # the shaft ends by its put_start_and_end_on refit.
+        return isinstance(self.mobject, Arrow) and bool(self.mobject._tips_by_role())
 
     def begin(self, scene):
         super().begin(scene)
         self.moved = (self.shift_vector is not None or self.target_position is not None
-                      or self.scale_factor != 1)
+                      or self.scale_factor != 1 or self._rescales())
         away = self._faded() if self.moved else None
         self._live_away = away if self.__dict__.get('_live_start') is not None else None
         self._pair(away.to_dict() if away is not None else self.start)
@@ -14994,20 +14999,25 @@ def _expose_snapshot(saved, mobject, snapshot):
             shaft = None
     children = []
     live, count = mobject.children, len(sampled_children)
-    if 0 < len(live) < count and type(mobject) in (Group, VGroup, Mobject):
+    plain = type(mobject) in (Group, VGroup, Mobject)
+    seen = set()
+    for index, child in enumerate(sampled_children):
         # Community aligns the live family itself: add_n_more_submobjects puts each
-        # member's (faded) copies right after it.
-        slots, seen = [], set()
-        for index in range(count):
-            source = index * len(live) // count
-            slots.append(None if source in seen else live[source])
-            seen.add(source)
-    else:
-        slots = [live[index] if index < len(live) else None for index in range(count)]
-    for child, member in zip(sampled_children, slots):
+        # member's (faded) copies right after it. (Role-structured families such as
+        # NumberLine keep their existing slots.)
+        origin = live[index * len(live) // count] if 0 < len(live) < count else None
+        if plain and origin is not None:
+            member = None if origin in seen else origin
+            seen.add(origin)
+        else:
+            member = live[index] if index < len(live) else None
         if member is None:
-            member = (VGroup() if child.get('type') == 'vgroup' else
-                      VMobject() if child.get('type') in _PATH_TYPES else Mobject())
+            if origin is not None:
+                member = origin.copy()
+            else:
+                member = (VGroup() if child.get('type') == 'vgroup' else
+                          VMobject() if child.get('type') in _PATH_TYPES else Mobject())
+            _PARENTS[member] = weakref.ref(mobject)
         _expose_snapshot(saved, member, child)
         children.append(member)
     mobject.children = children
