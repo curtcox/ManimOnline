@@ -16,15 +16,19 @@ state. These are bounds-level checks, not pixel comparisons.
 | --- | --- | --- |
 | Community docstring examples (273 comparable) | 200 | Text bounds use Liberation Sans metrics (macOS Community uses system fonts); AnimationGroup/FadeTransform Group roots; random examples |
 | Feature suites (anims, methods, mobs2, 3D, camera, svg, ...) | ~3,600 of ~3,750 | Mostly the Group-root structure above and boolean-op point order |
-| Random 3-step animation scenes (1,294) | 1,252 | Degenerate arrows (reversed or morphed into other shapes), NumberLine/Axes morph alignment |
-| Random updater scenes (598) | 580 | Self-referential updater feedback loops |
+| Random animation-chain scenes (anim1-5, 1,294) | 1,267 | Arrow quirks (Wiggle and Arrow.scale re-adding tips every frame), NumberLine/Axes become alignment |
+| Random 5-step scenes (long1, 242) | 231 | The same arrow and Axes cases; Community's float overflow in two degenerate cases |
+| Random updater scenes (598) | 591 | Self-referential updater feedback with arrows |
+| Every animation type on mobjects with updaters (840) | 744 | Group roots (Community measures its Group root with handles), arrows sharing tips between parents |
 | Random plotting scenes (550) | 550 | — |
-| Random method chains (2,300) | ~2,250 | VGroup own points (lite groups cannot hold path points), Group.restore errors Community raises |
+| Random method chains (2,900) | ~2,840 | VGroup own points (lite groups cannot hold path points), Group.restore errors Community raises, NumberLine/Axes become structure |
+| Repository gallery (`examples/`, 101 scenes, text excluded) | 92 | Group roots, boolean point order, Community's unseeded stream lines and closed-circle tip overflow |
 
 In the browser (Pyodide, Chromium), 393 of the 395 docstring examples render; the two
-failures also fail in Community. Every gallery scene in `examples/` now also runs in
-Manim Community 0.22 (they previously used 2D points, inline SVG strings, a private
-method and APIs that Community rejects).
+failures also fail in Community. Every gallery scene in `examples/` renders in Chromium
+without page errors and also runs in Manim Community 0.22. Browser-measured Tex sizes
+(including `\\` line breaks inside `\textbf`) match Community within a stroke width;
+native runs only estimate formulas before measurement.
 
 ## Roadmap acceptance audit (2026-10-08)
 
