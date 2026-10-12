@@ -8262,7 +8262,8 @@ class VGroup(Group):
         if mode not in ('smooth', 'jagged'):
             raise ValueError('Anchor mode must be smooth or jagged')
         for member in self.family_members_with_points():
-            member.change_anchor_mode(mode)
+            if not isinstance(member, VGroup):  # Groups hold no points of their own here.
+                member.change_anchor_mode(mode)
         return self
 
     def make_smooth(self):
@@ -24564,6 +24565,20 @@ for _name in ('add_line_to', 'add_points_as_corners', 'add_quadratic_bezier_curv
               'set_points_smoothly', 'start_new_path', 'close_path', 'set_anchors_and_handles', 'add_subpath'):
     setattr(NumberLine, _name, _shaft_edit(_name))
 NumberLine._scene_set_points = _shaft_edit('set_points')
+
+
+def _number_line_partial(self, vmobject, a, b):
+    """Community's own-point partial: the (cut) shaft becomes part of the source's own points."""
+    if isinstance(vmobject, NumberLine):
+        source = VMobject()
+        source.set_points(vmobject._shaft_points())
+        vmobject = source
+    self._freeze_shaft()
+    _call_as_scene(self._part('shaft').pointwise_become_partial, vmobject, a, b)
+    return self
+
+
+NumberLine._scene_pointwise_become_partial = _number_line_partial
 NumberLine._scene_insert_n_curves = _shaft_edit('insert_n_curves')
 
 
