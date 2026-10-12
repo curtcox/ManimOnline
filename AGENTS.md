@@ -1041,4 +1041,11 @@ shares unchanged arrays, so never mutate snapshot lists in place.
 subtree's) world leaves are one affine image of an earlier frame's, they reuse that frame's
 point lists plus a shared `rigid3d` [3x3 rows, shift] that projectThreeD applies first. Every
 point is checked (1e-6); text, clouds, fixed-orientation and z_index_as_group leaves are left
-alone. This keeps rotating solids under the worker's 32 MiB limit.
+alone. This keeps rotating solids under the worker's 32 MiB limit. A level that misses three
+times in a row rests 15 frames (its subtrees still fit) before retrying.
+Mobject.__deepcopy__ copies `_POINT_KEYS` lists with `_snapshot_copy` (no per-float memo);
+other attributes keep deepcopy semantics. Circle/arc/ellipse/annulus curves come from a
+memo (`_ROUND_CURVES`, copied out) and get_points reads `_round_snapshot`, not to_dict.
+A negative Arc/Circle/Dot radius is Community's mirrored arc: stored as |r| with start_angle + PI.
+SpiralIn applies its two opposite turns as the equivalent translation of each shape's
+center of mass (computed once).

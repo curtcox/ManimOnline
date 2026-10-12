@@ -2284,7 +2284,7 @@ assert isinstance(t.get_value(), (int, float))""")
             with self.assertRaises(ValueError): lite.Circle.from_three_points(*points)
         with self.assertRaises(ValueError):
             lite.Circle.from_three_points(lite.ORIGIN,lite.RIGHT,lite.OUT)
-        for radius in (-1,float('inf'),float('nan')):
+        for radius in (float('inf'),float('nan')):
             with self.assertRaises(ValueError): lite.Circle(radius=radius)
         self.assertEqual(lite.Circle(radius=None).radius,1)
 
@@ -7352,10 +7352,16 @@ class Demo(Scene):
         arc = lite.Arc(angle=0, radius=2, arc_center=(1, 1))
         self.assertPointAlmostEqual(arc.point_from_proportion(0.5), (3, 1, 0))
         self.assertPointAlmostEqual(lite.Arc(radius=0).point_from_proportion(0.5), lite.ORIGIN)
-        for kwargs in ({'radius': -1}, {'radius': float('inf')}, {'angle': float('nan')},
+        for kwargs in ({'radius': float('inf')}, {'angle': float('nan')},
                        {'start_angle': float('inf')}, {'arc_center': (float('nan'), 0)}):
             with self.assertRaises(ValueError):
                 lite.Arc(**kwargs)
+        # Community: a negative radius mirrors the points through the center.
+        mirrored = lite.Arc(radius=-1, angle=lite.PI / 2)
+        self.assertPointAlmostEqual(mirrored.get_start(), (-1, 0, 0))
+        self.assertPointAlmostEqual(mirrored.get_end(), (0, -1, 0))
+        self.assertPointAlmostEqual(mirrored.get_center(), (-0.5, -0.5, 0))
+        self.assertAlmostEqual(lite.Dot(radius=-0.1).get_width(), 0.2)
         with self.assertRaises(NotImplementedError):
             lite.Arc(angle=lite.TAU * 2)
         with self.assertRaises(ValueError):

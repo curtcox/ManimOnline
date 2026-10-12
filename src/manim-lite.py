@@ -145,6 +145,19 @@ def _link_children(parent, children):
 
 def _posed_ancestors(mobject):
     """The parent chain (nearest first) when some ancestor holds a pose, else []."""
+    # Stale links only shorten the verified chain, so an unverified walk that meets no
+    # posed parent settles the answer without scanning large child lists.
+    node, seen = mobject, set()
+    while id(node) not in _IN_WORLD and id(node) not in seen:
+        seen.add(id(node))
+        ref = _PARENTS.get(node)
+        node = ref() if ref is not None else None
+        if node is None:
+            return []
+        if node.angle or node.geometry_scale != 1 or any(node.position):
+            break
+    else:
+        return []
     chain, node, posed = [], mobject, False
     while id(node) not in _IN_WORLD:
         ref = _PARENTS.get(node)
@@ -2626,7 +2639,9 @@ class Mobject:
         if self._type == 'polyline' and len(self.vertices) == 1:
             points = self.vertices
         else:
-            points = [point for curve in _path_curves(self.to_dict()) for point in curve]
+            snapshot = (self._round_snapshot() if self._type in _ROUND_TYPES and not self.children
+                        else self.to_dict())
+            points = [point for curve in _path_curves(snapshot) for point in curve]
             if self._type == 'bezierpath':
                 points += self.vertices
         return self._points_to_world(points)
@@ -2965,6 +2980,10 @@ class Mobject:
                      'width': self.__dict__.get('width', 0), 'height': self.__dict__.get('height', 0)})]
         return None
 
+    def _round_snapshot(self):
+        """The analytical fields _path_curves reads for circles, arcs, ellipses and annuli."""
+        return {key: value for key, value in self.__dict__.items() if key in _ROUND_KEYS} | {'type': self._type}
+
     def _rotated_family(self):
         return any(math.sin(2 * member.angle) for member in self.get_family())
 
@@ -2972,11 +2991,8 @@ class Mobject:
         """Bounds-defining points of this family in its parent's coordinates."""
         own = self._own_bound_points()
         if own is None:
-            if self._type in ('circle', 'arc', 'ellipse', 'annulus'):
-                curves = _path_curves({key: value for key, value in self.__dict__.items()
-                                       if key in ('radius', 'start_angle', 'arc_angle', 'width', 'height',
-                                                  'inner_radius', 'outer_radius', 'num_components')}
-                                      | {'type': self._type})
+            if self._type in _ROUND_TYPES:
+                curves = _path_curves(self._round_snapshot())
                 own = ([p for c in curves for p in c] if _BOUNDS_WITH_HANDLES else
                        [p for c in curves for p in (c[0], c[-1])])
             elif self._type in ('text', 'mathtex'):
@@ -3599,6 +3615,24 @@ class Mobject:
 
     def copy(self):
         return copy.deepcopy(self)
+
+    def __deepcopy__(self, memo):
+        # copy.deepcopy's own reconstruction, but coordinate lists skip per-float memo work.
+        cls = type(self)
+        result = cls.__new__(cls)
+        memo[id(self)] = result
+        state = {}
+        for key, value in self.__dict__.items():
+            if key in _POINT_KEYS and type(value) is list:
+                copied = memo.get(id(value))
+                if copied is None:
+                    copied = memo[id(value)] = _snapshot_copy(value)
+                    copy._keep_alive(value, memo)
+                state[key] = copied
+            else:
+                state[key] = copy.deepcopy(value, memo)
+        result.__setstate__(state)
+        return result
 
     def __setstate__(self, state):
         # Copies link their copied children (see _PARENTS).
@@ -5704,8 +5738,11 @@ class Arc(TipableVMobject):
         if isinstance(num_components, bool) or not isinstance(num_components, numbers.Integral) or not 2 <= num_components <= 1000:
             raise ValueError('num_components must be an integer from 2 to 1000')
         center = Vector(arc_center)
-        if not all(math.isfinite(v) for v in (radius, start_angle, angle, *center)) or radius < 0:
-            raise ValueError('Arc geometry must be finite with a nonnegative radius')
+        if not all(math.isfinite(v) for v in (radius, start_angle, angle, *center)):
+            raise ValueError('Arc geometry must be finite')
+        if radius < 0:
+            # Community's points r(cos t, sin t) with r < 0: the same arc turned half a turn.
+            radius, start_angle = -radius, start_angle + PI
         if abs(angle) > TAU:
             raise NotImplementedError('Arcs support at most one full turn')
         super().__init__(**kwargs)
@@ -12035,37 +12072,59 @@ def _fit_curve_endpoints(curves, start, end):
     return [[point(value) for value in curve] for curve in curves]
 
 
+_ROUND_TYPES = frozenset(('circle', 'arc', 'ellipse', 'annulus'))
+_ROUND_KEYS = frozenset(('radius', 'start_angle', 'arc_angle', 'width', 'height',
+                         'inner_radius', 'outer_radius', 'num_components'))
+_ROUND_CURVES = {}
+
+
 def _path_curves(snapshot):
     kind = snapshot['type']
     if kind == 'bezierpath':
         return _snapshot_copy(snapshot.get('shaft_curves',snapshot['curves']))
+    if kind in _ROUND_TYPES:
+        key = (kind, *(snapshot.get(name) for name in sorted(_ROUND_KEYS)))
+        curves = _ROUND_CURVES.get(key)
+        if curves is None:
+            if len(_ROUND_CURVES) >= 4096:
+                _ROUND_CURVES.clear()
+            curves = _ROUND_CURVES[key] = _round_curves(snapshot)
+        return [[point[:] for point in curve] for curve in curves]
+    return _corner_curves(snapshot)
+
+
+def _round_curves(snapshot):
+    kind = snapshot['type']
     if kind == 'annulus':
         outer = _path_curves({'type':'circle', 'radius':snapshot['outer_radius']})
         inner = _path_curves({'type':'circle', 'radius':snapshot['inner_radius']})
         return outer + [list(reversed(curve)) for curve in reversed(inner)]
-    if kind in ('circle', 'arc', 'ellipse'):
-        radius = 1 if kind == 'ellipse' else snapshot['radius']
-        if not math.isfinite(radius) or radius < 0:
-            raise ValueError('Path radius must be nonnegative and finite')
-        start = snapshot.get('start_angle', 0)
-        sweep = snapshot.get('arc_angle', TAU)
-        # Community's Arc: num_components anchors (default 9, so 8 cubics) for any sweep.
-        count = snapshot.get('num_components', 9) - 1
-        step = sweep / count
-        factor = 4 / 3 * math.tan(step / 4)
-        anchors = [Vector((radius * math.cos(start + step*i),
-                           radius * math.sin(start + step*i), 0)) for i in range(count + 1)]
-        if abs(sweep) == TAU:
-            anchors[-1] = anchors[0]
-        curves = []
-        for a, b in zip(anchors, anchors[1:]):
-            tangent_a, tangent_b = Vector((-a[1], a[0], 0)), Vector((-b[1], b[0], 0))
-            curves.append([list(a), list(a + tangent_a * factor),
-                           list(b - tangent_b * factor), list(b)])
-        if kind == 'ellipse':
-            curves = [[[p[0] * snapshot['width'] / 2, p[1] * snapshot['height'] / 2, 0]
-                       for p in curve] for curve in curves]
-        return curves
+    radius = 1 if kind == 'ellipse' else snapshot['radius']
+    if not math.isfinite(radius) or radius < 0:
+        raise ValueError('Path radius must be nonnegative and finite')
+    start = snapshot.get('start_angle', 0)
+    sweep = snapshot.get('arc_angle', TAU)
+    # Community's Arc: num_components anchors (default 9, so 8 cubics) for any sweep.
+    count = snapshot.get('num_components', 9) - 1
+    step = sweep / count
+    factor = 4 / 3 * math.tan(step / 4)
+    anchors = [Vector((radius * math.cos(start + step*i),
+                       radius * math.sin(start + step*i), 0)) for i in range(count + 1)]
+    if abs(sweep) == TAU:
+        anchors[-1] = anchors[0]
+    curves = []
+    for a, b in zip(anchors, anchors[1:]):
+        tangent_a, tangent_b = Vector((-a[1], a[0], 0)), Vector((-b[1], b[0], 0))
+        curves.append([list(a), list(a + tangent_a * factor),
+                       list(b - tangent_b * factor), list(b)])
+    if kind == 'ellipse':
+        curves = [[[p[0] * snapshot['width'] / 2, p[1] * snapshot['height'] / 2, 0]
+                   for p in curve] for curve in curves]
+    return curves
+
+
+def _corner_curves(snapshot):
+    kind = snapshot['type']
     if kind in ('square', 'rectangle'):
         width = snapshot['side_length'] if kind == 'square' else snapshot['width']
         height = snapshot['side_length'] if kind == 'square' else snapshot['height']
@@ -17698,7 +17757,15 @@ class _RigidFrames:
         record = refs.get(key)
         if record is not None and record['mobject'] is not mobject:
             record = None
-        if (record is not None and len(record['geometry']) == len(group) and
+        resting = False
+        if record is not None and record['skip']:
+            # A level that keeps missing (members moving independently) rests a while,
+            # then takes fresh reference points for one more try.
+            record['skip'] -= 1
+            if record['skip']:
+                return False
+            resting = True
+        elif (record is not None and len(record['geometry']) == len(group) and
                 all(leaf.get(name) is ref.get(name) for leaf, ref in zip(group, record['geometry'])
                     for name in names)):
             return True  # Unchanged point lists: the leaves already pool.
@@ -17708,18 +17775,26 @@ class _RigidFrames:
             return False
         if len(points) < _RigidFrames.MIN_POINTS:
             return True
-        if record is None or record['signature'] != signature or record.get('basis', True) is None:
+        def miss(misses):
             # Leaves may later be compressed by subtree fits, so keep their own lists.
-            refs[key] = {'mobject': mobject, 'signature': signature, 'points': points,
+            refs[key] = {'mobject': mobject, 'signature': signature, 'points': points, 'misses': misses,
+                         'skip': 15 if misses >= 3 else 0,
                          'geometry': [{name: leaf[name] for name in names if name in leaf} for leaf in group]}
             return False
+        if record is None:
+            return miss(0)
+        if resting:
+            miss(0)
+            refs[key]['misses'] = record['misses']
+            return False
+        if record['signature'] != signature or record.get('basis', True) is None:
+            return miss(record['misses'] + 1)
         if 'basis' not in record:
             record['basis'] = _RigidFrames.basis(record['points'])
         matrix = _RigidFrames.solve(record, points)
         if matrix is None:
-            refs[key] = {'mobject': mobject, 'signature': signature, 'points': points,
-                         'geometry': [{name: leaf[name] for name in names if name in leaf} for leaf in group]}
-            return False
+            return miss(record['misses'] + 1)
+        record['misses'] = 0
         still = all(abs(v - w) < 1e-12 for v, w in zip(matrix, (1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)))
         for leaf, ref in zip(group, record['geometry']):
             leaf.update(ref)
@@ -18997,17 +19072,25 @@ class SpiralIn(Animation):
         super().__init__(shapes, introducer=True, **kwargs)
 
     def _place(self, group, alpha):
-        def place(shape, original, state, final, initial):
+        cos, sin = math.cos(TAU * alpha), math.sin(TAU * alpha)
+        center = self.shape_center
+        def place(shape, original, state, final, initial, mass):
             shape.become(state)
             fill, stroke = original.fill_opacity, original.stroke_opacity
-            shape.shift((final - initial) * alpha)
-            shape.rotate(TAU * alpha, about_point=self.shape_center)
-            shape.rotate(-TAU * alpha, about_point=shape.get_center_of_mass())
+            # Community turns about the shapes' center, then back about the turned center of
+            # mass: together a translation carrying the center of mass along the spiral.
+            x, y, z = (mass[i] + (final[i] - initial[i]) * alpha - center[i] for i in range(3))
+            shape.shift(Vector((center[0] + cos * x - sin * y - mass[0],
+                                center[1] + sin * x + cos * y - mass[1], center[2] + z - mass[2])))
             shape.set_fill(opacity=min(fill, alpha * fill / self.fade_in_fraction))
             shape.set_stroke(opacity=min(stroke, alpha * stroke / self.fade_in_fraction))
-        for original, shape, state, (final, initial) in zip(self.shapes, list(group), self._saved_shapes, self.moves):
+        if '_masses' not in self.__dict__:
+            self._masses = [state.get_center_of_mass() for state in self._saved_shapes]
+        masses = self._masses
+        for original, shape, state, (final, initial), mass in zip(self.shapes, list(group), self._saved_shapes,
+                                                                   self.moves, masses):
             _freeze_tip_owner(shape)  # A tip's own turn leaves the shaft in place (before world placement).
-            _in_world(shape, place, original, state, final, initial)
+            _in_world(shape, place, original, state, final, initial, mass)
         return group
 
     def sample(self, alpha):
