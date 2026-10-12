@@ -3506,7 +3506,7 @@ class Mobject:
             isinstance(member, (Text, SVGMobject, Code, Paragraph)) or hasattr(type(member), '_scene_get_points')
             for member in self.get_family())
 
-    def _aligned_target(self, mobject):
+    def _aligned_target(self, mobject, root_points=False):
         """Community's become runs align_data first: a pointless member facing one with
         points pushes that one into its own submobjects, and the shorter child list is
         padded with faded repeats (or center points), so the receiver keeps the larger
@@ -3543,10 +3543,18 @@ class Mobject:
                         leaf._freeze_shaft()
                     leaf._replace_children([])
                     target = VGroup(*[_world_view(child) for child in target.children], leaf)
-            elif has_points and not root and receiver is not None and plain(receiver) and plain(target):
+            elif (has_points and (root_points or not root) and receiver is not None and plain(receiver)
+                  and plain(target)):
                 # align_data recurses with point alignment below the root: the member with
                 # fewer curves per subpath (or fewer subpaths) is subdivided to match.
-                receiver.copy().align_points(target)
+                aligned = target.copy()
+                aligned._replace_children([])
+                receiver.copy().align_points(aligned)
+                if len(aligned.get_points()) != len(target.get_points()):
+                    lengths = aligned.__dict__.get('subpath_lengths')
+                    VMobject.set_points(target, aligned.get_points())
+                    if lengths:
+                        target.subpath_lengths = lengths
             members = list(target.children)
             count = len(sources) - len(members)
             members = padded(members, count, point, lambda item: item.copy().fade(1))
@@ -13233,8 +13241,12 @@ class Transform(_PathOptions, Animation):
         if not (abs(self.rate_func(1)) < 1e-9 and not self.reverse_rate_function):
             # Like Community's final interpolate(rate_func(1)), a there-and-back transform
             # ends where it started. Otherwise preserve source and ordered child identities,
-            # callbacks and checkpoints.
-            self.mobject.become(self.target)
+            # callbacks and checkpoints. Community's align_data leaves the mobject with the
+            # aligned family structure and point counts.
+            target = self.target
+            if self.mobject._alignable() and target._alignable():
+                target = self.mobject._aligned_target(target)
+            self.mobject.become(target)
         if self.replace_mobject_with_target_in_scene:
             # Community: the target takes the mobject's place in the scene (inside its parent
             # group when nested).

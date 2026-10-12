@@ -947,3 +947,15 @@ falls back to a center point), so receivers keep
 the larger structure; library become (Transform completion, restore) does not. Families with
 text, SVG or NumberLine scene views are left unaligned (`_alignable`).
 Property setters that check their caller must use `_from_scene()`, which skips that frame.
+
+Transform completion becomes `_aligned_target(target)`: the mobject keeps Community's aligned
+family (the larger member count, faded repeats/center points) and member point counts (the
+member with fewer curves is subdivided; analytic types survive when unchanged). The root's own
+points are not aligned. Uncreate and reversed Write leave the mobject collapsed onto each
+outline's first point even when removed (Community's final pointwise_become_partial(0, 0)).
+put_start_and_end_on semantics apply to the whole family: pop_tips maps added members with the
+shaft onto the tip points, add_tip maps them about the fixed end (Arrow.scale's inner pop and
+re-add adds an extra factor when a start tip is added beside an end tip), and Arrow.scale is
+Community's literal pop, scale, re-add. `Arc.get_arc_center` is Community's normal-intersection
+estimate on the first curve (not the analytic center). Scene-code `.animate` calls run as scene
+code (`_call_as_scene`). Fuzzers: ~/tmp/chainfuzz (method chains) and ~/tmp/animchain (scenes).

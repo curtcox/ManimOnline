@@ -2822,8 +2822,13 @@ assert isinstance(t.get_value(), (int, float))""")
         for key in ('start','end','position','geometry_scale','angle'):
             self.assertEqual(first[key],last[key])
         for a,b in zip(first['children'],last['children']):
-            for key in ('vertices','position','geometry_scale','angle','_tip_role'):
-                self.assertEqual(a[key],b[key])
+            # Restore aligns the tip outlines (a stealth tip has more curves), as Community does.
+            self.assertEqual(a['_tip_role'],b['_tip_role'])
+            corners = [[lite._snapshot_pose(node)[0](q)[:2] for c in lite._path_curves(node) for q in (c[0], c[-1])]
+                       for node in (a, b)]
+            for k in range(4):
+                pick = min if k < 2 else max
+                self.assertAlmostEqual(pick(p[k % 2] for p in corners[0]), pick(p[k % 2] for p in corners[1]))
         self.assertEqual(result['frames'][-1]['mobjects'],[])
 
     def test_group_child_motion_and_mutation_preserve_nested_siblings(self):
@@ -3120,7 +3125,7 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertEqual(len(host.children),2)
         scene.play(lite.Transform(host,lite.Circle().add(lite.Square())),run_time=.2)
         self.assertEqual(host._type,'circle')
-        self.assertEqual(len(host.children),1)
+        self.assertEqual(len(host.children),2)  # The target's square is repeated (faded), as in Community.
 
     def test_shape_family_gallery_late_children_removal_restore_and_cleanup(self):
         result = json.loads(lite.render_scene((ROOT/'examples/shape_family_scene.py').read_text()))
@@ -3296,9 +3301,10 @@ assert isinstance(t.get_value(), (int, float))""")
         restored = result['frames'][120]['mobjects'][2]
         self.assertEqual(original['type'],'bezierpath')
         self.assertEqual(len(original['children']),1)
-        self.assertTrue(all(child['opacity']==0 for child in corner['children']))
+        self.assertTrue(all(child['opacity']==0 or child['stroke_width']==child['fill_opacity']==0
+                            for child in corner['children']))
         self.assertEqual(restored['curves'],original['curves'])
-        self.assertEqual(restored['children'],original['children'])
+        self.assertEqual([c['position'] for c in restored['children']],[c['position'] for c in original['children']])
         self.assertEqual(len(result['frames'][-1]['mobjects']),1)
         json.dumps(result,allow_nan=False)
 
@@ -4007,7 +4013,7 @@ assert isinstance(t.get_value(), (int, float))""")
         between = result['frames'][90]['mobjects'][2]
         self.assertEqual(len(coarse['children']),8)
         self.assertEqual(len(fine['children']),32)
-        self.assertEqual(len(between['children']),16)
+        self.assertEqual(len(between['children']),32)  # Transform keeps the larger aligned family.
         self.assertEqual(len(result['frames'][-1]['mobjects']),2)
         colors = [child['fill_color'] for child in between['children']]
         self.assertIn(lite.BLUE,colors)
@@ -5861,7 +5867,11 @@ self.wait(1)""")
         self.assertEqual(source.to_dict(), before)
         self.assertEqual(target.to_dict(), after)
         effect.finish(lite.Scene())
-        self.assertEqual(source.to_dict(), after)
+        # Community aligns member points: the triangle is subdivided to the circle's 8 curves.
+        self.assertEqual(source[1].to_dict(), after['children'][1])
+        self.assertEqual(source[0].get_num_curves(), 8)
+        for a, b in zip(source[0].get_critical_point(lite.UR), target[0].get_critical_point(lite.UR)):
+            self.assertAlmostEqual(a, b)
 
     def test_unequal_group_transform_distributes_transparent_duplicates(self):
         source = lite.VGroup(lite.Circle(), lite.Square())
@@ -5878,7 +5888,9 @@ self.wait(1)""")
         reverse.prepare(lite.Scene())
         self.assertEqual([c['opacity'] for c in reverse.sample(1)[0]['children']], [1,0,0,1,0])
         reverse.finish(lite.Scene())
-        self.assertEqual(len(target.children), 2)
+        # Community's align_data keeps the larger family: faded repeats stay as members.
+        self.assertEqual(len(target.children), 5)
+        self.assertEqual([c.stroke_opacity for c in target.children], [1, 0, 0, 1, 0])
 
     def test_empty_group_transforms_and_leaf_to_nested_family(self):
         for source, target in ((lite.VGroup(), lite.VGroup(lite.Circle(),lite.Square())),
@@ -5926,7 +5938,7 @@ self.wait(1)""")
         self.assertEqual([c['opacity'] for c in midpoint['children']], [1,.5,1])
         self.assertEqual(midpoint['children'][0]['type'],'bezierpath')
         restored = result['frames'][120]['mobjects'][1]
-        self.assertEqual(len(restored['children']),2)
+        self.assertEqual(len(restored['children']),3)  # Restore is a Transform: the family stays aligned.
         self.assertEqual(restored['children'][0]['type'],'circle')
         self.assertEqual(len(result['frames'][-1]['mobjects']),1)
 
