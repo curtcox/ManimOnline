@@ -5165,9 +5165,13 @@ class TipableVMobject(VMobject):
         anchor = Vector(curve[0] if at_start else curve[-1])
         handle = Vector(curve[1] if at_start else curve[-2])
         vector = anchor-handle
-        angle = math.atan2(vector[1],vector[0]) if any(vector) else math.pi
+        angle = math.atan2(vector[1],vector[0]) if any(vector) else self._world_minus_x()
         tip.rotate(angle-tip.tip_angle)
         tip.shift(anchor-tip.tip_point)
+
+    def _world_minus_x(self):
+        """The local angle of world -x: Community points direction-less tips that way."""
+        return math.pi - self.angle - (math.pi if self.geometry_scale < 0 else 0)
 
     def get_unpositioned_tip(self, tip_shape=None, tip_length=None, tip_width=None):
         shape = ArrowTriangleFilledTip if tip_shape is None else tip_shape
@@ -6072,7 +6076,7 @@ class Line(TipableVMobject):
         if self._type not in ('line', 'arrow'):
             return TipableVMobject._orient_tip(self, tip, at_start)  # Edited into a free path.
         vector = Vector(self.start)-Vector(self.end) if at_start else Vector(self.end)-Vector(self.start)
-        angle = math.atan2(vector[1],vector[0]) if any(vector) else math.pi
+        angle = math.atan2(vector[1],vector[0]) if any(vector) else self._world_minus_x()
         tip.rotate(angle-tip.tip_angle)
         tip.shift(Vector(self.start if at_start else self.end)-tip.tip_point)
 
@@ -6435,7 +6439,7 @@ class Arrow(Line):
         about_point,about_edge = kwargs.get('about_point'),kwargs.get('about_edge')
         if about_point is not None and about_edge is not None:
             raise ValueError('Pass about_point or about_edge, not both')
-        if factor == 0:
+        if factor == 0 and self._type in ('line', 'arrow'):
             # The collapsed shaft has no direction: Community turns each tip to point along -x.
             self._unfreeze_shaft()
             if about_point is None:
@@ -11871,7 +11875,14 @@ def _transform_plan(start, target):
             if snapshot['type'] == 'vgroup':
                 return dict(_snapshot_copy(snapshot), children=_snapshot_copy(snapshot.get('children', [])))
             group = VGroup().to_dict()
-            group['children'] = [_snapshot_copy(snapshot)]
+            # Community's null_point_align: push_self_into_submobjects puts the members first,
+            # then a childless copy holding the own points.
+            leaf = _snapshot_copy(snapshot)
+            members = leaf.pop('children', None) or []
+            leaf['children'] = []
+            if members and 'position' in snapshot:
+                members = [_pose_snapshot(member, _snapshot_frame(snapshot), False) for member in members]
+            group['children'] = members + [leaf]
             return group
         start, target = as_group(start), as_group(target)
         count = max(len(start['children']), len(target['children']))
