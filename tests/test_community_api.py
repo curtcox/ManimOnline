@@ -1942,5 +1942,30 @@ class AnimationApiTests(unittest.TestCase):
         self.assertEqual(values, [0.0])
 
 
+    def test_wiggle_readds_arrow_tips_every_frame(self):
+        source = (
+            'from manim import *\n'
+            'import math\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        a = Arrow(LEFT, RIGHT).rotate(1)\n'
+            '        self.add(a)\n'
+            '        lengths = []\n'
+            '        def shaft(dt):\n'
+            '            points = a.get_points()\n'
+            '            lengths.append(math.dist(points[-1], points[0]))\n'
+            '        self.add_updater(shaft)\n'
+            '        self.play(Wiggle(a))\n'
+            '        FOUND.extend(lengths[10:14])\n')
+        found = []
+        lite.render_scene('from manim import *\nclass Empty(Scene):\n    pass\n')
+        namespace = {'FOUND': found}
+        exec(compile(source, '<test>', 'exec'), namespace)
+        namespace['S']().render()
+        # Community 0.22: Wiggle scales the arrow member with Arrow.scale, which pops and re-adds
+        # the already wiggled tip each frame, so the shaft keeps lengthening.
+        self.assertEqual(plain(found), [1.1708, 1.198, 1.2498, 1.3058])
+
+
 if __name__ == '__main__':
     unittest.main()

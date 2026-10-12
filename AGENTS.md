@@ -997,6 +997,9 @@ Detached tips from scene-code create_tip/position_tip are in world coordinates
 (`_scene_tip_call`). Transform alignment also subdivides tipped straight shafts (cut at the
 tips first, `_freeze_shaft`). `_own_shaft` hoists posed straight NumberLine shafts by baking
 their pose. FadeIn/FadeOut scale an Arrow's faded copy even by 1 (Arrow.scale re-adds tips).
+Wiggle on families with tipped arrows runs live like Community (`_community_style`): each member
+is reset to its starting points, then scaled (Arrow.scale re-adds the live tips) and rotated
+about the live mobject's center, as scene calls. Other Wiggles keep the sampled pose.
 FadeTransform adds its target copy (`_ghost`) as a root after the source while it runs
 (Community's Group(source, target copy) root) and draws the target half there.
 Differential probes for updaters during every animation type: ~/tmp/updprobe, ~/tmp/updprobe2,

@@ -14857,6 +14857,26 @@ class Wiggle(Animation):
             NumberLine._real(value, name)
         self.scale_value, self.rotation_angle, self.n_wiggles = scale_value, rotation_angle, n_wiggles
         self.scale_about_point, self.rotate_about_point = scale_about_point, rotate_about_point
+        # Community wiggles each member with points in turn; an arrow member's scale pops and
+        # re-adds its (already wiggled) tips every frame, which a sampled pose cannot show.
+        self._arrow_wiggle = isinstance(mobject, Mobject) and any(
+            isinstance(m, Arrow) and m._tips_by_role() for m in mobject.get_family())
+
+    @property
+    def _community_style(self):
+        if self.__dict__.get('_arrow_wiggle'):
+            return True
+        cls = type(self)
+        return any(getattr(cls, name) is not getattr(Wiggle, name) for name in self._COMMUNITY_HOOKS)
+
+    def interpolate_submobject(self, submobject, starting_submobject, alpha):
+        # Community's per-member wiggle, run as scene code (members in world coordinates).
+        _call_as_scene(submobject.set_points, _call_as_scene(starting_submobject.get_points))
+        _call_as_scene(submobject.scale, interpolate(1, self.scale_value, there_and_back(alpha)),
+                       about_point=_call_as_scene(self.get_scale_about_point))
+        _call_as_scene(submobject.rotate, wiggle(alpha, self.n_wiggles) * self.rotation_angle,
+                       about_point=_call_as_scene(self.get_rotate_about_point))
+        return self
 
     def get_scale_about_point(self):
         return self.mobject.get_center() if self.scale_about_point is None else self.scale_about_point
@@ -14864,7 +14884,9 @@ class Wiggle(Animation):
     def get_rotate_about_point(self):
         return self.mobject.get_center() if self.rotate_about_point is None else self.rotate_about_point
 
-    def begin(self, scene):
+    def begin(self, scene=None):
+        if scene is None:
+            return super().begin()
         super().begin(scene)
         self.original = self.mobject.copy()
         center = self.original.get_center()
@@ -14873,6 +14895,8 @@ class Wiggle(Animation):
 
     def _advance_copies(self, dt):
         super()._advance_copies(dt)
+        if self._community_style:
+            return
         if _LiveMorph.wanted(self.original):
             self.original.update(dt)
             center = self.original.get_center()
@@ -14885,7 +14909,9 @@ class Wiggle(Animation):
         current.rotate(wiggle(alpha, self.n_wiggles) * self.rotation_angle, about_point=self.pivots[1])
         return [current.to_dict()]
 
-    def finish(self, scene):
+    def finish(self, scene=None):
+        if scene is None:
+            return super().finish()
         if _LiveMorph.wanted(self.original):
             self.mobject.become(self.original)
 
