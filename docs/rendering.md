@@ -981,7 +981,7 @@ Cartesian frame. This follows the
 and [Axes plotting](https://docs.manim.community/en/stable/_modules/manim/mobject/graphing/coordinate_systems.html).
 Two-item parametric ranges default to .01; Axes uses ten samples per tick unless
 an explicit step or num_sampled_graph_points_per_tick changes the density.
-Exact final parameters are included. Sampling is bounded to 10001 points before
+Exact final parameters are included. Sampling is bounded to 100001 points before
 callbacks run; invalid output never partially replaces existing geometry.
 Providers remain runtime-only and are excluded from frame JSON.
 

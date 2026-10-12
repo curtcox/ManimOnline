@@ -24,6 +24,7 @@ import weakref
 
 FPS = 15
 MAX_FRAMES = 1801  # 1800 timed samples (120 s at 15 fps) plus a final seekable state.
+_PLOT_SAMPLES = 100001  # Parametric samples per plot, checked before callbacks run.
 _TOO_LONG = 'Preview exceeds 120 seconds / 1800 frames. Shorten the scene.'
 
 
@@ -1113,14 +1114,17 @@ class PreviewConfig:
             if name == 'frame_rate' and (isinstance(value, bool) or not isinstance(value, _REAL) or value <= 0):
                 raise ValueError('config.frame_rate must be a positive number')
             return
-        elif name not in ('frame_x_radius', 'frame_y_radius', 'frame_size') and name not in PreviewConfig._PASSIVE:
-            raise NotImplementedError('Unsupported preview configuration: ' + name)
+        # Community stores any other attribute (unused by the preview).
         object.__setattr__(self, name, value)
 
     def __getitem__(self, name):
         return getattr(self, name)
 
     def __setitem__(self, name, value):
+        # Community's item assignment only accepts its option names.
+        if (name not in PreviewConfig._PASSIVE and name not in ('frame_x_radius', 'frame_y_radius', 'frame_size')
+                and not hasattr(type(self), name) and name not in self.__dict__):
+            raise AttributeError(f"type object 'ManimConfig' has no attribute '{name}'")
         setattr(self, name, value)
 
     def to_dict(self):
@@ -3114,8 +3118,9 @@ class Mobject:
 
     @staticmethod
     def _validate_opacity(opacity):
-        if not math.isfinite(opacity) or not 0 <= opacity <= 1:
-            raise ValueError('Opacity must be finite and between 0 and 1')
+        # Community stores out-of-range opacities; drawing clamps them (as SVG does).
+        if not math.isfinite(opacity):
+            raise ValueError('Opacity must be finite')
 
     @staticmethod
     def _validate_width(width):
@@ -3506,8 +3511,6 @@ class Mobject:
 
     def fade(self, darkness=0.5, family=True):
         NumberLine._real(darkness, 'Fade darkness')
-        if not 0 <= darkness <= 1:
-            raise ValueError('Fade darkness must be between 0 and 1')
         for member in (self.get_family() if family else [self]):
             member.fill_opacity *= 1 - darkness
             member.stroke_opacity *= 1 - darkness
@@ -5083,11 +5086,11 @@ class ParametricFunction(VMobject):
         counts = []
         for start,end in intervals:
             size = (end-start)/self.t_step
-            if not math.isfinite(size) or size > 10000:
-                raise ValueError('Plots are limited to 10001 sampled points')
+            if not math.isfinite(size) or size > _PLOT_SAMPLES - 1:
+                raise ValueError(f'Plots are limited to {_PLOT_SAMPLES} sampled points')
             counts.append(math.ceil(size))
-        if sum(count+1 for count in counts) > 10001:
-            raise ValueError('Plots are limited to 10001 sampled points')
+        if sum(count+1 for count in counts) > _PLOT_SAMPLES:
+            raise ValueError(f'Plots are limited to {_PLOT_SAMPLES} sampled points')
         curves,lengths,pending = [],[],[]
         for (start,end),count in zip(intervals,counts):
             # np.arange fills start + i * ((start + step) - start), as Community samples.
@@ -9960,7 +9963,13 @@ class NumberLine(VGroup):
         length = (values[1]-values[0])*unit_size if length is None else length
         self._real(length,'length',positive=True)
         kwargs.setdefault('stroke_width', 2.0)
+        # Community's Line (TipableVMobject) stores these; NumberLine tips use tip_width/height.
+        tip_length, tip_style = kwargs.pop('tip_length', .35), kwargs.pop('tip_style', None)
+        ArrowTip._tip_dimension(tip_length, 'length')
+        if tip_style is not None and not isinstance(tip_style, dict):
+            raise TypeError('tip_style must be a dictionary')
         super().__init__(**kwargs)
+        self.tip_length, self.tip_style = tip_length, copy.deepcopy(tip_style or {})
         self.x_range = values[:]
         self.x_min,self.x_max,self.x_step = values
         self.unit_size = length/(values[1]-values[0])
@@ -15313,7 +15322,7 @@ class Flash(AnimationGroup):
     """Short lines flashing outward from a point."""
     def __init__(self, point, line_length=0.2, num_lines=12, flash_radius=0.1, line_stroke_width=3,
                  color=PURE_YELLOW, time_width=1, run_time=1.0, **kwargs):
-        center = point.get_center() if isinstance(point, Mobject) else Mobject._xy_vector(point, 'Flash point')
+        center = point.get_center() if isinstance(point, Mobject) else Mobject._finite_vector(point, 'Flash point')
         if isinstance(num_lines, bool) or not isinstance(num_lines, numbers.Integral) or not 1 <= num_lines <= 360:
             raise ValueError('num_lines must be an integer from 1 to 360')
         self.point, self.color, self.line_length, self.num_lines = center, color, line_length, num_lines
@@ -17908,8 +17917,9 @@ class Cone(Surface):
         NumberLine._real(base_radius, 'Cone base radius', positive=True)
         NumberLine._real(height, 'Cone height', positive=True)
         self.direction = Vector(direction)
-        if not all(math.isfinite(v) for v in self.direction) or _norm(self.direction) == 0:
-            raise ValueError('Cone direction must be finite and nonzero')
+        # A zero direction points OUT, as Community's _rotate_to_direction does.
+        if not all(math.isfinite(v) for v in self.direction):
+            raise ValueError('Cone direction must be finite')
         self.theta = PI - math.atan(base_radius / height)
         super().__init__(self.func, v_range=v_range,
                          u_range=(u_min, math.hypot(base_radius, height)),
@@ -17982,7 +17992,7 @@ class Cylinder(Surface):
     def __init__(self, radius=1, height=2, direction=OUT, v_range=(0, TAU),
                  show_ends=True, resolution=(24, 24), **kwargs):
         NumberLine._real(radius, 'Cylinder radius', positive=True)
-        NumberLine._real(height, 'Cylinder height', positive=True)
+        NumberLine._real(height, 'Cylinder height', nonnegative=True)
         self._height = height
         self.radius = radius
         super().__init__(self.func, resolution=resolution,
@@ -18036,8 +18046,7 @@ class Line3D(Cylinder):
         rough_end = self.pointify(end)
         self.vect = rough_end - rough_start
         self.length = _norm(self.vect)
-        if self.length == 0:
-            raise ValueError('Line3D start and end must differ')
+        # A zero-length line keeps a zero direction; its cylinder points OUT (Community).
         self.direction = normalize(self.vect)
         self.start = self.pointify(start, self.direction)
         self.end = self.pointify(end, -self.direction)

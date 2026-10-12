@@ -1588,6 +1588,9 @@ assert isinstance(t.get_value(), (int, float))""")
         wiggled=result['frames'][45]['mobjects'][0]
         self.assertNotEqual(wiggled['geometry_scale'],1)
         self.assertEqual(len(result['frames'][-1]['mobjects']),1)
+        # Community flashes around a point off the XY plane at its depth.
+        lines=lite.Flash([1,0,2]).lines
+        self.assertPointAlmostEqual(lines.get_center(),(1,0,2))
         arrow=render('a = Arrow(LEFT, RIGHT)\nself.play(GrowArrow(a), rate_func=linear, run_time=2)')['frames'][15]['mobjects'][0]
         self.assertAlmostEqual(arrow['geometry_scale'],.5)
         edge=render('s = Square()\nself.play(GrowFromEdge(s, DOWN), rate_func=linear, run_time=2)')['frames'][15]['mobjects'][0]
@@ -1968,7 +1971,8 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertEqual([d.fill_color for d in dots],['#FFFFFF','#7F7F7F','#000000'])
         faded=lite.VGroup(lite.Square(fill_opacity=.8),lite.Circle()).fade(.25)
         for member,expected in zip(faded,[(.6,.75),(0,.75)]): self.assertPointAlmostEqual((member.fill_opacity,member.stroke_opacity),expected)
-        with self.assertRaises(ValueError): faded.fade(2)
+        # Community stores out-of-range opacities (drawing clamps them).
+        self.assertAlmostEqual(lite.Dot().fade(1.5).fill_opacity, -0.5)
         source=lite.Circle(color=lite.RED,fill_opacity=.4,stroke_width=7).set_fill(lite.BLUE)
         matched=lite.Square().match_style(source)
         self.assertEqual((matched.get_fill_color(),matched.get_stroke_color(),matched.get_fill_opacity(),
@@ -3842,7 +3846,7 @@ assert isinstance(t.get_value(), (int, float))""")
         for options in ({'x_range':[1,0]},{'x_range':[0,1,.1]},
                         {'x_range':[0,float('inf')]},{'x_range':[False,1]},
                         {'color':[]},{'color':['red']},{'color':[lite.RED]*65},
-                        {'opacity':2},{'stroke_width':-1}):
+                        {'opacity':float('nan')},{'stroke_width':-1}):
             with self.assertRaises(ValueError): axes.get_area(graph,**options)
         with self.assertRaises(NotImplementedError): axes.get_area(graph,unsupported=True)
         with self.assertRaises(TypeError): axes.get_area(lite.Circle())
@@ -4043,7 +4047,7 @@ assert isinstance(t.get_value(), (int, float))""")
         for options in ({'dx':0},{'dx':True},{'dx':float('inf')},{'dx':1e-6,'x_range':[0,1]},
                         {'color':[]},{'color':'red'},{'stroke_color':'invalid'},
                         {'input_sample_type':'middle'},{'blend':1},{'show_signed_area':1},
-                        {'stroke_width':-1},{'fill_opacity':2},{'width_scale_factor':0},
+                        {'stroke_width':-1},{'fill_opacity':float('nan')},{'width_scale_factor':0},
                         {'x_range':[0,1,2,3]}):
             with self.assertRaises(ValueError): axes.get_riemann_rectangles(graph,**options)
         self.assertEqual(called,[])
@@ -4310,7 +4314,7 @@ assert isinstance(t.get_value(), (int, float))""")
         for options in ({'background_line_style':[]},{'faded_line_style':[]},{'axis_config':[]}):
             with self.assertRaises(TypeError): lite.NumberPlane(**options)
         for options in ({'faded_line_style':{'stroke_width':-1}},
-                        {'background_line_style':{'stroke_opacity':2}},
+                        {'background_line_style':{'stroke_opacity':float('inf')}},
                         {'make_smooth_after_applying_functions':1}):
             with self.assertRaises(ValueError): lite.NumberPlane(**options)
         self.assertEqual(lite.NumberPlane().get_vector([1,1,1]).get_end(),lite.NumberPlane().get_vector([1,1]).get_end())
@@ -5834,6 +5838,11 @@ self.wait(1)""")
         settings.frame_rate=30
         with self.assertRaises(ValueError):
             settings.frame_rate=0
+        # Community stores other attributes; item assignment needs a known option.
+        settings.cache_dir='media/cache'
+        self.assertEqual(settings.cache_dir,'media/cache')
+        with self.assertRaises(AttributeError):
+            settings['unknown_option']=1
         result=json.loads(lite.render_scene((ROOT/'examples/camera_scene.py').read_text()))
         self.assertEqual(result['duration'],5)
         self.assertEqual(result['frames'][0]['camera']['pixel_width'],600)
@@ -7186,7 +7195,7 @@ class Demo(Scene):
 
     def test_style_validation_rejects_invalid_values_before_changes(self):
         shape = lite.Square()
-        for value in (-0.1, 1.1, float('nan'), float('inf')):
+        for value in (float('nan'), float('inf')):
             for setter in (shape.set_opacity, lambda v: shape.set_fill(lite.RED, v),
                            lambda v: shape.set_stroke(lite.RED, opacity=v)):
                 with self.assertRaises(ValueError):
@@ -7194,6 +7203,7 @@ class Demo(Scene):
             with self.assertRaises(ValueError):
                 lite.Circle(stroke_opacity=value)
         self.assertEqual(shape.fill_color, lite.WHITE)
+        self.assertEqual((shape.set_opacity(1.3).fill_opacity, lite.Circle(stroke_opacity=-0.1).stroke_opacity), (1.3, -0.1))
         self.assertEqual(shape.stroke_color, lite.WHITE)
         for width in (-1, float('inf')):
             with self.assertRaises(ValueError):
@@ -8517,6 +8527,14 @@ class ThreeDPrimitiveTests(PointTestCase):
         self.assertPointAlmostEqual(line.get_end(), (2, 1, 0))
         # Manim 0.22: bounds include the shaft thickness.
         self.assertPointAlmostEqual(line.get_center(), (0.5, 0.5, 0.5))
+        # Manim 0.22: zero-length lines and arrows point OUT.
+        point = lite.Line3D(lite.ORIGIN, lite.ORIGIN)
+        self.assertPointAlmostEqual((point.width, point.height), (0.04, 0.04))
+        arrow = lite.Arrow3D(lite.ORIGIN, lite.ORIGIN)
+        self.assertPointAlmostEqual(arrow.get_center(), (0, 0, -0.15))
+        self.assertAlmostEqual(arrow.depth, 0.3)
+        # Community's Line stores tip_length; NumberLine tips use tip_width/tip_height.
+        self.assertAlmostEqual(lite.NumberLine(include_tip=True, tip_length=0.2).get_tip().length, 0.35)
         parallel = lite.Line3D.parallel_to(line, point=[0, 0, 2], length=2)
         # Manim 0.22: parallel endpoints about (0,0,2).
         self.assertPointAlmostEqual(parallel.get_start(),
