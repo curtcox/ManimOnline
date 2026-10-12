@@ -6654,7 +6654,8 @@ _TEXT_LAYOUTS = {}
 
 
 def _text_layout_key(snapshot):
-    return (snapshot['text'], snapshot['font_size'], snapshot.get('_line_spacing', .3), '_number_format' in snapshot,
+    numeric = '_number_format' in snapshot or bool(snapshot.get('_tex_glyph'))
+    return (snapshot['text'], snapshot['font_size'], snapshot.get('_line_spacing', .3), numeric,
             _is_mono(snapshot.get('font')), snapshot.get('_wrap_width'), bool(snapshot.get('justify')))
 
 
@@ -6700,6 +6701,28 @@ def _wrap_paragraph(paragraph, width, measure):
             return spans
 
 
+def _numeric_boxes(text, font_size):
+    """Ink boxes [x0, x1, y0, y1, ...] of Community's DecimalNumber glyphs: separate TeX glyphs
+    with 0.001 * font_size gaps, bottom-aligned; commas drop by half their height."""
+    em = font_size * TEX_EM_PER_POINT / 1000
+    gap, x, boxes = 0.001 * font_size, 0, []
+    for char in text:
+        _, x0, x1, y0, y1 = _glyph_box(char, _CM_GLYPHS)
+        width, height = (x1 - x0) * em, (y1 - y0) * em
+        boxes.append([x, x + width, 0, height, y0 * em])
+        x += width + gap
+    for i, (char, box) in enumerate(zip(text, boxes)):
+        if char == ',':
+            box[2] -= (box[3] - box[2]) / 2
+            box[3] = box[2] + (_CM_GLYPHS[','][4] - _CM_GLYPHS[','][3]) * em
+        elif char == '-' and i + 1 < len(boxes):
+            following = boxes[i + 1]
+            height = box[3] - box[2]
+            box[3] = following[3] - (following[3] - following[2]) / 2
+            box[2] = box[3] - height
+    return boxes
+
+
 def _compute_text_layout(text, font_size, line_spacing, numeric, mono=False, wrap=None, justify=False):
     import re
     snapshot = {'text': text, 'font_size': font_size, '_line_spacing': line_spacing}
@@ -6710,23 +6733,7 @@ def _compute_text_layout(text, font_size, line_spacing, numeric, mono=False, wra
         ink = box if ink is None else (min(ink[0], box[0]), min(ink[1], box[1]),
                                        max(ink[2], box[2]), max(ink[3], box[3]))
     if numeric:
-        # Community arranges separate TeX glyphs with 0.001 * font_size gaps,
-        # bottom-aligned; commas drop by half their height.
-        gap, x, boxes = 0.001 * font_size, 0, []
-        for char in snapshot['text']:
-            _, x0, x1, y0, y1 = _glyph_box(char, _CM_GLYPHS)
-            width, height = (x1 - x0) * em, (y1 - y0) * em
-            boxes.append([x, x + width, 0, height, y0 * em])
-            x += width + gap
-        for i, (char, box) in enumerate(zip(snapshot['text'], boxes)):
-            if char == ',':
-                box[2] -= (box[3] - box[2]) / 2
-                box[3] = box[2] + (_CM_GLYPHS[','][4] - _CM_GLYPHS[','][3]) * em
-            elif char == '-' and i + 1 < len(boxes):
-                following = boxes[i + 1]
-                height = box[3] - box[2]
-                box[3] = following[3] - (following[3] - following[2]) / 2
-                box[2] = box[3] - height
+        for box in _numeric_boxes(snapshot['text'], font_size):
             merge((box[0], box[2], box[1], box[3]))
         if ink is not None:
             # Draw the string on a baseline that puts digit bottoms on y = 0.
@@ -7255,7 +7262,7 @@ def _number_text(number, options):
 
 class DecimalNumber(Text):
     """A finite real numeric label using the preview's centered SVG text."""
-    _frame_excluded = ('edge_to_fix',)
+    _frame_excluded = ('edge_to_fix', '_number_exploded')
 
     def __init__(self, number=0, num_decimal_places=2, include_sign=False,
                  group_with_commas=True, show_ellipsis=False, unit=None, font_size=48,
@@ -7323,11 +7330,52 @@ class DecimalNumber(Text):
         # Community re-typesets the number and keeps its edge_to_fix (LEFT) in place.
         edge = self.__dict__.get('edge_to_fix', LEFT)
         anchor = self.get_edge_center(edge)
+        exploded = self.__dict__.pop('_number_exploded', None)
+        if exploded is not None:
+            # New glyphs replace the old ones (Community rebuilds its submobjects).
+            self.children = [child for child in self.children if child.__dict__.get('_number_role') == 'unit']
+            _link_children(self, self.children)
+            self._type = 'text'
+            self.position, self.angle, self.geometry_scale, self.opacity = exploded
+            self.__dict__.pop('_family_pivot_cache', None)
         text = _number_text(number, self._number_format)
         self.number, self.text = number, text
         self._place_unit()
         self.move_to(anchor, aligned_edge=edge)
+        if exploded is not None:
+            self._explode()
         return self
+
+    def _explode(self):
+        """Community's DecimalNumber: one TeX glyph submobject per character (then the unit)."""
+        if self._type != 'text' or '_char_index' in self.__dict__:
+            return
+        text = _number_text(self.number, self._number_format)
+        boxes = _numeric_boxes(text, self.__dict__['font_size'])
+        if not boxes:
+            return
+        left, right = min(b[0] for b in boxes), max(b[1] for b in boxes)
+        bottom, top = min(b[2] for b in boxes), max(b[3] for b in boxes)
+        cx, cy = (left + right) / 2, (bottom + top) / 2
+        style = {key: self.__dict__[key] for key in ('color', 'fill_color', 'stroke_color', 'fill_opacity',
+                                                    'stroke_opacity', 'stroke_width', 'z_index')}
+        glyphs = []
+        for index, (char, box) in enumerate(zip(text, boxes)):
+            glyph = _NumberGlyph(char, font_size=self.__dict__['font_size'], **style)
+            glyph._tex_glyph = True
+            center = Vector(((box[0] + box[1]) / 2 - cx, (box[2] + box[3]) / 2 - cy, 0))
+            glyph.position = list(self._point_to_world(center))
+            glyph.angle, glyph.geometry_scale, glyph.opacity = self.angle, self.geometry_scale, self.opacity
+            glyph._char_index = index
+            glyphs.append(glyph)
+        units = [child for child in self.children if child.__dict__.get('_number_role') == 'unit']
+        for unit in units:
+            self._place_in_world(unit)
+        self._number_exploded = (list(self.position), self.angle, self.geometry_scale, self.opacity)
+        self.position, self.angle, self.geometry_scale, self.opacity = [0, 0, 0], 0, 1, 1
+        self.__dict__.pop('_family_pivot_cache', None)
+        self.children, self._type = glyphs + units, 'vgroup'
+        _link_children(self, self.children)
 
     def increment_value(self, delta_t=1):
         if not isinstance(delta_t,_REAL):
@@ -7339,6 +7387,10 @@ class DecimalNumber(Text):
         if result['type'] == 'text' and '_number_format' in result:
             result['text'] = _number_text(self.number, self._number_format)
         return result
+
+
+class _NumberGlyph(Text):
+    """One TeX character of an exploded DecimalNumber (Community's MathTex submobject)."""
 
 
 class Integer(DecimalNumber):
@@ -24673,7 +24725,9 @@ _VIRTUAL_BASES.update({VMobject: (VGroup, Text), Animation: (AnimationGroup,),
                        Polygram: (ArrowTriangleTip, ArrowSquareTip), RegularPolygram: (ArrowTriangleTip,),
                        RegularPolygon: (ArrowTriangleTip,), Triangle: (ArrowTriangleTip,),
                        Polygon: (ArrowSquareTip,), Rectangle: (ArrowSquareTip,), Square: (ArrowSquareTip,),
-                       ScreenRectangle: (CameraFrame,)})
+                       ScreenRectangle: (CameraFrame,), MathTex: (_NumberGlyph,),
+                       SingleStringMathTex: (_NumberGlyph,)})
+_NumberGlyph.__name__ = _NumberGlyph.__qualname__ = 'MathTex'
 # Mobjects that took on path geometry (e.g. a Cross transformed into a square) edit points too.
 Mobject._clear_pose = VMobject._clear_pose
 # Community's moving-camera frame is a ScreenRectangle.

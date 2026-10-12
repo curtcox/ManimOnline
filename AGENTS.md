@@ -122,8 +122,10 @@ independent target geometry. Redraw copies update the callback argument; do not
 capture a fixed original object in the regeneration callback.
 
 Read `examples/numeric_scene.py` for DecimalNumber/Integer tracker labels,
-formatted intermediate animation values and restoration. Numeric labels use
-centered SVG Text, not native TeX digit families. Keep formatting options
+formatted intermediate animation values and restoration. Numeric labels are one
+centered SVG Text leaf until indexed/iterated; then `_explode` builds Community's
+per-character glyphs (`_NumberGlyph`, presented as MathTex, `_tex_glyph` serif layout
+from `_numeric_boxes`) and set_value rebuilds them (`_number_exploded` keeps the leaf pose). Keep formatting options
 independent of numeric interpolation and preserve atomic finite-value validation.
 
 Read `examples/trace_scene.py` for TracedPath sampling, timed dissipation,

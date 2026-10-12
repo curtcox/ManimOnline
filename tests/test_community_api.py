@@ -1722,6 +1722,18 @@ class AnimationApiTests(unittest.TestCase):
             'result = [r.get_center(), r.width, r.height, e.width, e.height]\n')
         self.assertEqual(values, [[0.0, 0.5, 0.0], 2.2, 1.2, 2.0823, 1.5138])
 
+    def test_decimal_number_glyph_submobjects(self):
+        values = scene_values(
+            'd = DecimalNumber(3.14159, num_decimal_places=2)\n'
+            'n = DecimalNumber(-1.5, include_sign=True)\n'
+            'i = Integer(42)\n'
+            'xs = [m.get_center()[0] for m in d]\n'
+            'd[0].set_color(RED)\n'
+            'd.set_value(12.5)\n'
+            'result = [len(n), len(i.submobjects), xs, type(i[0]).__name__, len(d), d[0].get_color() == WHITE]\n')
+        # Community 0.22 places these glyph centers at -0.291, -0.113, 0.043, 0.284.
+        self.assertEqual(values, [5.0, 2.0, [-0.2918, -0.1135, 0.0435, 0.2848], 'MathTex', 5.0, True])
+
 
 if __name__ == '__main__':
     unittest.main()
