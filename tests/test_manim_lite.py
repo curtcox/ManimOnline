@@ -1924,9 +1924,11 @@ assert isinstance(t.get_value(), (int, float))""")
             with self.assertRaises(ValueError): bad()
         group=lite.VGroup(*[lite.Square() for _ in range(3)],lite.VGroup(lite.Text('A')))
         group.set_color_by_gradient(lite.PURE_RED,lite.PURE_BLUE)
-        self.assertEqual([m.color for m in group.family_members_with_points()]+[group[3][0].color],
+        # Community colors each glyph; the Text keeps its own (white) color.
+        self.assertEqual([m.color for m in group.family_members_with_points()],
                          lite.color_gradient([lite.PURE_RED,lite.PURE_BLUE],4))
-        self.assertEqual(group[3].color,lite.WHITE)
+        self.assertEqual((group[3].color,group[3][0].color,group[3][0][0].color),
+                         (lite.WHITE,lite.WHITE,lite.PURE_BLUE))
         dots=lite.VGroup(lite.Dot(),lite.Dot(lite.RIGHT*.5),lite.Dot(lite.RIGHT*3))
         dots.set_colors_by_radial_gradient(lite.ORIGIN,1,lite.WHITE,lite.BLACK)
         self.assertEqual([d.fill_color for d in dots],['#FFFFFF','#7F7F7F','#000000'])

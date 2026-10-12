@@ -1525,9 +1525,10 @@ class Mobject:
                 and _call_as_scene(member.has_points)]
 
     def get_family(self, recurse=True):
-        family = self._family()
         if sys._getframe(1).f_code.co_filename == _LIB_FILE:
-            return family
+            return self._family()
+        self._explode_text_family()  # Scene code sees Community's glyph members.
+        family = self._family()
         # Scene code sees Community's family: a NumberLine shaft stands for the line's own points.
         return [m for m in family if m.__dict__.get('_number_line_role') != 'shaft']
 
@@ -3407,11 +3408,18 @@ class Mobject:
     def _painted_members(self):
         return [m for m in self.get_family() if m.has_points() or m._type in ('text', 'mathtex')]
 
+    def _explode_text_family(self):
+        """Community's text and formulas are glyph families: split leaves for per-glyph queries."""
+        for member in list(self._family()):
+            if isinstance(member, Text) and not member.children:
+                member._explode()
+
     def set_color_by_gradient(self, *colors):
         if not colors:
             raise ValueError('Need at least one color')
         if len(colors) == 1:
             return self.set_color(colors[0])
+        self._explode_text_family()  # Community colors each glyph.
         members = self._painted_members()
         for member, color in zip(members, color_gradient(colors, len(members))):
             member.set_color(color, family=False)
@@ -3423,6 +3431,7 @@ class Mobject:
         NumberLine._real(radius, 'Gradient radius', positive=True)
         center = self.get_center() if center is None else self._xy_vector(center, 'Gradient center')
         _color_rgb(inner_color), _color_rgb(outer_color)
+        self._explode_text_family()
         for member in self._painted_members():
             offset = member.get_center() - center
             t = min(math.hypot(offset[0], offset[1]) / radius, 1)
@@ -7094,6 +7103,10 @@ class Text(Mobject):
 
     def _show_children(self):
         self._explode()
+
+    def _scene_has_points(self):
+        # Community's glyphs are outline paths (the Text itself has none).
+        return '_char_index' in self.__dict__ or self.__dict__.get('_type') == 'mathtex' and 'glyph' in self.__dict__
 
     @property
     def submobjects(self):
