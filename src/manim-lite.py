@@ -299,6 +299,16 @@ def _from_scene():
     return frame.f_code.co_filename != _LIB_FILE
 
 
+def _freeze_tip_owner(mobject):
+    """Editing a tip on its own leaves its path's shaft where Community cut it."""
+    if '_tip_role' not in mobject.__dict__ and mobject.__dict__.get('_number_line_role') != 'tip':
+        return
+    owner = _PARENTS.get(mobject)
+    owner = owner() if owner is not None else None
+    if isinstance(owner, (TipableVMobject, NumberLine)) and any(child is mobject for child in owner.children):
+        owner._freeze_shaft()
+
+
 def _scene_call(function, reference=False, live_points=False):
     """Run a method called from scene code in Community's world coordinates."""
     @functools.wraps(function)
@@ -307,14 +317,8 @@ def _scene_call(function, reference=False, live_points=False):
             return function(self, *args, **kwargs)
         if reference:
             args, kwargs = _world_args(args, kwargs)
-        if (('_tip_role' in self.__dict__ or self.__dict__.get('_number_line_role') == 'tip')
-                and not (function.__name__.startswith(('get_', 'has_', 'is_'))
-                         or function.__name__ in _WORLD_PROPERTIES)):
-            owner = _PARENTS.get(self)
-            owner = owner() if owner is not None else None
-            if (isinstance(owner, (TipableVMobject, NumberLine))
-                    and any(child is self for child in owner.children)):
-                owner._freeze_shaft()
+        if not (function.__name__.startswith(('get_', 'has_', 'is_')) or function.__name__ in _WORLD_PROPERTIES):
+            _freeze_tip_owner(self)
         if function.__name__ in _OWN_POINT_EDITS and isinstance(self, TipableVMobject) and self._tips_by_role():
             # Community edits the shaft as cut when the tips were attached.
             self._freeze_shaft()
@@ -18075,6 +18079,7 @@ class SpiralIn(Animation):
             self._saved_shapes.append(shape.copy())
         # Members of posed families (e.g. an arrow's tip) move in world coordinates.
         for shape in shapes:
+            _freeze_tip_owner(shape)
             _in_world(shape, place)
         super().__init__(shapes, introducer=True, **kwargs)
 
@@ -18088,6 +18093,7 @@ class SpiralIn(Animation):
             shape.set_fill(opacity=min(fill, alpha * fill / self.fade_in_fraction))
             shape.set_stroke(opacity=min(stroke, alpha * stroke / self.fade_in_fraction))
         for original, shape, state, (final, initial) in zip(self.shapes, list(group), self._saved_shapes, self.moves):
+            _freeze_tip_owner(shape)  # A tip's own turn leaves the shaft in place (before world placement).
             _in_world(shape, place, original, state, final, initial)
         return group
 
