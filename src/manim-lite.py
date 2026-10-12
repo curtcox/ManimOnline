@@ -3664,9 +3664,11 @@ class Mobject:
                     leaf._replace_children([])
                     target = VGroup(*[_world_view(child) for child in target.children], leaf)
             elif (has_points and (root_points or not root) and receiver is not None and pointy(receiver)
-                  and pointy(target)):
+                  and pointy(target) and (isinstance(target, TipableVMobject) and target._tips_by_role()
+                                          or len(receiver.get_points()) != len(target.get_points()))):
                 # align_data recurses with point alignment below the root: the member with
                 # fewer curves per subpath (or fewer subpaths) is subdivided to match.
+                # (align_points returns at once on equal point counts.)
                 tipped = isinstance(target, TipableVMobject) and bool(target._tips_by_role())
                 aligned = target.copy()
                 if tipped:
@@ -15464,7 +15466,7 @@ def _expose_snapshot(saved, mobject, snapshot, again=False):
     mobject.__dict__ = dict(mobject.__dict__)
     for key, value in snapshot.items():
         if key not in ('type', 'children', 'geometry_center'):
-            mobject.__dict__[key] = copy.deepcopy(value)
+            mobject.__dict__[key] = _snapshot_copy(value)
     mobject._type = snapshot['type']
     mobject._sampled_geometry_center = snapshot['geometry_center']
     if '_curved_tip_path' not in snapshot:
