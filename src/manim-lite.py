@@ -12974,6 +12974,26 @@ class Uncreate(Create):
         super().__init__(mobject, reverse_rate_function=reverse_rate_function, introducer=False,
                          remover=remover, **kwargs)
 
+    def finish(self, scene=None):
+        result = super().finish(scene)
+        if scene is not None and self.reverse_rate_function:
+            # Community's last frame (pointwise_become_partial(start, 0, 0)) stays on the mobject.
+            _collapse_drawn(self.mobject)
+        return result
+
+
+def _collapse_drawn(mobject, unfill=False):
+    """Collapse every drawn outline onto its first point (a fully undrawn ShowPartial)."""
+    for member in mobject.get_family():
+        if member._type in _PATH_TYPES and _is_a(member, VMobject):
+            points = member.get_points()
+            if points:
+                VMobject.set_points(member, [points[0]] * 4)
+            if unfill:
+                member.fill_opacity = 0
+        elif member._type in ('text', 'mathtex') and not member.children:
+            member.opacity = 0
+
 
 class DrawBorderThenFill(Animation):
     """Draw each member's outline, then interpolate to its fill and stroke."""
@@ -13044,18 +13064,11 @@ class DrawBorderThenFill(Animation):
         return [self._member_states(_snapshot_copy(self.start), alpha, rate_func, self._member)]
 
     def finish(self, scene=None):
-        if scene is None or not self.reverse_rate_function or self.remover:
+        if scene is None or not self.reverse_rate_function:
             return super().finish(scene)
-        # A reversed draw that stays in the scene ends as Community's alpha 0: every
-        # outline collapsed onto its first point, unfilled (e.g. Unwrite(reverse=False)).
-        for member in self.mobject.get_family():
-            if member._type in _PATH_TYPES and _is_a(member, VMobject):
-                points = member.get_points()
-                if points:
-                    VMobject.set_points(member, [points[0]] * 4)
-                member.fill_opacity = 0
-            elif member._type in ('text', 'mathtex') and not member.children:
-                member.opacity = 0
+        # A reversed draw ends as Community's alpha 0, even when removed (the mobject keeps
+        # it): every outline collapsed onto its first point, unfilled (e.g. Unwrite).
+        _collapse_drawn(self.mobject, unfill=True)
 
 
 class Write(DrawBorderThenFill):
@@ -14992,9 +15005,10 @@ class Scene:
                 mobject.__dict__.pop('_curved_tip_path', None)  # e.g. a curved arrow mid-morph
             progress = snapshot.get('draw_progress')
             shaft = None
-            if (mobject.__dict__.get('_curved_tip_path') or snapshot['type'] == 'arrow' and snapshot['children']) and any(
+            sampled_children = snapshot.get('children', [])
+            if (mobject.__dict__.get('_curved_tip_path') or snapshot['type'] == 'arrow' and sampled_children) and any(
                     (state.get('draw_progress') is not None and state['draw_progress'] < 1)
-                    for state in [snapshot] + list(snapshot['children'])):
+                    for state in [snapshot] + list(sampled_children)):
                 # A curved arrow's shaft is trimmed by its whole tips (Community fixes its
                 # points), even while the tips themselves are exposed partially drawn.
                 try:
@@ -15002,7 +15016,7 @@ class Scene:
                 except (TypeError, ValueError):
                     shaft = None
             children = []
-            for index, child in enumerate(snapshot['children']):
+            for index, child in enumerate(sampled_children):
                 member = mobject.children[index] if index < len(mobject.children) else Mobject()
                 expose(member, child)
                 children.append(member)
@@ -24546,6 +24560,8 @@ _VIRTUAL_BASES.update({VMobject: (VGroup, Text), Animation: (AnimationGroup,),
                        RegularPolygon: (ArrowTriangleTip,), Triangle: (ArrowTriangleTip,),
                        Polygon: (ArrowSquareTip,), Rectangle: (ArrowSquareTip,), Square: (ArrowSquareTip,),
                        ScreenRectangle: (CameraFrame,)})
+# Mobjects that took on path geometry (e.g. a Cross transformed into a square) edit points too.
+Mobject._clear_pose = VMobject._clear_pose
 # Community's moving-camera frame is a ScreenRectangle.
 CameraFrame.__name__ = CameraFrame.__qualname__ = 'ScreenRectangle'
 
