@@ -975,3 +975,26 @@ updaters) advance after the earlier animations of that play were sampled for the
 (`Scene._exposing` + `_expose_snapshot`), as Community's update_to_time interleaves
 update_mobjects and interpolate. Skipped sections jump each play/wait to its end in one
 update (Community's time progression is [run_time]).
+Copies advancing for animation k see animations < k at this frame and the others (k itself
+included) at the previous frame, starting from every animation's states(0) (Community's
+begin() interpolates to alpha 0). Exposure restores members' `_PARENTS` links afterwards
+(partial exposure runs pointwise_become_partial on childless copies); members a sampled
+family has beyond the live one are exposed as linked copies of Community's repeat origins
+(add_n_more_submobjects puts copies right after each member), and become pads plain-group
+receivers the same way. Community updates every animation's starting copy: animations that
+sample from `self.original` should use the updated live copy when the family has updaters
+(Homotopy, ShowPassingFlash, Rotating about the copy's current center, GrowArrow, and
+ShrinkToCenter, whose ScaleInPlace(0) target is not recentred). AnimationGroup updates copies
+only of animations begun and not finished, and none for members it suspended before they
+began (Community's group.suspend_updating precedes the sub-animations' begin); Succession
+updates only the active stage; ChangeSpeed (a plain Animation) always updates its inner one.
+ChangeSpeed reproduces np.piecewise exactly, including int truncation when the rate function
+returns an int (smooth(1) is int 1, so the animation can finish at its start).
+Non-suspending animations (MoveAlongPath, ShowIncreasingSubsets) register in
+`Scene._deferred_updates`: their live copy's updaters run during the scene's update pass, in
+root order, and the result is re-exposed (`_expose_snapshot(..., again=True)`).
+Detached tips from scene-code create_tip/position_tip are in world coordinates
+(`_scene_tip_call`). Transform alignment also subdivides tipped straight shafts (cut at the
+tips first, `_freeze_shaft`). `_own_shaft` hoists posed straight NumberLine shafts by baking
+their pose. FadeIn/FadeOut scale an Arrow's faded copy even by 1 (Arrow.scale re-adds tips).
+Differential probes for updaters during every animation type: ~/tmp/updprobe, ~/tmp/updprobe2.
