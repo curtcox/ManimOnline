@@ -6,6 +6,24 @@ The documented architecture remains static browser execution. Whether the final
 target is the existing MVP/version 1.0 roadmap or full Manim Community parity
 has been asked of the user; do not silently equate the current subset with either.
 
+## Differential testing against Manim Community 0.22 (2026-10-12)
+
+Native runs of lite (NumPy venv) are compared with a Manim Community 0.22 install
+(TinyTeX for LaTeX) on per-frame family bounds, root classes, durations and final
+state. These are bounds-level checks, not pixel comparisons.
+
+| Corpus | Matching | Remaining differences |
+| --- | --- | --- |
+| Community docstring examples (273 comparable) | 200 | Text bounds use Liberation Sans metrics (macOS Community uses system fonts); AnimationGroup/FadeTransform Group roots; random examples |
+| Feature suites (anims, methods, mobs2, 3D, camera, svg, ...) | ~3,600 of ~3,750 | Mostly the Group-root structure above and boolean-op point order |
+| Random 3-step animation scenes (1,294) | 1,252 | Degenerate arrows (reversed or morphed into other shapes), NumberLine/Axes morph alignment |
+| Random updater scenes (598) | 580 | Self-referential updater feedback loops |
+| Random plotting scenes (550) | 550 | — |
+| Random method chains (2,300) | ~2,250 | VGroup own points (lite groups cannot hold path points), Group.restore errors Community raises |
+
+In the browser (Pyodide, Chromium), the first 80 docstring examples render; the two
+failures also fail in Community.
+
 ## Roadmap acceptance audit (2026-10-08)
 
 | Requirement | Current evidence | Remaining verification/work |
