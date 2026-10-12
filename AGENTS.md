@@ -1016,3 +1016,6 @@ Community's ndarray results from the space-ops/bezier utilities listed in `_ARRA
 Surface evaluates func under one bounds memo (`_memo_query`) and bakes in place; inside a memo
 window Axes.coords_to_point reuses cached axis frames (`_c2p_frame`) with the same arithmetic
 order as the uncached path. `_enter_world`/`_exit_world` clear an active memo when they move a member.
+Throwaway samples may bake 3D maps in place under `_maps_in_place()` (Rotate's live morph);
+`_sampled_copy` shares one memo over its bottom-up walk, dropping each node's position-dependent
+`('bounds', id, flag)` entries after its pose fix.

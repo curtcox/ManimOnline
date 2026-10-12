@@ -91,6 +91,20 @@ def _curves_proportion(curves, alpha):
     return Vector(curves[-1][-1])
 
 
+_MAP_IN_PLACE = False
+
+
+@contextlib.contextmanager
+def _maps_in_place():
+    """3D point maps on throwaway samples bake in place, skipping the validated copy."""
+    global _MAP_IN_PLACE
+    previous, _MAP_IN_PLACE = _MAP_IN_PLACE, True
+    try:
+        yield
+    finally:
+        _MAP_IN_PLACE = previous
+
+
 def _memo_query(memo, function, *args):
     """Run one geometry query with a bounds memo shared across a batch of queries (plot
     samples): the caller guarantees nothing moves between them."""
@@ -2093,6 +2107,7 @@ class Mobject:
             if not all(math.isfinite(value) for value in result):
                 raise ValueError('Mapped geometry must be finite')
             return list(result)
+        in_place = in_place or _MAP_IN_PLACE
         target = self if in_place else self.copy()
         if eps is None:
             eps = (getattr(self, 'pre_function_handle_to_anchor_scale_factor', 0.01)
@@ -2117,6 +2132,9 @@ class Mobject:
             child._bake_3d_map(mapped, eps)
         kind = self._type
         if kind in _PATH_TYPES:
+            if (self.angle or self.geometry_scale != 1) and '_sampled_geometry_center' not in self.__dict__:
+                # Every control point maps about the same pivot; it is unpinned below.
+                self._sampled_geometry_center = list(self._geometry_center())
             snapshot = _snapshot_copy(self.__dict__)
             snapshot['type'] = kind
             paths = _path_subpaths(snapshot, include_pending=False)
@@ -13755,10 +13773,11 @@ class Rotate(_PathOptions, Animation):
             # path_along_circles: blend toward the target turned back about the pivot,
             # then turn the blend forward by alpha * angle.
             pivot = self._live_pivot
-            back = morph.target.copy().rotate(-self.angle, self.axis, about_point=pivot)
-            blend = _snapshot_lerp(morph.start.to_dict(), back.to_dict())(alpha)
-            current = _sampled_copy(self.original, [blend])
-            return [current.rotate(alpha * self.angle, self.axis, about_point=pivot).to_dict()]
+            with _maps_in_place():
+                back = morph.target.copy().rotate(-self.angle, self.axis, about_point=pivot)
+                blend = _snapshot_lerp(morph.start.to_dict(), back.to_dict())(alpha)
+                current = _sampled_copy(self.original, [blend])
+                return [current.rotate(alpha * self.angle, self.axis, about_point=pivot).to_dict()]
         current = self.original.copy()
         angle = self.angle * alpha
         if angle % TAU and (self.axis != OUT or self.original._is_3d()):
@@ -24072,6 +24091,8 @@ def _sampled_copy(starting, states, partial=False):
         c, s = target.geometry_scale * math.cos(target.angle), target.geometry_scale * math.sin(target.angle)
         target.position = list(Vector(target.position) + Vector((delta[0] - (c * delta[0] - s * delta[1]),
                                                                  delta[1] - (s * delta[0] + c * delta[1]), 0)))
+        for flag in (False, True):
+            memo.pop(('bounds', id(target), flag), None)  # The only position-dependent entry.
         progress = target.__dict__.pop('draw_progress', None) if partial else None
         if progress is not None and progress < 1 and node['type'] in _PATH_TYPES and _is_a(target, VMobject):
             source = copy.copy(target)
@@ -24080,7 +24101,10 @@ def _sampled_copy(starting, states, partial=False):
                 target.pointwise_become_partial(source, 0, max(0.0, progress))
             except (TypeError, ValueError, NotImplementedError):
                 pass
-    apply(result, snapshot)
+            memo.clear()
+    # Nodes are finished bottom-up, so children's memoized bounds stay valid for parents.
+    memo = {}
+    _memo_query(memo, apply, result, snapshot)
     return result
 
 
