@@ -201,6 +201,9 @@ const ManimRenderer = {
           out.position = [projected[0] - gc[0], projected[1] - gc[1], 0];
           out.geometry_scale = (leaf.geometry_scale ?? 1) * factor(rotate(leaf.anchor3d)[2]) * zoom;
         }
+      } else if (leaf.type === 'pointcloud') {
+        world = Array.isArray(leaf.cloud) ? leaf.cloud.filter(point3) : [];
+        if (!fixed) out.cloud = world.map(project);
       } else {
         const curves = leaf.curves || [];
         world = curves.flat();

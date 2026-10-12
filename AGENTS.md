@@ -1004,3 +1004,10 @@ FadeTransform adds its target copy (`_ghost`) as a root after the source while i
 (Community's Group(source, target copy) root) and draws the target half there.
 Differential probes for updaters during every animation type: ~/tmp/updprobe, ~/tmp/updprobe2,
 ~/tmp/updprobe3 (always_redraw objects as animation targets).
+Point clouds keep z: stored cloud entries are [x, y] or [x, y, z] (`_cloud_point`, z only when
+nonzero, so 2D frames are unchanged). ThreeDScene frames hold world cloud points that
+projectThreeD projects; 2D cameras ignore z like Community's orthographic camera.
+Previews allow 120 s / 1800 frames (MAX_FRAMES, `_TOO_LONG`); the worker still rejects results
+over 32 MiB. play() sets any keyword on its animations (Community's compile_animations), and
+config.frame_rate/renderer are validated and ignored. With NumPy loaded, scene code gets
+Community's ndarray results from the space-ops/bezier utilities listed in `_ARRAY_EXPORTS`.

@@ -69,6 +69,14 @@ test('full renders project ThreeDScene frames and reject invalid cameras', () =>
   assert.throws(() => renderer.render(broken), /Invalid 3D camera/);
 });
 
+test('point cloud leaves project every world point', () => {
+  const three = { phi: Math.PI / 2, theta: -Math.PI / 2, gamma: 0, zoom: 1, focal_distance: 20,
+    frame_center: [0, 0, 0], light_source: [-7, -9, 10] };
+  const [cloud] = renderer.projectThreeD([{ type: 'pointcloud', cloud: [[1, 2, 3]], cloud_colors: ['#FFFFFF'] }], three);
+  // Seen from the front, z points up the screen and depth y shrinks the point by perspective.
+  [20 / 22, 60 / 22].forEach((v, i) => assert.ok(Math.abs(cloud.cloud[0][i] - v) < 1e-9));
+});
+
 test('text leaves are planar objects projected through the camera', () => {
   const frame = frames.text_planes;
   const [standing, flat] = renderer.projectThreeD(frame.mobjects, frame.camera.three_d);

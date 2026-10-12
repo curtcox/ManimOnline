@@ -23,7 +23,8 @@ import warnings
 import weakref
 
 FPS = 15
-MAX_FRAMES = 901  # 900 timed samples plus a final seekable state.
+MAX_FRAMES = 1801  # 1800 timed samples (120 s at 15 fps) plus a final seekable state.
+_TOO_LONG = 'Preview exceeds 120 seconds / 1800 frames. Shorten the scene.'
 
 
 _REAL = numbers.Real  # Includes NumPy scalars; bool is excluded where it matters.
@@ -963,7 +964,11 @@ class PreviewConfig:
                 'plugins': (), 'preview_command': '', 'enable_wireframe': False, 'window_monitor': 0,
                 'fullscreen': False, 'zero_pad': 4, 'show_in_file_browser': False,
                 'no_latex_cleanup': False, 'gui_location': (0, 0), 'enable_gui': False,
-                'window_position': 'UR', 'window_size': 'default'}
+                'window_position': 'UR', 'window_size': 'default', 'disable_caching_warning': False,
+                'encoder_queue_size': 8, 'live_preview': False, 'max_inflight_encoders': 1,
+                'media_loglevel': 'ERROR', 'pixel_format': 'auto', 'sections_dir': '{video_dir}/sections',
+                'tex_template_file': None, 'use_projection_fill_shaders': False,
+                'use_projection_stroke_shaders': False, 'video_codec': 'auto', 'video_encoder_options': {}}
 
     def __getattr__(self, name):
         if name in PreviewConfig._PASSIVE:
@@ -1085,6 +1090,11 @@ class PreviewConfig:
         elif name == 'seed':
             if value is not None and (isinstance(value, bool) or not isinstance(value, numbers.Integral)):
                 raise ValueError('config.seed must be an integer or None')
+        elif name in ('frame_rate', 'renderer'):
+            # The preview always samples 15 frames per second and draws like the Cairo renderer.
+            if name == 'frame_rate' and (isinstance(value, bool) or not isinstance(value, _REAL) or value <= 0):
+                raise ValueError('config.frame_rate must be a positive number')
+            return
         elif name not in ('frame_x_radius', 'frame_y_radius', 'frame_size') and name not in PreviewConfig._PASSIVE:
             raise NotImplementedError('Unsupported preview configuration: ' + name)
         object.__setattr__(self, name, value)
@@ -2013,7 +2023,7 @@ class Mobject:
                 return
             elif kind == 'pointcloud':
                 # Point clouds map point by point (stored in the local frame).
-                new.cloud = [list(mapped(world((p[0],p[1],0))) - origin)[:2] for p in old.cloud]
+                new.cloud = [_cloud_point(list(mapped(world(_cloud_xyz(p))) - origin)) for p in old.cloud]
             elif kind not in ('vgroup','mobject','valuetracker'):
                 raise NotImplementedError('Point mapping requires editable vector geometry')
             if '_curve_arc_center' in old.__dict__:
@@ -2051,6 +2061,8 @@ class Mobject:
                     points.append(state[key])
             for curve in state.get('curves') or ():
                 points.extend(curve)
+            if member._type == 'pointcloud':
+                points.extend(state.get('cloud') or ())
             if any(len(point) > 2 and point[2] for point in points):
                 return True
         return False
@@ -2155,6 +2167,12 @@ class Mobject:
                 self.glyph_depth = [total[2][0], total[2][1]]
             self.angle, self.geometry_scale = 0, 1
             self.position = list(image - center)
+        elif kind == 'pointcloud':
+            points = self._points_to_world([_cloud_xyz(p) for p in self.cloud])
+            self.cloud = [_cloud_point(mapped(point)) for point in points]
+            self.position, self.angle, self.geometry_scale = [0, 0, 0], 0, 1
+            for key in ('_family_pivot_cache', '_sampled_geometry_center'):
+                self.__dict__.pop(key, None)
         elif kind not in ('vgroup', 'mobject', 'valuetracker'):
             # Images and other non-path leaves: only the anchor is mapped (they stay
             # upright facing the camera).
@@ -2880,7 +2898,7 @@ class Mobject:
         if self.__dict__.get('_mobject_points'):
             return self._mobject_points
         if self._type == 'pointcloud':
-            return [(p[0], p[1], 0) for p in self.cloud] or None
+            return [_cloud_xyz(p) for p in self.cloud] or None
         if self._type in ('square', 'rectangle', 'triangle'):
             return [curve[0] for curve in _path_curves(self.to_dict() if self._type == 'triangle' else
                     {'type': self._type, 'side_length': getattr(self, 'side_length', 0),
@@ -3097,8 +3115,9 @@ class Mobject:
     def _opacity_channel(self, channel, opacity):
         """A scalar opacity, or a list drawn as Community's gradient of opacities. A list is
         kept as relative stop opacities (``<channel>_opacities``) under a scalar of 1."""
-        if isinstance(opacity, (list, tuple)) or hasattr(opacity, 'tolist'):
-            values = [float(v) for v in (opacity.tolist() if hasattr(opacity, 'tolist') else opacity)]
+        if isinstance(opacity, (list, tuple)) or (hasattr(opacity, 'tolist') and not isinstance(opacity, _REAL)):
+            values = opacity.tolist() if hasattr(opacity, 'tolist') else opacity
+            values = [float(v) for v in (values if isinstance(values, list) else [values])]
             if not values or len(values) > 64:
                 raise ValueError('Opacity lists need 1 to 64 values')
             for value in values:
@@ -13245,8 +13264,8 @@ class ShowPassingFlash(Animation):
                     validate(child)
             elif mobject._type not in ('polyline', 'polygon', 'bezierpath', 'circle',
                                       'arc', 'ellipse', 'square', 'rectangle',
-                                      'triangle', 'line', 'annulus', 'arrow'):
-                raise TypeError('ShowPassingFlash expects supported vector outlines; glyphs are unsupported')
+                                      'triangle', 'line', 'annulus', 'arrow', 'text', 'mathtex'):
+                raise TypeError('ShowPassingFlash expects supported vector outlines')
             else:
                 for child in mobject.children:
                     validate(child)
@@ -13268,6 +13287,10 @@ class ShowPassingFlash(Animation):
                 return result
             if source.__dict__.get('_fill_partial'):
                 return dict(snapshot, fill_opacity=source.original_fill_opacity * upper)
+            if source._type in ('text', 'mathtex') and not source.children:
+                # Community shows the window's slice of every glyph outline; the preview draws
+                # glyphs with fonts, so it shows them at the window's share of their opacity.
+                return dict(snapshot, opacity=snapshot.get('opacity', 1) * (upper - lower))
             if not source.children:
                 return source.get_subcurve(lower, upper).to_dict()
             # A family with its own path (an arrow and its tips): Community's ShowPartial
@@ -14606,6 +14629,9 @@ class ApplyMethod(Animate):
         super().__init__(mobject)
         for key, value in options.items():
             setattr(self, key, value)
+        if args and isinstance(args[-1], dict):
+            # Community passes a trailing dict to the method as its keyword arguments.
+            args, kwargs = args[:-1], {**kwargs, **args[-1]}
         self.operations.append((method.__name__, args, kwargs))
 
     def check_validity_of_input(self, method):
@@ -15590,7 +15616,7 @@ class Scene:
             self._elapsed_frames += 1
             return
         if len(self.frames) >= MAX_FRAMES:
-            raise ValueError('Preview exceeds 60 seconds / 900 frames. Shorten the scene.')
+            raise ValueError(_TOO_LONG)
         if isinstance(self.camera, MovingCamera):
             frame_states = overrides.get(self.camera.frame) if overrides else None
             if frame_states is not None and len(frame_states) != 1:
@@ -15681,9 +15707,6 @@ class Scene:
                 result = [_pose_snapshot(state, frame, inverse=False) for state in result]
         return result
 
-    _PLAY_OPTIONS = ('path_arc', 'lag_ratio', 'remover', 'introducer', 'name',
-                     'suspend_mobject_updating', 'reverse_rate_function')
-
     @staticmethod
     def _flat_animations(args):
         """Community's flatten_iterable_parameters: lists and generators of animations."""
@@ -15706,9 +15729,6 @@ class Scene:
 
     def _play(self, *animations, run_time=None, rate_func=None, **kwargs):
         animations = self._flat_animations(animations)
-        unsupported = [key for key in kwargs if key not in self._PLAY_OPTIONS]
-        if unsupported:
-            raise NotImplementedError('Unsupported play options: ' + ', '.join(unsupported))
         if len(animations) == 1 and type(animations[0]) is Wait:
             # A lone Wait follows Community's static/updating wait logic.
             wait = animations[0]
@@ -15733,7 +15753,7 @@ class Scene:
         # other totals are at least one frame (validate_run_time).
         count = max(1, _frame_count(max(durations))) if max(durations) else 0
         if count + len(self.frames) >= MAX_FRAMES:
-            raise ValueError('Preview exceeds 60 seconds / 900 frames. Shorten the scene.')
+            raise ValueError(_TOO_LONG)
         if rate_func is not None:
             # play() options override each animation, as in Community.
             for animation in animations:
@@ -15878,7 +15898,7 @@ class Scene:
         # updaters; other waits sample np.arange(0, duration, 1 / fps).
         count = int(duration / (1 / FPS)) if static else _frame_count(duration)
         if count + len(self.frames) >= MAX_FRAMES and stop_condition is None and not self._skipping:
-            raise ValueError('Preview exceeds 60 seconds / 900 frames. Shorten the scene.')
+            raise ValueError(_TOO_LONG)
         if static:
             self._static_frames = {}
             try:
@@ -15901,7 +15921,7 @@ class Scene:
             for frame in range(count):
                 self._update_mobjects(0 if frame == 0 else 1 / FPS)
                 if len(self.frames) >= MAX_FRAMES - 1:
-                    raise ValueError('Preview exceeds 60 seconds / 900 frames. Shorten the scene.')
+                    raise ValueError(_TOO_LONG)
                 self.capture()
                 if stop_condition is not None and stop_condition():
                     break
@@ -17234,6 +17254,19 @@ class ThreeDScene(Scene):
                 for child in node.get('children', []):
                     walk(child, world_map, node_opacity, group)
             elif kind in ('vgroup', 'mobject', 'valuetracker'):
+                for child in node.get('children', []):
+                    walk(child, world_map, node_opacity, group)
+            elif kind == 'pointcloud':
+                # World points (the renderer projects each one); members are clouds too.
+                out = dict(node, children=[], opacity=node_opacity)
+                mapping = world_map or (lambda point: point)
+                out['cloud'] = [list(mapping(_cloud_xyz(point))) for point in node.get('cloud') or ()]
+                out['position'], out['angle'], out['geometry_scale'] = [0, 0, 0], 0, 1
+                out['geometry_center'] = [0, 0, 0]
+                out.pop('_fixed_orientation_key', None)
+                if out['cloud']:
+                    leaves.append(out)
+                    group.append(out)
                 for child in node.get('children', []):
                     walk(child, world_map, node_opacity, group)
             else:
@@ -22158,6 +22191,16 @@ DEFAULT_POINT_DENSITY_1D, DEFAULT_POINT_DENSITY_2D = 10, 25
 _POINT_CLOUD_LIMIT = 100000
 
 
+def _cloud_point(point):
+    """A stored cloud point: [x, y], with z appended only when nonzero (2D frames stay small)."""
+    z = point[2] if len(point) > 2 else 0
+    return [point[0], point[1], z] if z else [point[0], point[1]]
+
+
+def _cloud_xyz(point):
+    return [point[0], point[1], point[2] if len(point) > 2 else 0]
+
+
 class PMobject(Mobject):
     """Community's point cloud: colored points drawn as squares of stroke_width pixels
     (at Community's 1920-pixel default width), unaffected by scaling like the Cairo camera."""
@@ -22191,8 +22234,8 @@ class PMobject(Mobject):
         points = [Vector(p) for p in points]
         if len(self.cloud) + len(points) > _POINT_CLOUD_LIMIT:
             raise ValueError('Point clouds are limited to 100000 points')
-        if any(not all(math.isfinite(v) for v in p) or p[2] for p in points):
-            raise ValueError('Point cloud points must be finite XY coordinates')
+        if any(not all(math.isfinite(v) for v in p) for p in points):
+            raise ValueError('Point cloud points must be finite coordinates')
         if rgbas is None:
             colors = [ManimColor(color) if color else ManimColor(self.color)] * len(points)
             alphas = [alpha] * len(points)
@@ -22203,7 +22246,7 @@ class PMobject(Mobject):
             colors, alphas = [ManimColor(tuple(float(v) for v in r[:3])) for r in rgbas], [float(r[3]) for r in rgbas]
         # Points are stored in this object's local frame.
         local = self._world_to_local([list(p) for p in points])
-        self.cloud += [[p[0], p[1]] for p in local]
+        self.cloud += [_cloud_point(p) for p in local]
         self.cloud_colors += colors
         self.cloud_opacities += alphas
         return self
@@ -22217,13 +22260,14 @@ class PMobject(Mobject):
         cos, sin = math.cos(-self.angle), math.sin(-self.angle)
         scale = self.geometry_scale or 1
         result = []
-        for x, y, _ in points:
+        for x, y, z in points:
             dx, dy = x - self.position[0] - center[0], y - self.position[1] - center[1]
-            result.append([center[0] + (dx * cos - dy * sin) / scale, center[1] + (dx * sin + dy * cos) / scale, 0])
+            result.append([center[0] + (dx * cos - dy * sin) / scale, center[1] + (dx * sin + dy * cos) / scale,
+                           center[2] + (z - self.position[2] - center[2]) / scale])
         return result
 
     def get_points(self):
-        return self._points_to_world([[x, y, 0] for x, y in self.cloud])
+        return self._points_to_world([_cloud_xyz(p) for p in self.cloud])
 
     def get_num_points(self):
         return len(self.cloud)
@@ -22247,7 +22291,7 @@ class PMobject(Mobject):
         alphas = [a for m in members for a in m.cloud_opacities]
         self._replace_children([])
         self.position, self.angle, self.geometry_scale = [0, 0, 0], 0, 1
-        self.cloud = [[p[0], p[1]] for p in points]
+        self.cloud = [_cloud_point(p) for p in points]
         self.cloud_colors, self.cloud_opacities = colors, alphas
         return self
 
@@ -23437,8 +23481,12 @@ class _PointPath:
         starts = start_points.tolist() if hasattr(start_points, 'tolist') else start_points
         ends = end_points.tolist() if hasattr(end_points, 'tolist') else end_points
         if starts is not None and len(starts) and isinstance(list(starts)[0], _REAL):
-            return self.point(starts, ends, alpha)
-        return [self.point(p, q, alpha) for p, q in zip(starts, ends)]
+            result = self.point(starts, ends, alpha)
+        else:
+            result = [self.point(p, q, alpha) for p, q in zip(starts, ends)]
+        if 'numpy' in sys.modules and sys._getframe(1).f_code.co_filename != _LIB_FILE:
+            return sys.modules['numpy'].array(result, dtype=float)  # Community's point arrays.
+        return result
 
 
 class _CirclesPath(_PointPath):
@@ -23459,7 +23507,10 @@ class _CirclesPath(_PointPath):
 
     def __call__(self, start_points, end_points, alpha):
         self._index = 0
-        return super().__call__(start_points, end_points, alpha)
+        result = super().__call__(start_points, end_points, alpha)
+        if 'numpy' in sys.modules and sys._getframe(1).f_code.co_filename != _LIB_FILE:
+            return sys.modules['numpy'].array(result, dtype=float)
+        return result
 
     def similarity_blend(self, alpha):
         """The path applied to posed similarity shapes (p = B + W u): a lerp toward the target
@@ -25211,6 +25262,37 @@ VectorArrow.__name__ = VectorArrow.__qualname__ = 'Vector'
 _SecantSlopeGroup.__name__ = _SecantSlopeGroup.__qualname__ = 'VGroup'  # Community returns a VGroup.
 
 
+# Community returns NumPy arrays from these helpers, so with NumPy loaded scene code gets them
+# too: 'array' converts the result, 'items' each array in a returned list or tuple, 'function'
+# the results of a returned function. Library code keeps the list-based originals.
+_ARRAY_EXPORTS = dict.fromkeys(
+    ('rotation_matrix', 'rotation_about_z', 'z_to_vector', 'normalize', 'rotate_vector', 'get_unit_normal',
+     'compass_directions', 'complex_to_R3', 'center_of_mass', 'cartesian_to_spherical',
+     'spherical_to_cartesian', 'line_intersection', 'partial_bezier_points', 'split_bezier',
+     'subdivide_bezier', 'bezier_remap'), 'array')
+_ARRAY_EXPORTS.update(dict.fromkeys(('regular_vertices', 'perpendicular_bisector', 'find_intersection',
+                                     'get_smooth_cubic_bezier_handle_points', 'angle_axis_from_quaternion'),
+                                    'items'))
+_ARRAY_EXPORTS.update(bezier='function', complex_func_to_R3_func='function', thick_diagonal='int')
+
+
+def _arrayed(function, shape):
+    import numpy
+
+    def convert(value, shape):
+        if value is None or isinstance(value, _REAL):
+            return value
+        if shape == 'items':
+            return type(value)(convert(item, 'array') for item in value)
+        return numpy.array(value, dtype=int if shape == 'int' else float)
+
+    @functools.wraps(function)
+    def wrapper(*args, **kwargs):
+        result = function(*args, **kwargs)
+        return _arrayed(result, 'array') if shape == 'function' else convert(result, shape)
+    return wrapper
+
+
 def _render_scene(source, scene_name=None, compact=False):
     module = types.ModuleType('manim')
     module.__all__ = list(EXPORTS)
@@ -25229,6 +25311,8 @@ def _render_scene(source, scene_name=None, compact=False):
     else:
         module.np = numpy
         module.__all__.append('np')
+        for name, shape in _ARRAY_EXPORTS.items():
+            setattr(module, name, _arrayed(globals()[name], shape))
     module.__version__ = '0.22.0'
     # Community's star import also exposes its submodules (utils.paths.straight_path(), ...).
     for name in ('animation', 'camera', 'mobject', 'scene', 'constants', 'typing', 'color', 'manim_colors',

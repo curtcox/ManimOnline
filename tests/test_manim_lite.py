@@ -199,8 +199,9 @@ class Demo(LinearTransformationScene):
         result = render('self.play(Transform(Dot(LEFT), Dot(RIGHT)), path_arc=PI, run_time=0.2)')
         middle = result['frames'][1]['mobjects'][0]
         self.assertLess(middle["position"][1] + middle["geometry_center"][1], -0.3)  # CCW from LEFT passes below
-        with self.assertRaises(NotImplementedError):
-            render('self.play(FadeIn(Dot()), warp=1)')
+        # Community's compile_animations sets any play() keyword on every animation.
+        self.assertEqual(len(render('self.play(FadeIn(Dot()), warp=1, run_time=0.2)')['frames']),
+                         len(render('self.play(FadeIn(Dot()), run_time=0.2)')['frames']))
         frames = json.loads(lite.render_scene("""from manim import *
 class Demo(VectorScene):
     def construct(self):
@@ -1000,6 +1001,18 @@ self.play(UntypeWithCursor(text, cursor))""")['frames']
         with self.assertRaises(ValueError): lite.PGroup(lite.Square())
         frame=render("self.play(FadeIn(PointCloudDot(radius=.5)))")['frames'][-1]
         self.assertEqual(len(frame['mobjects'][0]['cloud']),86)  # Community count
+
+    def test_point_clouds_keep_depth(self):
+        cloud=lite.PMobject().add_points([(0,0,1),(2,0,-1)])
+        self.assertAlmostEqual(cloud.get_depth(),2)
+        cloud.shift(lite.OUT).scale(2)
+        self.assertPointAlmostEqual(cloud.get_points()[0],(-1,0,3))
+        cloud.rotate(lite.PI/2,axis=lite.RIGHT)
+        self.assertAlmostEqual(cloud.get_height(),4)
+        # 2D frames keep XY pairs; ThreeDScene frames hold world points for projection.
+        self.assertEqual(lite.PointCloudDot(radius=.5).to_dict()['cloud'][0],[0.1,0.0])
+        frame=render_3d("self.add(PGroup(PMobject().add_points([(1,2,3)])).shift(LEFT))")['frames'][-1]
+        self.assertEqual([m['cloud'] for m in frame['mobjects']],[[[0,2,3]]])
 
     def test_set_style_routes_fill_and_stroke(self):
         square=lite.Square().set_style(fill_color=lite.RED,fill_opacity=.5,stroke_color=lite.BLUE,
@@ -4776,10 +4789,15 @@ assert isinstance(t.get_value(), (int, float))""")
                 self.assertTrue(all(p == middle['curves'][0][0] for p in middle['curves'][0]))
             else:
                 self.assertEqual(middle,source.get_subcurve(0,1).to_dict())
-        for source in (lite.Text('unsupported'),lite.VGroup(lite.Circle(),lite.Text('unsupported'))):
+        for source in (lite.ImageMobject([[0, 255]]),lite.Group(lite.Circle(),lite.ImageMobject([[0, 255]]))):
             scene = lite.Scene()
             with self.assertRaises(TypeError): lite.ShowPassingFlash(source).prepare(scene)
             self.assertEqual(scene.mobjects,[])
+        # Glyphs are drawn with fonts: they show at the window's share of their opacity.
+        flash = lite.ShowPassingFlash(lite.VGroup(lite.Circle(),lite.Text('ab')),time_width=.5)
+        flash.prepare(lite.Scene())
+        text = flash.sample(.5)[0]['children'][1]
+        self.assertAlmostEqual(text['opacity'],.5)
         for source in (lite.VMobject(),lite.VGroup()):
             flash = lite.ShowPassingFlash(source)
             flash.prepare(lite.Scene())
@@ -5807,8 +5825,10 @@ self.wait(1)""")
             with self.assertRaises(ValueError):
                 setattr(settings,name,value)
             self.assertEqual(settings.to_dict(),before)
-        with self.assertRaises(NotImplementedError):
-            settings.frame_rate=30
+        # The preview keeps sampling at 15 fps; other positive rates are accepted and ignored.
+        settings.frame_rate=30
+        with self.assertRaises(ValueError):
+            settings.frame_rate=0
         result=json.loads(lite.render_scene((ROOT/'examples/camera_scene.py').read_text()))
         self.assertEqual(result['duration'],5)
         self.assertEqual(result['frames'][0]['camera']['pixel_width'],600)
@@ -7504,8 +7524,8 @@ class Demo(Scene):
         with self.assertRaisesRegex(ValueError, 'timeline duration'):
             lite.AnimationGroup(lite.FadeIn(lite.Dot(), run_time=2),
                                 lite.FadeIn(lite.Dot()), lag_ratio=1e308, run_time=1)
-        with self.assertRaisesRegex(ValueError, '60 seconds'):
-            render('self.play(LaggedStart(FadeIn(Dot()), FadeIn(Dot()), lag_ratio=1), run_time=61)')
+        with self.assertRaisesRegex(ValueError, '120 seconds'):
+            render('self.play(LaggedStart(FadeIn(Dot()), FadeIn(Dot()), lag_ratio=1), run_time=121)')
 
     def test_existing_composition_examples_render(self):
         for path in ('animation-group', 'lagged-start'):
@@ -8128,16 +8148,16 @@ class Demo(Scene):
                 operation()
 
     def test_limits_and_invalid_durations(self):
-        for body in ('self.wait(100)', 'self.play(Create(Circle()), run_time=100)', 'self.wait(float("inf"))', 'self.play(Create(Circle()), run_time=-1)'):
+        for body in ('self.wait(200)', 'self.play(Create(Circle()), run_time=200)', 'self.wait(float("inf"))', 'self.play(Create(Circle()), run_time=-1)'):
             with self.subTest(body=body), self.assertRaises(ValueError):
                 render(body)
 
     def test_exact_duration_limit_includes_final_seekable_state(self):
-        result = render('self.wait(60)')
-        self.assertEqual(result['duration'], 60)
-        self.assertEqual(len(result['frames']), 901)
-        with self.assertRaisesRegex(ValueError, '60 seconds'):
-            render('self.wait(60)\nself.wait(0.1)')
+        result = render('self.wait(120)')
+        self.assertEqual(result['duration'], 120)
+        self.assertEqual(len(result['frames']), 1801)
+        with self.assertRaisesRegex(ValueError, '120 seconds'):
+            render('self.wait(120)\nself.wait(0.1)')
 
     def test_errors_are_not_silently_ignored(self):
         with self.assertRaises(SyntaxError):

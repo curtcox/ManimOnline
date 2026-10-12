@@ -291,7 +291,7 @@ Scale factors must be finite and nonnegative. Preview bounds and color
 interpolation limitations apply to this effect as well.
 
 Animation previews run at
-15 frames per second and are limited to 60 seconds, with a 90-second deadline
+15 frames per second and are limited to 120 seconds, with a 90-second deadline
 for loading and execution. Editing or Cancel render terminates active Python computation. Choose an
 Export format, then Download. SVG frame and PNG frame save the current frame; PNG pauses playback
 at the displayed frame and exports it at the camera's pixel size (800 × 450 by default) with a black background.

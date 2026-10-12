@@ -16,8 +16,8 @@ browser check stopped an infinite-loop scene, retried it until the real 90-secon
 deadline, rendered a valid scene afterward, and then rendered a DOT graph. The worker rebuilds the
 compatibility definitions and executes source in a fresh namespace per render.
 `src/manim-renderer.js` turns serialized shapes into SVG and `src/manim-player.js`
-provides playback, replay, and seeking. Preview generation is limited to 900 timed
-samples plus a terminal frame (60 seconds at 15 fps), with a 12 MiB serialized
+provides playback, replay, and seeking. Preview generation is limited to 1800 timed
+samples plus a terminal frame (120 seconds at 15 fps), with a 32 MiB serialized
 result limit. These bounds do not limit arbitrary Python memory allocation.
 
 The established direction in `todo/master_plan.md` is in-browser execution and
