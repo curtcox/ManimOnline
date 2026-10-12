@@ -1827,5 +1827,23 @@ class AnimationApiTests(unittest.TestCase):
         self.assertEqual(plain(found), [6.6289])
 
 
+    def test_wave_and_flash_start_copies_follow_updaters(self):
+        source = (
+            'from manim import *\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        d = Dot().add_updater(lambda m, dt: m.shift(RIGHT * dt))\n'
+            '        self.add(d)\n'
+            '        self.play(ApplyWave(d))\n'
+            '        FOUND.append(d.get_x())\n')
+        found = []
+        lite.render_scene('from manim import *\nclass Empty(Scene):\n    pass\n')
+        namespace = {'FOUND': found}
+        exec(compile(source, '<test>', 'exec'), namespace)
+        namespace['S']().render()
+        # Community 0.22: the wave runs on the updated starting copy, so the dot keeps drifting.
+        self.assertEqual(plain(found), [1.9333])
+
+
 if __name__ == '__main__':
     unittest.main()

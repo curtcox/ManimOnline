@@ -13122,6 +13122,8 @@ class Create(Animation):
 
 class ShowPassingFlash(Animation):
     """Move a temporary cubic-parameter window over supported vector outlines."""
+    _start_follows_updaters = True
+
     def __init__(self, mobject, time_width=.1, **kwargs):
         kwargs.setdefault('introducer', True)
         kwargs.setdefault('remover', True)
@@ -13146,8 +13148,10 @@ class ShowPassingFlash(Animation):
                 for child in mobject.children:
                     validate(child)
         validate(self.mobject)
-        self.original = self.mobject.copy()
         super().begin(scene)
+        # Community's starting copy keeps the mobject's updaters and is updated every frame.
+        live = self.__dict__.get('_live_start')
+        self.original = live if live is not None else self.mobject.copy()
 
     def sample(self, alpha):
         upper = (1 + self.time_width) * max(0, min(1, alpha))
@@ -14516,6 +14520,8 @@ class ApplyFunction(Transform):
 
 class Homotopy(Animation):
     """Apply homotopy(x, y, z, t) to the starting points at each sampled time."""
+    _start_follows_updaters = True
+
     def __init__(self, homotopy, mobject, run_time=3, apply_function_kwargs=None, **kwargs):
         if not callable(homotopy):
             raise TypeError('Homotopy expects a function of (x, y, z, t)')
@@ -14524,7 +14530,9 @@ class Homotopy(Animation):
 
     def begin(self, scene):
         super().begin(scene)
-        self.original = self.mobject.copy()
+        # Community's starting copy keeps the mobject's updaters and is updated every frame.
+        live = self.__dict__.get('_live_start')
+        self.original = live if live is not None else self.mobject.copy()
 
     def function_at_time_t(self, t):
         def mapping_function(point):
