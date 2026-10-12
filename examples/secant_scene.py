@@ -12,7 +12,9 @@ class SecantScene(Scene):
         secant = always_redraw(lambda: axes.get_secant_slope_group(start.get_value(),graph,
                               dx=interval.get_value(),dx_label='dx',dy_label='df',
                               dy_line_color=RED,secant_line_length=6))
-        self.play(Create(axes),Create(graph),FadeIn(secant),run_time=2)
+        # The secant reads the axes, so it joins once they are drawn (as in Community).
+        self.play(Create(axes),Create(graph),run_time=1)
+        self.play(FadeIn(secant),run_time=1)
         self.play(interval.animate.set_value(.25),run_time=3)
         self.play(start.animate.set_value(1),run_time=2)
         self.play(FadeOut(secant),run_time=1)

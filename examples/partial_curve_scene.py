@@ -4,7 +4,7 @@ from manim import *
 
 class PartialCurveScene(Scene):
     def construct(self):
-        curve = CubicBezier((-3,-1), (-2,3), (2,-3), (3,1)).rotate(PI/8)
+        curve = CubicBezier((-3,-1,0), (-2,3,0), (2,-3,0), (3,1,0)).rotate(PI/8)
         curve.set_stroke(color=GRAY, width=3)
         highlight = curve.get_subcurve(.2,.8).set_stroke(color=YELLOW, width=7)
         ring = Circle(radius=1.2, color=GRAY).shift(UP*2)

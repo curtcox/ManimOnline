@@ -21,8 +21,10 @@ state. These are bounds-level checks, not pixel comparisons.
 | Random plotting scenes (550) | 550 | — |
 | Random method chains (2,300) | ~2,250 | VGroup own points (lite groups cannot hold path points), Group.restore errors Community raises |
 
-In the browser (Pyodide, Chromium), the first 80 docstring examples render; the two
-failures also fail in Community.
+In the browser (Pyodide, Chromium), 393 of the 395 docstring examples render; the two
+failures also fail in Community. Every gallery scene in `examples/` now also runs in
+Manim Community 0.22 (they previously used 2D points, inline SVG strings, a private
+method and APIs that Community rejects).
 
 ## Roadmap acceptance audit (2026-10-08)
 

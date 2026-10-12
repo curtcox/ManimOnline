@@ -10,7 +10,9 @@ class BannerScene(Scene):
 
         space = SampleSpace(width=4, height=2.4).shift(DOWN * 1.8 + LEFT * 3)
         space.divide_horizontally([0.3])
-        braces = space.get_side_braces_and_labels([r"P(A)", r"P(\bar A)"])
+        # Community 0.22's get_side_braces_and_labels passes Brace an unsupported keyword.
+        braces = VGroup(*(BraceLabel(part, label, LEFT)
+                          for part, label in zip(space.horizontal_parts, [r"P(A)", r"P(\bar A)"])))
         self.play(FadeIn(space), FadeIn(braces))
 
         # Utilities: regular vertices, rotate_vector and a clockwise path.
@@ -19,5 +21,5 @@ class BannerScene(Scene):
         pointer = Dot(star.get_center() + rotate_vector(RIGHT * 1.6, PI / 5), color=YELLOW)
         self.play(Create(star), FadeIn(pointer))
         self.play(Transform(pointer, pointer.copy().shift(LEFT * 2.2), path_func=clockwise_path()))
-        self.play(TransformAnimations(Rotate(star, PI), FadeIn(Circle(radius=1.1, color=RED).move_to(star))))
+        self.play(Rotate(star, PI), FadeIn(Circle(radius=1.1, color=RED).move_to(star)))
         self.wait()

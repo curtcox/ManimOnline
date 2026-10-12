@@ -5,7 +5,7 @@ from manim import *
 class DashedPathsScene(Scene):
     def construct(self):
         loop = Circle(radius=1.4,color=GREEN).shift(LEFT*2.2)
-        curve = CubicBezier((.3,-1.6),(2.5,3),(1,-3.5),(4,1.6),color=BLUE)
+        curve = CubicBezier((.3,-1.6,0),(2.5,3,0),(1,-3.5,0),(4,1.6,0),color=BLUE)
         references = VGroup(loop.copy().set_stroke(opacity=.2),
                             curve.copy().shift(UP*.65).set_stroke(opacity=.2),
                             curve.copy().shift(DOWN*.65).set_stroke(opacity=.2))

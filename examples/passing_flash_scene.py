@@ -4,7 +4,7 @@ from manim import *
 
 class PassingFlashScene(Scene):
     def construct(self):
-        curve = CubicBezier((-3,-1), (-2,2), (2,-2), (3,1)).shift(DOWN)
+        curve = CubicBezier((-3,-1,0), (-2,2,0), (2,-2,0), (3,1,0)).shift(DOWN)
         outlines = VGroup(Circle(radius=.9).shift(LEFT*1.5),
                           RoundedRectangle(width=2, height=1.6, corner_radius=.3).shift(RIGHT*1.5))
         outlines.rotate(PI/12).shift(UP*1.5)

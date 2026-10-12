@@ -5,7 +5,7 @@ from manim import *
 class TangentPathsScene(Scene):
     def construct(self):
         ellipse = Ellipse(width=3,height=2,color=BLUE).shift(LEFT*2.3)
-        curve = CubicBezier((.3,-1.5),(1,3),(2,-3),(4,1.5),color=BLUE)
+        curve = CubicBezier((.3,-1.5,0),(1,3,0),(2,-3,0),(4,1.5,0),color=BLUE)
         alpha = ValueTracker(.1)
         extent = ValueTracker(1.8)
         left = always_redraw(lambda:VGroup(

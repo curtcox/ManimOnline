@@ -4,7 +4,7 @@ from manim import *
 class PathScene(Scene):
     def construct(self):
         circle = Circle(radius=1.2, color=BLUE).scale(0.8).shift(LEFT * 2)
-        polygon = Polygon((0, 0), (2, 0), (2, 1), (0, 1), color=GREEN)
+        polygon = Polygon((0, 0, 0), (2, 0, 0), (2, 1, 0), (0, 1, 0), color=GREEN)
         polygon.rotate(PI / 6).shift(RIGHT * 2)
         line = Line(LEFT * 3, RIGHT * 3, color=GRAY).rotate(-PI / 12).shift(DOWN * 2)
         dot = Dot(radius=0.15, color=YELLOW)

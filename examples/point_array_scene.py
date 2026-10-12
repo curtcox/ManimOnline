@@ -4,7 +4,7 @@ from manim import *
 
 class PointArrayScene(Scene):
     def construct(self):
-        seed = CubicBezier((-3,-1), (-1,2), (1,-2), (3,1)).rotate(PI/6)
+        seed = CubicBezier((-3,-1,0), (-1,2,0), (1,-2,0), (3,1,0)).rotate(PI/6)
         points = seed.get_points()
         path = VMobject(color=BLUE).set_points(points[:1]).append_points(points[1:])
         path.save_state()

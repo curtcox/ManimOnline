@@ -1,4 +1,6 @@
-"""Inline SVG drawings and pixel-array images (no files are needed in the browser)."""
+"""SVG drawings written to a file, and pixel-array images (no uploads are needed in the browser)."""
+from pathlib import Path
+
 from manim import *
 
 LOGO = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 100">
@@ -11,7 +13,9 @@ LOGO = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 100">
 
 class SvgImageScene(Scene):
     def construct(self):
-        logo = SVGMobject(LOGO, height=2.5).to_edge(LEFT, buff=1)
+        # Manim reads SVG files; the browser's Python has a writable in-memory file system.
+        Path("logo.svg").write_text(LOGO)
+        logo = SVGMobject("logo.svg", height=2.5).to_edge(LEFT, buff=1)
         self.play(LaggedStart(*(DrawBorderThenFill(part) for part in logo), lag_ratio=.3), run_time=2)
         # A 48 x 48 RGB gradient built from plain lists.
         pixels = [[[int(255 * x / 47), int(255 * y / 47), 160] for x in range(48)] for y in range(48)]

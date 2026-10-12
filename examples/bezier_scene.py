@@ -14,6 +14,6 @@ class BezierScene(Scene):
         self.play(Transform(curve, target), run_time=2)
         self.play(Restore(curve), FadeOut(marker))
         mixed = VMobject(color=PURPLE).set_points_as_corners([(-3,-1,0), (-1,-1,0)])
-        mixed.add_cubic_bezier_curve_to((-1,2,0), (1,2,0), (1,-1,0)).add_line_to((3,-1,0))
+        mixed.add_cubic_bezier_curve_to(LEFT+UP*2, RIGHT+UP*2, RIGHT+DOWN).add_line_to(RIGHT*3+DOWN)
         self.play(Uncreate(curve), Create(mixed), run_time=2)
         self.wait(1)
