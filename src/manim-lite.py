@@ -593,6 +593,12 @@ class ManimColor(str):
         raw = list(value)
         if len(raw) not in (3, 4):
             raise ValueError(f'ManimColor only accepts lists/tuples/arrays of length 3 or 4, not {len(raw)}')
+        for v in raw:
+            # NumPy's messages when Community converts the list to a float array.
+            if isinstance(v, ManimColor):
+                raise ValueError('setting an array element with a sequence.')
+            if isinstance(v, str):
+                raise ValueError(f'could not convert string to float: {v!r}')
         values = [_plain_number(v) for v in raw]
         if any(isinstance(v, bool) or not isinstance(v, _REAL) or not math.isfinite(v) for v in values):
             raise ValueError('Color tuples need three or four finite components')
@@ -1264,6 +1270,10 @@ class Mobject:
         self.position = list(ORIGIN)
         self.shade_in_3d = bool(shade_in_3d)
         color, fill_color, stroke_color = _paint(color), _paint(fill_color), _paint(stroke_color)
+        if type(color) is list and color and (_is_a(self, VMobject) or isinstance(self, VGroup)):
+            # Community's VMobject paints a constructor color list solid in its first color
+            # (fill_color/stroke_color lists and set_color still make gradients).
+            color = color[0]
         self.color = color
         self.fill_color = color if fill_color is None else fill_color
         self.stroke_color = color if stroke_color is None else stroke_color
@@ -3386,6 +3396,19 @@ class Mobject:
     def get_stroke_color(self, background=False):
         return self.__dict__.get('background_stroke_color', BLACK) if background else self.stroke_color
 
+    def _one_color(self, value):
+        # Community's VMobject reports a gradient's first color to scene code.
+        return value[0] if type(value) is list and value and isinstance(self, VMobject) else value
+
+    def _scene_get_color(self):
+        return self._one_color(self.get_color())
+
+    def _scene_get_fill_color(self):
+        return self._one_color(self.get_fill_color())
+
+    def _scene_get_stroke_color(self, background=False):
+        return self._one_color(self.get_stroke_color(background))
+
     def get_fill_opacity(self):
         return self.fill_opacity
 
@@ -4577,8 +4600,12 @@ def _style_property(name, setter):
     """Community's color/fill_color/stroke_color properties: assignments from scene code
     restyle the family; the library stores the raw value."""
     def get(self):
-        if name == 'color' and sys._getframe(1).f_code.co_filename != _LIB_FILE:
-            return self.get_color()
+        if sys._getframe(1).f_code.co_filename != _LIB_FILE:
+            if name == 'color':
+                return self.get_color()
+            if isinstance(self, VMobject):
+                # Community's VMobject properties report one color, even for gradients.
+                return self._one_color(self.__dict__.get(name))
         return self.__dict__.get(name)
     def set_(self, value):
         if not _from_scene():
@@ -7255,6 +7282,8 @@ class Text(Mobject):
             raise AttributeError(f'There is no Font Weight Called {weight}')
         if slant not in (NORMAL, ITALIC, OBLIQUE):
             raise AttributeError(f'There is no Style Called {slant}')
+        if kwargs.get('color') is not None and not isinstance(self, DecimalNumber):
+            ManimColor(kwargs['color'])  # Community's text and TeX take one color, never a list.
         kwargs.setdefault('fill_opacity', 1)
         kwargs.setdefault('stroke_width', 0)
         super().__init__(**kwargs)
@@ -15147,12 +15176,14 @@ class GrowArrow(GrowFromPoint):
         super().__init__(arrow, ORIGIN, point_color=point_color, **kwargs)
 
     def begin(self, scene):
+        if not isinstance(self.mobject, Arrow):
+            # Community's starting copy calls scale(0, scale_tips=True), which only Arrow takes.
+            owner = 'VMobject' if isinstance(self.mobject, VMobject) else 'Mobject'
+            raise TypeError(f"{owner}.scale() got an unexpected keyword argument 'scale_tips'")
         self.point = Vector(self.mobject.get_start())
         super().begin(scene)
 
     def _growth_start(self):
-        if not isinstance(self.original, Arrow):
-            return super()._growth_start()
         start = self.original.copy().scale(0, scale_tips=True, about_point=self.point)
         start.stroke_width = 0
         return start
@@ -21360,7 +21391,8 @@ class SVGMobject(VGroup):
         if not isinstance(file_name, str):
             raise ValueError('Must specify file for SVGMobject')
         if color is not None:
-            self.set_color(color)  # Community colors the still-empty group, not the parsed shapes.
+            # Community colors the still-empty group, not the parsed shapes, with one ManimColor.
+            self.set_color(ManimColor(color))
         markup = file_name.strip()
         if not markup.startswith('<'):
             markup = self._read_svg_file(file_name)

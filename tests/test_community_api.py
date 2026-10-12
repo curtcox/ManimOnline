@@ -452,6 +452,32 @@ class AnimationApiTests(unittest.TestCase):
             'result = [a.get_stroke_width(background=True),'
             ' [p.proportion_from_point(v) for v in p.get_vertices()]]\n'), [25.0, [0.0, 0.3333, 0.6667]])
 
+    def test_single_color_text_and_arrow_only_growth(self):
+        # Community-measured errors: text, TeX and SVG store one ManimColor; GrowArrow's
+        # starting copy calls scale(0, scale_tips=True), which only Arrow accepts.
+        self.assertEqual(scene_values(
+            'result = []\n'
+            'for build in (lambda: MathTex("x", color=[RED, BLUE, GREEN]), lambda: Text("x", color=[RED, BLUE]),\n'
+            '              lambda: Tex("x", color=["#FF0000", "#00FF00", "#0000FF"]),\n'
+            '              lambda: GrowArrow(Line()).begin(),\n'
+            '              lambda: GrowArrow(ImageMobject([[[0, 0, 0]]])).begin()):\n'
+            '    try:\n'
+            '        build()\n'
+            '        result.append("ok")\n'
+            '    except Exception as error:\n'
+            '        result.append(f"{type(error).__name__}: {error}")\n'
+            'result += [MathTex("x", color=(1, 0, 0)).color]\n'
+            '# A constructor color list paints VMobjects solid; stroke/fill lists and set_color are gradients.\n'
+            'result += [[m.color, m.get_stroke_color(), m.get_fill_color()] for m in (Square(color=[RED, BLUE]),\n'
+            '           VGroup(Dot(), color=[RED, BLUE]), Line(color=[GREEN, BLUE]))]\n'
+            'result += [Square(stroke_color=[RED, BLUE]).stroke_color, Square().set_color([RED, BLUE]).fill_color]\n'),
+            ['ValueError: setting an array element with a sequence.',
+             'ValueError: ManimColor only accepts lists/tuples/arrays of length 3 or 4, not 2',
+             "ValueError: could not convert string to float: '#FF0000'",
+             "TypeError: VMobject.scale() got an unexpected keyword argument 'scale_tips'",
+             "TypeError: Mobject.scale() got an unexpected keyword argument 'scale_tips'",
+             '#010000', ['#FC6255'] * 3, ['#FC6255'] * 3, ['#83C167'] * 3, '#FC6255', '#FC6255'])
+
     def test_color_values_operators_and_helpers(self):
         self.assertEqual(scene_values(
             'result = [repr(WHITE / 2), list(WHITE / 2), repr(~RED), int(RED), RED[0], repr(RED & BLUE),\n'

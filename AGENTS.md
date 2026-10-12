@@ -772,6 +772,11 @@ Group/VGroup/Mobject ignores shift (Community moves points; it has none).
 assignment calls set_color/set_fill/set_stroke; library code reads and writes the stored
 value. Scene reads of `color` use Community's get_color (stroke color when the fill is
 transparent). Library code that needs the configured color must read `self.color` (stored).
+A VMobject constructor `color=` list is solid in its first color (Community); fill_color/
+stroke_color lists and set_color keep gradients, but scene reads of color/fill_color/
+stroke_color and get_*_color report the first color (`_one_color`, `_scene_get_*`). Text,
+TeX and SVGMobject validate `ManimColor(color)` (lists raise Community's ValueError), and
+GrowArrow.begin raises Community's scale_tips TypeError for anything but an Arrow.
 
 VMobject.align_points is Community's per-subpath pairing (trailing null curves dropped,
 missing subpaths become null curves at the last point); morph snapshots still use

@@ -544,7 +544,7 @@ class Demo(Scene):
             for value,expected in zip(list(points[0][:2])+list(points[-1][:2]),first+last):
                 self.assertAlmostEqual(value,expected,places=3)
             self.assertAlmostEqual(lines[index].duration,3.05)
-        self.assertEqual(len(lines[0].stroke_color),8)
+        self.assertEqual(len(lines[0].__dict__['stroke_color']),8)
         self.assertEqual(len(lines[0].gradient_points),2)
         small=lite.StreamLines(func,x_range=[-2,2,1],y_range=[-1,1,1],virtual_time=1,color=lite.BLUE)
         self.assertEqual(small.stream_lines[0].stroke_color,lite.BLUE)
@@ -3812,7 +3812,8 @@ assert isinstance(t.get_value(), (int, float))""")
         default = axes.get_area(graph)
         self.assertPointAlmostEqual(default.vertices[0],axes.c2p(-2,0))
         self.assertPointAlmostEqual(default.vertices[-1],axes.c2p(2,0))
-        self.assertEqual(default.fill_color,[lite.BLUE,lite.GREEN])
+        self.assertEqual(default.__dict__['fill_color'],[lite.BLUE,lite.GREEN])
+        self.assertEqual(default.fill_color,lite.BLUE)  # Community reports a gradient's first color.
 
     def test_area_between_curves_clamps_range_and_reverses_boundary(self):
         axes = lite.Axes([-2,2],[-2,3],x_length=4,y_length=5)
