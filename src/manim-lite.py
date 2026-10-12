@@ -14934,6 +14934,54 @@ class DefaultSectionType:
     NORMAL = 'default.normal'
 
 
+def _expose_snapshot(saved, mobject, snapshot):
+    """Temporarily give a live mobject (and its members) a sampled snapshot's geometry."""
+    if mobject in saved or snapshot.get('_shared_copy'):
+        return
+    saved[mobject] = mobject.__dict__
+    mobject.__dict__ = dict(mobject.__dict__)
+    for key, value in snapshot.items():
+        if key not in ('type', 'children', 'geometry_center'):
+            mobject.__dict__[key] = copy.deepcopy(value)
+    mobject._type = snapshot['type']
+    mobject._sampled_geometry_center = snapshot['geometry_center']
+    if '_curved_tip_path' not in snapshot:
+        mobject.__dict__.pop('_curved_tip_path', None)  # e.g. a curved arrow mid-morph
+    progress = snapshot.get('draw_progress')
+    shaft = None
+    sampled_children = snapshot.get('children', [])
+    if (mobject.__dict__.get('_curved_tip_path') or snapshot['type'] == 'arrow' and sampled_children) and any(
+            (state.get('draw_progress') is not None and state['draw_progress'] < 1)
+            for state in [snapshot] + list(sampled_children)):
+        # A curved arrow's shaft is trimmed by its whole tips (Community fixes its
+        # points), even while the tips themselves are exposed partially drawn.
+        try:
+            shaft = _sampled_copy(mobject, [snapshot]).get_points()
+        except (TypeError, ValueError):
+            shaft = None
+    children = []
+    for index, child in enumerate(sampled_children):
+        member = mobject.children[index] if index < len(mobject.children) else Mobject()
+        _expose_snapshot(saved, member, child)
+        children.append(member)
+    mobject.children = children
+    if shaft is not None and not (progress is not None and progress < 1):
+        VMobject.set_points(mobject, shaft)
+    if progress is not None and progress < 1 and snapshot['type'] in _PATH_TYPES and \
+            _is_a(mobject, VMobject):
+        # Community traces outlines by pointwise_become_partial: queries such as
+        # get_end() follow the drawn part.
+        try:
+            if shaft is not None:
+                source = VMobject().set_points(shaft)
+            else:
+                source = copy.copy(mobject)
+                source.__dict__ = dict(mobject.__dict__, children=[])
+            mobject.pointwise_become_partial(source, 0, max(0.0, progress))
+        except (TypeError, ValueError, NotImplementedError):
+            pass
+
+
 class Scene:
     camera_class = PreviewConfig
 
@@ -15152,67 +15200,31 @@ class Scene:
         self.foreground_mobjects = []
         return self
 
-    def _update_mobjects(self, dt, overrides=None, scene_updaters=True):
-        """Expose sampled geometry to dependent callbacks without committing animations."""
-        roots = list(self.mobjects)
-        scene_updaters = list(getattr(self, 'updaters', [])) if scene_updaters else []
-        if not scene_updaters and not any(m.get_family_updaters() for m in roots):
-            return
+    @contextlib.contextmanager
+    def _exposing(self, overrides):
+        """Expose sampled animation states on the live mobjects; yields the animated families."""
         saved, blocked = {}, set()
-        def expose(mobject, snapshot):
-            if mobject in saved or snapshot.get('_shared_copy'):
-                return
-            saved[mobject] = mobject.__dict__
-            mobject.__dict__ = dict(mobject.__dict__)
-            for key, value in snapshot.items():
-                if key not in ('type', 'children', 'geometry_center'):
-                    mobject.__dict__[key] = copy.deepcopy(value)
-            mobject._type = snapshot['type']
-            mobject._sampled_geometry_center = snapshot['geometry_center']
-            if '_curved_tip_path' not in snapshot:
-                mobject.__dict__.pop('_curved_tip_path', None)  # e.g. a curved arrow mid-morph
-            progress = snapshot.get('draw_progress')
-            shaft = None
-            sampled_children = snapshot.get('children', [])
-            if (mobject.__dict__.get('_curved_tip_path') or snapshot['type'] == 'arrow' and sampled_children) and any(
-                    (state.get('draw_progress') is not None and state['draw_progress'] < 1)
-                    for state in [snapshot] + list(sampled_children)):
-                # A curved arrow's shaft is trimmed by its whole tips (Community fixes its
-                # points), even while the tips themselves are exposed partially drawn.
-                try:
-                    shaft = _sampled_copy(mobject, [snapshot]).get_points()
-                except (TypeError, ValueError):
-                    shaft = None
-            children = []
-            for index, child in enumerate(sampled_children):
-                member = mobject.children[index] if index < len(mobject.children) else Mobject()
-                expose(member, child)
-                children.append(member)
-            mobject.children = children
-            if shaft is not None and not (progress is not None and progress < 1):
-                VMobject.set_points(mobject, shaft)
-            if progress is not None and progress < 1 and snapshot['type'] in _PATH_TYPES and \
-                    _is_a(mobject, VMobject):
-                # Community traces outlines by pointwise_become_partial: queries such as
-                # get_end() follow the drawn part.
-                try:
-                    if shaft is not None:
-                        source = VMobject().set_points(shaft)
-                    else:
-                        source = copy.copy(mobject)
-                        source.__dict__ = dict(mobject.__dict__, children=[])
-                    mobject.pointwise_become_partial(source, 0, max(0.0, progress))
-                except (TypeError, ValueError, NotImplementedError):
-                    pass
         try:
             for mobject, states in (overrides or {}).items():
                 blocked.update(mobject.get_family())
                 if states:
                     # Crossfades have two visual objects; geometry queries use the
                     # more visible one. Continuous morphs have a single snapshot.
-                    expose(mobject, states[0] if isinstance(states, _SourceStates)
-                           else max(states, key=lambda state:state['opacity']))
+                    _expose_snapshot(saved, mobject, states[0] if isinstance(states, _SourceStates)
+                                     else max(states, key=lambda state:state['opacity']))
                     blocked.update(mobject.get_family())
+            yield blocked
+        finally:
+            for mobject, state in saved.items():
+                mobject.__dict__ = state
+
+    def _update_mobjects(self, dt, overrides=None, scene_updaters=True):
+        """Expose sampled geometry to dependent callbacks without committing animations."""
+        roots = list(self.mobjects)
+        scene_updaters = list(getattr(self, 'updaters', [])) if scene_updaters else []
+        if not scene_updaters and not any(m.get_family_updaters() for m in roots):
+            return
+        with self._exposing(overrides) as blocked:
             seen = set()
             def visit(mobject):
                 if mobject in seen or mobject in blocked or mobject.updating_suspended:
@@ -15227,9 +15239,6 @@ class Scene:
             # the interpolated mobjects.
             for func in scene_updaters:
                 func(dt)
-        finally:
-            for mobject, state in saved.items():
-                mobject.__dict__ = state
 
     def capture(self, overrides=None, *, advance_time=True):
         if self._skipping and advance_time:
@@ -15419,12 +15428,20 @@ class Scene:
                     overrides.update(animation.states(1))
                 self._update_mobjects(total, overrides)
                 self._elapsed_frames += count
+            follows = [any(m.updaters for obj in animation.objects() for m in obj.get_family())
+                       for animation in animations]
             for frame in range(0 if self._skipping else count):
                 time = frame / FPS
                 overrides = {}
-                for animation in animations:
-                    animation._advance_copies(0 if frame == 0 else 1 / FPS)
-                for animation, duration in zip(animations, durations):
+                for animation, duration, follow in zip(animations, durations, follows):
+                    dt = 0 if frame == 0 else 1 / FPS
+                    if follow and overrides:
+                        # Community updates each animation's copies after the earlier
+                        # animations of the play have been interpolated for this frame.
+                        with self._exposing(overrides):
+                            animation._advance_copies(dt)
+                    else:
+                        animation._advance_copies(dt)
                     overrides.update(animation.states(time / duration if duration else 1))
                 self._update_mobjects(0 if frame == 0 else 1 / FPS, overrides)
                 self.capture(overrides)

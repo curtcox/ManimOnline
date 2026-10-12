@@ -968,3 +968,8 @@ finish resumes its mobject (update(0)) before the scene's update_mobjects(0); no
 after construct returns.
 NumberLine get_start/get_end ask an attached tip's point first (also while partially drawn),
 so c2p stays fixed during Create(axes), as in Community.
+Within one play(), each animation's copies (Community's starting/target copies with
+updaters) advance after the earlier animations of that play were sampled for the frame
+(`Scene._exposing` + `_expose_snapshot`), as Community's update_to_time interleaves
+update_mobjects and interpolate. Skipped sections jump each play/wait to its end in one
+update (Community's time progression is [run_time]).
