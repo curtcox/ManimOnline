@@ -960,3 +960,7 @@ re-add adds an extra factor when a start tip is added beside an end tip), and Ar
 Community's literal pop, scale, re-add. `Arc.get_arc_center` is Community's normal-intersection
 estimate on the first curve (not the analytic center). Scene-code `.animate` calls run as scene
 code (`_call_as_scene`). Fuzzers: ~/tmp/chainfuzz (method chains) and ~/tmp/animchain (scenes).
+SurroundingRectangle/BackgroundRectangle measure like Community's Group(*mobjects): all
+points, handles included (`_union_bounds(handles=True)`). Updater timing: an animation's
+finish resumes its mobject (update(0)) before the scene's update_mobjects(0); nothing runs
+after construct returns.

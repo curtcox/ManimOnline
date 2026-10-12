@@ -1715,6 +1715,13 @@ class AnimationApiTests(unittest.TestCase):
         self.assertEqual(values, [[0.8274, -0.548, 0.0], [0.0, 2.6135, 0.0], [0.0, 0.1636, 0.0], 1.6816,
                                   [0.5, 0.329, 0.0], 3.0])
 
+    def test_surrounding_rectangle_measures_like_a_group(self):
+        values = scene_values(
+            'r = SurroundingRectangle(CubicBezier(LEFT, UP, UR, RIGHT))\n'
+            'e = SurroundingRectangle(Ellipse(width=2, height=1).rotate(0.5))\n'
+            'result = [r.get_center(), r.width, r.height, e.width, e.height]\n')
+        self.assertEqual(values, [[0.0, 0.5, 0.0], 2.2, 1.2, 2.0823, 1.5138])
+
 
 if __name__ == '__main__':
     unittest.main()

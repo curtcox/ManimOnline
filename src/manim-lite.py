@@ -8368,11 +8368,15 @@ class VGroup(Group):
         self.submobjects = children
 
 
-def _union_bounds(mobjects):
+def _union_bounds(mobjects, handles=False):
+    """Union of XY bounds; handles=True measures like Community's Group (all points)."""
     if not all(isinstance(m, Mobject) for m in mobjects):
         raise TypeError('Expected all inputs for parameter mobjects to be Mobjects')
     if not mobjects:
         return 0, 0, 0, 0
+    if handles:
+        boxes = [m._handle_bounds() for m in mobjects]
+        return (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
     corners = [(m.get_critical_point(DL), m.get_critical_point(UR)) for m in mobjects]
     return (min(a[0] for a, _ in corners), min(a[1] for a, _ in corners),
             max(b[0] for _, b in corners), max(b[1] for _, b in corners))
@@ -8381,7 +8385,8 @@ def _union_bounds(mobjects):
 class SurroundingRectangle(RoundedRectangle):
     """An axis-aligned rectangle around the current bounds of one or more mobjects."""
     def __init__(self, *mobjects, color=PURE_YELLOW, buff=SMALL_BUFF, corner_radius=0.0, **kwargs):
-        left, bottom, right, top = _union_bounds(mobjects)
+        # Community measures a Group of the mobjects: all points, handles included.
+        left, bottom, right, top = _union_bounds(mobjects, handles=True)
         buffs = tuple(buff) if isinstance(buff, (tuple, list)) else (buff, buff)
         if len(buffs) != 2:
             raise ValueError('buff must be a number or an (x, y) pair')
