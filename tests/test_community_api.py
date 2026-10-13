@@ -470,13 +470,14 @@ class AnimationApiTests(unittest.TestCase):
             '# A constructor color list paints VMobjects solid; stroke/fill lists and set_color are gradients.\n'
             'result += [[m.color, m.get_stroke_color(), m.get_fill_color()] for m in (Square(color=[RED, BLUE]),\n'
             '           VGroup(Dot(), color=[RED, BLUE]), Line(color=[GREEN, BLUE]))]\n'
-            'result += [Square(stroke_color=[RED, BLUE]).stroke_color, Square().set_color([RED, BLUE]).fill_color]\n'),
+            'result += [Square(stroke_color=[RED, BLUE]).stroke_color, Square().set_color([RED, BLUE]).fill_color]\n'
+            'result += [Square().set_sheen_direction(None).get_sheen_direction()]\n'),
             ['ValueError: setting an array element with a sequence.',
              'ValueError: ManimColor only accepts lists/tuples/arrays of length 3 or 4, not 2',
              "ValueError: could not convert string to float: '#FF0000'",
              "TypeError: VMobject.scale() got an unexpected keyword argument 'scale_tips'",
              "TypeError: Mobject.scale() got an unexpected keyword argument 'scale_tips'",
-             '#010000', ['#FC6255'] * 3, ['#FC6255'] * 3, ['#83C167'] * 3, '#FC6255', '#FC6255'])
+             '#010000', ['#FC6255'] * 3, ['#FC6255'] * 3, ['#83C167'] * 3, '#FC6255', '#FC6255', None])
 
     def test_color_values_operators_and_helpers(self):
         self.assertEqual(scene_values(

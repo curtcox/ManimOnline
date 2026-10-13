@@ -3291,10 +3291,11 @@ class Mobject:
         return self.sheen_factor
 
     def get_sheen_direction(self):
-        return Vector(self.sheen_direction)
+        return None if self.sheen_direction is None else Vector(self.sheen_direction)
 
     def set_sheen_direction(self, direction, family=True):
-        direction = self._xy_vector(direction, 'Sheen direction')
+        # Community stores None too; such a gradient then has no direction to run along.
+        direction = None if direction is None else self._xy_vector(direction, 'Sheen direction')
         for member in (self.get_family() if family else [self]):
             member.sheen_direction = direction
         return self
@@ -4403,7 +4404,7 @@ class Mobject:
                 lit = [_rgb_color([min(1, max(0, v + self.sheen_factor)) for v in _color_rgb(c)]) for c in colors]
                 return list(colors) + lit
             result['fill_color'], result['stroke_color'] = sheen(self.fill_color), sheen(self.stroke_color)
-        if 'gradient_points' in result:
+        if 'gradient_points' in result or self.sheen_direction is None:
             return
         left, bottom, right, top = self._own_local_bounds()
         dx, dy = self.sheen_direction[0], self.sheen_direction[1]
