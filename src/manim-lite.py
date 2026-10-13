@@ -2529,7 +2529,7 @@ class Mobject:
             return (min(p[0] for p in points), min(p[1] for p in points),
                     max(p[0] for p in points), max(p[1] for p in points))
         if self._type == 'square':
-            half = self.side_length / 2
+            half = self.__dict__['side_length'] / 2
             return (-half, -half, half, half)
         if self._type in ('rectangle', 'ellipse', 'image'):
             return (-self.width / 2, -self.height / 2, self.width / 2, self.height / 2)
@@ -2932,8 +2932,8 @@ class Mobject:
                 vertices = self.vertices
                 closed = self._type == 'polygon'
             elif self._type in ('square', 'rectangle'):
-                width = self.side_length if self._type == 'square' else self.width
-                height = self.side_length if self._type == 'square' else self.height
+                width = self.__dict__['side_length'] if self._type == 'square' else self.width
+                height = self.__dict__['side_length'] if self._type == 'square' else self.height
                 vertices = [(width / 2, height / 2), (-width / 2, height / 2),
                             (-width / 2, -height / 2), (width / 2, -height / 2)]
             elif self._type == 'triangle':
@@ -3014,7 +3014,7 @@ class Mobject:
             return [_cloud_xyz(p) for p in self.cloud] or None
         if self._type in ('square', 'rectangle', 'triangle'):
             return [curve[0] for curve in _path_curves(self.to_dict() if self._type == 'triangle' else
-                    {'type': self._type, 'side_length': getattr(self, 'side_length', 0),
+                    {'type': self._type, 'side_length': self.__dict__.get('side_length', 0),
                      'width': self.__dict__.get('width', 0), 'height': self.__dict__.get('height', 0)})]
         return None
 

@@ -970,6 +970,18 @@ class AnimationApiTests(unittest.TestCase):
             'S().render()\n'),
             [[1.5, 0.0], [0.0, 0.0]])
 
+    def test_square_tips_morphed_into_squares_keep_their_side(self):
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        global result\n'
+            '        o = Arrow(LEFT, RIGHT, tip_shape=ArrowSquareTip)\n'
+            '        self.play(Transform(o, VGroup(Square(0.5), Circle(0.3)).arrange(DOWN)), run_time=0.2)\n'
+            '        self.play(o.animate.stretch(2, 0), run_time=0.2)\n'
+            '        result = [o.width, o.height]\n'
+            'S().render()\n'),
+            [1.2, 1.35])
+
     def test_ticks_become_copies_of_a_posed_arrow_tip(self):
         # Community 0.22's null_point_align pushes the tip into a submobject; every tick becomes a tip.
         self.assertEqual(scene_values(
