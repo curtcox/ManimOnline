@@ -12856,6 +12856,49 @@ def _fade_snapshot(node):
     return node
 
 
+_OPACITY_FADED = frozenset(('text', 'mathtex', 'image', 'pointcloud'))
+
+
+def _fade_node(node, factor):
+    """Scale a snapshot family's opacities by factor, as Community's fades interpolate each
+    member's fill and stroke opacity (a separately faded stroke over its fill). Text, images
+    and point clouds keep the whole-node opacity channel. Node dicts are edited in place."""
+    if factor == 1:
+        return node
+    if node['type'] in _OPACITY_FADED:
+        node['opacity'] = node.get('opacity', 1) * factor
+        return node
+    for key in ('fill_opacity', 'stroke_opacity', 'background_stroke_opacity'):
+        value = node.get(key)
+        if isinstance(value, _REAL) and not isinstance(value, bool):
+            node[key] = value * factor
+    for key in ('fill_opacities', 'stroke_opacities'):
+        if isinstance(node.get(key), list):
+            node[key] = [value * factor for value in node[key]]
+    for child in node.get('children') or ():
+        _fade_node(child, factor)
+    return node
+
+
+def _state_weight(state):
+    """How visible a sampled state is (the most visible state of a crossfade stands for the
+    mobject): its strongest member opacity, including fades applied by _fade_node."""
+    best, stack, seen = 0, [(state, 1)], 0
+    while stack and seen < 256:
+        node, inherited = stack.pop()
+        seen += 1
+        factor = inherited * node.get('opacity', 1)
+        if node['type'] in _OPACITY_FADED:
+            best = max(best, factor)
+        else:
+            for key in ('fill_opacity', 'stroke_opacity'):
+                value = node.get(key)
+                if isinstance(value, _REAL) and not isinstance(value, bool):
+                    best = max(best, factor * value)
+        stack.extend((child, factor) for child in node.get('children') or ())
+    return best
+
+
 def _match_snapshot_style(node, source):
     """get_point_mobject's match_style: a padding point takes its owner's style."""
     if 'fill_opacity' not in source and 'stroke_opacity' not in source:
@@ -13210,10 +13253,7 @@ def _sample_transform(plan, alpha, path_arc=0, member_alpha=None, frames=None):
         last['opacity'] = target['opacity'] * alpha
         return [first, last]
     if kind == 'fade':
-        first, last = _snapshot_copy(start), _snapshot_copy(target)
-        first['opacity'] *= 1 - alpha
-        last['opacity'] *= alpha
-        return [first, last]
+        return [_fade_node(_snapshot_copy(start), 1 - alpha), _fade_node(_snapshot_copy(target), alpha)]
     result = interpolate(start, target, alpha)
     if _pose_turns(start, target) and 'position' in result:
         _lerp_pose(result, start, target, alpha)
@@ -13950,21 +13990,26 @@ class FadeIn(_PathOptions, Animation):
             away.update(dt)
         self._pair(away.to_dict() if away is not None else self.start)
 
-    def _visibility(self, opacity, alpha):
-        return opacity * (alpha if self._fading_in else 1 - alpha)
+    def _visibility(self, alpha):
+        return alpha if self._fading_in else 1 - alpha
 
     def sample(self, alpha):
-        result = self._lerp(alpha) if self.moved else _snapshot_copy(self.start)
-        result['opacity'] = self._visibility(self.start['opacity'], alpha)
-        return [result]
+        result = _node_copy(self._lerp(alpha)) if self.moved else _snapshot_copy(self.start)
+        result['opacity'] = self.start['opacity']
+        return [_fade_node(result, self._visibility(alpha))]
 
     def sample_members(self, alpha, rate_func):
         def member(node, a, path):
             start, end = _lookup(self.first, path), _lookup(self.last, path)
             node.update(interpolate(_strip_children(start), _strip_children(end), a))
-            node['opacity'] = self._visibility(_lookup(self.start, path)['opacity'], a)
+            source = _lookup(self.start, path)
+            node['opacity'] = source['opacity']
+            for key in ('fill_opacity', 'stroke_opacity', 'background_stroke_opacity', 'fill_opacities', 'stroke_opacities'):
+                if key in source:
+                    node[key] = source[key]
+            _fade_node(node, self._visibility(a))
         result = _snapshot_copy(self.start)
-        # Whole drawable subtrees fade together so nested opacity never compounds.
+        # Whole drawable subtrees fade together (each member once).
         return [self._member_states(result, alpha, rate_func, member, nested=False)]
 
 
@@ -14171,7 +14216,7 @@ class Create(Animation):
             node['opacity'] *= progress
         elif node.get('_fill_partial'):
             node['fill_opacity'] = node['original_fill_opacity'] * progress
-        else:
+        elif not _partial_node(node, progress):
             node['draw_progress'] = progress
             node['fill_opacity'] *= progress
 
@@ -14179,7 +14224,7 @@ class Create(Animation):
         return self.sample_members(alpha, linear)
 
     def sample_members(self, alpha, rate_func):
-        return [self._member_states(_node_copy(self.start), alpha, rate_func,
+        return [self._member_states(_freeze_node_shafts(_node_copy(self.start)), alpha, rate_func,
                                     lambda node, a, path: self._reveal(node, a))]
 
     def finish(self, scene=None):
@@ -14264,6 +14309,52 @@ class Uncreate(Create):
 
 
 
+def _partial_node(node, progress):
+    """Draw Community's pointwise_become_partial(0, progress) of a frame node's own outline:
+    curves allocated by cubic index (not length), with the fill kept and closed implicitly.
+    Returns False for nodes without a cubic outline of their own."""
+    if node['type'] not in _PATH_TYPES or progress >= 1:
+        return node['type'] in _PATH_TYPES
+    try:
+        subpaths = _path_subpaths(node, include_pending=False)
+    except (KeyError, TypeError, ValueError):
+        return False
+    points = [point for path in subpaths for curve in path for point in curve]
+    if not points:
+        return True
+    curves, first, last = _partial_cubics(points, 0, max(0.0, progress))
+    lengths, offset = [], 0
+    for path in subpaths:
+        overlap = min(offset + len(path) - 1, last) - max(offset, first) + 1
+        if overlap > 0:
+            lengths.append(overlap)
+        offset += len(path)
+    for key in ('shaft_curves', 'shaft_start', 'shaft_end', '_curved_tip_path'):
+        node.pop(key, None)
+    # Exposure to scene code keeps live keys a snapshot lacks, so clear these explicitly.
+    node['type'], node['curves'], node['vertices'] = 'bezierpath', curves, []
+    node['subpath_lengths'] = lengths if len(lengths) > 1 else None
+    return True
+
+
+def _freeze_node_shafts(node):
+    """Cut tipped shafts at their whole tips before the tips are drawn partially, as
+    Community's own points are the shaft cut once (a partial tip must not refit it)."""
+    _refresh_tip_shafts(node)
+    def walk(item):
+        for child in item.get('children', ()):
+            walk(child)
+        if item['type'] in ('line', 'arrow') and ('shaft_start' in item or 'shaft_end' in item):
+            item['start'] = item.pop('shaft_start', item['start'])
+            item['end'] = item.pop('shaft_end', item['end'])
+            item['_shaft_fixed'] = True
+        elif item['type'] == 'bezierpath' and item.get('_curved_tip_path') and 'shaft_curves' in item:
+            item['curves'] = item.pop('shaft_curves')
+            item['_shaft_fixed'] = True
+    walk(node)
+    return node
+
+
 def _partial_drawable(animation, mobject):
     """Community's ShowPartial check: only VMobjects and point clouds draw partially."""
     if not isinstance(mobject, (VMobject, PMobject)):
@@ -14343,7 +14434,7 @@ class DrawBorderThenFill(Animation):
             node['stroke_color'] = color
             if glyph:
                 node['opacity'] *= sub
-            elif not node.get('_fill_partial'):
+            elif not node.get('_fill_partial') and not _partial_node(node, sub):
                 node['draw_progress'] = sub
         else:
             node['fill_opacity'] = fill * sub
@@ -14354,7 +14445,7 @@ class DrawBorderThenFill(Animation):
         return self.sample_members(alpha, linear)
 
     def sample_members(self, alpha, rate_func):
-        return [self._member_states(_snapshot_copy(self.start), alpha, rate_func, self._member)]
+        return [self._member_states(_freeze_node_shafts(_snapshot_copy(self.start)), alpha, rate_func, self._member)]
 
     def finish(self, scene=None):
         if scene is None or not self.reverse_rate_function:
@@ -14974,12 +15065,12 @@ class _TransformMatching(Animation):
             if arc and 0 < alpha < 1:
                 _arc_geometry(leaving, source, source_end, alpha, arc)
                 _arc_geometry(arriving, target_start, target, alpha, arc)
-            leaving['opacity'] = source['opacity'] * (1 - alpha)
-            arriving['opacity'] = target['opacity'] * alpha
-            states += [leaving, arriving]
+            leaving['opacity'], arriving['opacity'] = source['opacity'], target['opacity']
+            states += [_fade_node(_node_copy(leaving), 1 - alpha), _fade_node(_node_copy(arriving), alpha)]
         for start, end in self.leaving:
             state = interpolate(start, end, alpha)
-            state['opacity'] = start['opacity'] * (1 - alpha)
+            state['opacity'] = start['opacity']
+            state = _fade_node(_node_copy(state), 1 - alpha)
             states.append(state)
             pieces.append([state])
         paths = self.__dict__.get('_piece_paths')
@@ -15020,14 +15111,10 @@ class _TransformMatching(Animation):
         arrivals = self.__dict__.get('_arrivals')
         if arrivals is not None:
             # One group snapshot, so updaters see every arriving part.
-            state = arrivals.to_dict()
-            state['opacity'] *= alpha
-            self._arrival_states = [state]
+            self._arrival_states = [_fade_node(arrivals.to_dict(), alpha)]
             return states
         for start in self.arriving:
-            state = copy.deepcopy(start)
-            state['opacity'] *= alpha
-            states.append(state)
+            states.append(_fade_node(copy.deepcopy(start), alpha))
         return states
 
     def finish(self, scene):
@@ -15186,13 +15273,15 @@ class FadeTransform(Transform):
     def sample(self, alpha):
         source = _sample_transform(self._fade_plans[0], alpha)
         target = _sample_transform(self._fade_plans[1], alpha)
+        if self.__dict__.get('_ghost') is not None:
+            # Separate roots: each member's fill and stroke fade, as in Community.
+            source = [_fade_node(_node_copy(state), 1 - alpha) for state in source]
+            self._ghost_states = [_fade_node(_node_copy(state), alpha) for state in target]
+            return _SourceStates(source)  # The target is drawn (and exposed) as the ghost root.
         for state in source:
             state['opacity'] *= 1 - alpha
         for state in target:
             state['opacity'] *= alpha
-        if self.__dict__.get('_ghost') is not None:
-            self._ghost_states = target  # Drawn (and exposed) as the target copy's root.
-            return _SourceStates(source)
         return _SourceStates(source + target)
 
     def states(self, alpha, rate_func=None):
@@ -16563,7 +16652,7 @@ class Scene:
             target.children = target.children[:len(children)]
             for child, state in zip(target.children, children):
                 apply(child, state)
-        apply(clone, max(states, key=lambda state: state['opacity']))
+        apply(clone, max(states, key=_state_weight))
         return clone
 
     def _camera_view_data(self, overrides, camera):
@@ -16712,7 +16801,7 @@ class Scene:
                     # Overrides follow animation order: a later animation of a family or
                     # of one of its members re-exposes what an earlier one exposed.
                     _expose_snapshot(saved, mobject, states[0] if isinstance(states, _SourceStates)
-                                     else max(states, key=lambda state:state['opacity']), again=True)
+                                     else max(states, key=_state_weight), again=True)
                     if _WORLD_TOKENS:
                         # Members animated in world coordinates stay there while exposed.
                         for member in mobject.get_family()[1:]:
@@ -25575,7 +25664,7 @@ def _sampled_copy(starting, states, partial=False):
     """A copy of starting showing sampled snapshots (the most opaque one when split).
     With partial, a partly drawn outline becomes Community's pointwise_become_partial
     geometry instead of carrying the preview's draw_progress."""
-    snapshot = max(states, key=lambda state: state['opacity'])
+    snapshot = max(states, key=_state_weight)
     result = starting.copy()
     def apply(target, node, inherited=1):
         # Sampled fades use a group opacity; live mobjects carry it in their own
@@ -25752,7 +25841,7 @@ class TransformAnimations(Animation):
     @staticmethod
     def _shown(anim, alpha):
         states = anim.states(alpha)[anim.mobject]
-        return max(states, key=lambda state: state['opacity'])
+        return max(states, key=_state_weight)
 
     def states(self, alpha, rate_func=None):
         alpha = max(0, min(1, alpha))

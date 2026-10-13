@@ -30,6 +30,32 @@ def point_list(mobject):
     return points.tolist() if hasattr(points, 'tolist') else points
 
 
+def shown(node):
+    """A sampled node's fade factor: fades scale each member's stroke (and fill) opacity as in
+    Community; text keeps the node opacity channel."""
+    return node.get('opacity', 1) * node.get('stroke_opacity', 1)
+
+
+def drawn_points(node):
+    """The local points of a frame node's own (possibly partially drawn) outline."""
+    return [tuple(point) for curve in lite._path_curves(node) for point in curve]
+
+
+def drawn_length(node):
+    """The summed anchor chords of a frame node's own drawn outline."""
+    return sum(math.dist(curve[0], curve[-1]) for curve in lite._path_curves(node))
+
+
+def assert_drawn(test, node, end, count=None):
+    """Assert a partially drawn outline ends at end (local coordinates), optionally with
+    count curves (Community's partial keeps a degenerate curve at an exact boundary)."""
+    points = drawn_points(node)
+    for a, b in zip(points[-1], end):
+        test.assertAlmostEqual(a, b)
+    if count is not None:
+        test.assertEqual(len(points) // 4, count)
+
+
 def restore_state(mobject):
     """The library's restore, which Restore animations use; scene-code restore() on a plain
     Group raises Community's NotImplementedError."""
@@ -755,8 +781,8 @@ self.play(d[2].animate.shift(UP*2))""")
         start=[line['position'][i]+line['start'][i] for i in range(2)]
         self.assertAlmostEqual(start[0],world(dot,None)[0],places=6)
         self.assertAlmostEqual(start[1],world(dot,None)[1],places=6)
-        self.assertEqual([m['type'] for m in frames[20]['mobjects']],['vgroup','circle'])
-        self.assertEqual(''.join(c['type'][0] for c in frames[40]['mobjects'][0]['children']),'cccllcll')
+        self.assertEqual([m['type'] for m in frames[20]['mobjects']],['vgroup','bezierpath'])  # partly created
+        self.assertEqual(''.join(c['type'][0] for c in frames[40]['mobjects'][0]['children']),'cccllcbb')  # new edges partly created
         self.assertEqual(''.join(c['type'][0] for c in frames[-1]['mobjects'][0]['children']),'cccll')
         self.assertEqual(''.join(c['type'][0] for c in frames[-1]['mobjects'][1]['children']),'ccl')
         graph=lite.Graph([1,2],[(1,2)],layout='circular')
@@ -1509,7 +1535,7 @@ assert isinstance(t.get_value(), (int, float))""")
         result=render('d = Dot()\nself.play(FadeIn(d, shift=UP), rate_func=linear)\nself.play(FadeOut(d, shift=RIGHT*2, scale=.5), rate_func=linear)')
         middle=result['frames'][7]['mobjects'][0]
         self.assertAlmostEqual(middle['position'][1],-1+7/15)
-        self.assertAlmostEqual(middle['opacity'],7/15)
+        self.assertAlmostEqual(shown(middle),7/15)
         out=result['frames'][22]['mobjects'][0]
         self.assertAlmostEqual(out['position'][0],2*7/15)
         self.assertAlmostEqual(out['geometry_scale'],1-.5*7/15)
@@ -1518,7 +1544,7 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertAlmostEqual(start['position'][0],-3)
         lagged=render('g = VGroup(Dot(LEFT), Dot(), Dot(RIGHT))\nself.play(FadeIn(g, lag_ratio=.5), rate_func=linear, run_time=2)')
         children=lagged['frames'][15]['mobjects'][0]['children']
-        self.assertEqual([c['opacity'] for c in children],[1,.5,0])
+        self.assertEqual([shown(c) for c in children],[1,.5,0])
         both=render('a, b = Dot(LEFT), Dot(RIGHT)\nself.play(FadeIn(a, b))')
         self.assertEqual(len(both['frames'][-1]['mobjects']),1)
         self.assertEqual(len(both['frames'][-1]['mobjects'][0]['children']),2)
@@ -1528,7 +1554,7 @@ assert isinstance(t.get_value(), (int, float))""")
     def test_write_draw_border_and_unwrite_follow_community_phases(self):
         result=render('s = Square(fill_opacity=.8, color=RED)\nself.play(DrawBorderThenFill(s, rate_func=linear), run_time=2)')
         first,second=[result['frames'][i]['mobjects'][0] for i in (7,22)]
-        self.assertAlmostEqual(first['draw_progress'],14/30)
+        self.assertAlmostEqual(drawn_length(first),8*14/30)  # Community's partial by curve index
         self.assertEqual((first['fill_opacity'],first['stroke_width']),(0,2))
         self.assertNotIn('draw_progress',second)
         self.assertAlmostEqual(second['fill_opacity'],.8*(2*22/30-1))
@@ -1542,7 +1568,7 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertEqual(gone['frames'][0]['mobjects'][0]['fill_opacity'],1)
         self.assertEqual(gone['frames'][-1]['mobjects'],[])
         uncreate=render('c = Circle()\nself.add(c)\nself.play(Uncreate(c), rate_func=linear, run_time=2)')
-        self.assertEqual(uncreate['frames'][15]['mobjects'][0]['draw_progress'],.5)
+        assert_drawn(self, uncreate['frames'][15]['mobjects'][0], (-1, 0, 0))
 
     def test_targets_methods_arcs_swaps_and_fade_transform(self):
         square=lite.Square()
@@ -1570,8 +1596,8 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertPointAlmostEqual(arc['frames'][15]['mobjects'][0]['position'],(0,-2,0))
         fade=render('a = Square()\nb = Circle(radius=2).shift(RIGHT)\nself.add(a)\nself.play(FadeTransform(a, b), rate_func=linear, run_time=2)\nassert self.mobjects == [b]')
         source,target=fade['frames'][15]['mobjects']
-        self.assertAlmostEqual(source['opacity'],.5)
-        self.assertAlmostEqual(target['opacity'],.5)
+        self.assertAlmostEqual(shown(source),.5)
+        self.assertAlmostEqual(shown(target),.5)
         self.assertEqual(fade['frames'][-1]['mobjects'][0]['type'],'circle')
         render('t = Text("A")\nself.add(t)\nself.play(FadeTransform(t, MathTex("x")))')
 
@@ -3251,9 +3277,12 @@ assert isinstance(t.get_value(), (int, float))""")
     def test_arc_polygon_creation_and_morph_include_own_path_and_children(self):
         result = render("p = ArcPolygon((-1,0),(1,0),(0,2),angle=PI/3,fill_opacity=.5)\nself.play(Create(p,lag_ratio=0),run_time=1)\nself.play(Transform(p,ArcPolygon((-1,0),(1,0),(0,2),angle=0,fill_opacity=.8)),run_time=2)")
         created = result['frames'][7]['mobjects'][0]
-        self.assertGreater(created['draw_progress'],0)
-        self.assertLess(created['fill_opacity'],.5)
-        self.assertTrue(all(arc['draw_progress']==created['draw_progress'] for arc in created['children']))
+        full = result['frames'][14]['mobjects'][0]
+        # The own outline and every arc draw partially at once, keeping their fill.
+        self.assertEqual(created['fill_opacity'],.5)
+        for node, whole in [(created, full)] + list(zip(created['children'], full['children'])):
+            self.assertEqual(node['type'],'bezierpath')
+            self.assertTrue(0 < drawn_length(node) < drawn_length(whole))
         middle = result['frames'][30]['mobjects'][0]
         self.assertEqual(middle['type'],'bezierpath')
         self.assertEqual(len(middle['children']),3)
@@ -4520,6 +4549,8 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertEqual(len(curves),3)
         self.assertEqual(len(next(m for m in curves if m['stroke_color'].upper() == lite.BLUE)['curves']),40)
         loop = next(m for m in curves if m['stroke_color'].upper() == lite.RED)
+        self.assertEqual(len(loop['curves']),17)  # Half created: 16 of 32 curves and a collapsed one.
+        loop = next(m for m in result['frames'][135]['mobjects'] if m['type'] == 'bezierpath' and m['stroke_color'].upper() == lite.RED)
         self.assertEqual(len(loop['curves']),32)
         self.assertEqual(loop['curves'][0][0],loop['curves'][-1][-1])
         final = result['frames'][-1]['mobjects']
@@ -6178,7 +6209,7 @@ self.wait(1)""")
         result = render('p = VMobject().set_points_as_corners([ORIGIN])\nq = VMobject().set_points_as_corners([ORIGIN, RIGHT*2])\nself.play(Transform(p,q), run_time=2, rate_func=linear)')
         self.assertEqual(result['frames'][15]['mobjects'][0]['curves'][0][-1], [1,0,0])
         result = render('p = VMobject()\nq = CubicBezier(ORIGIN,RIGHT,UP,UR)\nself.play(Transform(p,q), run_time=2, rate_func=linear)')
-        self.assertEqual([m['opacity'] for m in result['frames'][15]['mobjects']], [0.5,0.5])
+        self.assertEqual([shown(m) for m in result['frames'][15]['mobjects']], [0.5,0.5])
 
     def test_alignment_handles_restore_copy_replacement_and_sequential_stage_state(self):
         result = render('p = VMobject().set_points_as_corners([ORIGIN, RIGHT*2]).save_state()\nq = VMobject().set_points_as_corners([ORIGIN, RIGHT*2, UR*2])\nself.add(p)\nself.play(TransformFromCopy(p,q), run_time=2, rate_func=linear)\nassert p.vertices == [[0,0,0],[2,0,0]]\nself.play(Succession(Transform(p,q), Restore(p)), rate_func=linear)')
@@ -6266,7 +6297,7 @@ self.wait(1)""")
         self.assertEqual(result['duration'], 11)
         first = result['frames'][0]['mobjects'][0]
         self.assertEqual(first['type'], 'bezierpath')
-        self.assertEqual(first['draw_progress'], 0)
+        self.assertEqual(len(set(drawn_points(first))), 1)
         curve = lite.CubicBezier((-3,-1), (-2,3), (2,-3), (3,1)).scale(0.8).rotate(lite.PI/12)
         for a, b in zip(result['frames'][75]['mobjects'][1]['position'], curve.get_end()):
             self.assertAlmostEqual(a,b)
@@ -6353,7 +6384,8 @@ self.wait(1)""")
         result = json.loads(lite.render_scene((ROOT / 'examples/foreground_scene.py').read_text()))
         self.assertEqual(result['duration'], 8)
         self.assertEqual([m['type'] for m in result['frames'][30]['mobjects']], ['text', 'square', 'vgroup'])
-        self.assertEqual([m['type'] for m in result['frames'][45]['mobjects']], ['text', 'square', 'vgroup', 'square'])
+        # The red square is half created: Community's partial outline.
+        self.assertEqual([m['type'] for m in result['frames'][45]['mobjects']], ['text', 'square', 'vgroup', 'bezierpath'])
         self.assertEqual([m['type'] for m in result['frames'][60]['mobjects']], ['text', 'square', 'square', 'vgroup'])
         self.assertEqual([m['type'] for m in result['frames'][90]['mobjects']], [])
         self.assertEqual([m['text'] for m in result['frames'][-1]['mobjects']], ['Foreground overlay'])
@@ -6371,7 +6403,7 @@ self.wait(1)""")
     def test_corner_gallery_traces_moves_and_cleans_up(self):
         result = json.loads(lite.render_scene((ROOT / 'examples/corner_path_scene.py').read_text()))
         self.assertEqual(result['duration'], 9)
-        self.assertEqual(result['frames'][0]['mobjects'][0]['type'], 'polyline')
+        self.assertEqual(len(set(drawn_points(result['frames'][0]['mobjects'][0]))), 1)  # Create(path) at 0
         path = lite.VMobject().set_points_as_corners([(-3,-1,0),(-1,1,0),(1,-1,0),(3,1,0)]).scale(0.8).rotate(lite.PI/12).shift(lite.DOWN*0.3)
         for actual, expected in zip(result['frames'][75]['mobjects'][1]['position'], path.get_end()):
             self.assertAlmostEqual(actual, expected)
@@ -6417,7 +6449,7 @@ self.wait(1)""")
 
     def test_corner_paths_create_move_morph_and_remove(self):
         result = render('p = VMobject().set_points_as_corners([(0,0,0), (2,0,0), (2,2,0)])\nd = Dot()\nself.play(Create(p), run_time=2, rate_func=linear)\nself.play(MoveAlongPath(d, p), run_time=2, rate_func=linear)\nself.play(p.animate.set_points_as_corners([(0,0,0), (4,0,0), (4,4,0)]), run_time=2, rate_func=linear)\nself.play(Uncreate(p), FadeOut(d))')
-        self.assertEqual(result['frames'][15]['mobjects'][0]['draw_progress'], 0.5)
+        assert_drawn(self, result['frames'][15]['mobjects'][0], (2, 0, 0))
         self.assertEqual(result['frames'][45]['mobjects'][1]['position'], [2, 0, 0])
         self.assertEqual(result['frames'][60]['mobjects'][1]['position'], [2, 2, 0])
         self.assertEqual(result['frames'][75]['mobjects'][0]['vertices'], [[0,0,0], [3,0,0], [3,3,0]])
@@ -6719,9 +6751,9 @@ class Demo(Scene):
         self.assertEqual(len(result['frames'][0]['mobjects']), 1)
         self.assertEqual(result['frames'][44]['mobjects'][0]['type'], 'circle')
         self.assertEqual(result['frames'][45]['mobjects'][0]['type'], 'square')
-        self.assertEqual(result['frames'][45]['mobjects'][0]['opacity'], 0)
-        self.assertEqual(result['frames'][60]['mobjects'][0]['opacity'], 0.5)
-        self.assertEqual(result['frames'][-1]['mobjects'][0]['opacity'], 1)
+        self.assertEqual(shown(result['frames'][45]['mobjects'][0]), 0)
+        self.assertEqual(shown(result['frames'][60]['mobjects'][0]), 0.5)
+        self.assertEqual(shown(result['frames'][-1]['mobjects'][0]), 1)
 
     def test_succession_replacement_can_be_followed_by_animation_of_its_target(self):
         result = render('a = Circle()\nb = Square().shift(RIGHT * 2)\nself.play(Succession(ReplacementTransform(a, b), Rotate(b, PI, run_time=2, rate_func=linear)))\nself.play(b.animate.shift(UP))')
@@ -7013,7 +7045,7 @@ class Demo(Scene):
         # Community: reverse writes members last-first; only Unwrite runs time backwards.
         result = render('a, b = Square().shift(LEFT*2), Square().shift(RIGHT*2)\nself.play(Write(VGroup(a, b), reverse=True, run_time=2))')
         early = result['frames'][5]['mobjects'][0]['children']
-        self.assertGreater(early[1].get('draw_progress', 1), early[0].get('draw_progress', 0))
+        self.assertGreater(drawn_length(early[1]), drawn_length(early[0]))
         self.assertEqual(result['frames'][-1]['mobjects'], [])
         result = render('s = Square()\nself.add(s)\nself.play(Unwrite(s, reverse=False))\nassert s in self.mobjects\nself.wait(0.2)')
         final = result['frames'][-1]['mobjects'][0]
@@ -7233,10 +7265,11 @@ class Demo(Scene):
         self.assertAlmostEqual(middle['stroke_opacity'], 0.6)
         faded = result['frames'][45]['mobjects'][0]
         self.assertEqual((faded['fill_color'], faded['stroke_color']), (lite.WHITE, lite.BLACK))
-        self.assertEqual(faded['opacity'], 0.5)
+        # Community fades fill and stroke separately: half of 0.5 and of 0.2.
+        self.assertEqual((faded['opacity'], faded['fill_opacity'], faded['stroke_opacity']), (1, 0.25, 0.1))
         result = render('g = VGroup(Circle(), Square())\nself.play(g.animate.set_opacity(0), run_time=2, rate_func=linear)')
         state = result['frames'][15]['mobjects'][0]
-        self.assertEqual(state['opacity'], 1)
+        self.assertEqual(shown(state), 1)
         self.assertEqual(state['children'][0]['stroke_opacity'], 0.5)
         self.assertEqual(state['children'][1]['stroke_opacity'], 0.5)
 
@@ -7378,7 +7411,7 @@ class Demo(Scene):
 
     def test_arc_creation_transform_and_path_motion(self):
         result = render('p = Arc(radius=2, angle=PI, arc_center=(1, 0))\nself.play(Create(p), run_time=2, rate_func=linear)\nself.play(MoveAlongPath(Dot(), p), run_time=2, rate_func=linear)\nself.play(p.animate.move_arc_center_to(LEFT))')
-        self.assertEqual(result['frames'][15]['mobjects'][0]['draw_progress'], 0.5)
+        assert_drawn(self, result['frames'][15]['mobjects'][0], (0, 2, 0), 5)
         self.assertPointAlmostEqual(result['frames'][45]['mobjects'][1]['position'], (1, 2, 0))
         self.assertPointAlmostEqual(result['frames'][-1]['mobjects'][0]['position'], (-1, 0, 0))
         result = render('self.play(Transform(Arc(angle=PI/2), Arc(angle=PI)))')
@@ -7525,10 +7558,10 @@ class Demo(Scene):
         result = render('dots = VGroup(Dot(LEFT), Dot(), Dot(RIGHT))\nself.play(LaggedStart(*[FadeIn(d, rate_func=linear) for d in dots], lag_ratio=0.5), run_time=4)')
         self.assertEqual(result['duration'], 4)
         quarter = result['frames'][15]['mobjects']
-        self.assertEqual([m['opacity'] for m in quarter], [0.5, 0, 0])
+        self.assertEqual([shown(m) for m in quarter], [0.5, 0, 0])
         middle = result['frames'][30]['mobjects']
-        self.assertEqual([m['opacity'] for m in middle], [1, 0.5, 0])
-        self.assertEqual([m['opacity'] for m in result['frames'][-1]['mobjects']], [1, 1, 1])
+        self.assertEqual([shown(m) for m in middle], [1, 0.5, 0])
+        self.assertEqual([shown(m) for m in result['frames'][-1]['mobjects']], [1, 1, 1])
         self.assertAlmostEqual(lite.LaggedStart(lite.FadeIn(lite.Dot()), lite.FadeIn(lite.Dot())).run_time, 1.05)
 
     def test_parallel_group_uses_longest_end_and_removes_finished_fades(self):
@@ -7539,16 +7572,16 @@ class Demo(Scene):
         self.assertEqual(result['frames'][-1]['mobjects'][0]['position'], [0, 1, 0])
         result = render('a, b = Dot(), Dot(RIGHT)\nself.play(AnimationGroup(Rotate(a, run_time=10), FadeOut(b, run_time=1), lag_ratio=0.1))')
         self.assertEqual(result['duration'], 10)
-        self.assertEqual([m['opacity'] for m in result['frames'][30]['mobjects']], [1, 0])
+        self.assertEqual([shown(m) for m in result['frames'][30]['mobjects']], [1, 0])
 
     def test_nested_groups_and_group_easing_preserve_child_timing(self):
         result = render('a, b, c = Dot(LEFT), Dot(), Dot(RIGHT)\nself.play(AnimationGroup(LaggedStart(FadeIn(a, rate_func=linear), FadeIn(b, rate_func=linear), lag_ratio=1, run_time=4), FadeIn(c, run_time=2, rate_func=linear), lag_ratio=1))')
         self.assertEqual(result['duration'], 6)
-        self.assertEqual([m['opacity'] for m in result['frames'][30]['mobjects']], [1, 0, 0])
-        self.assertEqual([m['opacity'] for m in result['frames'][75]['mobjects']], [1, 1, 0.5])
+        self.assertEqual([shown(m) for m in result['frames'][30]['mobjects']], [1, 0, 0])
+        self.assertEqual([shown(m) for m in result['frames'][75]['mobjects']], [1, 1, 0.5])
         result = render('self.play(LaggedStart(FadeIn(Dot(LEFT), rate_func=linear), FadeIn(Dot(RIGHT), rate_func=linear), lag_ratio=1, run_time=4, rate_func=smooth))')
         # Community's sigmoid smooth, applied to the group's timeline.
-        self.assertAlmostEqual(result['frames'][15]['mobjects'][0]['opacity'], lite.smooth(.25)*2)
+        self.assertAlmostEqual(shown(result['frames'][15]['mobjects'][0]), lite.smooth(.25)*2)
 
     def test_group_holds_completed_creation_and_replacement_then_cleans_up(self):
         result = render('a, b, c = Circle(), Square().shift(RIGHT), Dot(UP)\nself.play(AnimationGroup(ReplacementTransform(a, b), Create(c, run_time=2)))\nself.play(b.animate.shift(UP))')
@@ -7572,8 +7605,8 @@ class Demo(Scene):
                         'self.play(FadeOut(g), a.animate.shift(UP))')['frames']
         group = frames[8]['mobjects'][0]
         square, circle = group['children']
-        self.assertEqual((group['opacity'], square.get('opacity', 1)), (1, 1))  # Not dimmed by the fade.
-        self.assertLess(circle['opacity'], 1)
+        self.assertEqual((group['opacity'], shown(square)), (1, 1))  # Not dimmed by the fade.
+        self.assertLess(shown(circle), 1)
         self.assertGreater(square['position'][1], 0.2)
         frames = render('a = Square()\ng = VGroup(a, Circle())\nself.add(g)\n'
                         'self.play(a.animate.shift(UP), g.animate.shift(DOWN))')['frames']
@@ -7601,8 +7634,8 @@ class Demo(Scene):
         # Members of an on-screen group animate inside it (Community semantics).
         frame = render('d = Dot()\nself.add(VGroup(d, Square()))\nself.play(FadeIn(d), rate_func=linear)')['frames'][7]['mobjects']
         self.assertEqual(len(frame), 1)
-        self.assertAlmostEqual(frame[0]['children'][0]['opacity'], 7/15)
-        self.assertEqual(frame[0]['children'][1]['opacity'], 1)
+        self.assertAlmostEqual(shown(frame[0]['children'][0]), 7/15)
+        self.assertEqual(shown(frame[0]['children'][1]), 1)
         # A turned plain group turns its members, so they animate in world coordinates.
         frame = render('d = Dot().shift(RIGHT)\nself.add(VGroup(d, Dot()).rotate(PI))\nself.play(FadeIn(d))')['frames'][-1]['mobjects']
         self.assertPointAlmostEqual(frame[0]['children'][0]['position'], (0, 0, 0))
@@ -7632,7 +7665,7 @@ class Demo(Scene):
         result = json.loads(lite.render_scene((ROOT / 'examples/staggered_scene.py').read_text()))
         self.assertEqual(result['duration'], 10)
         # A finished FadeOut holds its transparent state until its group ends (Community).
-        self.assertEqual([m['opacity'] for m in result['frames'][120]['mobjects']], [0, 0.5, 1])
+        self.assertEqual([shown(m) for m in result['frames'][120]['mobjects']], [0, 0.5, 1])
         self.assertEqual(result['frames'][-1]['mobjects'], [])
         result = render('self.play(LaggedStart(FadeIn(Dot(LEFT)), FadeIn(Dot(RIGHT))), run_time=60)')
         self.assertEqual(len(result['frames']), 901)
@@ -7641,9 +7674,9 @@ class Demo(Scene):
     def test_parallel_group_defaults_and_play_easing_override(self):
         result = render('self.play(AnimationGroup(FadeIn(Dot(LEFT), run_time=1, rate_func=linear), FadeIn(Dot(RIGHT), run_time=2, rate_func=linear)))')
         self.assertEqual(result['duration'], 2)
-        self.assertEqual([m['opacity'] for m in result['frames'][15]['mobjects']], [1, 0.5])
+        self.assertEqual([shown(m) for m in result['frames'][15]['mobjects']], [1, 0.5])
         result = render('self.play(LaggedStart(FadeIn(Dot(LEFT), rate_func=linear), FadeIn(Dot(RIGHT), rate_func=linear), lag_ratio=1, run_time=4, rate_func=smooth), rate_func=linear)')
-        self.assertEqual(result['frames'][15]['mobjects'][0]['opacity'], 0.5)
+        self.assertEqual(shown(result['frames'][15]['mobjects'][0]), 0.5)
 
     def test_dot_defaults_position_and_style_overrides(self):
         dot = lite.Dot(lite.RIGHT * 2)
@@ -8075,7 +8108,8 @@ class Demo(Scene):
     def test_baseline_animation(self):
         result = json.loads(lite.render_scene((ROOT / 'examples/minimal_scene.py').read_text()))
         self.assertEqual(result['scene'], 'MinimalScene')
-        self.assertEqual(result['frames'][0]['mobjects'][0]['draw_progress'], 0)
+        # Create starts with every curve collapsed onto the outline's first point.
+        self.assertEqual(len(set(drawn_points(result['frames'][0]['mobjects'][0]))), 1)
         # Community's Transform leaves the square aligned to the circle's 8 curves.
         self.assertEqual(len(lite._path_curves(result['frames'][-1]['mobjects'][0])), 8)
         self.assertGreater(len(result['frames']), 30)
@@ -8083,33 +8117,35 @@ class Demo(Scene):
     def test_create_traces_outline_and_preserves_final_style(self):
         result = render('self.play(Create(Square(fill_opacity=0.8)), run_time=2, rate_func=linear)')
         middle = result['frames'][15]['mobjects'][0]
-        self.assertEqual(middle['draw_progress'], 0.5)
-        self.assertEqual(middle['fill_opacity'], 0.4)
+        # Community's pointwise_become_partial: two of four sides (plus a collapsed curve), filled.
+        assert_drawn(self, middle, (-1, -1, 0), 3)
+        self.assertEqual(middle['fill_opacity'], 0.8)
         self.assertEqual(middle['opacity'], 1)
         final = result['frames'][-1]['mobjects'][0]
         self.assertNotIn('draw_progress', final)
+        self.assertEqual(final['type'], 'square')
         self.assertEqual(final['fill_opacity'], 0.8)
 
     def test_create_group_and_text_fallback(self):
         source = 'self.play(Create(VGroup(Circle(), VGroup(Text("Title"), Square())){}), run_time=2, rate_func=linear)'
         result = render(source.format(', lag_ratio=0'))
         group = result['frames'][15]['mobjects'][0]
-        self.assertEqual(group['children'][0]['draw_progress'], 0.5)
+        assert_drawn(self, group['children'][0], (-1, 0, 0))
         nested = group['children'][1]['children']
         # Text is created glyph by glyph (Community's family members with points).
         self.assertEqual({glyph['opacity'] for glyph in nested[0]['children']}, {0.5})
-        self.assertEqual(nested[1]['draw_progress'], 0.5)
+        assert_drawn(self, nested[1], (-1, -1, 0))
         # Community's default lag_ratio=1 draws the three members in turn.
         group = render(source.format(''))['frames'][15]['mobjects'][0]
         nested = group['children'][1]['children']
         # Seven members (circle, five glyphs, square): halfway, the third glyph is half shown.
-        self.assertEqual((group['children'][0]['draw_progress'], [g['opacity'] for g in nested[0]['children']],
-                          nested[1]['draw_progress']), (1, [1, 1, 0.5, 0, 0], 0))
+        self.assertEqual((group['children'][0]['type'], [g['opacity'] for g in nested[0]['children']],
+                          len(set(drawn_points(nested[1])))), ('circle', [1, 1, 0.5, 0, 0], 1))
 
     def test_uncreate_reverses_drawing_and_removes_the_object(self):
         result = render('c = Circle()\nself.add(c)\nself.play(Uncreate(c), run_time=2, rate_func=linear)')
-        self.assertEqual(result['frames'][0]['mobjects'][0]['draw_progress'], 1)
-        self.assertEqual(result['frames'][15]['mobjects'][0]['draw_progress'], 0.5)
+        self.assertEqual(result['frames'][0]['mobjects'][0]['type'], 'circle')
+        assert_drawn(self, result['frames'][15]['mobjects'][0], (-1, 0, 0), 5)
         self.assertEqual(result['frames'][-1]['mobjects'], [])
 
     def test_rotate_keeps_orbital_radius_at_intermediate_frames(self):
@@ -8168,13 +8204,13 @@ class Demo(Scene):
         result = render('c = Circle()\nself.add(c)\nself.wait(1)\nself.play(FadeOut(c))')
         self.assertEqual(result['frames'][0], result['frames'][14])
         self.assertEqual(result['frames'][-1]['mobjects'], [])
-        self.assertLess(result['frames'][-2]['mobjects'][0]['opacity'], 0.1)
+        self.assertLess(shown(result['frames'][-2]['mobjects'][0]), 0.1)
 
     def test_parallel_animations_use_individual_durations(self):
         result = render('self.play(FadeIn(Circle(), run_time=1), FadeIn(Square(), run_time=2), rate_func=linear)')
         objects = result['frames'][15]['mobjects']
-        self.assertEqual(objects[0]['opacity'], 1)
-        self.assertEqual(objects[1]['opacity'], 0.5)
+        self.assertEqual(shown(objects[0]), 1)
+        self.assertEqual(shown(objects[1]), 0.5)
 
     def test_transform_and_replacement_identity(self):
         result = render('c = Circle()\ns = Square()\nself.play(ReplacementTransform(c, s))\nself.play(s.animate.shift(RIGHT))')
