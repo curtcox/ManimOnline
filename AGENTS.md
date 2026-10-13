@@ -1099,3 +1099,6 @@ Transform completion keeps a pointless receiver root's own style: Community inte
 members with points. `.animate` builders are exempt (_MethodAnimation.finish reapplies methods).
 `_aligned_target`'s `drawn()` stands a refit curved arrow in by a frozen childless copy (its
 drawn shaft, flag dropped) on either side, so curved receivers and targets align point counts.
+`_transform_plan(start, target, origins)` threads the world origin in each side's parent frame:
+an empty group pads with collapsed copies there (Community's get_point_mobject on a pointless
+family is the origin). Zero-scale groups have no inverse; their padding shrinks in place.

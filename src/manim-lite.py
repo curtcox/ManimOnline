@@ -12490,8 +12490,15 @@ def _own_shaft(snapshot, other):
     return result
 
 
-def _transform_plan(start, target):
-    """Align immutable family snapshots once, before sampling their timeline."""
+def _transform_plan(start, target, origins=None):
+    """Align immutable family snapshots once, before sampling their timeline. origins holds
+    the world origin in each side's parent frame (where empty families pad with points)."""
+    origins = origins or ([0, 0, 0], [0, 0, 0])
+    def inner(node, origin):
+        if origin is None or 'position' not in node:
+            return origin
+        inverse = _snapshot_pose(node)[1]
+        return inverse(origin) if inverse else None
     start, target = _own_shaft(start, target), _own_shaft(target, start)
     if start['type'] == 'vgroup' or target['type'] == 'vgroup':
         def as_group(snapshot):
@@ -12509,14 +12516,20 @@ def _transform_plan(start, target):
             return group
         start, target = as_group(start), as_group(target)
         count = max(len(start['children']), len(target['children']))
-        def expand(children, other):
+        world = _turning_pose(start, target)
+        inside = origins if world else (inner(start, origins[0]), inner(target, origins[1]))
+        def expand(children, other, origin):
             if not children:
-                # An empty family grows/shrinks at each corresponding child's
-                # own center, without moving the containing group's pivot.
+                # Community pads an empty family with get_point_mobject(): points at its
+                # center, which is the world origin for a family without points.
+                # A collapsed (zero-scale) family has no such frame: its members shrink in place.
                 result = _snapshot_copy(other)
                 for child in result:
                     child['opacity'] = 0
                     child['geometry_scale'] = 0
+                    if origin is not None:
+                        pivot = list(child.get('geometry_center') or ORIGIN) + [0] * 3
+                        child['position'] = [origin[k] - pivot[k] for k in range(3)]
                 return result
             result, seen = [], set()
             for index in range(count):
@@ -12528,12 +12541,11 @@ def _transform_plan(start, target):
                 result.append(child)
             return result
         first, last = start['children'], target['children']
-        world = _turning_pose(start, target)
         if world:
             first = [_pose_snapshot(child, _snapshot_frame(start), False) for child in first]
             last = [_pose_snapshot(child, _snapshot_frame(target), False) for child in last]
-        children = [_transform_plan(a, b) for a, b in
-                    zip(expand(first, last), expand(last, first))]
+        children = [_transform_plan(a, b, inside) for a, b in
+                    zip(expand(first, last, inside[0]), expand(last, first, inside[1]))]
         start.pop('children')
         target.pop('children')
         return ('group_world' if world else 'group', start, target, children)
@@ -12604,17 +12616,22 @@ def _transform_plan(start, target):
         # When the own pose turns or scales, members move in the parent frame instead (see
         # _turning_pose) and are re-posed into each sampled own frame.
         world = _turning_pose(own_plan[1],own_plan[2])
-        for group,source,aligned in ((first,own_start,own_plan[1]),(last,own_target,own_plan[2])):
+        inside = []
+        for group,source,aligned,origin in ((first,own_start,own_plan[1],origins[0]),
+                                            (last,own_target,own_plan[2],origins[1])):
             keys = ('position','angle','geometry_scale','geometry_center')
             if world:
                 group['children'] = [_pose_snapshot(child, _snapshot_frame(source), False)
                                      for child in group['children']]
+                inside.append(origin)
                 continue
             if all(source.get(key) == aligned.get(key) for key in keys) or not aligned.get('geometry_scale'):
+                inside.append(inner(source, origin))
                 continue
             group['children'] = [_pose_snapshot(_pose_snapshot(child, _snapshot_frame(source), False),
                                                 _snapshot_frame(aligned)) for child in group['children']]
-        return ('family' ,start,target,[own_plan,_transform_plan(first,last)]+(['world'] if world else []))
+            inside.append(inner(aligned, origin))
+        return ('family' ,start,target,[own_plan,_transform_plan(first,last,inside)]+(['world'] if world else []))
     aligned = _align_path_snapshots(start, target)
     if aligned:
         return ('interpolate', *aligned, [])

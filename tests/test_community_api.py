@@ -657,6 +657,21 @@ class AnimationApiTests(unittest.TestCase):
             's = S(); s.render(); result = s.out\n'),
             [32, 12])
 
+    def test_empty_family_pads_with_points_at_the_origin(self):
+        # Community 0.22: an empty VGroup (a plane's faded lines) pads with get_point_mobject(),
+        # at its center, which is the origin for a family without points.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = NumberPlane(x_range=[-2, 2], y_range=[-2, 2], x_length=4, y_length=4).set_width(3)\n'
+            '        self.add(o)\n'
+            '        edges = []\n'
+            '        self.add_updater(lambda dt: edges.append(o.get_critical_point(RIGHT)[0]))\n'
+            '        self.play(Transform(o, Arrow(LEFT, RIGHT * 2)), run_time=0.4)\n'
+            '        self.out = edges[:3]\n'
+            's = S(); s.render(); result = s.out\n'),
+            [1.5, 1.507, 1.5386])
+
     def test_color_values_operators_and_helpers(self):
         self.assertEqual(scene_values(
             'result = [repr(WHITE / 2), list(WHITE / 2), repr(~RED), int(RED), RED[0], repr(RED & BLUE),\n'
