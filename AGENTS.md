@@ -964,8 +964,9 @@ Mobject.__setattr__ records attribute names that scene code adds (`_scene_keys`,
 frames); become keeps them as Community does (its become copies only points and colors).
 Scene-code become first pads a copy of the target like Community's align_data
 (`_aligned_target`: faded repeats, center VectorizedPoints, and push_self_into_submobjects as a
-VGroup of world-view members plus a childless shaft-frozen copy; under posed ancestors the push
-falls back to a center point), so receivers keep
+VGroup of world-view members plus a childless shaft-frozen copy; a member with children under
+posed ancestors falls back to a center point, childless ones such as tips push in their parent's
+frame), so receivers keep
 the larger structure; library become (Transform completion, restore) does not. Families with
 text or SVG are left unaligned (`_alignable`; exact Group/Mobject containers of VMobjects align); NumberLines are aligned only as receivers
 (`_alignable(True)`), as their shaft's own points plus `_number_line_members`, and become

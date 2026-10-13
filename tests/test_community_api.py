@@ -887,6 +887,15 @@ class AnimationApiTests(unittest.TestCase):
              ['TypeError', "setter() got an unexpected keyword argument 'color'"],
              0.0, 'ValueTracker', 'VGroup'])
 
+    def test_ticks_become_copies_of_a_posed_arrow_tip(self):
+        # Community 0.22's null_point_align pushes the tip into a submobject; every tick becomes a tip.
+        self.assertEqual(scene_values(
+            'R = lambda p: [round(float(v), 3) + 0.0 for v in p[:2]]\n'
+            'o = NumberLine(x_range=[-2, 2, 1], length=4)\n'
+            'o.become(Arrow(DOWN, UP).shift(RIGHT * 3))\n'
+            'result = [[len(m.points), R(m.get_critical_point(DL))] for m in o.family_members_with_points()]\n'),
+            [[4, [2.825, -0.75]]] + [[12, [2.825, 0.4]]] * 5)
+
     def test_fade_transform_of_a_grouped_member_splits_its_root(self):
         # Community 0.22 adds Group(source, target copy) as a root, splitting the source's parent.
         self.assertEqual(scene_values(

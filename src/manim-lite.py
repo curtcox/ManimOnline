@@ -3758,11 +3758,11 @@ class Mobject:
                 sources.append((True, [], drawn(receiver)))
                 has_points = False
             elif target.has_points() and not has_points:
-                if target in _PARENTS and _posed_ancestors(target):
+                if target.children and target in _PARENTS and _posed_ancestors(target):
                     target._replace_children(list(target.children) + [point()])
                 else:
                     # push_self_into_submobjects: a pointless group of the members and a
-                    # childless copy, in the (unposed) parent's frame.
+                    # childless copy, in the parent's frame (members need an unposed parent).
                     leaf = target.copy()
                     if isinstance(leaf, TipableVMobject):
                         leaf._freeze_shaft()
