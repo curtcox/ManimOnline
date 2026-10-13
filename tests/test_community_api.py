@@ -887,6 +887,19 @@ class AnimationApiTests(unittest.TestCase):
              ['TypeError', "setter() got an unexpected keyword argument 'color'"],
              0.0, 'ValueTracker', 'VGroup'])
 
+    def test_arrow_transformed_into_a_line_draws_the_whole_line(self):
+        # Community 0.22 draws the arrow's own points (the target line); its tip collapsed.
+        frames = json.loads(lite.render_scene(
+            'from manim import *\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = Vector(UP + RIGHT)\n'
+            '        self.add(o)\n'
+            '        self.play(Transform(o, Line(DOWN, UP).shift(LEFT * 3)), run_time=0.2)\n'))['frames']
+        node = frames[-1]['mobjects'][-1]
+        self.assertEqual([node['type'], node['start'], node['end'], node.get('shaft_end')],
+                         ['line', [0, -1, 0], [0, 1, 0], None])
+
     def test_transform_matching_shapes_moves_every_part_sharing_a_key(self):
         # Community 0.22 transforms each key's parts as one group: five dots merge into one.
         self.assertEqual(scene_values(

@@ -3909,6 +3909,11 @@ class Mobject:
                         child.__dict__.pop('_tip_role', None)
                     else:
                         child._tip_role = role
+            elif (isinstance(source, TipableVMobject) and source._type in ('line', 'arrow') and
+                  source._tips_by_role() and not any(child.__dict__.get('_tip_role') for child in replacement.children)):
+                # The target's points are drawn as they are: Community never refits them to the
+                # tips (members that keep the receiver's tip roles).
+                source._shaft_fixed = True
         replace(self, target)
         return self
 
