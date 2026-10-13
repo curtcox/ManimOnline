@@ -1118,6 +1118,16 @@ class AnimationApiTests(unittest.TestCase):
             'S().render()\n'),
             [True, 5])
 
+    def test_reversed_number_line_keeps_its_cut_shaft(self):
+        # Community 0.22 reverses the own points as cut at the tip base.
+        self.assertEqual(scene_values(
+            'R = lambda p: [round(float(v), 3) + 0.0 for v in p[:2]]\n'
+            'o = NumberLine(x_range=[0, 4, 1], length=3, include_tip=True).reverse_points()\n'
+            'result = [R(o.points[0]), R(o.points[-1]), R(o.get_start()), R(o.get_end())]\n'
+            'o.scale(2)\n'
+            'result += [R(o.points[0]), R(o.points[-1]), R(o.get_end())]\n'),
+            [[1.15, 0.0], [-1.5, 0.0], [1.15, 0.0], [1.5, 0.0], [2.3, 0.0], [-3.0, 0.0], [3.0, 0.0]])
+
     def test_ticks_become_copies_of_a_posed_arrow_tip(self):
         # Community 0.22's null_point_align pushes the tip into a submobject; every tick becomes a tip.
         self.assertEqual(scene_values(

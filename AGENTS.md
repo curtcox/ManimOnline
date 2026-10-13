@@ -1181,3 +1181,5 @@ Live Wiggle also iterates point-free text leaves (Community's glyphs have points
 world pose each frame; otherwise NumberLine labels accumulate the scale/rotation. Rotated-family
 bounds (`_family_bound_points`) measure the pivot once but keep `_point_to_world`'s arithmetic
 order: tests sit on rounding ties, and `_points_to_world` groups its sums differently.
+reverse_points freezes tipped shafts first (NumberLine and TipableVMobject `_freeze_shaft`): the
+scene view cuts a shaft end by tip role, which would cut the wrong end once the shaft is reversed.

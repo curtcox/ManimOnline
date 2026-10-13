@@ -4324,6 +4324,9 @@ class Mobject:
         return self
 
     def reverse_points(self):
+        for member in self.get_family():
+            if isinstance(member, (NumberLine, TipableVMobject)):
+                member._freeze_shaft()  # Community reverses the shaft as cut at its tips.
         for member in self.family_members_with_points():
             lengths = member.__dict__.get('subpath_lengths')
             VMobject.set_points(member, list(reversed(member.get_points())))
