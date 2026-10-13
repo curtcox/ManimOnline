@@ -887,6 +887,25 @@ class AnimationApiTests(unittest.TestCase):
              ['TypeError', "setter() got an unexpected keyword argument 'color'"],
              0.0, 'ValueTracker', 'VGroup'])
 
+    def test_transform_matching_shapes_moves_every_part_sharing_a_key(self):
+        # Community 0.22 transforms each key's parts as one group: five dots merge into one.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        global result\n'
+            '        R = lambda p: [round(float(v), 3) + 0.0 for v in p[:2]]\n'
+            '        o = VGroup(*[Dot(RIGHT * i * 0.5 + UP) for i in range(5)])\n'
+            '        self.add(o)\n'
+            '        result, n = [], [0]\n'
+            '        def f(dt):\n'
+            '            n[0] += 1\n'
+            '            if n[0] == 8:\n'
+            '                result.extend(R(m.get_center()) for m in o.family_members_with_points())\n'
+            '        self.add_updater(f)\n'
+            '        self.play(TransformMatchingShapes(o, Dot(UP * 2)))\n'
+            'S().render()\n'),
+            [[0.0, 1.416], [0.292, 1.416], [0.584, 1.416], [0.876, 1.416], [1.167, 1.416]])
+
     def test_fade_transform_of_a_group_fails_when_restoring(self):
         # Community 0.22's clean_up_from_scene restores the source with become, which a Group cannot do.
         with self.assertRaisesRegex(Exception, 'Please override in a child class'):

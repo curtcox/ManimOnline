@@ -14460,29 +14460,47 @@ class _TransformMatching(Animation):
     def begin(self, scene):
         super().begin(scene)
         source, target = self._keyed(self.mobject), self._keyed(self.target_mobject)
-        pairs = []
+        # Community transforms each key's parts as one group: with unequal counts, surplus
+        # parts morph into (or out of) faded copies of the other side's parts.
+        matched = []
         for key in [k for k in source if k in target]:
-            pairs.extend(zip(source[key], target[key]))
+            matched.append((source[key], target[key]))
         for key1, key2 in self.key_map.items():
             if key1 in source and key2 in target:
-                pairs.extend(zip(source.pop(key1), target.pop(key2)))
+                matched.append((source.pop(key1), target.pop(key2)))
         lost = [part for key in source if key not in target for part in source[key]]
         new = [part for key in target if key not in source for part in target[key]]
         # A part that is also a member of another part (an arrow's tip) moves with it: Community's
         # groups of parts move each family member once. Parts are drawn in world coordinates.
         def inner(parts):
             return {id(member) for part in parts for member in part.get_family()[1:]}
-        covered = inner([a for a, _ in pairs])
-        pairs = [(_world_view(a), _world_view(b)) for a, b in pairs if id(a) not in covered]
+        covered = inner([a for parts, _ in matched for a in parts])
+        covered_targets = inner([b for _, parts in matched for b in parts])
+        pairs, members, grouped = [], [], set()
+        for a, b in matched:
+            a = [part for part in a if id(part) not in covered]
+            b = [part for part in b if id(part) not in covered_targets]
+            if len(a) == len(b):
+                pairs += [(_world_view(x), _world_view(y)) for x, y in zip(a, b)]
+                members += [[x] for x in a]
+            elif a and b:
+                group = VGroup(*[_world_view(x).copy() for x in a])
+                pairs.append((group, VGroup(*[_world_view(y).copy() for y in b])))
+                members.append(a)
+                grouped.add(id(group))
         covered_lost, covered_new = inner(lost), inner(new)
         lost = [_world_view(part) for part in lost if id(part) not in covered_lost]
         new = [_world_view(part) for part in new if id(part) not in covered_new]
         if self.transform_mismatches and lost and new:
             pairs.append((VGroup(*lost).copy(), VGroup(*new).copy()))
+            members.append(None)
             lost, new = [], []
         self.plans, self.sliding = [], []
         for a, b in pairs:
-            if {a._type, b._type} & {'text', 'mathtex'} or a._painted_members() != [a] or b._painted_members() != [b]:
+            if id(a) in grouped and all(m._painted_members() == [m] and m._type not in ('text', 'mathtex')
+                                        for m in a.children + b.children):
+                self.plans.append(_transform_plan(a.to_dict(), b.to_dict()))
+            elif {a._type, b._type} & {'text', 'mathtex'} or a._painted_members() != [a] or b._painted_members() != [b]:
                 # Glyphs from different formulas: slide both and cross-fade, so
                 # identical parts appear to move into place.
                 self.sliding.append((a.to_dict(), self._posed(a, b).to_dict(), self._posed(b, a).to_dict(), b.to_dict()))
@@ -14497,9 +14515,9 @@ class _TransformMatching(Animation):
         self._piece_paths = None
         if not self.sliding:
             paths = self._leaf_paths(self.mobject)
-            pieces = [a for a, _ in pairs] + lost
-            if all(id(part) in paths for part in pieces):
-                self._piece_paths = [paths[id(part)] for part in pieces]
+            pieces = [parts if id(a) in grouped else [a] for (a, _), parts in zip(pairs, members)] + [[part] for part in lost]
+            if all(id(part) in paths for piece in pieces for part in piece):
+                self._piece_paths = [[paths[id(part)] for part in piece] for piece in pieces]
         # Community fades in a copy of the unmatched targets, added to the scene at begin.
         self._arrivals = VGroup(*[part.copy() for part in new]) if new else None
         if self._arrivals is not None:
@@ -14550,10 +14568,20 @@ class _TransformMatching(Animation):
             states.append(state)
             pieces.append([state])
         paths = self.__dict__.get('_piece_paths')
-        if paths and len(paths) > 1 and all(len(piece) == 1 for piece in pieces):
+        placed = []
+        if paths and sum(map(len, paths)) > 1 and all(len(piece) == 1 for piece in pieces):
+            for member_paths, (state,) in zip(paths, pieces):
+                if len(member_paths) == 1:
+                    placed.append((member_paths[0], state))
+                elif len(state.get('children') or ()) == len(member_paths) and _pose_frame(state)[:2] == (1, 0):
+                    placed += zip(member_paths, state['children'])  # A key's group: its members in place.
+                else:
+                    placed = []
+                    break
+        if placed:
             # Community animates the parts inside the source family: one tree keeps them together.
             tree = _snapshot_copy(self.start)
-            for path, (state,) in zip(paths, pieces):
+            for path, state in placed:
                 node = tree
                 for index in path[:-1]:
                     node = node['children'][index]

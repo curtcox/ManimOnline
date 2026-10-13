@@ -844,7 +844,9 @@ the live family to their start on completion when another animation of the play 
 (`Scene._mark_restores`); groups restore after all members finish, as Community's
 clean_up_from_scene runs after finish(). Rotate fixes its pivot at the center when constructed and ignores about_edge;
 Rotating resolves about_edge at begin.
-TransformMatching*: unmatched targets fade in as a real `_arrivals` VGroup introduced at begin
+TransformMatching*: parts sharing a key with unequal counts transform as one VGroup pair
+(Community's per-key group Transform; surplus parts meet faded copies), folded back member by
+member into the source tree when the source side is not padded. Unmatched targets fade in as a real `_arrivals` VGroup introduced at begin
 (Community's FadeIn copy) with one group snapshot; unmatched sources fade out by one shared
 shift. Parts are world views, and parts inside another part's family (an arrow's tip) move with it.
 When every piece is reached through identity-pose containers, pieces are folded
