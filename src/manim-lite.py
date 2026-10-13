@@ -10965,7 +10965,8 @@ class CoordinateSystem:
 class Axes(VGroup, CoordinateSystem):
     """Two linear NumberLines with transform-aware XY coordinate conversion."""
     _frame_excluded = ('axis_config', 'x_axis_config', 'y_axis_config')
-    def __init__(self, x_range=None, y_range=None, x_length=None, y_length=None,
+    # Community's defaults are evaluated at import; None lengths follow each axis's unit_size.
+    def __init__(self, x_range=None, y_range=None, x_length=12, y_length=6,
                  axis_config=None, x_axis_config=None, y_axis_config=None, tips=True, **kwargs):
         if not isinstance(tips,bool):
             raise ValueError('Axes tips must be a boolean')
@@ -10985,8 +10986,8 @@ class Axes(VGroup, CoordinateSystem):
         if y_range is None:
             radius = max(1,round(config.frame_height/2))
             y_range = [-radius,radius,1]
-        x_options['length'] = max(1,round(config.frame_width)-2) if x_length is None else x_length
-        y_options['length'] = max(1,round(config.frame_height)-2) if y_length is None else y_length
+        x_options['length'] = x_length
+        y_options['length'] = y_length
         x_axis = NumberLine(x_range,**x_options)
         y_axis = NumberLine(y_range,**y_options)
         for axis, role in ((x_axis,'x'),(y_axis,'y')):
@@ -11949,8 +11950,8 @@ class NumberPlane(Axes):
                                    line_to_number_buff=.1,label_direction=DR,font_size=24),
                               kwargs.pop('axis_config',None))
         y_options = merged(dict(label_direction=DR),kwargs.pop('y_axis_config',None))
-        super().__init__(xr,yr,x_length=xr[1]-xr[0] if x_length is None else x_length,
-                         y_length=yr[1]-yr[0] if y_length is None else y_length,
+        # Community passes None lengths on: each axis then uses its unit_size (default 1).
+        super().__init__(xr,yr,x_length=x_length,y_length=y_length,
                          axis_config=axis_options,y_axis_config=y_options,**kwargs)
         self.background_line_style,self.faded_line_style = background,faded
         self.faded_line_ratio = faded_line_ratio

@@ -1185,3 +1185,5 @@ reverse_points freezes tipped shafts first (NumberLine and TipableVMobject `_fre
 scene view cuts a shaft end by tip role, which would cut the wrong end once the shaft is reversed.
 `_align_path_snapshots` also bakes refit arrows whose pose scales with unchanged logical ends when
 their geometry_center changes: fixed-size tips move the family pivot, so a pose lerp would curve.
+Axes defaults are Community's import-time constants (x_length=12, y_length=6); an explicit None
+length (NumberPlane's default) makes each NumberLine use its configured unit_size.

@@ -1141,6 +1141,17 @@ class AnimationApiTests(unittest.TestCase):
             'result += [R(o.points[0]), R(o.points[-1]), R(o.get_end())]\n'),
             [[1.15, 0.0], [-1.5, 0.0], [1.15, 0.0], [1.5, 0.0], [2.3, 0.0], [-3.0, 0.0], [3.0, 0.0]])
 
+    def test_plane_and_none_axis_lengths_follow_unit_size(self):
+        # Community 0.22 values: NumberPlane and explicit None lengths use each axis's unit_size.
+        self.assertEqual(scene_values(
+            'L = lambda o: [round(float(o.x_axis.get_length()), 4), round(float(o.y_axis.get_length()), 4)]\n'
+            "result = [L(Axes(x_range=[-4, 6, 1], x_axis_config={'unit_size': 1.5})),\n"
+            "          L(Axes(x_range=[-4, 6, 1], x_length=None, y_length=None, axis_config={'unit_size': 0.5})),\n"
+            "          L(NumberPlane(x_range=[-4, 6, 1], x_axis_config={'unit_size': 1.5})),\n"
+            "          L(NumberPlane(x_range=[-4, 6, 1], x_axis_config={'unit_size': 1.2}, y_range=[-2, 5], y_length=6)),\n"
+            "          L(ComplexPlane(x_axis_config={'unit_size': 0.5}))]\n"),
+            [[12.0, 6.0], [5.0, 4.0], [15.0, 8.0], [12.0, 6.0], [7.1111, 8.0]])
+
     def test_ticks_become_copies_of_a_posed_arrow_tip(self):
         # Community 0.22's null_point_align pushes the tip into a submobject; every tick becomes a tip.
         self.assertEqual(scene_values(
