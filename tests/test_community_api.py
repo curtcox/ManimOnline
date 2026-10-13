@@ -1969,6 +1969,24 @@ class AnimationApiTests(unittest.TestCase):
             'result = [s.get_center(), t.get_center(), u.get_center()]\n'),
             [[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [-1.0, 0.0, 0.0]])
 
+    def test_unwrite_leaves_the_outline_style_and_number_lines_take_target_style(self):
+        # Manim 0.22: Unwrite ends at match_style(outline) (stroke width 2, outline color);
+        # a NumberLine has its own (shaft) points, so Transform gives it the target's style.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        s, b = Square(color=RED, fill_opacity=0.5), BraceBetweenPoints(LEFT, RIGHT)\n'
+            '        self.add(s, b)\n'
+            '        self.play(Unwrite(s), Unwrite(b), run_time=0.2)\n'
+            '        n = NumberLine(x_range=[0, 4, 1], length=3, include_tip=True)\n'
+            '        self.add(n)\n'
+            '        self.play(Transform(n, Dot(radius=0.3)), run_time=0.2)\n'
+            '        self.styles = [[m.get_stroke_color().to_hex(), m.get_stroke_width(), m.get_fill_opacity()] for m in (s, b)]\n'
+            '        self.styles.append([n.get_fill_opacity(), n.get_stroke_width()])\n'
+            's = S(); s.render()\n'
+            'result = s.styles\n'),
+            [['#FC6255', 2.0, 0.0], ['#FFFFFF', 2.0, 0.0], [1.0, 0.0]])
+
     def test_transform_fades_grid_repeats_padded_from_a_childless_target(self):
         # Manim 0.22: the circle pads Rectangle's grid group with a VectorizedPoint, which is
         # pushed into its own submobjects and repeated faded, so five grid lines fade out.

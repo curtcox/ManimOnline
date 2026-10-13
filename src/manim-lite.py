@@ -14458,7 +14458,12 @@ class DrawBorderThenFill(Animation):
         if scene is None or not self.reverse_rate_function:
             return super().finish(scene)
         # A reversed draw ends as Community's alpha 0, even when removed (the mobject keeps
-        # it): every outline collapsed onto its first point, unfilled (e.g. Unwrite).
+        # it): every outline collapsed onto its first point, unfilled (e.g. Unwrite), in the
+        # outline's style (match_style(outline): its stroke color and width).
+        for member in self.mobject.family_members_with_points():
+            if member._type in _PATH_TYPES and not member.__dict__.get('_fill_partial'):
+                color = self.get_stroke_color(member)
+                member.set_stroke(color=color, width=self.outline_width)
         _collapse_drawn(self.mobject, unfill=True)
 
 
@@ -14660,7 +14665,8 @@ class Transform(_PathOptions, Animation):
             target = self.target
             if self.mobject._alignable(True) and target._alignable():
                 target = self.mobject._aligned_target(target, root_points=True)
-                if (self.mobject.children and not self.mobject.get_points() and target.children
+                # (A NumberLine's own points are its shaft, so it takes the target's style.)
+                if (self.mobject.children and not _call_as_scene(self.mobject.has_points) and target.children
                         and not (isinstance(self, Animate) and self._builder)):
                     # Community interpolates only members with points: a pointless root keeps its
                     # style (.animate's _MethodAnimation.finish reapplies the methods instead).
