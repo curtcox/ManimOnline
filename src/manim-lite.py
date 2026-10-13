@@ -142,10 +142,14 @@ def _link_children(parent, children):
             old = _PARENTS.get(child)
             old = old() if old is not None else None
             if old is not None and old is not parent and any(c is child for c in old.children):
-                # Kept for when the linked family is collected (e.g. a temporary group).
                 others = [r for r in _OTHER_PARENTS.get(child, ()) if r() is not None][-3:]
-                _OTHER_PARENTS[child] = others + [ref]
-                continue
+                if type(old) not in (Group, VGroup, Mobject):
+                    # Kept for when the linked family is collected (e.g. a temporary group).
+                    _OTHER_PARENTS[child] = others + [ref]
+                    continue
+                # Between plain groups the latest wins; the other stays a fallback (e.g. a
+                # Table entry kept in an attribute group and in its drawn elements group).
+                _OTHER_PARENTS[child] = others + [_PARENTS[child]]
         _PARENTS[child] = ref
 
 
@@ -165,6 +169,50 @@ def _parent_of(node):
 
 def _posed_ancestors(mobject):
     """The parent chain (nearest first) when some ancestor holds a pose, else []."""
+    chain = _primary_posed_ancestors(mobject)
+    if chain or not _OTHER_PARENTS:
+        return chain
+    # A member also held by another live family (e.g. a Table entry kept in an attribute
+    # group as well as in the drawn elements group) follows that family's pose.
+    prefix, node, seen = [], mobject, set()
+    while node is not None and id(node) not in seen and id(node) not in _IN_WORLD:
+        seen.add(id(node))
+        for ref in _OTHER_PARENTS.get(node, ()):
+            other = ref()
+            if other is None or other is _parent_of(node) or not any(c is node for c in other.children):
+                continue
+            rest = _parent_chain(other)
+            alternative = prefix + [other] + rest
+            if any(p.angle or p.geometry_scale != 1 or any(p.position) for p in alternative):
+                return alternative
+        parent = _parent_of(node)
+        if parent is None or not any(child is node for child in parent.children):
+            break
+        prefix.append(parent)
+        node = parent
+    return []
+
+
+def _frame_parent(member):
+    """The parent whose frame member's coordinates are in (the start of its posed chain)."""
+    chain = _posed_ancestors(member)
+    return chain[0] if chain else _parent_of(member)
+
+
+def _parent_chain(node):
+    """node's verified ancestors, nearest first (stopping at a member placed in the world)."""
+    chain, start = [], node
+    while id(node) not in _IN_WORLD:
+        parent = _parent_of(node)
+        if (parent is None or parent is start or any(p is parent for p in chain)
+                or not any(child is node for child in parent.children)):
+            break
+        chain.append(parent)
+        node = parent
+    return chain
+
+
+def _primary_posed_ancestors(mobject):
     # Stale links only shorten the verified chain, so an unverified walk that meets no
     # posed parent settles the answer without scanning large child lists.
     node, seen = mobject, set()
@@ -13350,8 +13398,7 @@ def _mark_shared(mobject, data):
         if last[key] != index:
             node['opacity'], node['_shared_copy'] = 0, True
             continue
-        ref = _PARENTS.get(member)
-        home = ref() if ref is not None else None
+        home = _frame_parent(member)
         if home is None or home is parent or not any(child is member for child in home.children):
             continue
         # The member's state is in its own parent's frame; the drawn occurrence sits under
@@ -16337,8 +16384,7 @@ def _expose_snapshot(saved, mobject, snapshot, again=False):
                 member = (VGroup() if child.get('type') == 'vgroup' else
                           VMobject() if child.get('type') in _PATH_TYPES else Mobject())
             _PARENTS[member] = weakref.ref(mobject)
-        ref = _PARENTS.get(member)
-        home = ref() if ref is not None else None
+        home = _frame_parent(member)
         if (home is not None and home is not mobject and not child.get('_shared_copy')
                 and any(other is member for other in home.children)):
             # A member drawn under a second parent (see _mark_shared) lives in its own

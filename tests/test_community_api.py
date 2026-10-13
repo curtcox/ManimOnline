@@ -2942,6 +2942,14 @@ class AnimationApiTests(unittest.TestCase):
             [[2.0, 0.5, 0.0], [0.155, 0.1873, 0.0], [0.3085, 0.2251, 0.0]],
             [[2.0, 0.5, 0.0], [1.2428, 0.2427, 0.0], [1.6915, 0.4499, 0.0]]])
 
+    def test_table_entries_follow_the_rotated_table(self):
+        values = scene_values(
+            't = MobjectTable([[Square(0.5), Circle(0.3)], [Dot(), Triangle().scale(0.3)]])\n'
+            't.rotate(PI / 2, about_point=RIGHT * 2 + DOWN)\n'
+            'result = [list(t[0][0].get_center()), list(t.get_entries()[1].get_center())]\n')
+        # Entries are also held by the attribute groups (elements_without_labels, rows).
+        self.assertEqual(values, [[0.375, -3.95, 0.0], [0.375, -2.1, 0.0]])
+
 
 if __name__ == '__main__':
     unittest.main()
