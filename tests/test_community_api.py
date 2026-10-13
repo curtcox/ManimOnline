@@ -793,6 +793,16 @@ class AnimationApiTests(unittest.TestCase):
               'ShowPassingFlash only works for VMobjects.',
               'DrawBorderThenFill only works for vectorized Mobjects', 'Write only works for vectorized Mobjects']])
 
+    def test_become_pads_receivers_with_their_own_member_classes(self):
+        # Community's align_data pads an empty receiver with VectorizedPoints (keeping
+        # their artificial size) and repeats a pushed-in receiver copy, not target members.
+        self.assertEqual(scene_values(
+            'names = lambda m: [type(x).__name__ for x in m.get_family()]\n'
+            'o = Square(); o.become(Arrow(LEFT, RIGHT))\n'
+            'e = Ellipse(width=2, height=1); e.become(VGroup(Dot(), Square(0.5)))\n'
+            'result = [names(o), round(float(o.submobjects[0].width), 4), names(e)]\n'),
+            [['Square', 'VectorizedPoint'], 0.01, ['Ellipse', 'Ellipse', 'Ellipse']])
+
     def test_uncreate_collapses_a_number_line_that_became_a_shape(self):
         # Community 0.22: the NumberLine's own points trace backwards and stay collapsed
         # on each member's first point after the remover finishes.

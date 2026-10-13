@@ -3816,7 +3816,17 @@ class Mobject:
                     not (isinstance(replacement, NumberLine) and _has_shaft(replacement))):
                 # Community's NumberLine owns its line's points: the shaft has no counterpart.
                 live = _number_line_members(source)
-            if 0 < len(live) < count and (type(source) in (Group, VGroup, Mobject) or (
+            pushed = (len(live) < count and replacement._type == 'vgroup' and source._type != 'vgroup'
+                      and _is_a(source, VMobject) and not isinstance(source, NumberLine) and source.get_points())
+            if pushed:
+                # push_self_into_submobjects: the receiver's own points move into a
+                # childless copy of itself, appended after its members.
+                pushed = object.__new__(type(source))
+                pushed.__dict__ = copy.deepcopy({key: value for key, value in source.__dict__.items()
+                                                 if key not in ('children', 'updaters', '_saved_state')})
+                pushed.children, pushed.updaters = [], []
+                live = [*live, pushed]
+            if 0 < len(live) < count and (pushed or type(source) in (Group, VGroup, Mobject) or (
                     isinstance(source, TipableVMobject) and replacement._type != 'vgroup')):
                 # align_data pads the receiver too: each member's (faded) copies follow it.
                 # (Role-structured families such as NumberLine keep their slots.)
@@ -3825,17 +3835,11 @@ class Mobject:
                     origin = live[index * len(live) // count]
                     slots.append(origin.copy() if origin in seen else origin)
                     seen.add(origin)
+            elif not live and count and _is_a(source, VMobject) and not isinstance(source, NumberLine):
+                # add_n_more_submobjects fills an empty receiver with get_point_mobject().
+                slots = [source.get_point_mobject() for _ in range(count)]
             else:
                 slots = [live[index] if index < len(live) else None for index in range(count)]
-                if (len(live) < count and replacement._type == 'vgroup' and source._type != 'vgroup'
-                        and isinstance(source, TipableVMobject) and source.get_points()):
-                    # push_self_into_submobjects: the receiver's own points move into a
-                    # childless copy of itself, appended after its members.
-                    pushed = object.__new__(type(source))
-                    pushed.__dict__ = copy.deepcopy({key: value for key, value in source.__dict__.items()
-                                                     if key not in ('children', 'updaters', '_saved_state')})
-                    pushed.children, pushed.updaters = [], []
-                    slots[len(live)] = pushed
             for child, slot in zip(replacement.children, slots):
                 if id(child) in replacements:
                     member = replacements[id(child)]
@@ -3845,7 +3849,8 @@ class Mobject:
                         member = child.copy()
                     replace(member, child)
                 children.append(member)
-            retained = {key:source.__dict__[key] for key in ('updaters','updating_suspended','_saved_state')
+            retained = {key:source.__dict__[key] for key in ('updaters','updating_suspended','_saved_state',
+                                                              'artificial_width', 'artificial_height')
                         if key in source.__dict__}
             if '_tip_role' in source.__dict__ and '_tip_role' not in replacement.__dict__:
                 # Community's tip attributes keep referring to the same member.
@@ -17473,6 +17478,8 @@ class FullScreenRectangle(ScreenRectangle):
 
 class VectorizedPoint(VMobject):
     """An invisible point with Community's artificial 0.01 width and height."""
+    _frame_excluded = ('artificial_width', 'artificial_height')
+
     def __init__(self, location=ORIGIN, color=BLACK, fill_opacity=0, stroke_width=0,
                  artificial_width=0.01, artificial_height=0.01, **kwargs):
         super().__init__(color=color, fill_opacity=fill_opacity, stroke_width=stroke_width, **kwargs)
