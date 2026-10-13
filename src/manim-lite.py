@@ -13423,6 +13423,8 @@ def _mark_shared(mobject, data):
         if last[key] != index:
             node['opacity'], node['_shared_copy'] = 0, True
             continue
+        if parent is None:
+            continue  # The family root keeps its own frame.
         home = _frame_parent(member)
         if home is None or home is parent or not any(child is member for child in home.children):
             continue
