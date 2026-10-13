@@ -1103,6 +1103,21 @@ class AnimationApiTests(unittest.TestCase):
             'S().render()\n'),
             ['Please override in a child class.'] * 3 + ['ok', 'Please override in a child class.'])
 
+    def test_wiggle_returns_number_labels_to_their_start(self):
+        # Community 0.22 resets every glyph to its starting points on each frame.
+        self.assertEqual(scene_values(
+            'R = lambda m: [round(float(v), 3) + 0.0 for v in m.get_center()[:2]]\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        global result\n'
+            '        o = NumberLine(x_range=[0, 4, 1], length=2, include_numbers=True)\n'
+            '        o.rotate(PI / 2); self.add(o)\n'
+            '        before = [R(n) for n in o.numbers]\n'
+            '        self.play(Wiggle(o), run_time=0.5)\n'
+            '        result = [R(n) for n in o.numbers] == before, len(before)\n'
+            'S().render()\n'),
+            [True, 5])
+
     def test_ticks_become_copies_of_a_posed_arrow_tip(self):
         # Community 0.22's null_point_align pushes the tip into a submobject; every tick becomes a tip.
         self.assertEqual(scene_values(

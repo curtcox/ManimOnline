@@ -3057,7 +3057,20 @@ class Mobject:
         local = [Vector(p) for p in own]
         for child in _moved_children(self):
             local.extend(child._family_bound_points())
-        return [self._point_to_world(p) for p in local]
+        if not local or self.angle == 0 and self.geometry_scale == 1:
+            return [self._point_to_world(p) for p in local]
+        # _point_to_world's arithmetic with the pivot measured once (it may shift the position).
+        cx, cy, cz = self._geometry_center()
+        px, py, pz = self.position
+        scale, cos, sin = self.geometry_scale, math.cos(self.angle), math.sin(self.angle)
+        result = []
+        for p in local:
+            ox, oy, oz = (p[0] - cx) * scale, (p[1] - cy) * scale, ((p[2] if len(p) > 2 else 0) - cz) * scale
+            point = (px + cx + (ox * cos - oy * sin), py + cy + (ox * sin + oy * cos), pz + cz + oz)
+            if not all(map(math.isfinite, point)):
+                raise ValueError('Path coordinates must be finite')
+            result.append(point)
+        return result
 
     def _bounds(self):
         memo = _BOUNDS_MEMO
@@ -15865,12 +15878,35 @@ class Wiggle(Animation):
         # Community's per-member wiggle, run as scene code (members in world coordinates).
         # Each pivot is measured after the previous step, as Community evaluates its arguments.
         pivots = self.__dict__.get('_frame_pivots')
-        _call_as_scene(submobject.set_points, _call_as_scene(starting_submobject.get_points))
+        points = _call_as_scene(starting_submobject.get_points)
+        if len(points) or submobject.children:
+            _call_as_scene(submobject.set_points, points)
+        else:
+            # Text leaves keep their glyph outlines as a pose: reset that pose instead.
+            start = starting_submobject.copy()
+            frame = _world_frame(_posed_ancestors(starting_submobject))
+            if frame is not None:
+                _place(start, frame)
+            token = _enter_world(submobject)
+            try:
+                for key in ('position', 'angle', 'geometry_scale'):
+                    setattr(submobject, key, copy.deepcopy(getattr(start, key)))
+            finally:
+                if token:
+                    _exit_world(token)
         _call_as_scene(submobject.scale, interpolate(1, self.scale_value, there_and_back(alpha)),
                        about_point=pivots[0] if pivots else _call_as_scene(self.get_scale_about_point))
         _call_as_scene(submobject.rotate, wiggle(alpha, self.n_wiggles) * self.rotation_angle,
                        about_point=pivots[1] if pivots else _call_as_scene(self.get_rotate_about_point))
         return self
+
+    def get_all_families_zipped(self):
+        # Community's text members are glyphs with points, reset on every frame like the rest.
+        def members(mobject):
+            drawn = {id(m) for m in _call_as_scene(mobject.family_members_with_points)}
+            return [m for m in _call_as_scene(mobject.get_family) if id(m) in drawn or
+                    m._type in ('text', 'mathtex') and not m.children]
+        return zip(*(members(mobject) for mobject in self.get_all_mobjects()))
 
     def get_scale_about_point(self):
         return self.mobject.get_center() if self.scale_about_point is None else self.scale_about_point

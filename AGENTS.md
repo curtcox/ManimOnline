@@ -1177,3 +1177,7 @@ points and colors only): GenericGraph keeps vertices/edges tables naming its ret
 update_edges keeps running after become (edges collapse onto vertex centers, as in Community).
 Restore.begin raises Community's NotImplementedError for plain Mobjects (Group, Mobject, ValueTracker):
 its target is mobject.restore(), whose become needs interpolate_color.
+Live Wiggle also iterates point-free text leaves (Community's glyphs have points) and resets their
+world pose each frame; otherwise NumberLine labels accumulate the scale/rotation. Rotated-family
+bounds (`_family_bound_points`) measure the pivot once but keep `_point_to_world`'s arithmetic
+order: tests sit on rounding ties, and `_points_to_world` groups its sums differently.
