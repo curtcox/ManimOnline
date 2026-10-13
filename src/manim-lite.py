@@ -1,6 +1,7 @@
 """Small, explicit Manim subset for SVG frame playback (not full Manim)."""
 import bisect
 import cmath
+import collections.abc
 import contextlib
 import copy
 import dataclasses
@@ -25695,6 +25696,13 @@ EXPORTS += ['LineJointType', 'CapStyleType', 'register_font', 'Typst', 'MathTyps
             'quaternion_from_angle_axis', 'angle_axis_from_quaternion', 'quaternion_conjugate', 'RendererType',
             'QUALITIES', 'DEFAULT_QUALITY', 'ParsableManimColor', 'ManimColorDType', 'Section', 'console',
             'error_console', 'Camera', 'MovingCamera', 'MultiCamera']
+EXPORTS += ['DictAsObject', 'frame', 'CTRL_VALUE', 'SHIFT_VALUE', 'EPILOG', 'NO_SCENE_MESSAGE',
+            'SCENE_NOT_FOUND_MESSAGE', 'CHOOSE_NUMBER_MESSAGE', 'INVALID_NUMBER_MESSAGE', 'CONTEXT_SETTINGS',
+            'cli_ctx_settings', 'change_to_rgba_array', 'invert_image', 'drag_pixels',
+            'add_extension_if_not_present', 'guarantee_existence', 'guarantee_empty_existence', 'modify_atime',
+            'seek_full_path_from_defaults', 'get_full_raster_image_path', 'get_full_sound_file_path',
+            'ensure_executable', 'get_dir_layout', 'open_file', 'capture', 'get_plugins', 'list_plugins',
+            'version', 'PackageNotFoundError', 'annotations']
 
 
 def _rounded_array(value):
@@ -26465,9 +26473,192 @@ class MethodWithArgs:
     kwargs: dict
 
 
+import __future__  # noqa: E402
+from importlib.metadata import PackageNotFoundError, version  # noqa: E402 (in Community's star import)
+annotations = __future__.annotations
+
+
 class DictAsObject:
     def __init__(self, dictin):
         self.__dict__ = dictin
+
+
+class ManimFrame(collections.abc.Mapping):
+    """Community's read-only view of the frame options (manim.frame) over the live config."""
+    _OPTS = frozenset(('pixel_width', 'pixel_height', 'aspect_ratio', 'frame_height', 'frame_width',
+                       'frame_y_radius', 'frame_x_radius', 'top', 'bottom', 'left_side', 'right_side'))
+    _CONSTANTS = {'UP': (0.0, 1.0, 0.0), 'DOWN': (0.0, -1.0, 0.0), 'RIGHT': (1.0, 0.0, 0.0),
+                  'LEFT': (-1.0, 0.0, 0.0), 'IN': (0.0, 0.0, -1.0), 'OUT': (0.0, 0.0, 1.0),
+                  'ORIGIN': (0.0, 0.0, 0.0), 'X_AXIS': (1.0, 0.0, 0.0), 'Y_AXIS': (0.0, 1.0, 0.0),
+                  'Z_AXIS': (0.0, 0.0, 1.0), 'UL': (-1.0, 1.0, 0.0), 'UR': (1.0, 1.0, 0.0),
+                  'DL': (-1.0, -1.0, 0.0), 'DR': (1.0, -1.0, 0.0)}
+
+    def __getitem__(self, key):
+        if key in self._OPTS:
+            value = config[key]
+        elif key in self._CONSTANTS:
+            value = self._CONSTANTS[key]
+        else:
+            raise KeyError(key)
+        if isinstance(value, tuple) and 'numpy' in sys.modules:
+            return sys.modules['numpy'].array(value, dtype=float)
+        return Vector(value) if isinstance(value, tuple) else value
+
+    def __getattr__(self, name):
+        if name.startswith('_'):
+            raise AttributeError(name)
+        try:
+            return self[name]
+        except KeyError:
+            raise AttributeError(f"'ManimFrame' object has no attribute '{name}'") from None
+
+    def __iter__(self):
+        return iter(list(self._OPTS) + list(self._CONSTANTS))
+
+    def __len__(self):
+        return len(self._OPTS)
+
+    def __setattr__(self, attr, val):
+        raise TypeError("'ManimFrame' object does not support item assignment")
+
+    def __setitem__(self, key, val):
+        raise TypeError("'ManimFrame' object does not support item assignment")
+
+    def __delitem__(self, key):
+        raise TypeError("'ManimFrame' object does not support item deletion")
+
+
+frame = ManimFrame()
+CTRL_VALUE, SHIFT_VALUE = 65507, 65505
+EPILOG = 'Made with <3 by Manim Community developers.'
+NO_SCENE_MESSAGE = '\n   There are no scenes inside that module\n'
+SCENE_NOT_FOUND_MESSAGE = '\n   {} is not in the script\n'
+CHOOSE_NUMBER_MESSAGE = ('\nChoose number corresponding to desired scene/arguments.\n'
+                         '(Use comma separated list for multiple entries or use "*" to select all scenes.)\n'
+                         'Choice(s): ')
+INVALID_NUMBER_MESSAGE = 'Invalid scene numbers have been specified. Aborting.'
+CONTEXT_SETTINGS = {'align_option_groups': True, 'align_sections': True, 'show_constraints': True}
+cli_ctx_settings = dict(CONTEXT_SETTINGS, formatter_settings={
+    'width': 80, 'indent_increment': 2, 'col1_max_width': 30, 'col2_min_width': 35, 'col_spacing': 2,
+    'row_sep': None})
+
+
+def change_to_rgba_array(image, dtype='uint8'):
+    """Converts an RGB array into RGBA with the alpha value opacity maxed."""
+    import numpy as np
+    pa = image
+    if len(pa.shape) == 2:
+        pa = pa.reshape(list(pa.shape) + [1])
+    if pa.shape[2] == 1:
+        pa = pa.repeat(3, axis=2)
+    if pa.shape[2] == 3:
+        pa = np.append(pa, 255 * np.ones(list(pa.shape[:2]) + [1], dtype=dtype), axis=2)
+    return pa
+
+
+def invert_image(image):
+    import numpy as np
+    from PIL import Image
+    arr = np.array(image)
+    return Image.fromarray((255 * np.ones(arr.shape)).astype(arr.dtype) - arr)
+
+
+def drag_pixels(frames):
+    import numpy as np
+    curr = frames[0]
+    new_frames = []
+    for item in frames:
+        curr += (curr == 0) * np.array(item)
+        new_frames.append(np.array(curr))
+    return new_frames
+
+
+def add_extension_if_not_present(file_name, extension):
+    if file_name.suffix != extension:
+        return file_name.with_suffix(file_name.suffix + extension)
+    return file_name
+
+
+def guarantee_existence(path):
+    path.mkdir(parents=True, exist_ok=True)
+    return path.resolve(strict=True)
+
+
+def guarantee_empty_existence(path):
+    import shutil
+    if path.exists():
+        shutil.rmtree(str(path))
+    path.mkdir(parents=True, exist_ok=True)
+    return path.resolve(strict=True)
+
+
+def modify_atime(file_path):
+    import os
+    import pathlib
+    import time
+    os.utime(file_path, times=(time.time(), pathlib.Path(file_path).stat().st_mtime))
+
+
+def seek_full_path_from_defaults(file_name, default_dir, extensions):
+    import pathlib
+    possible_paths = [pathlib.Path(file_name).expanduser()]
+    possible_paths += [pathlib.Path(default_dir) / f'{file_name}{extension}' for extension in ['', *extensions]]
+    for path in possible_paths:
+        if path.exists():
+            return path
+    raise OSError(f'From: {pathlib.Path.cwd()}, could not find {file_name} at either '
+                  f'of these locations: {list(map(str, possible_paths))}')
+
+
+def get_full_raster_image_path(image_file_name):
+    return seek_full_path_from_defaults(image_file_name, default_dir=config.assets_dir,
+                                        extensions=['.jpg', '.jpeg', '.png', '.gif', '.ico'])
+
+
+def get_full_sound_file_path(sound_file_name, assets_dir):
+    return seek_full_path_from_defaults(sound_file_name, default_dir=assets_dir, extensions=['.wav', '.mp3'])
+
+
+def ensure_executable(path_to_exe):
+    import os
+    import shutil
+    if str(path_to_exe.parent) == '.':
+        executable = shutil.which(path_to_exe.stem)
+        if executable is None:
+            return False
+    else:
+        executable = path_to_exe
+    return os.access(executable, os.X_OK)
+
+
+def get_dir_layout(dirpath):
+    for p in dirpath.iterdir():
+        if p.is_dir():
+            yield from get_dir_layout(p)
+            continue
+        yield str(p.relative_to(dirpath))
+
+
+def open_file(file_path, in_browser=False):
+    """Community opens the file with the platform viewer; the browser preview has none."""
+    raise OSError('Opening files with a system viewer is not available in the browser preview.')
+
+
+def capture(command, cwd=None, command_input=None):
+    import subprocess
+    p = subprocess.run(command, cwd=cwd, input=command_input, capture_output=True, text=True, encoding='utf-8')
+    return p.stdout, p.stderr, p.returncode
+
+
+def get_plugins():
+    """Community loads entry points in the manim.plugins group; the preview has none."""
+    return {}
+
+
+def list_plugins():
+    console.print('[green bold]Plugins:[/green bold]', justify='left')
+    for plugin_name in get_plugins():
+        console.print(f' • {plugin_name}')
 
 
 _SUBMODULE_ONLY = ('GenericGraph', 'StreamLine', 'AbstractImageMobject', 'TransformMatchingAbstractBase',
@@ -26490,6 +26681,9 @@ class _ModuleNamespace(types.ModuleType):
     def __getattr__(self, name):
         if name.startswith('__'):
             raise AttributeError(name)
+        if name == 'frame' and self.__name__ != 'manim._config':
+            # manim.frame is the ManimFrame view; manim.mobject.frame is a submodule.
+            return _ModuleNamespace(f'{self.__name__}.{name}', self._root)
         if hasattr(self._root, name):
             return getattr(self._root, name)
         if name in _SUBMODULE_ONLY:

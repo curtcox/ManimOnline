@@ -404,6 +404,20 @@ class AnimationApiTests(unittest.TestCase):
             [[[-2.0, 0.0, 0.0], [0.0, 4.0, 0.0]], [[-2.0, 0.0], [0.0, 4.0], [0.0, 0.0]],
              [-2.0, 0.0, 0.0]])
 
+    def test_frame_view_and_star_import_utilities(self):
+        self.assertEqual(scene_values(
+            'import manim\n'
+            'from manim.mobject.frame import ScreenRectangle\n'
+            'result = [list(frame.top), frame["frame_width"], list(frame.UL), len(frame), DictAsObject({"a": 2}).a,\n'
+            '          sorted(frame)[:3], CTRL_VALUE, get_plugins(), ScreenRectangle.__name__,\n'
+            '          str(add_extension_if_not_present(__import__("pathlib").Path("a.png"), ".svg"))]\n'
+            'try:\n'
+            '    frame.top = 1\n'
+            'except TypeError as error:\n'
+            '    result.append(str(error))\n'),
+            [[0.0, 4.0, 0.0], 14.2222, [-1.0, 1.0, 0.0], 11, 2, ['DL', 'DOWN', 'DR'], 65507, {}, 'ScreenRectangle',
+             'a.png.svg', "'ManimFrame' object does not support item assignment"])
+
     def test_submobject_validation_and_strings(self):
         self.assertEqual(scene_values(
             'result = []\n'
