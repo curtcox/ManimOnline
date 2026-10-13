@@ -1086,3 +1086,7 @@ naming the receiver's members): members keep their own roles, new members get no
 roles change the receiver's shaft is first frozen at the target's tip bases. Tipped receivers
 pad with copies of their own members unless the target is a pushed-in vgroup. An Arrow with
 non-tip members runs Community's literal put_start_and_end_on (Arrow.scale, rotate, shift).
+When a tipped receiver with points becomes a pointless vgroup, become fills the pushed slot
+with a childless copy of the receiver's class (Community's push_self_into_submobjects), so
+later Arrow.scale calls on it return early as in Community. `_aligned_target` aligns a curved
+receiver's pushed copy by its frozen drawn shaft points (flag dropped), not the refit path.

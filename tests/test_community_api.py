@@ -588,6 +588,28 @@ class AnimationApiTests(unittest.TestCase):
             's = S(); s.render(); result = s.out\n'),
             [True, False, -1.4, 3.15, False, 1.4, [[0.0, -1.1031, 0.0], [0.0, 0.825, 0.0]]])
 
+    def test_pushed_receiver_copy_keeps_its_class_and_shaft_points(self):
+        # Community 0.22: push_self_into_submobjects appends a childless copy of the receiver,
+        # so Wiggle's Arrow.scale returns early on that (closed) member; a curved arrow's copy
+        # holds its 32 cut shaft points, so the square it becomes is subdivided to match.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = DoubleArrow(LEFT * 2, RIGHT); self.add(o)\n'
+            '        self.play(Transform(o, VGroup(Dot(), Square())))\n'
+            '        widths = []\n'
+            '        upd = lambda dt: widths.append(round(float(o.get_width()), 3))\n'
+            '        self.add_updater(upd); self.play(Wiggle(o)); self.remove_updater(upd)\n'
+            '        c = CurvedArrow(LEFT, RIGHT); self.add(c)\n'
+            '        self.play(c.animate.rotate(1))\n'
+            '        self.play(Transform(c, VGroup(Dot(), Square())))\n'
+            '        self.out = [[type(m).__name__ for m in o.get_family()], widths[::2],\n'
+            '                    [len(m.points) for m in c.get_family()]]\n'
+            's = S(); s.render(); result = s.out\n'),
+            [['DoubleArrow', 'ArrowTriangleFilledTip', 'ArrowTriangleFilledTip', 'DoubleArrow'],
+             [2.0, 2.0, 2.0, 2.001, 2.003, 2.004, 2.068, 2.118, 2.118, 2.068, 2.004, 2.003, 2.001, 2.0, 2.0],
+             [0, 32, 32]])
+
     def test_color_values_operators_and_helpers(self):
         self.assertEqual(scene_values(
             'result = [repr(WHITE / 2), list(WHITE / 2), repr(~RED), int(RED), RED[0], repr(RED & BLUE),\n'

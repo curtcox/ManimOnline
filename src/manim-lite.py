@@ -3716,7 +3716,13 @@ class Mobject:
             has_points, sources, receiver = source[0], list(source[1]), source[2]
             point = lambda: VectorizedPoint(target._geometry_center())
             if has_points and not target.has_points():
-                sources.append((True, [], receiver))
+                pushed = receiver
+                if isinstance(receiver, TipableVMobject) and receiver.__dict__.get('_curved_tip_path'):
+                    pushed = receiver.copy()
+                    pushed._freeze_shaft()
+                    pushed._replace_children([])
+                    VMobject.set_points(pushed, pushed.get_points())
+                sources.append((True, [], pushed))
                 has_points = False
             elif target.has_points() and not has_points:
                 if target in _PARENTS and _posed_ancestors(target):
@@ -3802,6 +3808,15 @@ class Mobject:
                     seen.add(origin)
             else:
                 slots = [live[index] if index < len(live) else None for index in range(count)]
+                if (len(live) < count and replacement._type == 'vgroup' and source._type != 'vgroup'
+                        and isinstance(source, TipableVMobject) and source.get_points()):
+                    # push_self_into_submobjects: the receiver's own points move into a
+                    # childless copy of itself, appended after its members.
+                    pushed = object.__new__(type(source))
+                    pushed.__dict__ = copy.deepcopy({key: value for key, value in source.__dict__.items()
+                                                     if key not in ('children', 'updaters', '_saved_state')})
+                    pushed.children, pushed.updaters = [], []
+                    slots[len(live)] = pushed
             for child, slot in zip(replacement.children, slots):
                 if id(child) in replacements:
                     member = replacements[id(child)]
