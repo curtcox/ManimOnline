@@ -848,7 +848,10 @@ TransformMatchingShapes saves every part's state when constructed (Community's k
 Library become pushes a NumberLine receiver facing a larger vgroup as a childless (shaftless)
 NumberLine copy, like push_self_into_submobjects. TransformMatching*: parts sharing a key with unequal counts transform as one VGroup pair
 (Community's per-key group Transform; surplus parts meet faded copies), folded back member by
-member into the source tree when the source side is not padded. Unmatched targets fade in as a real `_arrivals` VGroup introduced at begin
+member into the source tree when the source side is not padded. Samples fold into the source
+tree through posed parents too (re-posed by each ancestor's frame); only text/formula pairs
+cross-fade, other families (arrows with tips) use transform plans; shape keys hash world
+points. Unmatched targets fade in as a real `_arrivals` VGroup introduced at begin
 (Community's FadeIn copy) with one group snapshot; unmatched sources fade out by one shared
 shift. Parts are world views, and parts inside another part's family (an arrow's tip) move with it.
 When every piece is reached through identity-pose containers, pieces are folded

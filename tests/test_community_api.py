@@ -887,6 +887,29 @@ class AnimationApiTests(unittest.TestCase):
              ['TypeError', "setter() got an unexpected keyword argument 'color'"],
              0.0, 'ValueTracker', 'VGroup'])
 
+    def test_transform_matching_shapes_morphs_posed_families_in_place(self):
+        # Community 0.22: matched arrows morph with their tips and leaving parts stay members.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        global result\n'
+            '        R = lambda p: [round(float(v), 3) + 0.0 for v in p[:2]]\n'
+            '        o = VGroup(Arrow(LEFT, RIGHT), Arrow(DOWN, UP).shift(LEFT * 2))\n'
+            '        d = DashedLine(LEFT, RIGHT * 2).rotate(1)\n'
+            '        self.add(o, d)\n'
+            '        result, n = [], [0]\n'
+            '        def f(dt):\n'
+            '            n[0] += 1\n'
+            '            if n[0] == 1:\n'
+            '                result.extend((type(m).__name__, R(m.get_critical_point(DL))) for m in o.family_members_with_points())\n'
+            '                result.append(len(d.family_members_with_points()))\n'
+            '        self.add_updater(f)\n'
+            '        self.play(TransformMatchingShapes(o, VGroup(Arrow(LEFT, RIGHT).shift(UP * 2), Arrow(UP, DOWN).shift(RIGHT * 2))),\n'
+            '                  TransformMatchingShapes(d, DashedLine(LEFT, RIGHT * 2).rotate(1).shift(UP)))\n'
+            'S().render()\n'),
+            [['Arrow', [-0.75, -0.175]], ['ArrowTriangleFilledTip', [0.4, -0.175]],
+             ['Arrow', [-2.175, -0.75]], ['ArrowTriangleFilledTip', [-2.175, 0.4]], 30])
+
     def test_matching_saves_parts_and_number_lines_push_themselves(self):
         # Community 0.22: TransformMatchingShapes' key hashing saves every part's state, and a
         # NumberLine facing a group pushes a childless NumberLine (its own points) into its members.

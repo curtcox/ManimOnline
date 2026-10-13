@@ -14495,18 +14495,16 @@ class _TransformMatching(Animation):
                 members.append(a)
                 grouped.add(id(group))
         covered_lost, covered_new = inner(lost), inner(new)
-        lost = [_world_view(part) for part in lost if id(part) not in covered_lost]
+        lost_live = [part for part in lost if id(part) not in covered_lost]
+        lost = [_world_view(part) for part in lost_live]
         new = [_world_view(part) for part in new if id(part) not in covered_new]
         if self.transform_mismatches and lost and new:
             pairs.append((VGroup(*lost).copy(), VGroup(*new).copy()))
             members.append(None)
-            lost, new = [], []
+            lost, lost_live, new = [], [], []
         self.plans, self.sliding = [], []
         for a, b in pairs:
-            if id(a) in grouped and all(m._painted_members() == [m] and m._type not in ('text', 'mathtex')
-                                        for m in a.children + b.children):
-                self.plans.append(_transform_plan(a.to_dict(), b.to_dict()))
-            elif {a._type, b._type} & {'text', 'mathtex'} or a._painted_members() != [a] or b._painted_members() != [b]:
+            if any(m._type in ('text', 'mathtex') for m in a.get_family() + b.get_family()):
                 # Glyphs from different formulas: slide both and cross-fade, so
                 # identical parts appear to move into place.
                 self.sliding.append((a.to_dict(), self._posed(a, b).to_dict(), self._posed(b, a).to_dict(), b.to_dict()))
@@ -14521,8 +14519,8 @@ class _TransformMatching(Animation):
         self._piece_paths = None
         if not self.sliding:
             paths = self._leaf_paths(self.mobject)
-            pieces = [parts if id(a) in grouped else [a] for (a, _), parts in zip(pairs, members)] + [[part] for part in lost]
-            if all(id(part) in paths for piece in pieces for part in piece):
+            pieces = members + [[part] for part in lost_live]
+            if all(piece is not None and all(paths.get(id(part)) for part in piece) for piece in pieces):
                 self._piece_paths = [[paths[id(part)] for part in piece] for piece in pieces]
         # Community fades in a copy of the unmatched targets, added to the scene at begin.
         self._arrivals = VGroup(*[part.copy() for part in new]) if new else None
@@ -14538,14 +14536,12 @@ class _TransformMatching(Animation):
 
     @staticmethod
     def _leaf_paths(mobject):
-        """Paths of members reached only through identity-pose containers, whose snapshots
-        are world snapshots and can stand in for the member in the root's tree."""
+        """Paths of the members in the root's tree (the root's path is empty)."""
         paths = {}
         def visit(node, path):
             paths[id(node)] = path
-            if node.children and node._world_container():
-                for index, child in enumerate(node.children):
-                    visit(child, path + (index,))
+            for index, child in enumerate(node.children):
+                visit(child, path + (index,))
         visit(mobject, ())
         return paths
 
@@ -14585,14 +14581,27 @@ class _TransformMatching(Animation):
                     placed = []
                     break
         if placed:
-            # Community animates the parts inside the source family: one tree keeps them together.
+            # Community animates the parts inside the source family: one tree keeps them together,
+            # each world sample re-posed into its parents' frames.
             tree = _snapshot_copy(self.start)
+            located = []
             for path, state in placed:
                 node = tree
-                for index in path[:-1]:
-                    node = node['children'][index]
-                node['children'][path[-1]] = state
-            states = [tree]
+                for depth, index in enumerate(path):
+                    if not node.get('geometry_scale'):
+                        located = None
+                        break
+                    if 'position' in node:
+                        state = _pose_snapshot(state, _snapshot_frame(node))
+                    if depth < len(path) - 1:
+                        node = node['children'][index]
+                if located is None:
+                    break
+                located.append((node, path[-1], state))
+            if located is not None:
+                for node, index, state in located:
+                    node['children'][index] = state
+                states = [tree]
         arrivals = self.__dict__.get('_arrivals')
         if arrivals is not None:
             # One group snapshot, so updaters see every arriving part.
@@ -14648,7 +14657,7 @@ class TransformMatchingShapes(_TransformMatching):
         # Shape identity up to position and size, like Community's normalized point hash.
         if mobject._type in ('text', 'mathtex'):
             return (mobject._type, mobject.text, getattr(mobject, 'part', None))
-        probe = mobject.copy()
+        probe = _world_view(mobject).copy()  # Community hashes world points.
         probe.children = []
         probe.center()
         if probe.get_height():
