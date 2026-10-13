@@ -743,6 +743,25 @@ class AnimationApiTests(unittest.TestCase):
             's = S(); s.render(); result = s.out\n'),
             [-1.2099, -2.2108, 0.1106])
 
+    def test_collapsed_childless_arrange_and_redrawn_path_motion(self):
+        # Community 0.22: arranging a childless collapsed dot is a no-op, and MoveAlongPath moves
+        # the real mobject, so an always_redraw updater (closing over it) puts it back each frame.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = Dot(); self.add(o)\n'
+            '        self.play(ShrinkToCenter(o), run_time=0.2); self.add(o)\n'
+            '        self.play(o.animate.arrange(DOWN), run_time=0.2)\n'
+            '        t = ValueTracker(0); d = always_redraw(lambda: Dot(RIGHT * t.get_value()))\n'
+            '        self.add(t, d)\n'
+            '        xs = []\n'
+            '        self.add_updater(lambda dt: xs.append(round(float(d.get_x()), 4)))\n'
+            '        self.play(MoveAlongPath(d, Circle()), run_time=0.4)\n'
+            '        self.out = [o.width, sorted(set(xs))]\n'
+            's = S(); s.render(); result = s.out\n'),
+            [0.0, [0.0]])
+
+    def test_uncreate_collapses_a_number_line_that_became_a_shape(self):
         # Community 0.22: the NumberLine's own points trace backwards and stay collapsed
         # on each member's first point after the remover finishes.
         self.assertEqual(scene_values(

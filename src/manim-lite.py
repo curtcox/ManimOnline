@@ -1456,7 +1456,7 @@ class Mobject:
         return [child for child in self.children if child.__dict__.get('_number_line_role') != 'shaft']
 
     def _layout_targets(self):
-        if self.geometry_scale == 0:
+        if self.geometry_scale == 0 and self._layout_members():
             raise NotImplementedError('Cannot arrange a collapsed family')
         if isinstance(self, (TipableVMobject, NumberLine)):
             self._freeze_shaft()  # Layout moves the tips, never Community's own points.
@@ -14333,9 +14333,15 @@ class MoveAlongPath(Animation):
         if self.__dict__.get('_live'):
             self._dt = dt
 
-    def _deferred_update(self, dt):
-        self.original.update(dt)
-        return self.original.to_dict()
+    def _deferred_update(self, dt, live=None):
+        if live is None:
+            self.original.update(dt)
+            return self.original.to_dict()
+        # Community moves the real mobject, so updaters closing over it (always_redraw) act
+        # on what they move; live shows the sampled state during the scene's update pass.
+        live.update(dt)
+        self.original.become(live)
+        return live.to_dict()
 
     def sample(self, alpha):
         point = self.path_snapshot.point_from_proportion(alpha)
@@ -15658,7 +15664,7 @@ class ShowIncreasingSubsets(Animation):
             self._live_copy.update(dt)
         super()._advance_copies(dt)
 
-    def _deferred_update(self, dt):
+    def _deferred_update(self, dt, live=None):
         self._live_copy.update(dt)
         return self.sample(self._alpha_shown)[0]
 
@@ -16150,7 +16156,7 @@ class Scene:
                     # A non-suspending animation's mobject runs its updaters here, after the
                     # interpolation and in scene order (Community's update_mobjects).
                     seen.add(mobject)
-                    snapshot = animation._deferred_update(dt)
+                    snapshot = animation._deferred_update(dt, mobject)
                     overrides[mobject] = [snapshot]
                     _expose_snapshot(self._exposure_saved, mobject, snapshot, again=True)
                     return
