@@ -2950,6 +2950,28 @@ class AnimationApiTests(unittest.TestCase):
         # Entries are also held by the attribute groups (elements_without_labels, rows).
         self.assertEqual(values, [[0.375, -3.95, 0.0], [0.375, -2.1, 0.0]])
 
+    def test_round_corners_keep_one_subpath(self):
+        values = scene_values(
+            'o = Polygon(LEFT, UP, RIGHT, DOWN).round_corners(0.2)\n'
+            'result = [len(s) for s in o.get_subpaths()]\n')
+        self.assertEqual(values, [32.0])
+
+    def test_number_line_layout_morph_keeps_the_cut_shaft(self):
+        found = []
+        lite.render_scene('from manim import *\nclass Empty(Scene):\n    pass\n')
+        namespace = {'FOUND': found}
+        exec(compile(
+            'from manim import *\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = NumberLine(x_range=[-2, 2, 1], length=4, include_tip=True).rotate(0.3).scale(2)\n'
+            '        self.add(o)\n'
+            '        self.add_updater(lambda dt: FOUND.append(o.get_right()[0]))\n'
+            '        self.play(o.animate.arrange_in_grid(cols=2), run_time=0.2)\n', '<test>', 'exec'), namespace)
+        namespace['S']().render()
+        # Community 0.22: the own points stay cut at the tip base while the tip moves away.
+        self.assertEqual(plain(found), [3.8361, 3.1248, 4.8095])
+
 
 if __name__ == '__main__':
     unittest.main()

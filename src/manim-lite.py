@@ -2831,7 +2831,7 @@ class Mobject:
         """Community's subpaths of this mobject's own cubic points (none for containers)."""
         points = [Vector(p) for p in self.get_points()]
         splits = [0] + [n for n in range(4, len(points), 4)
-                        if math.dist(points[n - 1], points[n]) > 1e-8] + [len(points)]
+                        if not _points_close(points[n - 1], points[n])] + [len(points)]
         return [points[a:b] for a, b in zip(splits, splits[1:]) if b - a >= 4]
 
     def get_cubic_bezier_tuples(self):
@@ -6458,6 +6458,8 @@ class Polygram(VMobject):
                                 if evenly_distribute_anchors else 0)
                 for k in range(segments):
                     p, q = a + (b - a) * (k / segments), a + (b - a) * ((k + 1) / segments)
+                    if k == segments - 1:
+                        q = b  # Exactly the next corner's start: one connected outline.
                     curves.append([list(p), list(p + (q - p) * (1/3)), list(p + (q - p) * (2/3)), list(q)])
             paths.extend(curves)
             lengths.append(len(curves))
@@ -12621,6 +12623,29 @@ def _subdivide_curves(curves, count):
     return result
 
 
+def _frozen_like(source, target):
+    """source's snapshot, with NumberLine shafts cut at their tips where the target's are:
+    Community's own points are always the cut shaft, so a layout that freezes the shaft must
+    not also shorten it during the morph."""
+    pairs = list(zip(source.get_family(), target.get_family()))
+    if not any(isinstance(b, NumberLine) and b.__dict__.get('_shaft_fixed') for _, b in pairs):
+        return source.to_dict()
+    copied = source.copy()
+    for member, other in zip(copied.get_family(), target.get_family()):
+        if (isinstance(member, NumberLine) and isinstance(other, NumberLine) and _has_shaft(member)
+                and _has_shaft(other) and other.__dict__.get('_shaft_fixed')
+                and not member.__dict__.get('_shaft_fixed')):
+            member._freeze_shaft()
+    return copied.to_dict()
+
+
+def _points_close(p, q):
+    """Community's consider_points_equals: np.allclose with atol 1e-6 (rtol 1e-5)."""
+    if p == q:
+        return True
+    return all(abs(a - b) <= 1e-6 + 1e-5 * abs(b) for a, b in itertools.zip_longest(p, q, fillvalue=0))
+
+
 def _path_subpaths(snapshot, include_pending=True):
     if not include_pending and snapshot['type'] == 'polyline' and len(snapshot['vertices']) < 2:
         return []
@@ -12636,7 +12661,7 @@ def _path_subpaths(snapshot, include_pending=True):
             offset += count
     else:
         for curve in curves:
-            if not paths or paths[-1][-1][-1] != curve[0]:
+            if not paths or not _points_close(paths[-1][-1][-1], curve[0]):
                 paths.append([])
             paths[-1].append(curve)
     if include_pending and snapshot['type'] == 'bezierpath' and snapshot.get('vertices'):
@@ -14405,6 +14430,8 @@ class Transform(_PathOptions, Animation):
             self.target = _world_copy(target)
         _check_point_mobjects(self.mobject, self.target)
         super().begin(scene)
+        if scene is not None:
+            self.start = _frozen_like(self.mobject, self.target)
         self._transform_plan = None
         self._canonical = None
         self.__dict__.pop('_path_target', None)
