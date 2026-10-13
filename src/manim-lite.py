@@ -3712,17 +3712,20 @@ class Mobject:
             # Tipped paths align their own (shaft) points; refit curved shafts do not.
             return (_is_a(member, VMobject) and not hasattr(type(member), '_scene_get_points') and
                     not member.__dict__.get('_curved_tip_path'))
+        def drawn(member):
+            # Community's own points of a curved arrow are its drawn (cut) shaft.
+            if not (isinstance(member, TipableVMobject) and member.__dict__.get('_curved_tip_path')):
+                return member
+            member = member.copy()
+            member._freeze_shaft()
+            member._replace_children([])
+            VMobject.set_points(member, member.get_points())
+            return member
         def align(source, target, root=False):
             has_points, sources, receiver = source[0], list(source[1]), source[2]
             point = lambda: VectorizedPoint(target._geometry_center())
             if has_points and not target.has_points():
-                pushed = receiver
-                if isinstance(receiver, TipableVMobject) and receiver.__dict__.get('_curved_tip_path'):
-                    pushed = receiver.copy()
-                    pushed._freeze_shaft()
-                    pushed._replace_children([])
-                    VMobject.set_points(pushed, pushed.get_points())
-                sources.append((True, [], pushed))
+                sources.append((True, [], drawn(receiver)))
                 has_points = False
             elif target.has_points() and not has_points:
                 if target in _PARENTS and _posed_ancestors(target):
@@ -3736,19 +3739,20 @@ class Mobject:
                     leaf._replace_children([])
                     target = VGroup(*[_world_view(child) for child in target.children], leaf)
                     target.match_style(leaf, family=False)
-            elif (has_points and (root_points or not root) and receiver is not None and pointy(receiver)
-                  and pointy(target) and (isinstance(target, TipableVMobject) and target._tips_by_role()
-                                          or len(receiver.get_points()) != len(target.get_points()))):
+            elif (has_points and (root_points or not root) and receiver is not None
+                  and pointy(mine := drawn(receiver)) and pointy(theirs := drawn(target))
+                  and (isinstance(target, TipableVMobject) and target._tips_by_role()
+                       or len(mine.get_points()) != len(theirs.get_points()))):
                 # align_data recurses with point alignment below the root: the member with
                 # fewer curves per subpath (or fewer subpaths) is subdivided to match.
                 # (align_points returns at once on equal point counts.)
                 tipped = isinstance(target, TipableVMobject) and bool(target._tips_by_role())
-                aligned = target.copy()
+                aligned = theirs if theirs is not target else target.copy()
                 if tipped:
                     aligned._freeze_shaft()  # Community's own points are the cut shaft.
                 aligned._replace_children([])
-                receiver.copy().align_points(aligned)
-                if len(aligned.get_points()) != len(target.get_points()):
+                mine.copy().align_points(aligned)
+                if len(aligned.get_points()) != len(theirs.get_points()):
                     if tipped:
                         target._freeze_shaft()
                     lengths = aligned.__dict__.get('subpath_lengths')

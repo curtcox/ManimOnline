@@ -1097,3 +1097,5 @@ target's family or point counts (Community ends at interpolate(0), the aligned s
 A pushed-in VGroup carries the pushed shape's root style (scene become copies it), but
 Transform completion keeps a pointless receiver root's own style: Community interpolates only
 members with points. `.animate` builders are exempt (_MethodAnimation.finish reapplies methods).
+`_aligned_target`'s `drawn()` stands a refit curved arrow in by a frozen childless copy (its
+drawn shaft, flag dropped) on either side, so curved receivers and targets align point counts.

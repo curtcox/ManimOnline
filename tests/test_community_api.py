@@ -645,6 +645,18 @@ class AnimationApiTests(unittest.TestCase):
             's = S(); s.render(); result = s.out\n'),
             [72, [[0, 0.6], [32, 0.6], [32, 0.0]], '#58C4DD', '#F7D96F'])
 
+    def test_curved_receiver_aligns_partial_target_by_drawn_shaft(self):
+        # Community 0.22: a curved arrow's own points are its 32-point cut shaft, so a 24-point
+        # partial target is subdivided to match when the transform completes.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = CurvedArrow(LEFT, RIGHT); self.add(o)\n'
+            '        self.play(o.animate.pointwise_become_partial(o.copy(), 0.2, 0.8), run_time=0.2)\n'
+            '        self.out = [len(m.points) for m in o.get_family()]\n'
+            's = S(); s.render(); result = s.out\n'),
+            [32, 12])
+
     def test_color_values_operators_and_helpers(self):
         self.assertEqual(scene_values(
             'result = [repr(WHITE / 2), list(WHITE / 2), repr(~RED), int(RED), RED[0], repr(RED & BLUE),\n'
