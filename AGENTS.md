@@ -1114,6 +1114,10 @@ an empty group pads with collapsed copies there (Community's get_point_mobject o
 family is the origin). Zero-scale groups have no inverse; their padding shrinks in place and,
 outside world plans, keeps its scale (the group's own zero scale collapses it exactly once).
 SpiralIn measures centers of mass in the scene view (NumberLine shafts cut at the tips).
+`_VMOBJECT_ONLY` names (set_fill, set_stroke, make_smooth, ...) called from scene code on plain
+Mobjects (Group, ValueTracker, images, point clouds) follow Community's Mobject.__getattr__:
+set_x(value) stores `_community_values` (no restyling), get_x reads it, others raise
+AttributeError. Classes list Community's exceptions in `_community_vmobject_names`.
 A tipped target aligned against a tipless receiver is shaft-frozen first: its tips become plain
 members, and Community's own points are the cut shaft.
 Padding styles follow Community: repeats are `_fade_snapshot` (fill/stroke opacities zero, not

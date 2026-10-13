@@ -1342,6 +1342,9 @@ class Mobject:
                 setattr(self, attr[4:], value)
                 return self
             return types.MethodType(setter, self)
+        values = self.__dict__.get('_community_values')
+        if values and attr in values:
+            return values[attr]
         raise AttributeError(f"{type(self).__name__} object has no attribute '{attr}'")
 
     def __setattr__(self, name, value):
@@ -4480,7 +4483,7 @@ class Mobject:
         center = self._geometry_center()
         result = _snapshot_copy({key: value for key, value in self.__dict__.items()
                                 if (key in _POINT_KEYS and type(value) is list or not _holds_mobject(value) and not callable(value)) and
-                                key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache', '_flow_points', '_name', '_mobject_points', '_scene_keys', '_init_positioning_axis') and
+                                key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache', '_flow_points', '_name', '_mobject_points', '_scene_keys', '_init_positioning_axis', '_community_values') and
                                 key not in self._frame_excluded})
         result['type'] = result.pop('_type')
         result['geometry_center'] = list(center)
@@ -26275,6 +26278,74 @@ def _install_scene_calls():
 
 
 _install_scene_calls()
+
+# Community defines these only on VMobject; plain Mobjects (Group, ValueTracker, images, point
+# clouds) answer them through Mobject.__getattr__. set_points keeps its bounds-only behavior.
+_VMOBJECT_ONLY = frozenset((
+    'add_cubic_bezier_curve', 'add_cubic_bezier_curve_to', 'add_cubic_bezier_curves', 'add_line_to',
+    'add_points_as_corners', 'add_quadratic_bezier_curve_to', 'add_smooth_curve_to', 'add_subpath',
+    'align_rgbas', 'append_points', 'append_vectorized_mobject', 'change_anchor_mode', 'clear_points',
+    'close_path', 'color_using_background_image', 'consider_points_equals', 'consider_points_equals_2d',
+    'force_direction', 'gen_cubic_bezier_tuples_from_points', 'gen_subpaths_from_points_2d',
+    'generate_rgbas_array', 'get_anchors', 'get_anchors_and_handles', 'get_arc_length',
+    'get_background_image', 'get_cubic_bezier_tuples', 'get_cubic_bezier_tuples_from_points',
+    'get_curve_functions', 'get_curve_functions_with_lengths', 'get_direction', 'get_end_anchors',
+    'get_fill_color', 'get_fill_colors', 'get_fill_opacities', 'get_fill_opacity', 'get_fill_rgbas',
+    'get_gradient_start_and_end_points', 'get_last_point', 'get_nth_curve_function',
+    'get_nth_curve_function_with_length', 'get_nth_curve_length', 'get_nth_curve_length_pieces',
+    'get_nth_curve_points', 'get_num_curves', 'get_sheen_direction', 'get_sheen_factor',
+    'get_start_anchors', 'get_stroke_color', 'get_stroke_colors', 'get_stroke_opacities',
+    'get_stroke_opacity', 'get_stroke_rgbas', 'get_stroke_width', 'get_style', 'get_subcurve',
+    'get_subpath_split_indices_from_points', 'get_subpaths', 'get_subpaths_from_points',
+    'has_new_path_started', 'insert_n_curves', 'insert_n_curves_to_point_list', 'is_closed', 'make_jagged',
+    'make_smooth', 'match_background_image', 'match_style', 'pointwise_become_partial', 'resize_points',
+    'reverse_direction', 'rotate_sheen_direction', 'scale_handle_to_anchor_distances',
+    'set_anchors_and_handles', 'set_background_stroke', 'set_cap_style', 'set_fill', 'set_opacity',
+    'set_points_as_corners', 'set_points_smoothly', 'set_shade_in_3d', 'set_sheen', 'set_sheen_direction',
+    'set_stroke', 'set_style', 'start_new_path', 'update_rgbas_array'))
+Mobject._community_vmobject_names = frozenset()
+ImageMobject._community_vmobject_names = frozenset(('get_style', 'set_opacity'))
+PMobject._community_vmobject_names = frozenset(('get_stroke_width', 'pointwise_become_partial'))
+
+
+def _plain_mobject_method(mobject, name):
+    """Community's Mobject.__getattr__ answer: set_x(value) stores x (without restyling),
+    get_x() reads it back and other names do not exist."""
+    attr = name[4:]
+    if name.startswith('set_'):
+        def setter(self, value):
+            self.__dict__.setdefault('_community_values', {})[attr] = value
+            return self
+        setter.__qualname__ = 'Mobject.__getattr__.<locals>.setter'
+        return types.MethodType(setter, mobject)
+    if name.startswith('get_'):
+        def getter(self):
+            values = self.__dict__.get('_community_values') or {}
+            if attr not in values:
+                raise AttributeError(f"{type(self).__name__} object has no attribute '{attr}'")
+            return values[attr]
+        getter.__qualname__ = 'Mobject.__getattr__.<locals>.getter'
+        return types.MethodType(getter, mobject)
+    raise AttributeError(f"{type(mobject).__name__} object has no attribute '{name}'")
+
+
+def _vmobject_only(function):
+    name = function.__name__
+    @functools.wraps(function)
+    def call(self, *args, **kwargs):
+        if not _from_scene():
+            return function(self, *args, **kwargs)
+        if isinstance(self, VMobject) or name in self._community_vmobject_names:
+            return _call_as_scene(function, self, *args, **kwargs)
+        return _plain_mobject_method(self, name)(*args, **kwargs)
+    call._scene_call = True
+    return call
+
+
+for _cls in [value for value in globals().values() if isinstance(value, type) and issubclass(value, Mobject)]:
+    for _name in _VMOBJECT_ONLY & _cls.__dict__.keys():
+        if isinstance(_cls.__dict__[_name], types.FunctionType):
+            setattr(_cls, _name, _vmobject_only(_cls.__dict__[_name]))
 _VIRTUAL_BASES.update({VMobject: (VGroup, Text), Animation: (AnimationGroup,),
                        Transform: (FadeIn, GrowFromPoint, Indicate, Rotate, TransformAnimations),
                        Polygram: (ArrowTriangleTip, ArrowSquareTip), RegularPolygram: (ArrowTriangleTip,),

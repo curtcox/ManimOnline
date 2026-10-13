@@ -865,6 +865,28 @@ class AnimationApiTests(unittest.TestCase):
             'result = [[R(m.get_critical_point(UR)) for m in x.family_members_with_points()] for x in (o, v)]\n'),
             [[[0.0, -0.497], [0.0, -0.497]], [[0.0, -2.0], [0.0, -2.0], [0.0, -2.0]]])
 
+    def test_plain_mobjects_lack_vmobject_methods(self):
+        # Community 0.22: Group/ValueTracker answer VMobject-only names through
+        # Mobject.__getattr__ (set_x stores x without restyling; other names are missing).
+        self.assertEqual(scene_values(
+            'g = Group(Square())\n'
+            'def outcome(call):\n'
+            '    try:\n'
+            '        value = call()\n'
+            '        return value if isinstance(value, str) else type(value).__name__\n'
+            '    except Exception as error:\n'
+            "        return [type(error).__name__, str(error).replace('Mobject.__getattr__.<locals>.', '')]\n"
+            'result = [outcome(lambda: g.set_stroke(YELLOW, 6)), outcome(lambda: g.set_fill(RED)),\n'
+            '          outcome(lambda: g.get_fill()), outcome(lambda: g.get_fill_color()),\n'
+            '          outcome(lambda: g.make_smooth()), outcome(lambda: g.animate.set_stroke(color=RED)),\n'
+            '          g[0].get_fill_opacity(), outcome(lambda: ValueTracker(1).set_opacity(0.5)),\n'
+            '          outcome(lambda: VGroup(Square()).set_stroke(RED, 6))]\n'),
+            [['TypeError', 'setter() takes 2 positional arguments but 3 were given'],
+             'Group', '#FC6255', ['AttributeError', "Group object has no attribute 'fill_color'"],
+             ['AttributeError', "Group object has no attribute 'make_smooth'"],
+             ['TypeError', "setter() got an unexpected keyword argument 'color'"],
+             0.0, 'ValueTracker', 'VGroup'])
+
     def test_collapsing_members_and_spiralling_axes_follow_community(self):
         # Community 0.22: padded ticks shrink linearly (once) inside their collapsing group,
         # and SpiralIn moves each shape by its scene-view center of mass.
