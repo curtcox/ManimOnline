@@ -1057,3 +1057,10 @@ center of mass (computed once).
 Sphere/Dot3D reuse mapped face geometry by `_surface_key` (`_SURFACE_FACES`) unless a subclass
 overrides func. proportions_along_bezier_curve_for_point is Community's exact test: per-axis
 polynomial roots (`_polynomial_roots`, pure Python) rounded to round_to, intersected.
+A VGroup with own points (set_points, set_points_as_corners, append/add_line_to, ...) becomes
+native polyline/bezierpath geometry with children, drawn like other geometry-bearing families;
+VMobject's point editors are borrowed onto VGroup, and emptying the points restores 'vgroup'.
+Arrow semantics in add_tip/Arrow.scale follow the class (isinstance Arrow), not `_type`, since
+make_smooth turns an arrow's own path into a bezierpath. Community's Arrow.scale fails with
+IndexError on a lone start tip, and scene-code restore() on plain Mobjects (Group,
+ValueTracker) raises NotImplementedError; tests use the library restore via `restore_state`.

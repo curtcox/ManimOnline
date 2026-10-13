@@ -479,6 +479,40 @@ class AnimationApiTests(unittest.TestCase):
              "TypeError: Mobject.scale() got an unexpected keyword argument 'scale_tips'",
              '#010000', ['#FC6255'] * 3, ['#FC6255'] * 3, ['#83C167'] * 3, '#FC6255', '#FC6255', None])
 
+    def test_smoothed_double_arrow_scale_keeps_arrow_tip_semantics(self):
+        # Community 0.22: Arrow.scale keeps tip sizes even after make_smooth curves the shaft.
+        self.assertEqual(scene_values(
+            'o = DoubleArrow(LEFT * 2, RIGHT).make_smooth()\n'
+            'o.add(Square().scale(0.3))\n'
+            'o.scale(1.2)\n'
+            'result = [[round(float(v), 4) for v in (m.get_left()[0], m.get_right()[0], m.height)]\n'
+            '          for m in o.submobjects]\n'),
+            [[-0.2639, 0.4444, 0.7083], [0.65, 1.0, 0.4667], [-2.0, -1.65, 0.4667]])
+
+    def test_vgroup_own_points_and_community_failures(self):
+        # Community 0.22: a VGroup is a VMobject, so its own points are kept and moved;
+        # Arrow.scale re-adds a lone start tip as old_tips[1]; restore() is become(), which
+        # plain Mobjects cannot run.
+        self.assertEqual(scene_values(
+            'g = VGroup(Square(), Dot(RIGHT * 3)).set_points_as_corners([LEFT, RIGHT, UP])\n'
+            'g.shift(UP)\n'
+            'result = [len(g.points), g.width, g.get_center(), g.points[0], len(g.submobjects)]\n'
+            'g.add_line_to(DOWN)\n'
+            'result += [len(g.points), len(VGroup().set_points_as_corners([LEFT, RIGHT]).clear_points().points)]\n'
+            'a = DoubleArrow(LEFT * 2, RIGHT)\n'
+            'a.remove(a.submobjects[0])\n'
+            'for call in (lambda: a.scale(2), lambda: Group(Square()).save_state().restore(),\n'
+            '             lambda: ValueTracker(1).save_state().restore()):\n'
+            '    try:\n'
+            '        call()\n'
+            '        result.append("ok")\n'
+            '    except Exception as error:\n'
+            '        result.append(f"{type(error).__name__}: {error}")\n'),
+            [8, 4.08, [1.04, 1.0, 0.0], [-1.0, 1.0, 0.0], 2, 12, 0,
+             'IndexError: range object index out of range',
+             'NotImplementedError: Please override in a child class.',
+             'NotImplementedError: Please override in a child class.'])
+
     def test_color_values_operators_and_helpers(self):
         self.assertEqual(scene_values(
             'result = [repr(WHITE / 2), list(WHITE / 2), repr(~RED), int(RED), RED[0], repr(RED & BLUE),\n'

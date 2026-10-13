@@ -30,6 +30,12 @@ def point_list(mobject):
     return points.tolist() if hasattr(points, 'tolist') else points
 
 
+def restore_state(mobject):
+    """The library's restore, which Restore animations use; scene-code restore() on a plain
+    Group raises Community's NotImplementedError."""
+    return lite.Mobject.restore.__wrapped__(mobject)
+
+
 def plain_points(value):
     """Point arrays (returned to scene code when NumPy is loaded) as tuples of coordinates."""
     if hasattr(value, 'ndim'):
@@ -2920,7 +2926,7 @@ assert isinstance(t.get_value(), (int, float))""")
                 self.assertEqual(host.to_dict(),saved)
                 host.children[0].shift(lite.RIGHT*20)
                 host.to_dict()
-                host.restore()
+                restore_state(host)
                 self.assertEqual(host.to_dict(),saved)
                 self.assertNotIn('_family_pivot_cache',saved)
 
@@ -5552,7 +5558,10 @@ self.wait(1)""")
             self.assertEqual(tracker.get_value(), 1)
         with self.assertRaises(ZeroDivisionError): tracker /= 0
         self.assertEqual(tracker.get_value(), 1)
-        tracker.save_state().increment_value(3).restore()
+        # Community's become (restore) needs interpolate_color, which ValueTracker lacks.
+        with self.assertRaisesRegex(NotImplementedError, 'override in a child class'):
+            tracker.save_state().increment_value(3).restore()
+        restore_state(tracker)
         self.assertEqual(tracker.get_value(), 1)
         tracker.copy().increment_value(9)
         self.assertEqual(tracker.get_value(), 1)
@@ -7759,7 +7768,7 @@ class Demo(Scene):
                 self.assertEqual(host.to_dict(),saved)
                 host.arrange(lite.UP)
                 self.assertPointAlmostEqual(host.get_center(),lite.ORIGIN)
-                host.restore()
+                restore_state(host)
                 self.assertEqual(host.to_dict(),saved)
 
     def test_shape_layout_rejects_invalid_options_without_mutation(self):
@@ -7900,7 +7909,7 @@ class Demo(Scene):
             group.save_state()
             saved = group.to_dict()
             group.arrange_in_grid(rows=1,buff=1)
-            group.restore()
+            restore_state(group)
             self.assertEqual(group.to_dict(),saved)
 
     def test_grid_invalid_arguments_leave_live_geometry_unchanged(self):
@@ -7966,7 +7975,7 @@ class Demo(Scene):
                 group.save_state()
                 saved = group.to_dict()
                 group.arrange(lite.UP)
-                group.restore()
+                restore_state(group)
                 self.assertEqual(group.to_dict(),saved)
                 self.assertEqual(len(first.updaters),1)
 

@@ -3854,6 +3854,13 @@ class Mobject:
                 self.__dict__[key] = copy.deepcopy(self._saved_state[key])
         return self
 
+    def _scene_restore(self):
+        # Community's restore is become(saved_state), whose interpolate_color plain Mobjects lack.
+        if '_saved_state' in self.__dict__ and not isinstance(self, (VMobject, PMobject, AbstractImageMobject)):
+            raise NotImplementedError('Please override in a child class.')
+        restore = Mobject.restore
+        return getattr(restore, '__wrapped__', restore)(self)
+
     @property
     def animate(self):
         return Animate(self)
@@ -5510,7 +5517,7 @@ class TipableVMobject(VMobject):
             if members and target and abs(current) > 1e-9 * abs(target):
                 factor = target / current
                 extra = 1
-                if self._type == 'arrow' and other is not None and at_start:
+                if isinstance(self, Arrow) and other is not None and at_start:
                     # Arrow.scale inside put_start_and_end_on pops the end tip (re-fitting the
                     # members to its point) and re-adds it (re-fitting them to its base).
                     drawn = self._drawn_ends()
@@ -5520,7 +5527,7 @@ class TipableVMobject(VMobject):
                         extra = span / cut * (abs(factor) * span - length) / (abs(factor) * span)
                 for member in members:
                     if member is other:
-                        if self._type != 'arrow':
+                        if not isinstance(self, Arrow):
                             member.scale(abs(factor), about_point=fixed)
                         member.rotate(cmath.phase(factor), about_point=fixed)
                     else:
@@ -6749,8 +6756,10 @@ class Arrow(Line):
                 VMobject.set_points(self, [pivot] * 4)
         else:
             super().scale(factor,**kwargs)
-        if end_tip is not None:
-            self.add_tip(tip=end_tip)
+        if end_tip is None:
+            # Community re-adds a start tip as old_tips[1], which a lone start tip lacks.
+            raise IndexError('range object index out of range')
+        self.add_tip(tip=end_tip)
         if start_tip is not None:
             self.add_tip(tip=start_tip,at_start=True)
         self._cut_shaft()
@@ -8693,10 +8702,23 @@ class VGroup(Group):
         # Community's VMobject.change_anchor_mode visits family_members_with_points.
         if mode not in ('smooth', 'jagged'):
             raise ValueError('Anchor mode must be smooth or jagged')
-        for member in self.family_members_with_points():
-            if not isinstance(member, VGroup):  # Groups hold no points of their own here.
-                member.change_anchor_mode(mode)
+        if self._type in _PATH_TYPES:
+            return VMobject.change_anchor_mode(self, mode)
+        for child in self.children:
+            if hasattr(type(child), 'change_anchor_mode'):
+                child.change_anchor_mode(mode)
         return self
+
+    def set_points(self, points):
+        # Community's VGroup is a VMobject: its own points are drawn with the members.
+        if not _listed(points):
+            if self._type != 'vgroup':
+                VMobject._clear_pose(self)
+                for key in ('curves', 'vertices', 'subpath_lengths', '_curved_tip_path'):
+                    self.__dict__.pop(key, None)
+                self._type = 'vgroup'
+            return self
+        return VMobject.set_points(self, points)
 
     def make_smooth(self):
         return self.change_anchor_mode('smooth')
@@ -8715,8 +8737,8 @@ class VGroup(Group):
 
     def reverse_direction(self):
         # Community reverses only the group's own (normally empty) points.
-        if self.get_points():
-            raise NotImplementedError(f'{type(self).__name__} points cannot be set directly')
+        if self._type in _PATH_TYPES:
+            VMobject.reverse_direction(self)
         return self
 
     def scale_handle_to_anchor_distances(self, factor):
@@ -8767,6 +8789,15 @@ class VGroup(Group):
         children = list(self.children)
         children[key] = value
         self.submobjects = children
+
+
+for _name in ('_corners', '_clear_pose', '_materialize_path', 'set_points_as_corners', 'set_points_smoothly',
+              'append_points', 'add_subpath', 'append_vectorized_mobject', 'add_points_as_corners',
+              'add_line_to', 'start_new_path', 'close_path', 'add_cubic_bezier_curve',
+              'add_cubic_bezier_curve_to', 'add_cubic_bezier_curves', 'add_quadratic_bezier_curve_to',
+              'add_smooth_curve_to', 'set_anchors_and_handles', 'force_direction', 'get_start',
+              'get_end'):
+    setattr(VGroup, _name, VMobject.__dict__[_name])
 
 
 def _union_bounds(mobjects, handles=False):
