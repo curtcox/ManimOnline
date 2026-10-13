@@ -3679,16 +3679,18 @@ class Mobject:
                 raise NotImplementedError('Please override in a child class.')
             if isinstance(self, VMobject) and not isinstance(mobject, VMobject):
                 raise AttributeError(f"{type(mobject).__name__} object has no attribute 'fill_rgbas'")
-            if self._alignable() and mobject._alignable():
+            if self._alignable(True) and mobject._alignable():
                 mobject = self._aligned_target(mobject)
         become = Mobject.become
         return getattr(become, '__wrapped__', become)(self, mobject, *args, **kwargs)
 
-    def _alignable(self):
+    def _alignable(self, receiving=False):
         """Whether Lite's family matches Community's submobject structure (no text, SVG or
-        NumberLine scene views), so align_data's padding can be reproduced."""
+        NumberLine scene views), so align_data's padding can be reproduced. A receiver's
+        NumberLines count as their shaft's own points plus their other members."""
         return isinstance(self, VMobject) and not any(
-            isinstance(member, (Text, SVGMobject, Code, Paragraph)) or hasattr(type(member), '_scene_get_points')
+            isinstance(member, (Text, SVGMobject, Code, Paragraph)) or
+            (isinstance(member, NumberLine) and _has_shaft(member) and not receiving)
             for member in self.get_family())
 
     def _aligned_target(self, mobject, root_points=False):
@@ -3697,6 +3699,10 @@ class Mobject:
         padded with faded repeats (or center points), so the receiver keeps the larger
         structure. Returns a padded copy for Lite's index-preserving become."""
         def shape(member):
+            if isinstance(member, NumberLine) and _has_shaft(member):
+                own = VMobject()
+                VMobject.set_points(own, member._shaft_points())
+                return True, [shape(child) for child in _number_line_members(member)], own
             return member.has_points(), [shape(child) for child in member.children], member
         def padded(items, count, point, repeat):
             if count <= 0:
@@ -3710,7 +3716,7 @@ class Mobject:
                     for entry in [item] + [repeat(item) for _ in range(1, factor)]]
         def pointy(member):
             # Tipped paths align their own (shaft) points; refit curved shafts do not.
-            return (_is_a(member, VMobject) and not hasattr(type(member), '_scene_get_points') and
+            return (_is_a(member, VMobject) and not (isinstance(member, NumberLine) and _has_shaft(member)) and
                     not member.__dict__.get('_curved_tip_path'))
         def drawn(member):
             # Community's own points of a curved arrow are its drawn (cut) shaft.
@@ -3752,6 +3758,10 @@ class Mobject:
                     aligned._freeze_shaft()  # Community's own points are the cut shaft.
                 aligned._replace_children([])
                 mine.copy().align_points(aligned)
+                if tipped and not (isinstance(receiver, TipableVMobject) and receiver._tips_by_role()):
+                    # The target's tips become plain members of a tipless receiver, whose
+                    # points are the target's cut shaft (Community).
+                    target._freeze_shaft()
                 if len(aligned.get_points()) != len(theirs.get_points()):
                     if tipped:
                         target._freeze_shaft()
@@ -3802,6 +3812,10 @@ class Mobject:
             replacements[id(replacement)] = source
             used.add(source)
             children, live, count = [], source.children, len(replacement.children)
+            if (isinstance(source, NumberLine) and _has_shaft(source) and
+                    not (isinstance(replacement, NumberLine) and _has_shaft(replacement))):
+                # Community's NumberLine owns its line's points: the shaft has no counterpart.
+                live = _number_line_members(source)
             if 0 < len(live) < count and (type(source) in (Group, VGroup, Mobject) or (
                     isinstance(source, TipableVMobject) and replacement._type != 'vgroup')):
                 # align_data pads the receiver too: each member's (faded) copies follow it.
@@ -13981,7 +13995,7 @@ class Transform(_PathOptions, Animation):
             # callbacks and checkpoints. Community's align_data leaves the mobject with the
             # aligned family structure and point counts.
             target = self.target
-            if self.mobject._alignable() and target._alignable():
+            if self.mobject._alignable(True) and target._alignable():
                 target = self.mobject._aligned_target(target, root_points=True)
                 if (self.mobject.children and not self.mobject.get_points() and target.children
                         and not (isinstance(self, Animate) and self._builder)):
@@ -26097,6 +26111,11 @@ CameraFrame.__name__ = CameraFrame.__qualname__ = 'ScreenRectangle'
 
 def _has_shaft(line):
     return any(child.__dict__.get('_number_line_role') == 'shaft' for child in line.children)
+
+
+def _number_line_members(line):
+    """Community's submobjects of a NumberLine: its children other than the shaft."""
+    return [child for child in line.children if child.__dict__.get('_number_line_role') != 'shaft']
 
 
 def _shaft_edit(name):

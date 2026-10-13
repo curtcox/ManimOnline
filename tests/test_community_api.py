@@ -672,6 +672,24 @@ class AnimationApiTests(unittest.TestCase):
             's = S(); s.render(); result = s.out\n'),
             [1.5, 1.507, 1.5386])
 
+    def test_number_line_receivers_align_like_community(self):
+        # Community 0.22: a NumberLine owns its shaft's points, so a plane transformed into an
+        # arrow keeps its four members (the arrow's cut shaft on both axes), and a number line
+        # morphing on from an arrow starts from the shaft cut at the tip base.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        p = NumberPlane(x_range=[-2, 2], y_range=[-2, 2], x_length=4, y_length=4); self.add(p)\n'
+            '        self.play(Transform(p, Arrow(LEFT, RIGHT * 2)), run_time=0.2)\n'
+            '        o = NumberLine(x_range=[-2, 2, 1], length=4); self.add(o)\n'
+            '        self.play(Transform(o, Arrow(LEFT, RIGHT * 2)), run_time=0.2)\n'
+            '        edges = []\n'
+            '        self.add_updater(lambda dt: edges.append(o.get_critical_point(DL)[0]))\n'
+            '        self.play(o.animate.become(Triangle()))\n'
+            '        self.out = [[m.get_critical_point(UR)[0] for m in p.submobjects], edges[8]]\n'
+            's = S(); s.render(); result = s.out\n'),
+            [[1.75, 1.75, 1.4, 1.4], -0.5194])
+
     def test_color_values_operators_and_helpers(self):
         self.assertEqual(scene_values(
             'result = [repr(WHITE / 2), list(WHITE / 2), repr(~RED), int(RED), RED[0], repr(RED & BLUE),\n'
