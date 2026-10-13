@@ -3368,8 +3368,9 @@ assert isinstance(t.get_value(), (int, float))""")
         restored = result['frames'][120]['mobjects'][2]
         self.assertEqual(original['type'],'bezierpath')
         self.assertEqual(len(original['children']),1)
-        self.assertTrue(all(child['opacity']==0 or child['stroke_width']==child['fill_opacity']==0
-                            for child in corner['children']))
+        # The dot slot is Community's get_point_mobject: the corner's style on one point.
+        self.assertTrue(all(len({tuple(p) for curve in child['curves'] for p in curve}) == 1 and
+                            child['stroke_color'] == corner['stroke_color'] for child in corner['children']))
         self.assertEqual(restored['curves'],original['curves'])
         self.assertEqual([c['position'] for c in restored['children']],[c['position'] for c in original['children']])
         self.assertEqual(len(result['frames'][-1]['mobjects']),1)
@@ -5972,15 +5973,16 @@ self.wait(1)""")
         target = lite.VGroup(lite.Square(), lite.Triangle(), lite.Circle(), lite.Line(), lite.Rectangle())
         effect = lite.Transform(source, target)
         effect.prepare(lite.Scene())
+        # Community's repeats are copy().fade(1): zero stroke and fill opacity.
         start = effect.sample(0)[0]['children']
-        self.assertEqual([c['opacity'] for c in start], [1,0,0,1,0])
+        self.assertEqual([c['stroke_opacity'] for c in start], [1,0,0,1,0])
         midpoint = effect.sample(.5)[0]['children']
-        self.assertEqual([c['opacity'] for c in midpoint], [1,.5,.5,1,.5])
+        self.assertEqual([c['stroke_opacity'] for c in midpoint], [1,.5,.5,1,.5])
         self.assertEqual(len(source.children), 2)
         self.assertEqual(len(target.children), 5)
         reverse = lite.Transform(target, source)
         reverse.prepare(lite.Scene())
-        self.assertEqual([c['opacity'] for c in reverse.sample(1)[0]['children']], [1,0,0,1,0])
+        self.assertEqual([c['stroke_opacity'] for c in reverse.sample(1)[0]['children']], [1,0,0,1,0])
         reverse.finish(lite.Scene())
         # Community's align_data keeps the larger family: faded repeats stay as members.
         self.assertEqual(len(target.children), 5)
@@ -5991,9 +5993,10 @@ self.wait(1)""")
                                (lite.VGroup(lite.Circle()), lite.VGroup())):
             effect = lite.Transform(source,target)
             effect.prepare(lite.Scene())
+            # get_point_mobject points take the empty group's style (match_style).
             midpoint = effect.sample(.5)[0]['children']
             self.assertTrue(midpoint)
-            self.assertTrue(all(c['opacity'] == .5 and c['geometry_scale'] == .5 for c in midpoint))
+            self.assertTrue(all(c['geometry_scale'] == .5 and c['stroke_opacity'] == 1 for c in midpoint))
         source = lite.Circle().shift(lite.LEFT).scale(2)
         target = lite.VGroup(lite.VGroup(lite.Square(),lite.Triangle())).shift(lite.RIGHT).rotate(.5)
         effect = lite.Transform(source,target)
@@ -6004,7 +6007,7 @@ self.wait(1)""")
         xs = [point[0] for curve in nested[0]['curves'] for point in curve]
         self.assertAlmostEqual(min(xs), -3)
         self.assertAlmostEqual(max(xs), 1)
-        self.assertEqual(nested[1]['opacity'], 0)
+        self.assertEqual(nested[1]['stroke_opacity'], 0)
 
     def test_group_copy_restore_sequence_and_unsupported_leaf_fades(self):
         source = lite.VGroup(lite.Circle(),lite.Text('old')).save_state()
@@ -6029,7 +6032,7 @@ self.wait(1)""")
         self.assertEqual(result['duration'], 11)
         midpoint = result['frames'][45]['mobjects'][1]
         self.assertEqual(len(midpoint['children']),3)
-        self.assertEqual([c['opacity'] for c in midpoint['children']], [1,.5,1])
+        self.assertEqual([c['stroke_opacity'] for c in midpoint['children']], [1,.5,1])
         self.assertEqual(midpoint['children'][0]['type'],'bezierpath')
         restored = result['frames'][120]['mobjects'][1]
         self.assertEqual(len(restored['children']),3)  # Restore is a Transform: the family stays aligned.

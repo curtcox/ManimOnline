@@ -690,6 +690,28 @@ class AnimationApiTests(unittest.TestCase):
             's = S(); s.render(); result = s.out\n'),
             [[1.75, 1.75, 1.4, 1.4], -0.5194])
 
+    def test_mapped_axes_morph_owns_cut_shafts_and_pads_with_styled_points(self):
+        # Community 0.22: after a complex map the axes' own points are their shafts cut at the
+        # tip bases; padding points match their owner's (faded) style, and a pointless group
+        # keeps its own style while its members interpolate.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = Axes(x_range=[-2, 2], y_range=[-1, 1], x_length=4, y_length=2)\n'
+            '        self.play(o.animate.apply_complex_function(lambda z: z * (1 + 0.3j)))\n'
+            '        seen = []\n'
+            '        def look(dt):\n'
+            '            if len(seen) == 3:\n'
+            '                y = o.submobjects[1]\n'
+            '                self.out = [list(o.get_critical_point(UR)[:2]), list(y.get_critical_point(DL)[:2]),\n'
+            '                            y.submobjects[0].get_stroke_opacity(), y.submobjects[1].get_stroke_opacity()]\n'
+            '            seen.append(dt)\n'
+            '        self.add_updater(look)\n'
+            '        self.play(o.animate.become(Triangle()))\n'
+            '        self.out.append([m.get_stroke_opacity() for m in o.submobjects[1].get_family()[1:]])\n'
+            's = S(); s.render(); result = s.out\n'),
+            [[1.9174, 0.969], [-0.3547, -0.9772], 0.9587, 1.0, [0.0, 0.0, 0.0]])
+
     def test_color_values_operators_and_helpers(self):
         self.assertEqual(scene_values(
             'result = [repr(WHITE / 2), list(WHITE / 2), repr(~RED), int(RED), RED[0], repr(RED & BLUE),\n'

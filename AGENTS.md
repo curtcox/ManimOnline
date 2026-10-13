@@ -1106,3 +1106,8 @@ an empty group pads with collapsed copies there (Community's get_point_mobject o
 family is the origin). Zero-scale groups have no inverse; their padding shrinks in place.
 A tipped target aligned against a tipless receiver is shaft-frozen first: its tips become plain
 members, and Community's own points are the cut shaft.
+Padding styles follow Community: repeats are `_fade_snapshot` (fill/stroke opacities zero, not
+the group `opacity` channel), point paddings and get_point_mobject take the owner's style
+(`_match_snapshot_style`/match_style), and sampled pointless group nodes keep the start style.
+`_own_shaft` also hoists posed bezierpath shafts (e.g. after apply_complex_function), cut at the
+tip bases; `_expose_snapshot` pairs a hoisted sample's children with `_number_line_members`.

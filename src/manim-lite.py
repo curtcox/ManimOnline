@@ -3729,7 +3729,7 @@ class Mobject:
             return member
         def align(source, target, root=False):
             has_points, sources, receiver = source[0], list(source[1]), source[2]
-            point = lambda: VectorizedPoint(target._geometry_center())
+            point = lambda: target.get_point_mobject(target._geometry_center())
             if has_points and not target.has_points():
                 sources.append((True, [], drawn(receiver)))
                 has_points = False
@@ -4080,7 +4080,10 @@ class Mobject:
         return Mobject
 
     def get_point_mobject(self, center=None):
-        return VectorizedPoint(self.get_center() if center is None else center)
+        point = VectorizedPoint(self.get_center() if center is None else center)
+        if isinstance(self, VMobject):
+            point.match_style(self, family=False)
+        return point
 
     def throw_error_if_no_points(self, caller=None):
         if self.has_no_points():
@@ -12455,6 +12458,40 @@ def _lerp_pose(result, start, target, alpha):
     result['geometry_scale'], result['angle'] = abs(z), (cmath.phase(z) if z else 0.0)
 
 
+_STYLE_KEYS = ('color', 'fill_color', 'fill_opacity', 'fill_opacities', 'stroke_color', 'stroke_opacity',
+               'stroke_opacities', 'stroke_width', 'background_stroke_color', 'background_stroke_opacity',
+               'background_stroke_width')
+
+
+def _fade_snapshot(node):
+    """Community's fade(1) on a snapshot family: fill and stroke opacities become zero."""
+    if 'fill_opacity' in node or 'stroke_opacity' in node:
+        for key in ('fill_opacity', 'stroke_opacity', 'background_stroke_opacity'):
+            if key in node:
+                node[key] = 0
+        for key in ('fill_opacities', 'stroke_opacities'):
+            if isinstance(node.get(key), list):
+                node[key] = [0] * len(node[key])
+    else:
+        node['opacity'] = 0
+    for child in node.get('children') or ():
+        _fade_snapshot(child)
+    return node
+
+
+def _match_snapshot_style(node, source):
+    """get_point_mobject's match_style: a padding point takes its owner's style."""
+    if 'fill_opacity' not in source and 'stroke_opacity' not in source:
+        node['opacity'] = 0
+        return node
+    for key in _STYLE_KEYS:
+        if key in source:
+            node[key] = _snapshot_copy(source[key])
+        else:
+            node.pop(key, None)
+    return node
+
+
 def _own_shaft(snapshot, other):
     """Community's NumberLine owns its line's points, with ticks (and numbers) as children.
     Morphing into a differently built family, hoist the shaft so they align the same way."""
@@ -12470,8 +12507,9 @@ def _own_shaft(snapshot, other):
         return snapshot
     line = snapshot['children'][index]
     posed = (any(line.get('position') or ()) or line.get('angle', 0) != 0 or line.get('geometry_scale', 1) != 1)
-    if line.get('children') or posed and (line.get('type') != 'line' or line.get('curves') or
-                                          any(key in line for key in ('shaft_curves', 'shaft_start'))):
+    if line.get('children') or posed and (
+            line.get('type') not in ('line', 'bezierpath') or line.get('type') == 'line' and line.get('curves') or
+            any(key in line for key in ('shaft_curves', 'shaft_start'))):
         return snapshot
     if posed:
         forward = _snapshot_pose(line)[0]
@@ -12488,6 +12526,8 @@ def _own_shaft(snapshot, other):
                 result[key] = moved(result[key])
         if result.get('vertices'):
             result['vertices'] = [moved(point) for point in result['vertices']]
+        if result['type'] == 'bezierpath':
+            result['curves'] = [[moved(point) for point in curve] for curve in result.get('curves') or ()]
     result['opacity'] = snapshot.get('opacity', 1) * line.get('opacity', 1)
     result['children'] = [child for k, child in enumerate(result['children']) if k != index]
     if result.get('type') == 'line' and not snapshot.get('_shaft_fixed'):
@@ -12501,6 +12541,31 @@ def _own_shaft(snapshot, other):
             middle = len(curves) / 2
             base = VMobject._bezier_point(curves[min(int(middle), len(curves) - 1)], middle - int(middle))
             result['start' if child.get('_tip_at_start') else 'end'] = list(_snapshot_pose(child)[0](base))
+    elif (result.get('type') == 'bezierpath' and result.get('curves') and not result.get('vertices') and
+          len(result.get('subpath_lengths') or [0]) == 1 and not snapshot.get('_shaft_fixed')):
+        # A mapped shaft (e.g. after apply_complex_function) is cut at the tip bases too.
+        for child in result['children']:
+            if child.get('_number_line_role') != 'tip':
+                continue
+            curves = _path_curves(child)
+            if not curves:
+                continue
+            middle = len(curves) / 2
+            base = _snapshot_pose(child)[0](
+                VMobject._bezier_point(curves[min(int(middle), len(curves) - 1)], middle - int(middle)))
+            shaft = result['curves']
+            distance = lambda k, t: sum((a - b) ** 2 for a, b in zip(VMobject._bezier_point(shaft[k], t), base))
+            k, t = min(((k, i / 32) for k in range(len(shaft)) for i in range(33)), key=lambda kt: distance(*kt))
+            lo, hi = max(0.0, t - 1 / 32), min(1.0, t + 1 / 32)
+            for _ in range(60):
+                a, b = lo + (hi - lo) / 3, hi - (hi - lo) / 3
+                lo, hi = (lo, b) if distance(k, a) <= distance(k, b) else (a, hi)
+            t = (lo + hi) / 2
+            if child.get('_tip_at_start'):
+                result['curves'] = [_split_cubic(shaft[k], t)[1]] + shaft[k + 1:]
+            else:
+                result['curves'] = shaft[:k] + [_split_cubic(shaft[k], t)[0]]
+            result.pop('subpath_lengths', None)
     return result
 
 
@@ -12532,14 +12597,15 @@ def _transform_plan(start, target, origins=None):
         count = max(len(start['children']), len(target['children']))
         world = _turning_pose(start, target)
         inside = origins if world else (inner(start, origins[0]), inner(target, origins[1]))
-        def expand(children, other, origin):
+        def expand(children, other, origin, family):
             if not children:
                 # Community pads an empty family with get_point_mobject(): points at its
                 # center, which is the world origin for a family without points.
                 # A collapsed (zero-scale) family has no such frame: its members shrink in place.
                 result = _snapshot_copy(other)
                 for child in result:
-                    child['opacity'] = 0
+                    child.pop('children', None)
+                    _match_snapshot_style(child, family)
                     child['geometry_scale'] = 0
                     if origin is not None:
                         pivot = list(child.get('geometry_center') or ORIGIN) + [0] * 3
@@ -12550,7 +12616,7 @@ def _transform_plan(start, target, origins=None):
                 source_index = index * len(children) // count
                 child = _snapshot_copy(children[source_index])
                 if source_index in seen:
-                    child['opacity'] = 0
+                    _fade_snapshot(child)
                 seen.add(source_index)
                 result.append(child)
             return result
@@ -12559,7 +12625,7 @@ def _transform_plan(start, target, origins=None):
             first = [_pose_snapshot(child, _snapshot_frame(start), False) for child in first]
             last = [_pose_snapshot(child, _snapshot_frame(target), False) for child in last]
         children = [_transform_plan(a, b, inside) for a, b in
-                    zip(expand(first, last, inside[0]), expand(last, first, inside[1]))]
+                    zip(expand(first, last, inside[0], start), expand(last, first, inside[1], target))]
         start.pop('children')
         target.pop('children')
         return ('group_world' if world else 'group', start, target, children)
@@ -12604,7 +12670,8 @@ def _transform_plan(start, target, origins=None):
                     point = _snapshot_copy(child)
                     pivot = point.get('geometry_center', ORIGIN)
                     point['position'] = [center[0]-pivot[0],center[1]-pivot[1],point['position'][2]]
-                    point['geometry_scale'],point['opacity'] = 0,0
+                    point['geometry_scale'] = 0
+                    _match_snapshot_style(point, own)
                     point['angle'] = point.get('angle', 0) + turn
                     point.pop('children',None)
                     points.append(point)
@@ -12727,6 +12794,12 @@ def _sample_transform(plan, alpha, path_arc=0, member_alpha=None, frames=None):
     result = interpolate(start, target, alpha)
     if _pose_turns(start, target) and 'position' in result:
         _lerp_pose(result, start, target, alpha)
+    if kind in ('group', 'group_world') and not any(
+            child[1].get('_number_line_role') == 'shaft' for child in children):
+        # Community interpolates only members with points: a pointless group keeps its style.
+        for key in _STYLE_KEYS:
+            if key in start:
+                result[key] = _snapshot_copy(start[key])
     if kind == 'group':
         inner = _child_frames(frames, start, target, result, path_arc, alpha)
         result['children'] = [snapshot for child in children
@@ -15766,6 +15839,9 @@ def _expose_snapshot(saved, mobject, snapshot, again=False):
             shaft = None
     children = []
     live, count = mobject.children, len(sampled_children)
+    if (isinstance(mobject, NumberLine) and _has_shaft(mobject) and
+            not any(state.get('_number_line_role') == 'shaft' for state in sampled_children)):
+        live = _number_line_members(mobject)  # the sample holds the shaft as its own points
     plain = type(mobject) in (Group, VGroup, Mobject)
     seen = set()
     for index, child in enumerate(sampled_children):
