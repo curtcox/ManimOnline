@@ -887,6 +887,24 @@ class AnimationApiTests(unittest.TestCase):
              ['TypeError', "setter() got an unexpected keyword argument 'color'"],
              0.0, 'ValueTracker', 'VGroup'])
 
+    def test_fade_transform_of_a_grouped_member_splits_its_root(self):
+        # Community 0.22 adds Group(source, target copy) as a root, splitting the source's parent.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        global result\n'
+            '        o, p = Line(LEFT, RIGHT), Arrow(DOWN, UP).shift(RIGHT * 3)\n'
+            '        self.add(VGroup(o, p))\n'
+            '        result, n = [], [0]\n'
+            '        def f(dt):\n'
+            '            n[0] += 1\n'
+            '            if n[0] == 3:\n'
+            '                result.extend(type(m).__name__ for r in self.mobjects for m in r.get_family())\n'
+            '        self.add_updater(f)\n'
+            '        self.play(FadeTransform(o, p.copy()), run_time=0.4)\n'
+            'S().render()\n'),
+            ['Arrow', 'ArrowTriangleFilledTip', 'Line', 'Arrow', 'ArrowTriangleFilledTip'])
+
     def test_arrow_transformed_into_a_line_draws_the_whole_line(self):
         # Community 0.22 draws the arrow's own points (the target line); its tip collapsed.
         frames = json.loads(lite.render_scene(

@@ -14721,9 +14721,10 @@ class FadeTransform(Transform):
         self._fade_live = copies if any(_LiveMorph.wanted(m) for m in copies) else None
         self._plan_pairs(*copies)
         self._ghost = self._ghost_states = None
-        if scene is not None and isinstance(scene, Scene) and self.mobject in scene.mobjects:
+        if scene is not None and isinstance(scene, Scene):
             # Community adds Group(mobject, target copy) as a root: the source moves to the
-            # end and the morphing target copy is a scene member until the animation ends.
+            # end (splitting any parent root) and the morphing target copy is a scene member
+            # until the animation ends.
             self._ghost = self.target.copy()
             self._ghost.clear_updaters()
             scene.add(self.mobject, self._ghost)
