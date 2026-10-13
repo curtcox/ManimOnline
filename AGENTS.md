@@ -1090,3 +1090,5 @@ When a tipped receiver with points becomes a pointless vgroup, become fills the 
 with a childless copy of the receiver's class (Community's push_self_into_submobjects), so
 later Arrow.scale calls on it return early as in Community. `_aligned_target` aligns a curved
 receiver's pushed copy by its frozen drawn shaft points (flag dropped), not the refit path.
+A NumberLine whose shaft child is gone (transformed into a shape) answers scene point queries
+and edits (`_shaft_edit`, pointwise_become_partial) with its own points (`_has_shaft`).

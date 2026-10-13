@@ -10316,7 +10316,7 @@ class NumberLine(VGroup):
         """Community's own points: the shaft, ending at the tip bases (add_tip resets them)."""
         shafts = [c for c in self.children if c.__dict__.get('_number_line_role') == 'shaft']
         if not shafts:
-            return []
+            return VMobject.get_points(self)
         points = shafts[0].get_points()
         if self.__dict__.get('_shaft_fixed'):
             return self._points_to_world(points)
@@ -26061,9 +26061,16 @@ Mobject._clear_pose = VMobject._clear_pose
 CameraFrame.__name__ = CameraFrame.__qualname__ = 'ScreenRectangle'
 
 
+def _has_shaft(line):
+    return any(child.__dict__.get('_number_line_role') == 'shaft' for child in line.children)
+
+
 def _shaft_edit(name):
     """Community edits a NumberLine's own points: Lite edits the (cut) shaft child as scene code."""
     def edit(self, *args, **kwargs):
+        if not _has_shaft(self):
+            getattr(VMobject, name)(self, *args, **kwargs)
+            return self
         self._freeze_shaft()
         _call_as_scene(getattr(self._part('shaft'), name), *args, **kwargs)
         return self
@@ -26084,6 +26091,9 @@ def _number_line_partial(self, vmobject, a, b):
         source = VMobject()
         source.set_points(vmobject._shaft_points())
         vmobject = source
+    if not _has_shaft(self):
+        VMobject.pointwise_become_partial(self, vmobject, a, b)
+        return self
     self._freeze_shaft()
     _call_as_scene(self._part('shaft').pointwise_become_partial, vmobject, a, b)
     return self

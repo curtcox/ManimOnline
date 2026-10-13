@@ -610,6 +610,19 @@ class AnimationApiTests(unittest.TestCase):
              [2.0, 2.0, 2.0, 2.001, 2.003, 2.004, 2.068, 2.118, 2.118, 2.068, 2.004, 2.003, 2.001, 2.0, 2.0],
              [0, 32, 32]])
 
+    def test_number_line_without_shaft_edits_its_own_points(self):
+        # Community 0.22: a NumberLine transformed into a shape edits that shape's own points.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = NumberLine(x_range=[-2, 2, 1], length=4); self.add(o)\n'
+            '        self.play(Transform(o, Circle()), run_time=0.2)\n'
+            '        self.play(Transform(o, Square().shift(LEFT)), run_time=0.2)\n'
+            '        self.play(o.animate.pointwise_become_partial(o.copy(), 0.2, 0.8), run_time=0.2)\n'
+            '        self.out = [list(o.get_critical_point(DL)), list(o.get_critical_point(UR))]\n'
+            's = S(); s.render(); result = s.out\n'),
+            [[-2.0, -1.0, 0.0], [0.0, 1.0, 0.0]])
+
     def test_color_values_operators_and_helpers(self):
         self.assertEqual(scene_values(
             'result = [repr(WHITE / 2), list(WHITE / 2), repr(~RED), int(RED), RED[0], repr(RED & BLUE),\n'
