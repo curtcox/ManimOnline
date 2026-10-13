@@ -1046,6 +1046,22 @@ class AnimationApiTests(unittest.TestCase):
             'S().render()\n'),
             [0.866, 1.1196, 0.866, -0.0, 0.866, -0.3596, 0.866, 1.1196, 0.866, 1.1196, 0.866, 1.1196])
 
+    def test_transform_from_copy_pads_planes_with_axes(self):
+        # Community 0.22 ends at the aligned start copy: the empty faded-line group gains a point.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        global result\n'
+            '        o = NumberPlane(x_range=[-2, 2], y_range=[-2, 2], x_length=3, y_length=3)\n'
+            '        p = Line(LEFT, RIGHT).shift(DOWN * 3)\n'
+            '        self.add(o, p)\n'
+            '        self.play(TransformFromCopy(p, o), run_time=0.2)\n'
+            '        counts = [len(m.submobjects) for m in o.submobjects]\n'
+            '        o.arrange(RIGHT, buff=0.2)\n'
+            '        result = [counts, round(float(o.width), 4)]\n'
+            'S().render()\n'),
+            [[1, 6, 0, 0], 6.6])
+
     def test_ticks_become_copies_of_a_posed_arrow_tip(self):
         # Community 0.22's null_point_align pushes the tip into a submobject; every tick becomes a tip.
         self.assertEqual(scene_values(

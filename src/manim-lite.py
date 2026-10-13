@@ -14382,7 +14382,7 @@ class TransformFromCopy(Transform):
         # Community ends at interpolate(0): the target's starting copy, which align_data
         # gave the source's larger family structure and point counts.
         source = _world_view(self.source)
-        if self.mobject._alignable() and source._alignable(True):
+        if self.mobject._alignable(True) and source._alignable(True):
             aligned = source._aligned_target(self.mobject, root_points=True)
             shape = lambda mobject: [len(member.get_points()) for member in mobject.get_family()]
             if shape(aligned) != shape(self.mobject):

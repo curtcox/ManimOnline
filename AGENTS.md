@@ -1112,7 +1112,8 @@ receiver's pushed copy by its frozen drawn shaft points (flag dropped), not the 
 A NumberLine whose shaft child is gone (transformed into a shape) answers scene point queries
 and edits (`_shaft_edit`, pointwise_become_partial) with its own points (`_has_shaft`).
 TransformFromCopy.finish becomes `source._aligned_target(target)` when alignment changes the
-target's family or point counts (Community ends at interpolate(0), the aligned start copy).
+target's family or point counts (Community ends at interpolate(0), the aligned start copy). The target only
+needs receiver alignability (`_alignable(True)`), so planes and axes are padded too.
 A pushed-in VGroup carries the pushed shape's root style (scene become copies it), but
 Transform completion keeps a pointless receiver root's own style: Community interpolates only
 members with points. `.animate` builders are exempt (_MethodAnimation.finish reapplies methods).
