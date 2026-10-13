@@ -1969,6 +1969,22 @@ class AnimationApiTests(unittest.TestCase):
             'result = [s.get_center(), t.get_center(), u.get_center()]\n'),
             [[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [-1.0, 0.0, 0.0]])
 
+    def test_transform_fades_grid_repeats_padded_from_a_childless_target(self):
+        # Manim 0.22: the circle pads Rectangle's grid group with a VectorizedPoint, which is
+        # pushed into its own submobjects and repeated faded, so five grid lines fade out.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        m = Rectangle(width=4, height=2, grid_xstep=1, grid_ystep=0.5)\n'
+            '        self.add(m)\n'
+            '        self.log = []\n'
+            '        self.add_updater(lambda dt: self.log.append([round(float(x.get_stroke_opacity()), 2)\n'
+            '                                                     for x in m.family_members_with_points()]))\n'
+            '        self.play(Transform(m, Circle().shift(RIGHT)), run_time=0.4)\n'
+            's = S(); s.render()\n'
+            'result = s.log[3]\n'),
+            [1.0, 1.0, 0.5, 0.5, 0.5, 0.5, 0.5])
+
     def test_lagged_start_map_animates_each_scene_member_like_community(self):
         # Manim 0.22 iterates [arrow, tip]: one animation each (the tip follows the later one).
         self.assertEqual(scene_values(

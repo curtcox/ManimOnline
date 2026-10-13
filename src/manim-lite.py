@@ -13133,6 +13133,13 @@ def _transform_plan(start, target, origins=None, lagged=False):
                 turn = other.get('angle', 0) - own.get('angle', 0)
                 points = []
                 for child in full['children']:
+                    if child.get('type') not in _PATH_TYPES:
+                        # A VectorizedPoint, not an empty family: facing a group, Community pushes
+                        # it into its own submobjects and pads with faded repeats.
+                        point = _match_snapshot_style(VectorizedPoint(center).to_dict(), own)
+                        point.pop('children', None)
+                        points.append(point)
+                        continue
                     point = _snapshot_copy(child)
                     pivot = point.get('geometry_center', ORIGIN)
                     point['position'] = [center[0]-pivot[0],center[1]-pivot[1],point['position'][2]]
@@ -20018,6 +20025,9 @@ class LaggedStartMap(LaggedStart):
         # and its tip; a NumberLine itself, then its ticks), each animated in turn, so a later
         # member's animation overrides the shape's for that member. A leaf maps as one member.
         members = _call_as_scene(list, mobject) or [mobject]
+        for member in members:
+            if isinstance(member, Mobject):
+                _freeze_tip_owner(member)  # A tip animated on its own: the shaft stays cut.
         animations = [animation_class(*arg_creator(submob), **kwargs) for submob in members]
         super().__init__(*animations, run_time=run_time, lag_ratio=lag_ratio)
 
