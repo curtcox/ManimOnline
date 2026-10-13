@@ -1193,3 +1193,17 @@ align_points accepts via `_own_drawn_path`. A tip pushed into submobjects has no
 Arrow.scale treats lengths up to 1e-12 as collapsed (Community's exact-zero early return).
 pop_tips captures the tip points in the parent frame first and converts them back with
 `_point_from_world` after removal: unfreezing a curved shaft and removing tips move the pivot.
+World members during play(): `_WORLD_TOKENS` maps members placed in world coordinates to their
+`_enter_world` token. Leaf animations prepare and complete through `_leaf_local`, scene calls
+through `_with_local_members`, so other animations' copies and queries of the family see those
+members in their parents' frame; `_exposing` re-places exposed members into the world. Copies drop
+temporary pivot pins (`_PINS`). Pointless families bound at the origin (Community's zeros), and
+become pads empty members with points at the world origin. Between plain groups the latest link
+wins (Table entries: attribute groups vs the drawn elements group); the earlier one is kept in
+`_OTHER_PARENTS`, `_posed_ancestors` falls back to it, and `_frame_parent` names the frame a member's
+coordinates are in. FadeTransformPieces follows Community: align_submobjects, then ghost family
+member onto family member (scene-call replace). SpiralIn iterates split() (a NumberLine with own
+points moves itself first). become onto a non-NumberLine receiver flattens a shafted NumberLine
+target into own points (the cut shaft) plus members. Two-object fuzz suites (`~/tmp/animchain`
+gen6.py/gen7.py, e*.json) run with FLATTEN_GROUPS=1 (run_one.py flattens Community's exact Group
+roots and skips empty containers); compare with `tri.py SUITE` (skips text and boolean ops).
