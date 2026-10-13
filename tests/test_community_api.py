@@ -2972,6 +2972,21 @@ class AnimationApiTests(unittest.TestCase):
         # Community 0.22: the own points stay cut at the tip base while the tip moves away.
         self.assertEqual(plain(found), [3.8361, 3.1248, 4.8095])
 
+    def test_succession_introduces_stages_when_they_begin(self):
+        found = []
+        lite.render_scene('from manim import *\nclass Empty(Scene):\n    pass\n')
+        namespace = {'FOUND': found}
+        exec(compile(
+            'from manim import *\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        circles = VGroup(*[Circle(radius=0.5) for _ in range(3)]).arrange(RIGHT)\n'
+            '        self.add_updater(lambda dt: FOUND.append(len(self.mobjects)))\n'
+            '        self.play(Succession(*[Add(c, run_time=0.2) for c in circles]))\n', '<test>', 'exec'), namespace)
+        namespace['S']().render()
+        # Community adds each Add's mobject when its stage begins.
+        self.assertEqual(found, [1, 1, 1, 2, 2, 2, 3, 3, 3, 3])
+
 
 if __name__ == '__main__':
     unittest.main()

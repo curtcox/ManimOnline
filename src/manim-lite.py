@@ -15579,10 +15579,9 @@ class Succession(AnimationGroup):
         self._scene, self._active = scene, -1
         # Objects first introduced by a later stage stay hidden until it begins.
         self._hidden = {m for m in self.objects() if m not in scene.get_mobject_family_members()}
+        # Community adds each introducer's mobject when its stage begins (at the end of the
+        # scene's mobjects); the group's non-introducers were added with its Group above.
         self._advance(0)
-        # Placeholder roots keep the capture order stable for later introductions.
-        for mobject in self.objects():
-            scene._introduce(mobject)
 
     def _advance(self, stage):
         while self._active < stage:
