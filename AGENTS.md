@@ -1172,3 +1172,6 @@ interpolate(1) after, e.g., an earlier Rotate of the same object. Live-copy (upd
 TransformMatching* tree placement assigns pieces in order through already placed (copied) samples:
 unmatched parts inside matched families (ticks of axes become circles) override the transform, as
 Community's FadeOut(fade_source) follows the matched transforms.
+Classes may list `_become_kept` attributes that become retains from the receiver (Community copies
+points and colors only): GenericGraph keeps vertices/edges tables naming its retained members, so
+update_edges keeps running after become (edges collapse onto vertex centers, as in Community).

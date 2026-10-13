@@ -3922,6 +3922,11 @@ class Mobject:
             for key in _BECOME_RETAINED:
                 if key in source.__dict__ and key not in replacement.__dict__:
                     retained[key] = source.__dict__[key]
+            for key in getattr(type(source), '_become_kept', ()):
+                # Community's become copies points and colors: structure tables keep naming
+                # the receiver's (retained) members.
+                if key in source.__dict__:
+                    retained[key] = source.__dict__[key]
             # Community's become copies points and colors only: scene-added attributes stay
             # (unless the library stores the target's geometry under the same name).
             scene_keys, target_keys = source.__dict__.get('_scene_keys', ()), replacement.__dict__.get('_scene_keys', ())
@@ -20928,6 +20933,8 @@ def _determine_graph_layout(graph, layout='spring', layout_scale=2, layout_confi
 
 class GenericGraph(VGroup):
     """Community's Graph base: vertex and edge mobjects kept attached by an updater."""
+    _become_kept = ('vertices', 'edges', '_graph', '_labels', '_vertex_config', 'default_vertex_config',
+                    '_edge_config', '_tip_config', 'default_edge_config')
     _frame_excluded = ('_graph', '_layout', '_labels', '_vertex_config', '_edge_config', '_tip_config',
                        'default_vertex_config', 'default_edge_config')
     _animate_overrides = {'add_vertices': '_add_vertices_animation', 'remove_vertices': '_remove_vertices_animation',

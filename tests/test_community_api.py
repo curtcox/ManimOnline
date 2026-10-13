@@ -1077,6 +1077,16 @@ class AnimationApiTests(unittest.TestCase):
             'S().render()\n'),
             [-1.5, -1.5, -1.5, -1.0, -0.3085, -0.0563])
 
+    def test_graph_become_keeps_its_vertex_and_edge_tables(self):
+        # Community 0.22's become copies points only: the edge updater then collapses the
+        # circle-shaped edges onto their (square-shaped) vertices' centers.
+        self.assertEqual(scene_values(
+            'R = lambda m: [round(float(v), 3) for v in (*m.get_corner(DL)[:2], *m.get_corner(UR)[:2])]\n'
+            'o = Graph([1, 2, 3, 4], [(1, 2), (2, 3), (3, 4), (4, 1)], layout="circular")\n'
+            'o.become(VGroup(Square(0.5), Circle(0.3)).arrange(DOWN).shift(RIGHT * 3)); o.update(0)\n'
+            'result = [len(o.vertices), o.vertices[1] is o.submobjects[0], R(o.submobjects[0]), R(o.submobjects[4]), len(o.submobjects[4].points)]\n'),
+            [4, True, [2.75, 0.175, 3.25, 0.675], [3.0, 0.425, 3.0, 0.425], 4])
+
     def test_ticks_become_copies_of_a_posed_arrow_tip(self):
         # Community 0.22's null_point_align pushes the tip into a submobject; every tick becomes a tip.
         self.assertEqual(scene_values(
