@@ -1187,3 +1187,7 @@ scene view cuts a shaft end by tip role, which would cut the wrong end once the 
 their geometry_center changes: fixed-size tips move the family pivot, so a pose lerp would curve.
 Axes defaults are Community's import-time constants (x_length=12, y_length=6); an explicit None
 length (NumberPlane's default) makes each NumberLine use its configured unit_size.
+`_aligned_target` treats a shafted NumberLine target as having points: its push uses
+`_number_line_members` plus a shaftless copy holding the cut shaft (appended last), which
+align_points accepts via `_own_drawn_path`. A tip pushed into submobjects has no `_tip_base`.
+Arrow.scale treats lengths up to 1e-12 as collapsed (Community's exact-zero early return).

@@ -3792,8 +3792,7 @@ class Mobject:
                     for entry in [item] + [repeat(item) for _ in range(1, factor)]]
         def pointy(member):
             # Tipped paths align their own (shaft) points; refit curved shafts do not.
-            return (_is_a(member, VMobject) and not (isinstance(member, NumberLine) and _has_shaft(member)) and
-                    not member.__dict__.get('_curved_tip_path'))
+            return _own_drawn_path(member) and not member.__dict__.get('_curved_tip_path')
         def drawn(member):
             # Community's own points of a curved arrow are its drawn (cut) shaft.
             if not (isinstance(member, TipableVMobject) and member.__dict__.get('_curved_tip_path')):
@@ -3806,20 +3805,29 @@ class Mobject:
         def align(source, target, root=False):
             has_points, sources, receiver = source[0], list(source[1]), source[2]
             point = lambda: target.get_point_mobject(target._geometry_center())
-            if has_points and not target.has_points():
+            target_points = target.has_points() or isinstance(target, NumberLine) and _has_shaft(target)
+            if has_points and not target_points:
                 sources.append((True, [], drawn(receiver)))
                 has_points = False
-            elif target.has_points() and not has_points:
+            elif target_points and not has_points:
                 if target.children and target in _PARENTS and _posed_ancestors(target):
                     target._replace_children(list(target.children) + [point()])
                 else:
                     # push_self_into_submobjects: a pointless group of the members and a
                     # childless copy, in the parent's frame (members need an unposed parent).
                     leaf = target.copy()
+                    members = target.children
+                    if isinstance(leaf, NumberLine) and _has_shaft(leaf):
+                        # Community's own points are the (cut) shaft; its members exclude it.
+                        members = _number_line_members(target)
+                        leaf._freeze_shaft()
+                        points = leaf._shaft_points()
+                        leaf._replace_children([])
+                        VMobject.set_points(leaf, points)
                     if isinstance(leaf, TipableVMobject):
                         leaf._freeze_shaft()
                     leaf._replace_children([])
-                    target = VGroup(*[_world_view(child) for child in target.children], leaf)
+                    target = VGroup(*[_world_view(child) for child in members], leaf)
                     target.match_style(leaf, family=False)
             elif (has_points and (root_points or not root) and receiver is not None
                   and pointy(mine := drawn(receiver)) and pointy(theirs := drawn(target))
@@ -4861,7 +4869,7 @@ class VMobject(Mobject, metaclass=_CommunityTree):
         """Community's align_points: pair subpaths in order and subdivide the shorter of each
         pair; missing subpaths become null curves at the last point."""
         mobject = vmobject
-        if not _is_a(mobject, VMobject):
+        if not _own_drawn_path(mobject):
             raise TypeError('align_points expects a VMobject')
         a, b = [Vector(p) for p in self.get_points()], [Vector(p) for p in mobject.get_points()]
         if len(a) == len(b):
@@ -5813,6 +5821,8 @@ class TipableVMobject(VMobject):
         """Where Community cut the shaft for a tip, in this path's frame: the midpoint of
         the tip's ordered cubic array, which affine edits carry along. `current` gives the
         length-weighted `base` a new cut uses, which differs once a tip is stretched."""
+        if tip._type == 'vgroup':
+            return None  # Alignment pushed the tip into pointless submobjects.
         curves = _path_curves(tip.to_dict())
         if not curves:
             return None
@@ -6957,7 +6967,8 @@ class Arrow(Line):
     def scale(self, factor, scale_tips=False, **kwargs):
         if not isinstance(scale_tips,bool):
             raise ValueError('scale_tips must be a boolean')
-        if self.get_length() == 0:
+        # Community's collapsed arrows have exactly coincident ends; Lite's tip pose adds noise.
+        if self.get_length() <= 1e-12:
             return self
         if scale_tips or not self.get_tips().children:
             super().scale(factor,**kwargs)

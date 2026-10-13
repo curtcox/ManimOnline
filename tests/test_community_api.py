@@ -1152,6 +1152,42 @@ class AnimationApiTests(unittest.TestCase):
             "          L(ComplexPlane(x_axis_config={'unit_size': 0.5}))]\n"),
             [[12.0, 6.0], [5.0, 4.0], [15.0, 8.0], [12.0, 6.0], [7.1111, 8.0]])
 
+    def test_copy_into_number_line_pushes_its_own_points_last(self):
+        # Community 0.22: ticks pair with the Square, the pushed own points with the Circle.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        global result\n'
+            '        o = NumberLine(x_range=[-3, 3, 1], length=5)\n'
+            '        p = VGroup(Square(0.5), Circle(0.3)).shift(RIGHT * 3)\n'
+            '        self.add(o, p)\n'
+            '        self.play(TransformFromCopy(p, o), run_time=0.2)\n'
+            '        result = [(type(m).__name__, len(m.points)) for m in o.get_family()]\n'
+            'S().render()\n'),
+            [['NumberLine', 0], ['VGroup', 0]] + [['Line', 16]] * 7 + [['NumberLine', 32]])
+
+    def test_collapsed_arrows_ignore_scaling_and_pushed_tips(self):
+        # Community 0.22: Arrow.scale returns at once for a zero-length arrow.
+        self.assertEqual(scene_values(
+            'R = lambda p: [round(float(v), 4) + 0.0 for v in p[:2]]\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        global result\n'
+            '        o = Arrow(LEFT, RIGHT, tip_shape=ArrowSquareTip)\n'
+            '        self.add(o)\n'
+            '        self.play(o.animate.scale(1.5).rotate(-0.7), run_time=0.2)\n'
+            '        self.play(ShrinkToCenter(o), run_time=0.2); self.add(o)\n'
+            '        o.match_height(Circle(radius=0.5))\n'
+            '        result = [R(o.get_corner(DL)), R(o.get_corner(UR))]\n'
+            '        n = NumberLine(x_range=[0, 4, 1], length=3, include_tip=True)\n'
+            '        a = Arrow(LEFT, RIGHT).shift(UP * 2)\n'
+            '        self.add(n, a)\n'
+            '        self.play(Transform(n, a.copy()), run_time=0.2)\n'
+            '        self.play(ReplacementTransform(a, n), run_time=0.2)\n'
+            '        result.append(R(n.get_center()))\n'
+            'S().render()\n'),
+            [[0.0, -0.2475], [0.495, 0.2475], [0.0, 2.0]])
+
     def test_ticks_become_copies_of_a_posed_arrow_tip(self):
         # Community 0.22's null_point_align pushes the tip into a submobject; every tick becomes a tip.
         self.assertEqual(scene_values(
