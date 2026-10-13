@@ -513,6 +513,28 @@ class AnimationApiTests(unittest.TestCase):
              'NotImplementedError: Please override in a child class.',
              'NotImplementedError: Please override in a child class.'])
 
+    def test_wait_placeholder_reversed_arrow_fade_and_collapsed_arc(self):
+        # Community 0.22: wait() adds an empty Mobject root (ReplacementTransform keeps the
+        # replaced root's slot); FadeIn's re-tipped copy of a reversed arrow regrows its shaft;
+        # a shape shrunk to a point still follows path_arc.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = Elbow(); self.add(o); self.wait(0.2)\n'
+            '        self.play(ReplacementTransform(o, Star()))\n'
+            '        self.roots = [type(m).__name__ for m in self.mobjects]\n'
+            '        a = Arrow(LEFT, RIGHT).reverse_points(); self.add(a)\n'
+            '        self.lefts, self.ys = [], []\n'
+            '        self.add_updater(lambda dt: self.lefts.append(a.get_left()[0]))\n'
+            '        self.play(FadeIn(a), run_time=0.4)\n'
+            '        self.remove_updater(self.updaters[-1])\n'
+            '        p = Square(); self.play(ShrinkToCenter(p)); self.add(p)\n'
+            '        self.add_updater(lambda dt: self.ys.append(p.get_y()))\n'
+            '        self.play(p.animate(path_arc=1).shift(RIGHT), run_time=0.4)\n'
+            's = S(); s.render(); result = [s.roots, s.lefts, s.ys]\n'),
+            [['Star', 'Mobject'], [0.4, 0.3677, 0.2226, -0.175, -0.5726, -0.7177],
+             [0.0, -0.0137, -0.0659, -0.1277, -0.0659, -0.0137]])
+
     def test_color_values_operators_and_helpers(self):
         self.assertEqual(scene_values(
             'result = [repr(WHITE / 2), list(WHITE / 2), repr(~RED), int(RED), RED[0], repr(RED & BLUE),\n'

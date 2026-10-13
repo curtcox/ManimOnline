@@ -12789,12 +12789,29 @@ def _arc_geometry(result, start, target, alpha, path_arc, frames=None):
         offset = moved - (centers[0] + (centers[1] - centers[0]) * alpha)
         result['position'] = list(Vector(result['position']) + offset)
         return
-    first, last, (_, inverse) = _snapshot_pose(start)[0], _snapshot_pose(target)[0], _snapshot_pose(result)
+    first, last, (forward, inverse) = _snapshot_pose(start)[0], _snapshot_pose(target)[0], _snapshot_pose(result)
+    if frames is not None and not (frames[2][0] and frames[2][2]):
+        return
     if inverse is None:
+        # A collapsed sample is a single point: it follows the path of its first point.
+        def anchor(node):
+            for field in fields:
+                value = node.get(field)
+                if value:
+                    return value[0][0] if field == 'curves' else value if field in ('start', 'end') else value[0]
+            return None
+        a, b = anchor(start), anchor(target)
+        if a is None or b is None:
+            return
+        p, q = first(a), last(b)
+        if frames is not None:
+            p, q = _frame_point(frames[0], p), _frame_point(frames[1], q)
+        moved = move(list(p) + [0] * (3 - len(p)), list(q) + [0] * (3 - len(q)))
+        if frames is not None:
+            moved = _frame_point(frames[2], moved, True)
+        result['position'] = list(Vector(result['position']) + Vector(moved) - Vector(forward(a)))
         return
     if frames is not None:
-        if not (frames[2][0] and frames[2][2]):
-            return
         local_first, local_last, local_inverse = first, last, inverse
         first = lambda p: _frame_point(frames[0], local_first(p))
         last = lambda p: _frame_point(frames[1], local_last(p))
@@ -12936,7 +12953,8 @@ class Animation(metaclass=_CommunityTree):
     @property
     def _community_style(self):
         cls = type(self)
-        return any(getattr(cls, name) is not getattr(Animation, name) for name in self._COMMUNITY_HOOKS)
+        return any(getattr(cls, name) not in (getattr(Animation, name), Wait.__dict__.get(name))
+                   for name in self._COMMUNITY_HOOKS)
 
     def interpolate(self, alpha):
         if isinstance(self, UpdateFromFunc) and not self._community_style:
@@ -13332,8 +13350,10 @@ class FadeIn(_PathOptions, Animation):
 
 
 def _same_shape(a, b):
-    """Whether two snapshots interpolate key by key (same types and family structure)."""
+    """Whether two snapshots interpolate key by key (same types and family structure). A
+    tip-fitted shaft facing a drawn one needs the plan's pointwise shaft alignment."""
     return (a['type'] == b['type'] and len(a.get('children') or ()) == len(b.get('children') or ())
+            and bool(a.get('_curved_tip_path')) == bool(b.get('_curved_tip_path'))
             and all(_same_shape(x, y) for x, y in zip(a.get('children') or (), b.get('children') or ())))
 
 
@@ -15176,6 +15196,8 @@ class Wait(Animation):
             raise TypeError('stop_condition must be callable')
         NumberLine._real(run_time, 'Wait run_time', positive=True)
         super().__init__(None, run_time=run_time, rate_func=rate_func, **kwargs)
+        # Community's placeholder, which play() adds to the scene like any animated mobject.
+        self.mobject = Mobject()
         self.duration = run_time
         # Only a lone Wait passed to play() honors these, as in Community.
         self.stop_condition, self.frozen_frame = stop_condition, frozen_frame
@@ -15183,8 +15205,24 @@ class Wait(Animation):
     def objects(self):
         return []
 
-    def prepare(self, scene):
+    # Community's Wait does nothing to its placeholder when driven by hand.
+    def begin(self, scene=None):
         pass
+
+    def interpolate(self, alpha):
+        pass
+
+    def finish(self, scene=None):
+        pass
+
+    def update_mobjects(self, dt):
+        pass
+
+    def clean_up_from_scene(self, scene):
+        pass
+
+    def prepare(self, scene):
+        scene._introduce(self.mobject)
 
     def states(self, alpha, rate_func=None):
         return {}
@@ -15982,6 +16020,8 @@ class Scene:
         for mobject in self.mobjects:
             if isinstance(mobject, (CameraFrame, ValueTracker)) or mobject is frame_center:
                 continue
+            if type(mobject) is Mobject and not mobject.children:
+                continue  # Invisible, e.g. the empty Mobject every Community wait() adds.
             static = cache is not None and not (overrides and any(
                 member in overrides for member in mobject.get_family()))
             if static and id(mobject) in cache:
@@ -16130,6 +16170,7 @@ class Scene:
         if len(animations) == 1 and type(animations[0]) is Wait:
             # A lone Wait follows Community's static/updating wait logic.
             wait = animations[0]
+            self._wait_mobject = wait.mobject
             return self.wait(wait.run_time if run_time is None else run_time, wait.stop_condition, wait.frozen_frame)
         if not animations or any(not isinstance(a, (Animation, AnimationGroup)) for a in animations):
             raise TypeError('play() expects supported animations such as Create or Transform')
@@ -16142,6 +16183,10 @@ class Scene:
             for key, value in kwargs.items():
                 setattr(animation, key, value)
         self.validate(*animations)
+        for animation in animations:
+            if type(animation) is Wait:
+                # Community adds non-introducers' mobjects before any animation begins.
+                self._introduce(animation.mobject)
         durations = [a.run_time if run_time is None else run_time for a in animations]
         if any(not math.isfinite(d) or d < 0 for d in durations):
             raise ValueError('Animation run_time must be positive and finite')
@@ -16302,11 +16347,13 @@ class Scene:
         return run_time
 
     def wait(self, duration=1, stop_condition=None, frozen_frame=None):
+        placeholder = self.__dict__.pop('_wait_mobject', None) or Mobject()
         if not math.isfinite(duration):
             raise ValueError('Wait duration must be finite')
         if stop_condition is not None and not callable(stop_condition):
             raise TypeError('stop_condition must be callable')
         duration = self._validate_run_time(duration, 'wait', 'duration')
+        self._introduce(placeholder)
         static = self._wait_is_static(stop_condition, frozen_frame)
         # Community freezes a static wait for int(duration * fps) frames without running
         # updaters; other waits sample np.arange(0, duration, 1 / fps).

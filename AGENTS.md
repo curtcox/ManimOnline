@@ -1064,3 +1064,9 @@ Arrow semantics in add_tip/Arrow.scale follow the class (isinstance Arrow), not 
 make_smooth turns an arrow's own path into a bezierpath. Community's Arrow.scale fails with
 IndexError on a lone start tip, and scene-code restore() on plain Mobjects (Group,
 ValueTracker) raises NotImplementedError; tests use the library restore via `restore_state`.
+Every wait()/pause()/play(Wait()) adds the Wait's empty placeholder Mobject as a scene root
+before other animations begin (Community's add_mobjects_from_animations), so self.mobjects[-1]
+idioms match; capture skips childless plain Mobject roots, so frames are unchanged. Wait's
+manual begin/interpolate/finish are no-ops. A FadeIn/Fade copy whose curved-tip flag differs
+from its target goes through a transform plan (`_same_shape`), aligning the drawn shaft. A
+collapsed (zero-scale) path sample follows path_arc by moving its single point.

@@ -1000,7 +1000,7 @@ self.play(UntypeWithCursor(text, cursor))""")['frames']
         scene.add_sound('beep.wav'); scene.add_subcaption('hello',duration=2)
         self.assertEqual((len(scene.sounds),scene.subcaptions[0].end.total_seconds()),(1,scene.time+2))
         group=lite.VGroup(lite.Square()); scene.add(group)
-        self.assertEqual(scene.get_top_level_mobjects(),[group])
+        self.assertEqual(scene.get_top_level_mobjects()[1:],[group])  # After the wait's placeholder.
         self.assertTrue(scene.should_update_mobjects())
         with self.assertRaises(NotImplementedError): scene.embed()
         with self.assertRaises(ValueError): lite.Scene().play(lite.FadeIn(lite.Square(),run_time=0))
@@ -6542,7 +6542,9 @@ self.wait(1)""")
         self.assertEqual(scene.frames[15]['mobjects'], [])
         scene.play(lite.FadeIn(a))
         self.assertEqual(a.to_dict(), before)
-        self.assertEqual(scene.mobjects, [a])
+        # Community's wait() adds its empty placeholder Mobject as a root.
+        self.assertEqual([type(m) for m in scene.mobjects], [lite.Mobject, lite.Square])
+        self.assertIs(scene.mobjects[1], a)
         self.assertIn('_saved_state', a.__dict__)
         self.assertEqual(render('self.add(Circle())\nself.wait(1)\nself.clear()')['frames'][-1]['mobjects'], [])
 
