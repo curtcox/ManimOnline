@@ -865,6 +865,28 @@ class AnimationApiTests(unittest.TestCase):
             'result = [[R(m.get_critical_point(UR)) for m in x.family_members_with_points()] for x in (o, v)]\n'),
             [[[0.0, -0.497], [0.0, -0.497]], [[0.0, -2.0], [0.0, -2.0], [0.0, -2.0]]])
 
+    def test_collapsing_members_and_spiralling_axes_follow_community(self):
+        # Community 0.22: padded ticks shrink linearly (once) inside their collapsing group,
+        # and SpiralIn moves each shape by its scene-view center of mass.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        global result\n'
+            '        R = lambda p: [round(float(v), 3) + 0.0 for v in p[:2]]\n'
+            '        g = VGroup(Axes(x_range=[-2, 2], y_range=[-1, 1], x_length=4, y_length=2).shift(RIGHT))\n'
+            '        spiral, widths = [], []\n'
+            '        self.add_updater(lambda dt: spiral.append(R(g[0].get_center())))\n'
+            '        self.play(SpiralIn(g), run_time=0.4)\n'
+            '        self.clear(); self.updaters.clear()\n'
+            '        o = Axes(x_range=[-2, 2], y_range=[-1, 1], x_length=4, y_length=2).rotate(1, about_point=ORIGIN)\n'
+            '        self.add(o)\n'
+            '        self.add_updater(lambda dt: widths.append(round(float(o.family_members_with_points()[2].width), 3)))\n'
+            '        self.play(ReplacementTransform(o, Arrow(DOWN, UP).shift(RIGHT * 3)), run_time=0.4)\n'
+            '        result = [spiral, widths]\n'
+            'S().render()\n'),
+            [[[1.0, 0.0], [0.979, 0.044], [0.81, 0.174], [0.479, -0.188], [0.964, -0.255], [1.012, -0.047]],
+             [0.168, 0.164, 0.142, 0.084, 0.026, 0.005]])
+
     def test_transforming_a_group_into_a_leaf_keeps_its_members(self):
         # align_data also runs for plain Group receivers: the target is pushed into a member.
         self.assertEqual(scene_values(

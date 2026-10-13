@@ -12648,11 +12648,14 @@ def _transform_plan(start, target, origins=None):
             if not children:
                 # Community pads an empty family with get_point_mobject(): points at its
                 # center, which is the world origin for a family without points.
-                # A collapsed (zero-scale) family has no such frame: its members shrink in place.
+                # A collapsed (zero-scale) family has no such frame: its members shrink in place,
+                # and inside its own frame its zero scale already collapses them.
                 result = _snapshot_copy(other)
                 for child in result:
                     child.pop('children', None)
                     _match_snapshot_style(child, family)
+                    if family.get('geometry_scale') == 0 and not world:
+                        continue
                     child['geometry_scale'] = 0
                     if origin is not None:
                         pivot = list(child.get('geometry_center') or ORIGIN) + [0] * 3
@@ -19518,7 +19521,8 @@ class SpiralIn(Animation):
             shape.set_fill(opacity=min(fill, alpha * fill / self.fade_in_fraction))
             shape.set_stroke(opacity=min(stroke, alpha * stroke / self.fade_in_fraction))
         if '_masses' not in self.__dict__:
-            self._masses = [state.get_center_of_mass() for state in self._saved_shapes]
+            # Community's center of mass (e.g. a NumberLine's own points cut at its tips).
+            self._masses = [_call_as_scene(state.get_center_of_mass) for state in self._saved_shapes]
         masses = self._masses
         for original, shape, state, (final, initial), mass in zip(self.shapes, list(group), self._saved_shapes,
                                                                    self.moves, masses):

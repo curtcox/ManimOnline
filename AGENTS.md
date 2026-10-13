@@ -1111,7 +1111,9 @@ members with points. `.animate` builders are exempt (_MethodAnimation.finish rea
 drawn shaft, flag dropped) on either side, so curved receivers and targets align point counts.
 `_transform_plan(start, target, origins)` threads the world origin in each side's parent frame:
 an empty group pads with collapsed copies there (Community's get_point_mobject on a pointless
-family is the origin). Zero-scale groups have no inverse; their padding shrinks in place.
+family is the origin). Zero-scale groups have no inverse; their padding shrinks in place and,
+outside world plans, keeps its scale (the group's own zero scale collapses it exactly once).
+SpiralIn measures centers of mass in the scene view (NumberLine shafts cut at the tips).
 A tipped target aligned against a tipless receiver is shaft-frozen first: its tips become plain
 members, and Community's own points are the cut shaft.
 Padding styles follow Community: repeats are `_fade_snapshot` (fill/stroke opacities zero, not
