@@ -926,6 +926,35 @@ class AnimationApiTests(unittest.TestCase):
             'S().render()\n'),
             [True, True, 'NumberLine'])
 
+    def test_become_aligns_the_target_itself(self):
+        # Community 0.22's become runs align_data on the target, which pushes and pads it.
+        self.assertEqual(scene_values(
+            'o = VGroup(*[Square() for _ in range(3)]); p = Arrow(LEFT, RIGHT)\n'
+            'o.become(p)\n'
+            'try:\n'
+            '    VMobject().get_start()\n'
+            'except ValueError as error:\n'
+            '    message = str(error)\n'
+            'result = [[(type(m).__name__, len(m.points)) for m in p.get_family()], message]\n'),
+            [[['Arrow', 0], ['ArrowTriangleFilledTip', 16], ['ArrowTriangleFilledTip', 16], ['Arrow', 16]],
+             'Cannot call VMobject.get_start because VMobject has no points.'])
+
+    def test_transforms_keep_configuration_and_lag_arrow_members(self):
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        global result\n'
+            '        b = BackgroundRectangle(Circle()); self.play(Transform(b, Square()), run_time=0.2)\n'
+            '        n = NumberLine(x_range=[0, 2, 1], length=2); l = Line(); self.add(n, l)\n'
+            '        self.play(TransformFromCopy(n, l), run_time=0.2)\n'
+            '        v = Vector(DOWN + RIGHT); self.add(v); bounds = []\n'
+            '        self.add_updater(lambda dt: bounds.append([v.get_bottom()[1], v.get_top()[1]]))\n'
+            '        self.play(v.animate(lag_ratio=0.3).shift(UP), run_time=0.2)\n'
+            '        result = [b.original_fill_opacity, [(type(m).__name__, len(m.points)) for m in l.get_family()],\n'
+            '                  bounds[1]]\n'
+            'S().render()\n'),
+            [0.75, [['Line', 4], ['VectorizedPoint', 0]] + [['VectorizedPoint', 4]] * 3, [-0.9815, 0.3371]])
+
     def test_ticks_become_copies_of_a_posed_arrow_tip(self):
         # Community 0.22's null_point_align pushes the tip into a submobject; every tick becomes a tip.
         self.assertEqual(scene_values(

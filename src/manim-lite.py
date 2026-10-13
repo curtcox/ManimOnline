@@ -1264,6 +1264,11 @@ class _UnexpectedKeyword(TypeError, NotImplementedError):
         super().__init__(f'{function}() got an unexpected keyword argument {next(iter(keywords))!r}')
 
 
+# Configuration attributes a receiver keeps through become when the target lacks them
+# (Community's become copies only points and colors).
+_BECOME_RETAINED = ('original_fill_opacity',)
+
+
 class Mobject:
     # Subclass bookkeeping (e.g. Graph adjacency) that frames never store.
     _frame_excluded = ()
@@ -2799,13 +2804,13 @@ class Mobject:
     def get_start(self):
         points = self.get_points()
         if not points:
-            raise ValueError('The path has no points')
+            raise self._no_points_error('get_start')
         return Vector(points[0])
 
     def get_end(self):
         points = self.get_points()
         if not points:
-            raise ValueError('The path has no points')
+            raise self._no_points_error('get_end')
         return Vector(points[-1])
 
     def is_closed(self):
@@ -2893,7 +2898,7 @@ class Mobject:
             if not curves:
                 if getattr(self, 'vertices', []):
                     return self._point_to_world(Vector(self.vertices[0]))
-                raise ValueError('The path has no points')
+                raise self._no_points_error('point_from_proportion')
             if alpha in (0, 1):
                 return self._point_to_world(Vector(curves[0][0] if alpha == 0 else curves[-1][-1]))
             return self._point_to_world(_curves_proportion(curves, alpha))
@@ -3703,7 +3708,16 @@ class Mobject:
             if isinstance(self, VMobject) and not isinstance(mobject, VMobject):
                 raise AttributeError(f"{type(mobject).__name__} object has no attribute 'fill_rgbas'")
             if self._alignable(True) and mobject._alignable():
-                mobject = self._aligned_target(mobject)
+                aligned = self._aligned_target(mobject)
+                # align_data pads and subdivides the target itself, not a copy (Community).
+                signature = lambda m: [(type(x), x._type, len(x.get_points()) if _is_a(x, VMobject) else 0)
+                                       for x in m.get_family()]
+                if (mobject not in self.get_family() and self not in mobject.get_family() and
+                        not (mobject in _PARENTS and _posed_ancestors(mobject)) and
+                        signature(aligned) != signature(mobject)):
+                    become = Mobject.become
+                    getattr(become, '__wrapped__', become)(mobject, aligned)
+                mobject = aligned
         become = Mobject.become
         return getattr(become, '__wrapped__', become)(self, mobject, *args, **kwargs)
 
@@ -3880,6 +3894,9 @@ class Mobject:
             if '_tip_role' in source.__dict__ and '_tip_role' not in replacement.__dict__:
                 # Community's tip attributes keep referring to the same member.
                 retained['_tip_role'] = source.__dict__['_tip_role']
+            for key in _BECOME_RETAINED:
+                if key in source.__dict__ and key not in replacement.__dict__:
+                    retained[key] = source.__dict__[key]
             # Community's become copies points and colors only: scene-added attributes stay
             # (unless the library stores the target's geometry under the same name).
             scene_keys, target_keys = source.__dict__.get('_scene_keys', ()), replacement.__dict__.get('_scene_keys', ())
@@ -4126,12 +4143,14 @@ class Mobject:
 
     def throw_error_if_no_points(self, caller=None):
         if self.has_no_points():
-            caller = caller or sys._getframe(1).f_code.co_name
-            message = f'Cannot call {type(self).__name__}.{caller} because {self!r} has no points.'
-            members = self.family_members_with_points()
-            if members:
-                message += f" Its family contains {len(members)} mobject{'' if len(members) == 1 else 's'} with points."
-            raise ValueError(message)
+            raise self._no_points_error(caller or sys._getframe(1).f_code.co_name)
+
+    def _no_points_error(self, caller):
+        message = f'Cannot call {type(self).__name__}.{caller} because {self!r} has no points.'
+        members = self.family_members_with_points()
+        if members:
+            message += f" Its family contains {len(members)} mobject{'' if len(members) == 1 else 's'} with points."
+        return ValueError(message)
 
     def get_start_and_end(self):
         return self.get_start(), self.get_end()
@@ -5041,10 +5060,10 @@ class VMobject(Mobject, metaclass=_CommunityTree):
             return Mobject.get_start(self)
         if self._type == 'bezierpath':
             if not self.curves and not self.vertices:
-                raise ValueError('The path has no points')
+                raise self._no_points_error('get_start')
             return self._point_to_world(Vector(self.curves[0][0] if self.curves else self.vertices[0]))
         if not self.vertices:
-            raise ValueError('The path has no points')
+            raise self._no_points_error('get_start')
         return self._point_to_world(Vector(self.vertices[0]))
 
     def get_end(self):
@@ -5052,10 +5071,10 @@ class VMobject(Mobject, metaclass=_CommunityTree):
             return Mobject.get_end(self)
         if self._type == 'bezierpath':
             if not self.curves and not self.vertices:
-                raise ValueError('The path has no points')
+                raise self._no_points_error('get_end')
             return self._point_to_world(Vector(self.vertices[-1] if self.vertices else self.curves[-1][-1]))
         if not self.vertices:
-            raise ValueError('The path has no points')
+            raise self._no_points_error('get_end')
         return self._point_to_world(Vector(self.vertices[-1]))
 
     @staticmethod
@@ -12625,9 +12644,14 @@ def _own_shaft(snapshot, other):
     return result
 
 
-def _transform_plan(start, target, origins=None):
+def _transform_plan(start, target, origins=None, lagged=False):
     """Align immutable family snapshots once, before sampling their timeline. origins holds
-    the world origin in each side's parent frame (where empty families pad with points)."""
+    the world origin in each side's parent frame (where empty families pad with points).
+    Lagged plans give members their own alphas, so any parent pose change moves them in the
+    parent frame (Community moves each member's points on its own sub-alpha)."""
+    def moving(a, b):
+        return _turning_pose(a, b) or (lagged and 'position' in a and 'position' in b and
+                                        _pose_frame(a) != _pose_frame(b))
     origins = origins or ([0, 0, 0], [0, 0, 0])
     def inner(node, origin):
         if origin is None or 'position' not in node:
@@ -12651,7 +12675,7 @@ def _transform_plan(start, target, origins=None):
             return group
         start, target = as_group(start), as_group(target)
         count = max(len(start['children']), len(target['children']))
-        world = _turning_pose(start, target)
+        world = moving(start, target)
         inside = origins if world else (inner(start, origins[0]), inner(target, origins[1]))
         def expand(children, other, origin, family):
             if not children:
@@ -12683,7 +12707,7 @@ def _transform_plan(start, target, origins=None):
         if world:
             first = [_pose_snapshot(child, _snapshot_frame(start), False) for child in first]
             last = [_pose_snapshot(child, _snapshot_frame(target), False) for child in last]
-        children = [_transform_plan(a, b, inside) for a, b in
+        children = [_transform_plan(a, b, inside, lagged) for a, b in
                     zip(expand(first, last, inside[0], start), expand(last, first, inside[1], target))]
         start.pop('children')
         target.pop('children')
@@ -12755,7 +12779,7 @@ def _transform_plan(start, target, origins=None):
         # re-posed (often baked into the parent frame), so move the members along with them.
         # When the own pose turns or scales, members move in the parent frame instead (see
         # _turning_pose) and are re-posed into each sampled own frame.
-        world = _turning_pose(own_plan[1],own_plan[2])
+        world = moving(own_plan[1],own_plan[2])
         inside = []
         for group,source,aligned,origin in ((first,own_start,own_plan[1],origins[0]),
                                             (last,own_target,own_plan[2],origins[1])):
@@ -12771,7 +12795,7 @@ def _transform_plan(start, target, origins=None):
             group['children'] = [_pose_snapshot(_pose_snapshot(child, _snapshot_frame(source), False),
                                                 _snapshot_frame(aligned)) for child in group['children']]
             inside.append(inner(aligned, origin))
-        return ('family' ,start,target,[own_plan,_transform_plan(first,last,inside)]+(['world'] if world else []))
+        return ('family' ,start,target,[own_plan,_transform_plan(first,last,inside,lagged)]+(['world'] if world else []))
     aligned = _align_path_snapshots(start, target)
     if aligned:
         return ('interpolate', *aligned, [])
@@ -14137,7 +14161,11 @@ class Transform(_PathOptions, Animation):
     def sample_members(self, alpha, rate_func):
         """Community's get_sub_alpha: each painted member runs its own lagged sub-alpha."""
         self.sample(0)
-        plan = self._transform_plan
+        cached = self.__dict__.get('_lagged_plan')
+        if cached is None or cached[0] is not self._transform_plan:
+            end = self.__dict__.get('_path_target') or self._plan_snapshot(self.target)
+            cached = self._lagged_plan = (self._transform_plan, _transform_plan(self.start, end, lagged=True))
+        plan = cached[1]
         count = _plan_members(plan)
         full = (count - 1) * self.lag_ratio + 1
         index = itertools.count()
@@ -14211,7 +14239,7 @@ class TransformFromCopy(Transform):
         # Community ends at interpolate(0): the target's starting copy, which align_data
         # gave the source's larger family structure and point counts.
         source = _world_view(self.source)
-        if self.mobject._alignable() and source._alignable():
+        if self.mobject._alignable() and source._alignable(True):
             aligned = source._aligned_target(self.mobject, root_points=True)
             shape = lambda mobject: [len(member.get_points()) for member in mobject.get_family()]
             if shape(aligned) != shape(self.mobject):

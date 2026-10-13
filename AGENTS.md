@@ -1139,3 +1139,9 @@ builds): containers move, scale, rotate and bound only `_moved_children` (member
 through another child), so the tip moves once; `_mark_shared` re-poses the drawn (last)
 occurrence from its real parent's frame into the containing one, and `_expose_snapshot`
 inverts that for the live member.
+Scene-code become also applies `_aligned_target`'s padding to the target itself (Community's
+align_data mutates it), unless the target is inside a posed family or shares a family with
+the receiver. Library become keeps receiver keys in `_BECOME_RETAINED` that the target lacks.
+Empty-path getters raise Community's throw_error_if_no_points message (`_no_points_error`).
+Lagged Transforms sample a `lagged=True` plan: any parent pose change moves members in the
+parent frame, so each member (an arrow's shaft and tip) follows its own sub-alpha.
