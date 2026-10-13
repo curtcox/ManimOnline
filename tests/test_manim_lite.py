@@ -3606,10 +3606,14 @@ assert isinstance(t.get_value(), (int, float))""")
         a,b = child._dash_interval
         self.assertEqual(point_list(child),point_list(source.get_subcurve(a,b)))
         for offset in (0,.1,.5):
+            # Community 0.22: a closed path's single full dash starts and ends at the same
+            # proportion, so it collapses to a point.
             full = lite.DashedVMobject(source,num_dashes=1,dashed_ratio=1,dash_offset=offset)
             self.assertEqual(len(full),1)
-            self.assertAlmostEqual(full[0].get_arc_length(100),source.get_arc_length(100),delta=.002)
-            self.assertPointAlmostEqual(full[0].get_start(),full[0].get_end())
+            self.assertEqual(len(point_list(full[0])),4)
+            self.assertAlmostEqual(full[0].get_arc_length(100),0)
+        circle = lite.DashedVMobject(lite.Circle(),num_dashes=12)
+        self.assertEqual([len(point_list(child))//4 for child in circle],[1,1,1,2,1,1,2,1,1,2,1,1])
         negative = lite.DashedVMobject(source,num_dashes=4,dash_offset=-.1)
         positive = lite.DashedVMobject(source,num_dashes=4,dash_offset=.9)
         self.assertEqual([point_list(child) for child in negative],[point_list(child) for child in positive])

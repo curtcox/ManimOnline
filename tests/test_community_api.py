@@ -955,6 +955,21 @@ class AnimationApiTests(unittest.TestCase):
             'S().render()\n'),
             [0.75, [['Line', 4], ['VectorizedPoint', 0]] + [['VectorizedPoint', 4]] * 3, [-0.9815, 0.3371]])
 
+    def test_background_rectangles_fade_and_zero_scale_collapses_exactly(self):
+        # Community 0.22: BackgroundRectangle's pointwise_become_partial only fades its fill
+        # (also after a Transform), and scale(0) puts every point exactly on the pivot.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        global result\n'
+            '        b = BackgroundRectangle(Circle()); self.add(b)\n'
+            '        self.play(Transform(b, Square(1.5).shift(RIGHT * 2)), run_time=0.2)\n'
+            '        self.play(Uncreate(b), run_time=0.2)\n'
+            '        a = ArcPolygon(LEFT, UP, RIGHT, angle=0.8).scale(0)\n'
+            '        result = [[b.width, b.get_fill_opacity()], [a.width, a.height]]\n'
+            'S().render()\n'),
+            [[1.5, 0.0], [0.0, 0.0]])
+
     def test_ticks_become_copies_of_a_posed_arrow_tip(self):
         # Community 0.22's null_point_align pushes the tip into a submobject; every tick becomes a tip.
         self.assertEqual(scene_values(

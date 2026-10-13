@@ -1145,3 +1145,11 @@ the receiver. Library become keeps receiver keys in `_BECOME_RETAINED` that the 
 Empty-path getters raise Community's throw_error_if_no_points message (`_no_points_error`).
 Lagged Transforms sample a `lagged=True` plan: any parent pose change moves members in the
 parent frame, so each member (an arrow's shaft and tip) follows its own sub-alpha.
+BackgroundRectangle partials (`_fill_partial`) follow the receiver's class through become and
+only fade the fill, including Uncreate's final collapse. scale(0) on a 2D family snaps every
+member point exactly onto the pivot. `_round_curves` follows Community's Arc arithmetic (unit
+anchors and handles, then radius) but snaps the full-turn seam closed, which lite's closed-path
+logic needs; DashedVMobject alone reads the unsnapped seam (`snap=False`). DashedVMobject ports
+Community's dash intervals and length table operation for operation (`_community_length_table`,
+`_np_interp`), so dashes ending on a cubic boundary keep or drop a null curve as Community does
+(a closed path's single full dash collapses; an open ratio-1 pattern adds an empty dash).

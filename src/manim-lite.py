@@ -3150,10 +3150,19 @@ class Mobject:
                 not isinstance(self, (NumberLine, CoordinateSystem)) and
                 not (isinstance(self, TipableVMobject) and self._tips_by_role())):
             # A collapsed pose has no inverse: collapse the members themselves, as Community's points.
+            pivot = list(Vector(about_point) if about_point is not None else self._pivot_point())
             if self._type == 'vgroup' or not self.get_points():
                 self._clear_pose()
             else:
                 self._materialize_path(bake=True)
+            # Community's points become exactly the pivot ((p - pivot) * 0 + pivot).
+            for member in self.get_family():
+                points = member.get_points() if _is_a(member, VMobject) else []
+                if points and any(list(p) != pivot for p in points):
+                    lengths = member.__dict__.get('subpath_lengths')
+                    VMobject.set_points(member, [pivot[:] for _ in points])
+                    if lengths:
+                        member.subpath_lengths = lengths
         return self
 
     def rotate_about_origin(self, angle, axis=OUT, **kwargs):
@@ -3914,6 +3923,9 @@ class Mobject:
                 retained.update({key:source.__dict__[key] for key in
                                  ('traced_point_func', 'dissipating_time', 'time')})
             state.update(retained, children=children)
+            state.pop('_fill_partial', None)
+            if isinstance(source, BackgroundRectangle):
+                state['_fill_partial'] = True  # Its class's pointwise_become_partial only fades.
             source.__dict__ = state
             _link_children(source, children)
             if isinstance(source, TipableVMobject) and any(
@@ -5231,6 +5243,49 @@ def _curve_length_data(mobject, samples):
             parameters.append((index+alpha)/count)
             previous = point
     return lengths,parameters
+
+
+def _community_length_table(points):
+    """DashedVMobject's lookup: cumulative norms of 9 chords per cubic (get_nth_curve_length_pieces)
+    against np.linspace(0, 1, size), with NumPy's evaluation order."""
+    samples = [k*(1/9) for k in range(9)] + [1.0]
+    lengths, total = [0.0], 0.0
+    for index in range(len(points)//4):
+        p0, p1, p2, p3 = points[4*index:4*index+4]
+        previous = None
+        for t in samples:
+            t2 = t*t; t3 = t2*t; mt = 1-t; mt2 = mt*mt; mt3 = mt2*mt
+            a, b, c = 3*t*mt2, 3*t2*mt, t3
+            point = [mt3*p0[k] + a*p1[k] + b*p2[k] + c*p3[k] for k in range(3)]
+            if previous is not None:
+                d = [point[k]-previous[k] for k in range(3)]
+                total += math.sqrt(d[0]*d[0] + d[1]*d[1] + d[2]*d[2])
+                lengths.append(total)
+            previous = point
+    step = 1/(len(lengths)-1) if len(lengths) > 1 else 0
+    references = [k*step for k in range(len(lengths))]
+    references[-1] = 1.0
+    return lengths, references
+
+
+def _np_interp(x, xp, fp):
+    """np.interp for one value (NumPy's compiled branch order)."""
+    if x > xp[-1]:
+        return fp[-1]
+    if x < xp[0]:
+        return fp[0]
+    j = bisect.bisect_right(xp, x) - 1
+    if j >= len(xp) - 1:
+        return fp[-1]
+    if xp[j] == x:
+        return fp[j]
+    slope = (fp[j+1]-fp[j]) / (xp[j+1]-xp[j])
+    result = slope*(x-xp[j]) + fp[j]
+    if math.isnan(result):
+        result = slope*(x-xp[j+1]) + fp[j+1]
+        if math.isnan(result) and fp[j] == fp[j+1]:
+            result = fp[j]
+    return result
 
 
 def _cubic_length(curve, sample_points=10):
@@ -9990,50 +10045,45 @@ class DashedVMobject(VMobject,VGroup):
                 self.add(*tips)
             return
         source = vmobject.copy()
+        # Community's arithmetic, operation for operation: dashes ending on a cubic boundary
+        # keep or drop a null curve depending on rounding, as there.
         closed = source.is_closed()
-        dash = dashed_ratio/num_dashes
-        gap = ((1-dashed_ratio)/num_dashes if closed else
-               1-dashed_ratio if num_dashes == 1 else (1-dashed_ratio)/(num_dashes-1))
+        r, n = dashed_ratio, num_dashes
+        dash = r/n
+        gap = (1-r)/n if closed else 1-r if n == 1 else (1-r)/(n-1)
         period = dash+gap
         phase = (dash_offset % 1)*period
-        intervals = []
-        for index in range(num_dashes):
-            a = index*period+phase
-            b = a+dash
-            if closed:
-                start,end = a % 1,b % 1
-                if b == 1:
-                    end = 1
-                intervals.append((start,end,dash == 1))
-            else:
-                if a <= 1:
-                    intervals.append((a,min(1,b),False))
-                if b > 1+gap:
-                    intervals.append((0,min(1,b-(1+gap)),False))
+        pattern = 1 if closed else 1+gap
+        starts = [(i*period+phase) % pattern for i in range(n)]
+        ends = [(i*period+dash+phase) % pattern for i in range(n)]
+        if not closed:
+            if ends[-1] > 1 and starts[-1] > 1:
+                ends.pop()
+                starts.pop()
+            elif ends[-1] < dash:
+                if starts[-1] < 1:
+                    starts.append(0)
+                    ends.append(ends[-1])
+                    ends[-2] = 1
+                else:
+                    starts[-1] = 0
+            elif starts[-1] > 1-dash:
+                ends[-1] = 1
         if equal_lengths:
-            lengths,parameters = _curve_length_data(source,21)
+            points = source.get_points()
+            if source._type in ('circle', 'arc') and not source.children:
+                points = source._points_to_world([point for curve in _round_curves(source._round_snapshot(), snap=False)
+                                                  for point in curve])
+            lengths, references = _community_length_table(points)
+            total = lengths[-1]
             def parameter(alpha):
-                if alpha <= 0 or not lengths[-1]:
-                    return 0
-                if alpha >= 1:
-                    return 1
-                distance = alpha*lengths[-1]
-                index = min(bisect.bisect_right(lengths,distance)-1,len(lengths)-2)
-                span = lengths[index+1]-lengths[index]
-                fraction = (distance-lengths[index])/span if span else 0
-                return parameters[index]+(parameters[index+1]-parameters[index])*fraction
+                return _np_interp(alpha*total, lengths, references)
         else:
             def parameter(alpha):
                 return alpha
-        for start,end,whole in intervals:
+        for start,end in zip(starts,ends):
             a,b = parameter(start),parameter(end)
-            if whole and a:
-                child = source.get_subcurve(a,1)
-                VMobject.append_vectorized_mobject(child,source.get_subcurve(0,a))
-            elif whole:
-                child = source.get_subcurve(0,1)
-            else:
-                child = source.get_subcurve(a,b)
+            child = source.get_subcurve(a,b)
             child._dash_interval = [a,b]
             self.children.append(child)
         _link_children(self, self.children)
@@ -12304,7 +12354,8 @@ def _path_curves(snapshot):
     return _corner_curves(snapshot)
 
 
-def _round_curves(snapshot):
+def _round_curves(snapshot, snap=True):
+    """Community's Arc points; snap=False keeps its inexact full-turn seam (sin(TAU) != 0)."""
     kind = snapshot['type']
     if kind == 'annulus':
         outer = _path_curves({'type':'circle', 'radius':snapshot['outer_radius']})
@@ -12317,17 +12368,18 @@ def _round_curves(snapshot):
     sweep = snapshot.get('arc_angle', TAU)
     # Community's Arc: num_components anchors (default 9, so 8 cubics) for any sweep.
     count = snapshot.get('num_components', 9) - 1
-    step = sweep / count
-    factor = 4 / 3 * math.tan(step / 4)
-    anchors = [Vector((radius * math.cos(start + step*i),
-                       radius * math.sin(start + step*i), 0)) for i in range(count + 1)]
-    if abs(sweep) == TAU:
-        anchors[-1] = anchors[0]
+    factor = 4 / 3 * math.tan(sweep / count / 4)
+    # Community's order: np.linspace angles, unit anchors and handles, then scale by radius.
+    angle_step = ((start + sweep) - start) / count
+    angles = [i * angle_step + start for i in range(count)] + [start + sweep]
+    anchors = [(math.cos(a), math.sin(a)) for a in angles]
+    if abs(sweep) == TAU and snap:
+        anchors[-1] = anchors[0]  # Lite's closed-path logic relies on an exact seam.
     curves = []
     for a, b in zip(anchors, anchors[1:]):
-        tangent_a, tangent_b = Vector((-a[1], a[0], 0)), Vector((-b[1], b[0], 0))
-        curves.append([list(a), list(a + tangent_a * factor),
-                       list(b - tangent_b * factor), list(b)])
+        curve = [a, (a[0] - factor * a[1], a[1] + factor * a[0]),
+                 (b[0] + factor * b[1], b[1] - factor * b[0]), b]
+        curves.append([[x * radius, y * radius, 0] for x, y in curve])
     if kind == 'ellipse':
         curves = [[[p[0] * snapshot['width'] / 2, p[1] * snapshot['height'] / 2, 0]
                    for p in curve] for curve in curves]
@@ -13922,7 +13974,9 @@ def _partial_drawable(animation, mobject):
 def _collapse_drawn(mobject, unfill=False):
     """Collapse every drawn outline onto its first point (a fully undrawn ShowPartial)."""
     for member in mobject.get_family():
-        if member._type in _PATH_TYPES and _own_drawn_path(member):
+        if member.__dict__.get('_fill_partial'):
+            member.fill_opacity = 0  # BackgroundRectangle's partial keeps its points.
+        elif member._type in _PATH_TYPES and _own_drawn_path(member):
             points = member.get_points()
             if points:
                 VMobject.set_points(member, [points[0]] * 4)
