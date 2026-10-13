@@ -800,8 +800,10 @@ class AnimationApiTests(unittest.TestCase):
             'names = lambda m: [type(x).__name__ for x in m.get_family()]\n'
             'o = Square(); o.become(Arrow(LEFT, RIGHT))\n'
             'e = Ellipse(width=2, height=1); e.become(VGroup(Dot(), Square(0.5)))\n'
-            'result = [names(o), round(float(o.submobjects[0].width), 4), names(e)]\n'),
-            [['Square', 'VectorizedPoint'], 0.01, ['Ellipse', 'Ellipse', 'Ellipse']])
+            'd = DashedLine(LEFT, RIGHT).submobjects[0]\n'
+            'result = [names(o), round(float(o.submobjects[0].width), 4), names(e),\n'
+            '          [type(d).__name__, isinstance(d, DashedLine), isinstance(d, Line), d.dash_length]]\n'),
+            [['Square', 'VectorizedPoint'], 0.01, ['Ellipse', 'Ellipse', 'Ellipse'], ['DashedLine', True, True, 0.05]])
 
     def test_uncreate_collapses_a_number_line_that_became_a_shape(self):
         # Community 0.22: the NumberLine's own points trace backwards and stay collapsed

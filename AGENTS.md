@@ -254,7 +254,8 @@ across shapes and frames, with local inert defs retained in SVG/PNG exports.
 
 
 Read `examples/guides_scene.py` for DashedLine and coordinate projections.
-Dash families serialize actual Line children with no hidden object aliases.
+Dash families serialize actual Line children (`_Dash`, shown as DashedLine like Community's
+subcurve copies) with no hidden object aliases.
 Preserve child edits during endpoint transforms; recompute count only through
 regeneration. Preflight finite lengths/ratios and the 1000-dash cap. Orthogonal
 projections use current world shaft endpoints, including extrapolation, independent

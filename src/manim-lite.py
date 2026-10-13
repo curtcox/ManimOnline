@@ -9992,6 +9992,11 @@ class DashedVMobject(VMobject,VGroup):
             self.add(*tips)
 
 
+class _Dash(Line):
+    """One DashedLine dash: Community's dashes are childless DashedLine subcurve copies."""
+    _frame_excluded = ('dash_length', 'dashed_ratio')
+
+
 class DashedLine(Line,VGroup):
     """A straight line made from individually addressable dash segments."""
     def __init__(self, start=LEFT, end=RIGHT, dash_length=.05, dashed_ratio=.5, **kwargs):
@@ -10013,8 +10018,8 @@ class DashedLine(Line,VGroup):
         for index in range(self.num_dashes):
             a = index*(dash+gap)
             b = 1 if index == self.num_dashes-1 else a+dash
-            child = Line(start+(end-start)*a,start+(end-start)*b,**kwargs)
-            child._dash_interval = [a,b]
+            child = _Dash(start+(end-start)*a,start+(end-start)*b,**kwargs)
+            child.dash_length, child.dashed_ratio, child._dash_interval = dash_length, dashed_ratio, [a,b]
             self.children.append(child)
         _link_children(self, self.children)
 
@@ -26224,8 +26229,9 @@ _VIRTUAL_BASES.update({VMobject: (VGroup, Text), Animation: (AnimationGroup,),
                        RegularPolygon: (ArrowTriangleTip,), Triangle: (ArrowTriangleTip,),
                        Polygon: (ArrowSquareTip,), Rectangle: (ArrowSquareTip,), Square: (ArrowSquareTip,),
                        ScreenRectangle: (CameraFrame,), MathTex: (_NumberGlyph,),
-                       SingleStringMathTex: (_NumberGlyph,)})
+                       SingleStringMathTex: (_NumberGlyph,), DashedLine: (_Dash,)})
 _NumberGlyph.__name__ = _NumberGlyph.__qualname__ = 'MathTex'
+_Dash.__name__ = _Dash.__qualname__ = 'DashedLine'
 # Mobjects that took on path geometry (e.g. a Cross transformed into a square) edit points too.
 Mobject._clear_pose = VMobject._clear_pose
 # Community's moving-camera frame is a ScreenRectangle.
