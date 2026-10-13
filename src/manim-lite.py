@@ -3735,6 +3735,7 @@ class Mobject:
                         leaf._freeze_shaft()
                     leaf._replace_children([])
                     target = VGroup(*[_world_view(child) for child in target.children], leaf)
+                    target.match_style(leaf, family=False)
             elif (has_points and (root_points or not root) and receiver is not None and pointy(receiver)
                   and pointy(target) and (isinstance(target, TipableVMobject) and target._tips_by_role()
                                           or len(receiver.get_points()) != len(target.get_points()))):
@@ -13961,6 +13962,11 @@ class Transform(_PathOptions, Animation):
             target = self.target
             if self.mobject._alignable() and target._alignable():
                 target = self.mobject._aligned_target(target, root_points=True)
+                if (self.mobject.children and not self.mobject.get_points() and target.children
+                        and not (isinstance(self, Animate) and self._builder)):
+                    # Community interpolates only members with points: a pointless root keeps its
+                    # style (.animate's _MethodAnimation.finish reapplies the methods instead).
+                    target.match_style(self.mobject, family=False)
             self.mobject.become(target)
         if self.replace_mobject_with_target_in_scene:
             # Community: the target takes the mobject's place in the scene (inside its parent
@@ -14010,7 +14016,14 @@ class TransformFromCopy(Transform):
         return super().sample(alpha)
 
     def finish(self, scene):
-        pass
+        # Community ends at interpolate(0): the target's starting copy, which align_data
+        # gave the source's larger family structure and point counts.
+        source = _world_view(self.source)
+        if self.mobject._alignable() and source._alignable():
+            aligned = source._aligned_target(self.mobject, root_points=True)
+            shape = lambda mobject: [len(member.get_points()) for member in mobject.get_family()]
+            if shape(aligned) != shape(self.mobject):
+                self.mobject.become(aligned)
 
 
 class Restore(Transform):

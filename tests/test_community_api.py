@@ -623,6 +623,28 @@ class AnimationApiTests(unittest.TestCase):
             's = S(); s.render(); result = s.out\n'),
             [[-2.0, -1.0, 0.0], [0.0, 1.0, 0.0]])
 
+    def test_transform_from_copy_keeps_aligned_target_and_pointless_roots_keep_style(self):
+        # Community 0.22: TransformFromCopy ends at interpolate(0), the target aligned with the
+        # source; Transform skips pointless members, so a group root keeps its own style unless
+        # .animate reapplies its methods.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = Sector(radius=1, angle=1.5); self.add(o)\n'
+            '        self.play(o.animate.become(Triangle()), run_time=0.2)\n'
+            '        c = Circle().shift(RIGHT)\n'
+            '        self.play(TransformFromCopy(o, c), run_time=0.2)\n'
+            '        d = Circle(fill_opacity=0.6)\n'
+            '        self.play(TransformFromCopy(VGroup(Dot(), Square()), d), run_time=0.2)\n'
+            '        g = VGroup(Dot(), Square()).set_color(BLUE); self.add(g)\n'
+            '        self.play(Transform(g, Circle(color=GREEN)), run_time=0.2)\n'
+            '        first = g.get_color().to_hex()\n'
+            '        self.play(g.animate.set_color(YELLOW), run_time=0.2)\n'
+            '        self.out = [len(c.points), [(len(m.points), m.get_fill_opacity()) for m in d.get_family()],\n'
+            '                    first, g.get_color().to_hex()]\n'
+            's = S(); s.render(); result = s.out\n'),
+            [72, [[0, 0.6], [32, 0.6], [32, 0.0]], '#58C4DD', '#F7D96F'])
+
     def test_color_values_operators_and_helpers(self):
         self.assertEqual(scene_values(
             'result = [repr(WHITE / 2), list(WHITE / 2), repr(~RED), int(RED), RED[0], repr(RED & BLUE),\n'
