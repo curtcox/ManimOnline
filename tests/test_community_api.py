@@ -3022,6 +3022,41 @@ class AnimationApiTests(unittest.TestCase):
         # Community adds each Add's mobject when its stage begins.
         self.assertEqual(found, [1, 1, 1, 2, 2, 2, 3, 3, 3, 3])
 
+    def test_manual_frame_loop(self):
+        found = []
+        lite.render_scene('from manim import *\nclass Empty(Scene):\n    pass\n')
+        namespace = {'FOUND': found}
+        exec(compile(
+            'from manim import *\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        sq, c = Square(), Circle()\n'
+            '        self.add_updater(lambda dt: FOUND.append((dt, sq.get_x(), len(self.mobjects))))\n'
+            '        self.compile_animation_data(sq.animate.shift(RIGHT), FadeOut(c), run_time=0.2)\n'
+            '        self.begin_animations()\n'
+            '        FOUND.append((self.is_current_animation_frozen_frame(), len(self.get_time_progression(1))))\n'
+            '        self.play_internal()\n'
+            '        FOUND.append((sq.get_x(), len(self.mobjects), self.time))\n', '<test>', 'exec'), namespace)
+        namespace['S']().render()
+        # Community 0.22's update_to_time/play_internal on compiled animation data.
+        self.assertEqual(plain(found), [[0.0, 15.0], [0.0, 0.0, 2.0], [0.0667, 0.1542, 2.0],
+                                        [0.0667, 0.8458, 2.0], [1.0, 1.0, 0.2]])
+
+    def test_coordinate_system_and_vgroup_point_helpers(self):
+        values = scene_values(
+            'ax = Axes(x_range=[0, 4], y_range=[0, 2], x_length=4, y_length=2)\n'
+            'g = VGroup().set_points_as_corners([LEFT, RIGHT])\n'
+            'g.resize_points(7)\n'
+            'result = [CoordinateSystem.c2p(ax, 1, 1)[:2], len(g.points), callable(CoordinateSystem.plot)]\n')
+        self.assertEqual(values, [[-1.0, 0.0], 7.0, True])
+
+    def test_turning_a_flat_shape_about_a_raised_pivot(self):
+        values = scene_values(
+            's = Square().rotate(PI / 2, about_point=[1, 0, 2])\n'
+            'result = s.get_center()\n')
+        # Community 0.22: a turn about the z axis ignores the pivot's z.
+        self.assertEqual(values, [1.0, -1.0, 0.0])
+
     def test_become_pads_graph_members_in_place(self):
         values = scene_values(
             'o = Graph([1, 2, 3], [(1, 2), (2, 3)], layout="circular")\n'

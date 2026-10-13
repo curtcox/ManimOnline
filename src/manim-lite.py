@@ -3374,7 +3374,10 @@ class Mobject:
             pivot = self.get_center() if pivot is None else pivot
             matrix = rotation_about_z(angle)
             return self._map_points_3d(lambda p: _apply_rows(matrix, p), pivot, matrix=matrix)
-        about_point = self._pivot(about_point, about_edge)
+        # A turn about the z axis does not depend on the pivot's z (e.g. a 3D family's center).
+        about_point = self._pivot_3d(about_point, about_edge)
+        if about_point is not None:
+            about_point = Vector((about_point[0], about_point[1], 0))
         if type(self) in (Group, VGroup, Mobject) and self._world_container():
             # Like shift and scale, a pure container turns its members about one pivot,
             # keeping their (Community) world coordinates.
@@ -9220,7 +9223,7 @@ for _name in ('_corners', '_clear_pose', '_materialize_path', 'set_points_as_cor
               'add_line_to', 'start_new_path', 'close_path', 'add_cubic_bezier_curve',
               'add_cubic_bezier_curve_to', 'add_cubic_bezier_curves', 'add_quadratic_bezier_curve_to',
               'add_smooth_curve_to', 'set_anchors_and_handles', 'force_direction', 'get_start',
-              'get_end'):
+              'get_end', 'resize_points'):
     setattr(VGroup, _name, VMobject.__dict__[_name])
 
 
@@ -13040,13 +13043,16 @@ def _transform_plan(start, target, origins=None, lagged=False):
     if lagged:
         start, target = _cut_number_line_shaft(start), _cut_number_line_shaft(target)
     if start['type'] == 'vgroup' or target['type'] == 'vgroup':
+        # Plans only replace top-level keys of the nodes they hold (snapshots are never
+        # mutated in place), so nodes are copied shallowly: deep copies at every level of
+        # a deep family (a polyhedron's Dot3D faces) are quadratic.
         def as_group(snapshot):
             if snapshot['type'] == 'vgroup':
-                return dict(_snapshot_copy(snapshot), children=_snapshot_copy(snapshot.get('children', [])))
+                return dict(snapshot, children=list(snapshot.get('children', [])))
             group = VGroup().to_dict()
             # Community's null_point_align: push_self_into_submobjects puts the members first,
             # then a childless copy holding the own points.
-            leaf = _snapshot_copy(snapshot)
+            leaf = dict(snapshot)
             members = leaf.pop('children', None) or []
             leaf['children'] = []
             if members and 'position' in snapshot:
@@ -13077,9 +13083,11 @@ def _transform_plan(start, target, origins=None, lagged=False):
             result, seen = [], set()
             for index in range(count):
                 source_index = index * len(children) // count
-                child = _snapshot_copy(children[source_index])
                 if source_index in seen:
+                    child = _snapshot_copy(children[source_index])
                     _fade_snapshot(child)
+                else:
+                    child = dict(children[source_index])
                 seen.add(source_index)
                 result.append(child)
             return result
@@ -13093,7 +13101,8 @@ def _transform_plan(start, target, origins=None, lagged=False):
         target.pop('children')
         return ('group_world' if world else 'group', start, target, children)
     if start.get('children') or target.get('children'):
-        own_start,own_target = _snapshot_copy(start),_snapshot_copy(target)
+        own_start, own_target = ({key: [] if key == 'children' else _snapshot_copy(value) for key, value in node.items()}
+                                 for node in (start, target))
         def tips(node):
             return {child.get('_tip_role'): child for child in node.get('children') or ()
                     if child.get('_tip_role') in ('start', 'end')}
@@ -15546,6 +15555,15 @@ class AnimationGroup:
         for animation in self.animations:
             animation._setup_scene(scene)
 
+    def clean_up_from_scene(self, scene):
+        on_finish = self.__dict__.get('_on_finish')
+        if callable(on_finish):
+            on_finish(scene)
+        for animation in self.animations:
+            if self.remover:
+                animation.remover = self.remover
+            animation.clean_up_from_scene(scene)
+
     def is_introducer(self):
         return self.introducer
 
@@ -17485,6 +17503,82 @@ class Scene:
             animation.begin()
         self.moving_mobjects, self.static_mobjects = self.get_moving_and_static_mobjects(self.animations)
 
+    def get_time_progression(self, run_time, description=None, n_iterations=None, override_skip_animations=False):
+        """Community's frame times for a run (one step while a section skips animations)."""
+        if self._skipping and not override_skip_animations:
+            return [run_time]
+        count = math.ceil(run_time * FPS - 1e-9)
+        return [k / FPS for k in range(count)]
+
+    def is_current_animation_frozen_frame(self):
+        animations = self.__dict__.get('animations') or []
+        return (len(animations) == 1 and isinstance(animations[0], Wait)
+                and bool(getattr(animations[0], 'is_static_wait', False)))
+
+    def update_to_time(self, t):
+        """Community's frame step for animations begun by begin_animations()."""
+        dt = t - self.__dict__.get('last_t', 0)
+        self.last_t = t
+        for animation in self.__dict__.get('animations') or []:
+            animation.update_mobjects(dt)
+            animation.interpolate(t / animation.run_time if animation.run_time else 1)
+        self._update_mobjects(dt, scene_updaters=False)
+        self.update_meshes(dt)
+        self.update_self(dt)
+
+    def update_meshes(self, dt):
+        pass  # OpenGL meshes only.
+
+    def play_internal(self, skip_rendering=False):
+        """Community's frame loop over compile_animation_data()/begin_animations() state."""
+        self.duration = self.get_run_time(self.animations)
+        for t in self.get_time_progression(self.duration, None):
+            self.update_to_time(t)
+            if not skip_rendering:
+                self.capture()
+            stop = self.__dict__.get('stop_condition')
+            if stop is not None and stop():
+                break
+        for animation in self.animations:
+            animation.finish()
+            animation.clean_up_from_scene(self)
+        if not self._skipping:
+            self._update_mobjects(0, scene_updaters=False)
+
+    def check_interactive_embed_is_valid(self):
+        return False  # The browser preview has no interactive OpenGL window.
+
+    def interact(self, shell=None, keyboard_thread=None):
+        raise NotImplementedError('Interactive scenes are not available in the browser preview')
+
+    def set_key_function(self, char, func):
+        self.__dict__.setdefault('key_to_function_map', {})[char] = func
+
+    # Interactive (OpenGL window) input hooks: the preview never calls them.
+    def on_mouse_motion(self, point, d_point):
+        pass
+
+    def on_mouse_scroll(self, point, offset):
+        pass
+
+    def on_key_press(self, symbol, modifiers):
+        pass
+
+    def on_key_release(self, symbol, modifiers):
+        pass
+
+    def on_mouse_drag(self, point, d_point, buttons, modifiers):
+        pass
+
+    def on_mouse_press(self, point, button, modifiers):
+        pass
+
+    def mouse_scroll_orbit_controls(self, point, offset):
+        pass
+
+    def mouse_drag_orbit_controls(self, point, d_point, buttons, modifiers):
+        pass
+
     def get_attrs(self, *keys):
         return [getattr(self, key) for key in keys]
 
@@ -18576,13 +18670,16 @@ class ThreeDScene(Scene):
         roots = self._root_states(root, overrides)
         camera = self.camera
         leaves = []
+        centers = {}  # One evaluation per orientation function (a whole-family center).
 
         def orientation_center(node, points):
             if node.get('_fixed_center') is not None:
                 return [float(v) for v in node['_fixed_center']]
             func = camera._orientation_funcs.get(node.get('_fixed_orientation_key'))
             if func is not None:
-                return [float(v) for v in func()]
+                if id(func) not in centers:
+                    centers[id(func)] = [float(v) for v in func()]
+                return list(centers[id(func)])
             return list(_bbox_center(points)) if points else [0.0, 0.0, 0.0]
 
         # Snapshots are never mutated, so world curves of a curve list (shared by
@@ -27256,6 +27353,19 @@ for _name in ('add_line_to', 'add_points_as_corners', 'add_quadratic_bezier_curv
               'set_points_smoothly', 'start_new_path', 'close_path', 'set_anchors_and_handles', 'add_subpath'):
     setattr(NumberLine, _name, _shaft_edit(_name))
 NumberLine._scene_set_points = _shaft_edit('set_points')
+# Community defines the coordinate helpers on CoordinateSystem itself.
+for _name in ('add_coordinates', 'angle_of_tangent', 'c2p', 'get_T_label', 'get_area', 'get_axis',
+              'get_graph_label', 'get_horizontal_line', 'get_line_from_axis_to_point', 'get_lines_to_point',
+              'get_origin', 'get_riemann_rectangles', 'get_secant_slope_group', 'get_vertical_line',
+              'get_vertical_lines_to_graph', 'get_x_axis', 'get_x_axis_label', 'get_x_unit_size', 'get_y_axis',
+              'get_y_axis_label', 'get_y_unit_size', 'get_z_axis', 'i2gc', 'i2gp', 'input_to_graph_coords',
+              'input_to_graph_point', 'p2c', 'plot', 'plot_antiderivative_graph', 'plot_derivative_graph',
+              'plot_implicit_curve', 'plot_parametric_curve', 'plot_polar_graph', 'plot_surface',
+              'point_to_polar', 'polar_to_point', 'pr2pt', 'pt2pr', 'slope_of_tangent'):
+    if _name not in CoordinateSystem.__dict__:
+        _method = next((klass.__dict__[_name] for klass in Axes.__mro__ if _name in klass.__dict__), None)
+        if _method is not None:
+            setattr(CoordinateSystem, _name, _method)
 
 
 def _number_line_partial(self, vmobject, a, b):

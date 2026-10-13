@@ -1213,3 +1213,10 @@ While exposed, members animated in world coordinates use the exposed ancestors' 
 `_WORLD_TOKENS` frame is swapped for the exposure, and `_later_members` splices them through
 the sampled parents' frames (a fade's start copy may bake its pose). `runpair.sh SUITE` runs
 both libraries on a new suite; `runlite.sh LIB TAG SUITE...` plus `delta.py` diff two lite runs.
+ThreeDScene `_root_frame_data` memoizes fixed-orientation centers by callback id per frame (each
+leaf asked its whole family's get_center). A 2D rotate about OUT drops the pivot's z (a 3D family
+center). Scene exposes Community's manual frame loop (get_time_progression, update_to_time,
+play_internal) and inert interaction hooks; CoordinateSystem borrows the Axes helpers.
+`_transform_plan` copies snapshots shallowly (as_group, expand, family own nodes): plans only
+replace top-level keys, so never mutate a nested list of a plan input. Gallery equality checks
+should compare sorted-key JSON (`/tmp/dbg/eq.py`); node key order may change harmlessly.
