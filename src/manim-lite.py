@@ -12682,20 +12682,23 @@ def _own_shaft(snapshot, other):
             middle = len(curves) / 2
             base = _snapshot_pose(child)[0](
                 VMobject._bezier_point(curves[min(int(middle), len(curves) - 1)], middle - int(middle)))
-            shaft = result['curves']
-            distance = lambda k, t: sum((a - b) ** 2 for a, b in zip(VMobject._bezier_point(shaft[k], t), base))
-            k, t = min(((k, i / 32) for k in range(len(shaft)) for i in range(33)), key=lambda kt: distance(*kt))
-            lo, hi = max(0.0, t - 1 / 32), min(1.0, t + 1 / 32)
-            for _ in range(60):
-                a, b = lo + (hi - lo) / 3, hi - (hi - lo) / 3
-                lo, hi = (lo, b) if distance(k, a) <= distance(k, b) else (a, hi)
-            t = (lo + hi) / 2
-            if child.get('_tip_at_start'):
-                result['curves'] = [_split_cubic(shaft[k], t)[1]] + shaft[k + 1:]
-            else:
-                result['curves'] = shaft[:k] + [_split_cubic(shaft[k], t)[0]]
+            result['curves'] = _cut_curves_at(result['curves'], base, child.get('_tip_at_start'))
             result.pop('subpath_lengths', None)
     return result
+
+
+def _cut_curves_at(shaft, base, at_start):
+    """Cut a mapped shaft at the point nearest a tip base, keeping the part away from that tip."""
+    distance = lambda k, t: sum((a - b) ** 2 for a, b in zip(VMobject._bezier_point(shaft[k], t), base))
+    k, t = min(((k, i / 32) for k in range(len(shaft)) for i in range(33)), key=lambda kt: distance(*kt))
+    lo, hi = max(0.0, t - 1 / 32), min(1.0, t + 1 / 32)
+    for _ in range(60):
+        a, b = lo + (hi - lo) / 3, hi - (hi - lo) / 3
+        lo, hi = (lo, b) if distance(k, a) <= distance(k, b) else (a, hi)
+    t = (lo + hi) / 2
+    if at_start:
+        return [_split_cubic(shaft[k], t)[1]] + shaft[k + 1:]
+    return shaft[:k] + [_split_cubic(shaft[k], t)[0]]
 
 
 def _cut_number_line_shaft(snapshot):
@@ -12703,7 +12706,11 @@ def _cut_number_line_shaft(snapshot):
     own points), so lagged members move a shaft that does not run past its tips."""
     children = snapshot.get('children') or []
     shafts = [child for child in children if child.get('_number_line_role') == 'shaft']
-    if snapshot.get('_shaft_fixed') or not shafts or shafts[0].get('type') != 'line':
+    if snapshot.get('_shaft_fixed') or not shafts:
+        return snapshot
+    curved = (shafts[0].get('type') == 'bezierpath' and shafts[0].get('curves') and not shafts[0].get('vertices')
+              and len(shafts[0].get('subpath_lengths') or [0]) == 1)
+    if shafts[0].get('type') != 'line' and not curved:
         return snapshot
     inverse = _snapshot_pose(shafts[0])[1]
     shaft = None
@@ -12714,7 +12721,11 @@ def _cut_number_line_shaft(snapshot):
         middle = len(curves) / 2
         base = _snapshot_pose(child)[0](VMobject._bezier_point(curves[min(int(middle), len(curves) - 1)], middle - int(middle)))
         shaft = shaft or _snapshot_copy(shafts[0])
-        shaft['start' if child.get('_tip_at_start') else 'end'] = inverse(base)
+        if curved:
+            shaft['curves'] = _cut_curves_at(shaft['curves'], inverse(base), child.get('_tip_at_start'))
+            shaft.pop('subpath_lengths', None)
+        else:
+            shaft['start' if child.get('_tip_at_start') else 'end'] = inverse(base)
     if shaft is None:
         return snapshot
     return dict(snapshot, _shaft_fixed=True, children=[shaft if child is shafts[0] else child for child in children])
@@ -12810,6 +12821,9 @@ def _transform_plan(start, target, origins=None, lagged=False):
                     own['start'] = drawn.get('shaft_start',own['start'])
                     own['end'] = drawn.get('shaft_end',own['end'])
                     own['_shaft_fixed'] = True
+                elif lagged and own.get('_curved_tip_path') and not own.get('_shaft_fixed'):
+                    own['curves'] = _refresh_tip_shafts(_snapshot_copy(source))['shaft_curves']
+                    own.pop('_curved_tip_path')
         own_start['children'],own_target['children'] = [],[]
         first,last = VGroup().to_dict(),VGroup().to_dict()
         first['children'],last['children'] = start['children'],target['children']

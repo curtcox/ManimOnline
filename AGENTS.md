@@ -1155,7 +1155,8 @@ Community's dash intervals and length table operation for operation (`_community
 (a closed path's single full dash collapses; an open ratio-1 pattern adds an empty dash).
 Lagged plans (`_transform_plan(..., lagged=True)`) freeze arrow shafts at their tip-base cuts and
 cut NumberLine shaft children there (`_cut_number_line_shaft`): Community's own points move on
-their own sub-alpha, so a lagging tip must not drag or trail the shaft. Own bounds of tipped lines
+their own sub-alpha, so a lagging tip must not drag or trail the shaft. Curved-tip shafts align
+their drawn `shaft_curves` (flag dropped) and mapped NumberLine shafts are cut by `_cut_curves_at`. Own bounds of tipped lines
 still use the logical start/end (they set the pose pivot; cutting them breaks Arrow.scale).
 Transform.begin replays align_data's padding walk (`_check_point_mobjects`) and raises
 Community's get_point_mobject NotImplementedError for plain Mobject/Group members.

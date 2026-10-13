@@ -1002,6 +1002,23 @@ class AnimationApiTests(unittest.TestCase):
             [[[1.75, 2.5], [1.75, 2.7337], [1.7913, 3.4815], [2.1342, 3.5], [2.4842, 3.5], [2.7087, 3.5]],
              'get_point_mobject not implemented for Group'])
 
+    def test_lagged_transforms_move_curved_and_mapped_shafts_on_their_own(self):
+        # Community 0.22: curved shafts (tipped arcs, curved arrows, mapped axes) lag their tips too.
+        self.assertEqual(scene_values(
+            'import math\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        global result\n'
+            '        a = Arc(radius=1, angle=PI).add_tip(); c = CurvedArrow(LEFT * 2, RIGHT * 2).shift(DOWN * 2)\n'
+            '        ax = Axes(x_range=[-3, 3], y_range=[-2, 2], x_length=5, y_length=3)\n'
+            '        ax.apply_function(lambda q: q + 0.2 * RIGHT * math.sin(q[1]))\n'
+            '        self.add(a, c, ax); result = []\n'
+            '        self.add_updater(lambda dt: result.append([round(float(a.get_top()[1]), 4), round(float(c.get_bottom()[1]), 4), round(float(ax.get_right()[0]), 4)]))\n'
+            '        self.play(*[Transform(m, m.copy().shift(RIGHT + UP)) for m in (a, c, ax)], lag_ratio=0.2, run_time=0.4)\n'
+            'S().render()\n'),
+            [[1.175, -2.9009, 2.5], [1.2163, -2.8596, 2.7337], [1.4408, -2.6351, 3.4815],
+             [1.9092, -2.1667, 3.5], [2.1337, -1.9422, 3.5], [2.175, -1.9009, 3.5]])
+
     def test_ticks_become_copies_of_a_posed_arrow_tip(self):
         # Community 0.22's null_point_align pushes the tip into a submobject; every tick becomes a tip.
         self.assertEqual(scene_values(
