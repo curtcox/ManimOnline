@@ -887,6 +887,22 @@ class AnimationApiTests(unittest.TestCase):
              ['TypeError', "setter() got an unexpected keyword argument 'color'"],
              0.0, 'ValueTracker', 'VGroup'])
 
+    def test_matching_saves_parts_and_number_lines_push_themselves(self):
+        # Community 0.22: TransformMatchingShapes' key hashing saves every part's state, and a
+        # NumberLine facing a group pushes a childless NumberLine (its own points) into its members.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        global result\n'
+            '        a, b = Square(), Circle()\n'
+            '        TransformMatchingShapes(a, b)\n'
+            '        o = NumberLine(x_range=[-2, 2, 1], length=4)\n'
+            '        self.play(Transform(o, VGroup(Dot(), Square(0.5))), run_time=0.2)\n'
+            '        result = [hasattr(a, "saved_state"), hasattr(b, "saved_state"),\n'
+            '                  [type(m).__name__ for m in o.family_members_with_points()][-1]]\n'
+            'S().render()\n'),
+            [True, True, 'NumberLine'])
+
     def test_ticks_become_copies_of_a_posed_arrow_tip(self):
         # Community 0.22's null_point_align pushes the tip into a submobject; every tick becomes a tip.
         self.assertEqual(scene_values(

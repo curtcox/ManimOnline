@@ -844,7 +844,9 @@ the live family to their start on completion when another animation of the play 
 (`Scene._mark_restores`); groups restore after all members finish, as Community's
 clean_up_from_scene runs after finish(). Rotate fixes its pivot at the center when constructed and ignores about_edge;
 Rotating resolves about_edge at begin.
-TransformMatching*: parts sharing a key with unequal counts transform as one VGroup pair
+TransformMatchingShapes saves every part's state when constructed (Community's key hashing does).
+Library become pushes a NumberLine receiver facing a larger vgroup as a childless (shaftless)
+NumberLine copy, like push_self_into_submobjects. TransformMatching*: parts sharing a key with unequal counts transform as one VGroup pair
 (Community's per-key group Transform; surplus parts meet faded copies), folded back member by
 member into the source tree when the source side is not padded. Unmatched targets fade in as a real `_arrivals` VGroup introduced at begin
 (Community's FadeIn copy) with one group snapshot; unmatched sources fade out by one shared

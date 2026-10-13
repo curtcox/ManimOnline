@@ -3840,8 +3840,9 @@ class Mobject:
                     not (isinstance(replacement, NumberLine) and _has_shaft(replacement))):
                 # Community's NumberLine owns its line's points: the shaft has no counterpart.
                 live = _number_line_members(source)
-            pushed = (len(live) < count and replacement._type == 'vgroup' and source._type != 'vgroup'
-                      and _is_a(source, VMobject) and not isinstance(source, NumberLine) and source.get_points())
+            pushed = (len(live) < count and replacement._type == 'vgroup' and (
+                (source._type != 'vgroup' and _is_a(source, VMobject) and not isinstance(source, NumberLine)
+                 and source.get_points()) or live is not source.children))  # A NumberLine's own points are its shaft.
             if pushed:
                 # push_self_into_submobjects: the receiver's own points move into a
                 # childless copy of itself, appended after its members.
@@ -14632,6 +14633,12 @@ class TransformMatchingTex(_TransformMatching):
 
 
 class TransformMatchingShapes(_TransformMatching):
+    def __init__(self, mobject, target_mobject, **kwargs):
+        super().__init__(mobject, target_mobject, **kwargs)
+        # Community's get_mobject_key saves (and restores) every part when the animation is built.
+        for part in mobject.family_members_with_points() + target_mobject.family_members_with_points():
+            part.save_state()
+
     @staticmethod
     def get_mobject_parts(mobject):
         return mobject._painted_members()
