@@ -1191,3 +1191,5 @@ length (NumberPlane's default) makes each NumberLine use its configured unit_siz
 `_number_line_members` plus a shaftless copy holding the cut shaft (appended last), which
 align_points accepts via `_own_drawn_path`. A tip pushed into submobjects has no `_tip_base`.
 Arrow.scale treats lengths up to 1e-12 as collapsed (Community's exact-zero early return).
+pop_tips captures the tip points in the parent frame first and converts them back with
+`_point_from_world` after removal: unfreezing a curved shaft and removing tips move the pivot.

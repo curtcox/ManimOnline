@@ -2998,6 +2998,15 @@ class Mobject:
             raise ValueError('Path coordinates must be finite')
         return point
 
+    def _point_from_world(self, point):
+        """Inverse of _point_to_world (the pose scale must be nonzero)."""
+        if self.angle == 0 and self.geometry_scale == 1:
+            return Vector(point) - Vector(self.position)
+        center = self._geometry_center()  # May shift the position: read it afterwards.
+        dx, dy, dz = Vector(point) - Vector(self.position) - center
+        cos, sin, scale = math.cos(self.angle), math.sin(self.angle), self.geometry_scale
+        return center + Vector(((dx * cos + dy * sin) / scale, (dy * cos - dx * sin) / scale, dz / scale))
+
     def _points_to_world(self, points):
         """_point_to_world for many points, computing the pivot once."""
         px, py, pz = self.position
@@ -5784,6 +5793,9 @@ class TipableVMobject(VMobject):
                 self._tips_by_role() and self.get_points()):
             self._materialize_path()
         points = {role: Vector(tip.tip_point) for role, tip in self._tips_by_role().items()}
+        # Unfreezing (a curved shaft refits) and removing the tips move the pivot of a posed
+        # path: keep the points in its parent's frame until the tips are gone.
+        outer = {role: self._point_to_world(point) for role, point in points.items()} if self.geometry_scale else None
         drawn = self._drawn_ends() if points else None
         members = [child for child in self.children if child.__dict__.get('_tip_role') not in ('start', 'end')]
         if drawn and members:
@@ -5798,6 +5810,8 @@ class TipableVMobject(VMobject):
         self.__dict__.pop('_shaft_fixed', None)
         tips = self.get_tips()
         self.remove(*tips.children)
+        if outer:
+            points = {role: self._point_from_world(point) for role, point in outer.items()}
         self.explicit_tips = True
         if self._type in ('line', 'arrow'):
             self._set_own_ends(points)

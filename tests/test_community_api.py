@@ -1188,6 +1188,23 @@ class AnimationApiTests(unittest.TestCase):
             'S().render()\n'),
             [[0.0, -0.2475], [0.495, 0.2475], [0.0, 2.0]])
 
+    def test_scaling_an_uncreated_rearranged_double_arrow(self):
+        # Community 0.22 values: pop_tips puts the shaft on the tip points of the posed arrow.
+        self.assertEqual(scene_values(
+            'R = lambda p: [round(float(v), 4) + 0.0 for v in p[:2]]\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        global result\n'
+            '        o = DoubleArrow(LEFT * 2, RIGHT * 2, tip_shape_start=ArrowCircleTip)\n'
+            '        self.add(o)\n'
+            '        self.play(Uncreate(o), run_time=0.2); self.add(o)\n'
+            '        self.play(o.animate.shift(UP).scale(0.7), run_time=0.2)\n'
+            '        self.play(o.animate.arrange(RIGHT, buff=0.2), run_time=0.2)\n'
+            '        self.play(o.animate.shift(UP).scale(0.7), run_time=0.2)\n'
+            '        result = [R(o.get_start()), R(o.get_end())]\n'
+            'S().render()\n'),
+            [[1.295, 1.0], [1.155, 1.0]])
+
     def test_ticks_become_copies_of_a_posed_arrow_tip(self):
         # Community 0.22's null_point_align pushes the tip into a submobject; every tick becomes a tip.
         self.assertEqual(scene_values(
