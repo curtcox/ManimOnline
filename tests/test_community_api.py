@@ -1969,7 +1969,8 @@ class AnimationApiTests(unittest.TestCase):
             'result = [s.get_center(), t.get_center(), u.get_center()]\n'),
             [[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [-1.0, 0.0, 0.0]])
 
-    def test_lagged_start_map_animates_shapes_once_with_their_children(self):
+    def test_lagged_start_map_animates_each_scene_member_like_community(self):
+        # Manim 0.22 iterates [arrow, tip]: one animation each (the tip follows the later one).
         self.assertEqual(scene_values(
             'class S(Scene):\n'
             '    def construct(self):\n'
@@ -1980,7 +1981,7 @@ class AnimationApiTests(unittest.TestCase):
             '        self.count = [len(g.animations), len(self.mobjects)]\n'
             's = S(); s.render()\n'
             'result = s.count\n'),
-            [1.0, 0.0])
+            [2.0, 0.0])
 
     def test_text_glyphs_are_leaves(self):
         self.assertEqual(scene_values(

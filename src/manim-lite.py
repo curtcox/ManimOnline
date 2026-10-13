@@ -20014,15 +20014,10 @@ class LaggedStartMap(LaggedStart):
                  lag_ratio=DEFAULT_LAGGED_START_LAG_RATIO, **kwargs):
         arg_creator = arg_creator or (lambda mob: (mob,))
         kwargs.pop('lag_ratio', None)
-        # A leaf (e.g. a whole Tex without glyph members here) maps as one member.
-        members = list(mobject) or [mobject]
-        # Iterating a shape with children yields the shape, then its children (e.g. an Arrow
-        # and its tip). The shape's animation already covers them; one animation per member.
-        covered = set()
-        for submob in members:
-            if id(submob) not in covered and isinstance(submob, Mobject):
-                covered.update(id(m) for m in submob.get_family()[1:])
-        members = [m for m in members if id(m) not in covered]
+        # Community iterates the scene view: a shape with points, then its children (an Arrow
+        # and its tip; a NumberLine itself, then its ticks), each animated in turn, so a later
+        # member's animation overrides the shape's for that member. A leaf maps as one member.
+        members = _call_as_scene(list, mobject) or [mobject]
         animations = [animation_class(*arg_creator(submob), **kwargs) for submob in members]
         super().__init__(*animations, run_time=run_time, lag_ratio=lag_ratio)
 
