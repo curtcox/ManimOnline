@@ -128,6 +128,7 @@ _LIB_FILE = (lambda: None).__code__.co_filename
 _PARENTS = weakref.WeakKeyDictionary()  # child -> weak reference to its latest parent
 _OTHER_PARENTS = weakref.WeakKeyDictionary()  # child -> weak references to plain groups not linked
 _IN_WORLD = set()  # ids of members currently placed in world coordinates
+_WORLD_TOKENS = {}  # id(member) -> _enter_world token, while the member is in world coordinates
 _PINS = {}  # id(parent) -> [parent, count]: posed parents with a fixed pivot
 
 
@@ -299,7 +300,30 @@ def _enter_world(mobject):
     if _BOUNDS_MEMO:
         _BOUNDS_MEMO.clear()  # A batch memo (_memo_query) must not outlive the move.
     _IN_WORLD.add(id(mobject))
-    return (mobject, chain[0], frame, pinned)
+    token = _WORLD_TOKENS[id(mobject)] = (mobject, chain[0], frame, pinned)
+    return token
+
+
+def _with_local_members(mobject, function, *args, **kwargs):
+    """function(...) with mobject's members that play() animates in world coordinates put
+    back into their parents' frames, so scene queries of the family see one frame."""
+    tokens = [token for member in mobject.get_family()[1:]
+              if (token := _WORLD_TOKENS.get(id(member))) is not None and token[0] is member]
+    if not tokens:
+        return function(*args, **kwargs)
+    for member, parent, frame, _ in reversed(tokens):
+        _IN_WORLD.discard(id(member))
+        _place(member, frame, inverse=True)
+    if _BOUNDS_MEMO:
+        _BOUNDS_MEMO.clear()
+    try:
+        return function(*args, **kwargs)
+    finally:
+        for member, parent, frame, _ in tokens:
+            _place(member, frame)
+            _IN_WORLD.add(id(member))
+        if _BOUNDS_MEMO:
+            _BOUNDS_MEMO.clear()
 
 
 def _unpin(parents):
@@ -314,6 +338,7 @@ def _unpin(parents):
 def _exit_world(token):
     mobject, parent, frame, pinned = token
     _IN_WORLD.discard(id(mobject))
+    _WORLD_TOKENS.pop(id(mobject), None)
     # A member that left its parent (e.g. a remover) keeps its world placement.
     if any(child is mobject for child in parent.children):
         _place(mobject, frame, inverse=True)
@@ -403,7 +428,11 @@ def _scene_call(function, reference=False, live_points=False):
             # Community edits the shaft as cut when the tips were attached.
             self._freeze_shaft()
         # A class may present Community's structure to scene code with a _scene_<name> variant.
-        result = _in_world(self, getattr(type(self), '_scene_' + function.__name__, function), *args, **kwargs)
+        method = getattr(type(self), '_scene_' + function.__name__, function)
+        if _WORLD_TOKENS:
+            result = _with_local_members(self, _in_world, self, method, *args, **kwargs)
+        else:
+            result = _in_world(self, method, *args, **kwargs)
         # Community's get_points returns the points buffer itself.
         if live_points:
             return _point_array([list(Vector(p)) for p in result], owner=self)
@@ -3093,6 +3122,8 @@ class Mobject:
         return self._compute_bounds()
 
     def _compute_bounds(self):
+        if self._is_pointless():
+            return (0.0, 0.0, 0.0, 0.0)  # Community: a family without points bounds at the origin.
         if self.children and self._rotated_family():
             # Rotated families: bound their transformed points, as Community does.
             points = self._family_bound_points()
@@ -3755,7 +3786,7 @@ class Mobject:
                 raise NotImplementedError('Please override in a child class.')
             if isinstance(self, VMobject) and not isinstance(mobject, VMobject):
                 raise AttributeError(f"{type(mobject).__name__} object has no attribute 'fill_rgbas'")
-            if self._alignable(True) and mobject._alignable():
+            if self._alignable(True) and mobject._alignable(True):
                 aligned = self._aligned_target(mobject)
                 # align_data pads and subdivides the target itself, not a copy (Community).
                 signature = lambda m: [(type(x), x._type, len(x.get_points()) if _is_a(x, VMobject) else 0)
@@ -3784,10 +3815,12 @@ class Mobject:
         points pushes that one into its own submobjects, and the shorter child list is
         padded with faded repeats (or center points), so the receiver keeps the larger
         structure. Returns a padded copy for Lite's index-preserving become."""
+        line_owns = set()
         def shape(member):
             if isinstance(member, NumberLine) and _has_shaft(member):
                 own = VMobject()
                 VMobject.set_points(own, member._shaft_points())
+                line_owns.add(id(own))
                 return True, [shape(child) for child in _number_line_members(member)], own
             return member.has_points(), [shape(child) for child in member.children], member
         def padded(items, count, point, repeat):
@@ -3812,9 +3845,26 @@ class Mobject:
             member._replace_children([])
             VMobject.set_points(member, member.get_points())
             return member
-        def align(source, target, root=False):
+        def align(source, target, root=False, origin=(0, 0, 0)):
+            # origin: the world origin in target's parent frame (None under a zero scale).
             has_points, sources, receiver = source[0], list(source[1]), source[2]
-            point = lambda: target.get_point_mobject(target._geometry_center())
+            if (receiver is not None and id(receiver) not in line_owns and isinstance(target, NumberLine)
+                    and _has_shaft(target)):
+                # A receiver that is not a NumberLine takes Community's structure: own points
+                # (the cut shaft) and the other members as submobjects.
+                target._freeze_shaft()
+                points = target._shaft_points()
+                target._replace_children(_number_line_members(target))
+                VMobject.set_points(target, points)
+            def point():
+                # get_point_mobject sits at the center, the world origin for a family without points.
+                inner = local_origin()
+                center = target._geometry_center() if inner is None or not target._is_pointless() else inner
+                return target.get_point_mobject(center)
+            def local_origin():
+                if origin is None or not target.geometry_scale:
+                    return None
+                return target._point_from_world(origin)
             target_points = target.has_points() or isinstance(target, NumberLine) and _has_shaft(target)
             if has_points and not target_points:
                 sources.append((True, [], drawn(receiver)))
@@ -3867,7 +3917,8 @@ class Mobject:
             count = len(sources) - len(members)
             members = padded(members, count, point, lambda item: item.copy().fade(1))
             sources = padded(sources, -count, lambda: (True, [], None), lambda item: item)
-            members = [align(*pair) for pair in zip(sources, members)]
+            inner = local_origin()
+            members = [align(*pair, origin=inner) for pair in zip(sources, members)]
             if len(members) != len(target.children) or any(a is not b for a, b in zip(members, target.children)):
                 target._replace_children(members)
             return target
@@ -19813,8 +19864,9 @@ class SpiralIn(Animation):
             # Community's save_state per shape: a shape's family is saved as it is now, so a
             # shape with children restores them before the children's own turn.
             self._saved_shapes.append(shape.copy())
-        # Members of posed families (e.g. an arrow's tip) move in world coordinates.
-        for shape in shapes:
+        # Members of posed families (e.g. an arrow's tip) move in world coordinates. Shapes are
+        # Community's iteration (split): a NumberLine with own points moves itself first.
+        for shape in _call_as_scene(list, shapes):
             _freeze_tip_owner(shape)
             _in_world(shape, place)
         super().__init__(shapes, introducer=True, **kwargs)
@@ -19836,8 +19888,9 @@ class SpiralIn(Animation):
             # Community's center of mass (e.g. a NumberLine's own points cut at its tips).
             self._masses = [_call_as_scene(state.get_center_of_mass) for state in self._saved_shapes]
         masses = self._masses
-        for original, shape, state, (final, initial), mass in zip(self.shapes, list(group), self._saved_shapes,
-                                                                   self.moves, masses):
+        for original, shape, state, (final, initial), mass in zip(_call_as_scene(list, self.shapes),
+                                                                   _call_as_scene(list, group),
+                                                                   self._saved_shapes, self.moves, masses):
             _freeze_tip_owner(shape)  # A tip's own turn leaves the shaft in place (before world placement).
             _in_world(shape, place, original, state, final, initial, mass)
         return group
@@ -19847,8 +19900,8 @@ class SpiralIn(Animation):
 
     def finish(self, scene):
         self._place(self.mobject, 1)
-        for shape, (final, _) in zip(self.mobject, self.moves):
-            shape.move_to(final)  # A full turn returns each shape exactly home.
+        for shape, (final, _) in zip(_call_as_scene(list, self.mobject), self.moves):
+            _in_world(shape, type(shape).move_to, final)  # A full turn returns each shape exactly home.
 
 
 class AddTextWordByWord(AddTextLetterByLetter):

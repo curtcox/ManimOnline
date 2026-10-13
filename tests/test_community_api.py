@@ -2861,6 +2861,48 @@ class AnimationApiTests(unittest.TestCase):
         # the already wiggled tip each frame, so the shaft keeps lengthening.
         self.assertEqual(plain(found), [1.1708, 1.198, 1.2498, 1.3058])
 
+    def test_spiral_in_moves_a_number_line_with_own_points_as_a_shape(self):
+        values = scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = NumberLine(x_range=[0, 4, 1], length=3, include_tip=True)\n'
+            '        self.add(o)\n'
+            '        self.play(Transform(o, Dot(radius=0.3).shift(RIGHT * 2 + DOWN)))\n'
+            '        self.play(SpiralIn(o))\n'
+            '        self.result = [list(o.get_center()), list(o[1].get_center())]\n'
+            's = S(); s.render()\n'
+            'result = s.result\n')
+        # Community's SpiralIn iterates split(): the NumberLine itself, then its tip and ticks.
+        self.assertEqual(values, [[2.0, -1.0, 0.0], [2.0, -1.0, 0.0]])
+
+    def test_pointless_members_bound_at_the_origin(self):
+        values = scene_values(
+            'p = ComplexPlane(x_range=[-2, 2], y_range=[-2, 2], x_length=4, y_length=4)\n'
+            'p.shift(RIGHT * 2 + DOWN).rotate(1)\n'
+            'o = Square()\n'
+            'o.become(p)\n'
+            'result = [list(p[0].get_center()), list(o[0].get_center()), len(o[0][0].points),\n'
+            '          list(o[0][0].get_center())]\n')
+        # Community: an empty VGroup has no points, so its center is the origin, and become pads
+        # it with get_point_mobject() there.
+        self.assertEqual(values, [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], 16.0, [0.0, 0.0, 0.0]])
+
+    def test_family_queries_while_a_member_animates(self):
+        found = []
+        lite.render_scene('from manim import *\nclass Empty(Scene):\n    pass\n')
+        namespace = {'FOUND': found}
+        exec(compile(
+            'from manim import *\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = NumberLine(x_range=[0, 4, 1], length=3, include_tip=True).shift(UP).rotate(0.5)\n'
+            '        self.add(o)\n'
+            '        self.add_updater(lambda dt: FOUND.append(list(o.get_corner(UR))))\n'
+            '        self.play(FadeIn(o), FadeIn(o[1]), run_time=0.2)\n', '<test>', 'exec'), namespace)
+        namespace['S']().render()
+        # The tip animates in world coordinates; its family's bounds still use one frame.
+        self.assertEqual(plain(found), [[1.3164, 1.7191, 0.0]] * 3)
+
 
 if __name__ == '__main__':
     unittest.main()
