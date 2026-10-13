@@ -712,6 +712,20 @@ class AnimationApiTests(unittest.TestCase):
             's = S(); s.render(); result = s.out\n'),
             [[1.9174, 0.969], [-0.3547, -0.9772], 0.9587, 1.0, [0.0, 0.0, 0.0]])
 
+    def test_scaled_fade_moves_fixed_size_arrow_tips_straight(self):
+        # Community 0.22: FadeOut(scale=0.5) re-adds the full-size tip to the shrunken shaft,
+        # and the tip translates without growing mid-fade.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = Arrow(LEFT, RIGHT); self.add(o)\n'
+            '        heights = []\n'
+            '        self.add_updater(lambda dt: heights.append(round(float(o.height), 4)))\n'
+            '        self.play(FadeOut(o, scale=0.5))\n'
+            '        self.out = sorted(set(heights))\n'
+            's = S(); s.render(); result = s.out\n'),
+            [0.35])
+
     def test_uncreate_collapses_a_number_line_that_became_a_shape(self):
         # Community 0.22: the NumberLine's own points trace backwards and stay collapsed
         # on each member's first point after the remover finishes.

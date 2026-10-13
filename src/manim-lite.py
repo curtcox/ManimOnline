@@ -13535,8 +13535,12 @@ def _same_shape(a, b):
 
 def _snapshot_lerp(start, target):
     """interpolate(start, target, alpha) as a function, aligning the snapshots first when an
-    edit changed their representation (e.g. scaling bakes an out-of-plane outline)."""
-    if _same_shape(start, target):
+    edit changed their representation (e.g. scaling bakes an out-of-plane outline) or a
+    parent's pose scales or turns (its members must move straight in the parent frame)."""
+    def turning(a, b):
+        return bool(a.get('children')) and _turning_pose(a, b) or any(
+            turning(x, y) for x, y in zip(a.get('children') or (), b.get('children') or ()))
+    if _same_shape(start, target) and not turning(start, target):
         def poses(result, a, b, alpha):
             if 'position' in result and _pose_turns(a, b):
                 _lerp_pose(result, a, b, alpha)
