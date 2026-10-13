@@ -14399,6 +14399,12 @@ class Restore(Transform):
         # The target is snapshotted now, as for other Transform animations.
         super().__init__(mobject, mobject.copy().restore(), **kwargs)
 
+    def begin(self, scene=None):
+        # Community's target is mobject.restore() (become), whose interpolate_color plain Mobjects lack.
+        if not isinstance(self.mobject, (VMobject, PMobject, AbstractImageMobject)):
+            raise NotImplementedError('Please override in a child class.')
+        return super().begin(scene)
+
 
 class Indicate(_PathOptions, Animation):
     """Temporarily scale and recolor a snapshot without changing live state."""

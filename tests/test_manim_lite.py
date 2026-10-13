@@ -5600,8 +5600,9 @@ self.wait(1)""")
         scene.play(tracker.animate.increment_value(2),rate_func=lite.linear)
         self.assertEqual(scene.frames[45]['mobjects'][0]['position'], [6,0,0])
         self.assertEqual(dot.get_center(), lite.RIGHT*8)
-        scene.play(lite.Restore(tracker.save_state().increment_value(2)))
-        self.assertEqual(tracker.get_value(), 8)
+        # Community's Restore needs become's interpolate_color, which a ValueTracker lacks.
+        with self.assertRaises(NotImplementedError):
+            scene.play(lite.Restore(tracker.save_state().increment_value(2)))
 
     def test_time_based_tracker_and_grouped_tracker_stay_invisible(self):
         scene = lite.Scene()

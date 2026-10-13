@@ -1087,6 +1087,22 @@ class AnimationApiTests(unittest.TestCase):
             'result = [len(o.vertices), o.vertices[1] is o.submobjects[0], R(o.submobjects[0]), R(o.submobjects[4]), len(o.submobjects[4].points)]\n'),
             [4, True, [2.75, 0.175, 3.25, 0.675], [3.0, 0.425, 3.0, 0.425], 4])
 
+    def test_restore_animation_rejects_plain_mobjects_when_it_begins(self):
+        # Community 0.22's Restore targets mobject.restore() (become), which needs interpolate_color.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        global result\n'
+            '        result = []\n'
+            '        for o in (Group(Square()), Mobject(), ValueTracker(1), VGroup(Square()), Group()):\n'
+            '            o.save_state(); animation = Restore(o)\n'
+            '            try:\n'
+            '                self.play(animation, run_time=0.2); result.append("ok")\n'
+            '            except NotImplementedError as e:\n'
+            '                result.append(str(e))\n'
+            'S().render()\n'),
+            ['Please override in a child class.'] * 3 + ['ok', 'Please override in a child class.'])
+
     def test_ticks_become_copies_of_a_posed_arrow_tip(self):
         # Community 0.22's null_point_align pushes the tip into a submobject; every tick becomes a tip.
         self.assertEqual(scene_values(
