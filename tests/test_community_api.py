@@ -1019,6 +1019,16 @@ class AnimationApiTests(unittest.TestCase):
             [[1.175, -2.9009, 2.5], [1.2163, -2.8596, 2.7337], [1.4408, -2.6351, 3.4815],
              [1.9092, -2.1667, 3.5], [2.1337, -1.9422, 3.5], [2.175, -1.9009, 3.5]])
 
+    def test_members_regrouped_from_collected_groups_stay_world_placed(self):
+        # PolarPlane regroups its rings/spokes from temporary VGroups; member queries on the
+        # rotated plane still see the rotation (Community 0.22 values).
+        self.assertEqual(scene_values(
+            'o = PolarPlane(radius_max=2, size=3).rotate(0.133)\n'
+            'lines = [m for m in o.family_members_with_points() if type(m).__name__ == "Line"]\n'
+            'm = max(lines, key=lambda m: m.get_right()[0])\n'
+            'result = [round(float(v), 4) for v in (*m.get_end()[:2], m.get_right()[0])]\n'),
+            [1.4868, 0.1989, 1.4868])
+
     def test_ticks_become_copies_of_a_posed_arrow_tip(self):
         # Community 0.22's null_point_align pushes the tip into a submobject; every tick becomes a tip.
         self.assertEqual(scene_values(

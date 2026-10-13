@@ -1161,3 +1161,6 @@ still use the logical start/end (they set the pose pivot; cutting them breaks Ar
 Transform.begin replays align_data's padding walk (`_check_point_mobjects`) and raises
 Community's get_point_mobject NotImplementedError for plain Mobject/Group members.
 TracedPath materializes non-polyline outlines (left by Transform/become) before appending.
+`_link_children` keeps skipped plain-group links in `_OTHER_PARENTS`; `_parent_of` falls back to a
+live one when the linked family was collected (PolarPlane regroups members from temporary VGroups),
+so world calls on members of posed families still find their ancestors.

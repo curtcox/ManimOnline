@@ -125,6 +125,7 @@ def _memo_query(memo, function, *args):
 # calls from outside this file place the member in the world frame for their duration.
 _LIB_FILE = (lambda: None).__code__.co_filename
 _PARENTS = weakref.WeakKeyDictionary()  # child -> weak reference to its latest parent
+_OTHER_PARENTS = weakref.WeakKeyDictionary()  # child -> weak references to plain groups not linked
 _IN_WORLD = set()  # ids of members currently placed in world coordinates
 _PINS = {}  # id(parent) -> [parent, count]: posed parents with a fixed pivot
 
@@ -139,8 +140,25 @@ def _link_children(parent, children):
             old = _PARENTS.get(child)
             old = old() if old is not None else None
             if old is not None and old is not parent and any(c is child for c in old.children):
+                # Kept for when the linked family is collected (e.g. a temporary group).
+                others = [r for r in _OTHER_PARENTS.get(child, ()) if r() is not None][-3:]
+                _OTHER_PARENTS[child] = others + [ref]
                 continue
         _PARENTS[child] = ref
+
+
+def _parent_of(node):
+    """The latest live parent link; a collected one falls back to another group holding node."""
+    ref = _PARENTS.get(node)
+    parent = ref() if ref is not None else None
+    if parent is not None or node not in _OTHER_PARENTS:
+        return parent
+    for ref in reversed(_OTHER_PARENTS[node]):
+        parent = ref()
+        if parent is not None and any(child is node for child in parent.children):
+            _PARENTS[node] = ref
+            return parent
+    return None
 
 
 def _posed_ancestors(mobject):
@@ -150,8 +168,7 @@ def _posed_ancestors(mobject):
     node, seen = mobject, set()
     while id(node) not in _IN_WORLD and id(node) not in seen:
         seen.add(id(node))
-        ref = _PARENTS.get(node)
-        node = ref() if ref is not None else None
+        node = _parent_of(node)
         if node is None:
             return []
         if node.angle or node.geometry_scale != 1 or any(node.position):
@@ -160,8 +177,7 @@ def _posed_ancestors(mobject):
         return []
     chain, node, posed = [], mobject, False
     while id(node) not in _IN_WORLD:
-        ref = _PARENTS.get(node)
-        parent = ref() if ref is not None else None
+        parent = _parent_of(node)
         if (parent is None or parent is mobject or any(p is parent for p in chain)
                 or not any(child is node for child in parent.children)):
             break
