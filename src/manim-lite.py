@@ -4078,7 +4078,7 @@ class Mobject:
                                                  if key not in ('children', 'updaters', '_saved_state')})
                 pushed.children, pushed.updaters = [], []
                 live = [*live, pushed]
-            if 0 < len(live) < count and (pushed or type(source) in (Group, VGroup, Mobject) or (
+            if 0 < len(live) < count and (pushed or not isinstance(source, (NumberLine, TipableVMobject)) or (
                     isinstance(source, TipableVMobject) and replacement._type != 'vgroup')):
                 # align_data pads the receiver too: each member's (faded) copies follow it.
                 # (Role-structured families such as NumberLine keep their slots.)
@@ -16534,7 +16534,7 @@ def _expose_snapshot(saved, mobject, snapshot, again=False):
     if (isinstance(mobject, NumberLine) and _has_shaft(mobject) and
             not any(state.get('_number_line_role') == 'shaft' for state in sampled_children)):
         live = _number_line_members(mobject)  # the sample holds the shaft as its own points
-    plain = type(mobject) in (Group, VGroup, Mobject)
+    plain = not isinstance(mobject, (NumberLine, TipableVMobject))
     seen = set()
     for index, child in enumerate(sampled_children):
         # Community aligns the live family itself: add_n_more_submobjects puts each
@@ -16803,7 +16803,7 @@ class Scene:
     @contextlib.contextmanager
     def _exposing(self, overrides):
         """Expose sampled animation states on the live mobjects; yields the animated families."""
-        saved, blocked = {}, set()
+        saved, blocked, tokens = {}, set(), {}
         outer, self._exposure_saved = self.__dict__.get('_exposure_saved'), saved
         try:
             for mobject, states in (overrides or {}).items():
@@ -16820,11 +16820,26 @@ class Scene:
                         for member in mobject.get_family()[1:]:
                             token = _WORLD_TOKENS.get(id(member))
                             if token is not None and token[0] is member:
-                                _place(member, token[2])
+                                # The exposed ancestors carry the sampled poses, which
+                                # may differ from the live frame (a fade's baked copy).
+                                _IN_WORLD.discard(id(member))
+                                try:
+                                    chain = _posed_ancestors(member)
+                                finally:
+                                    _IN_WORLD.add(id(member))
+                                frame = _world_frame(chain) if chain else (1, 0, Vector(ORIGIN))
+                                if frame is None:
+                                    _place(member, token[2])
+                                    continue
+                                _place(member, frame)
+                                # Scene queries (_with_local_members) must undo this frame.
+                                tokens.setdefault(id(member), token)
+                                _WORLD_TOKENS[id(member)] = (member, token[1], frame, token[3])
                     blocked.update(mobject.get_family())
             yield blocked
         finally:
             self._exposure_saved = outer
+            _WORLD_TOKENS.update(tokens)
             for mobject, (state, parent) in saved.items():
                 mobject.__dict__ = state
                 # Partial exposure (pointwise_become_partial on a copy) may relink members.
@@ -17007,6 +17022,30 @@ class Scene:
                     elif isinstance(value, _REAL):
                         result[key] = value * factor
             return result
+        def sampled_frame(path):
+            """World frame of the sampled parent at path (the snapshot may bake poses
+            differently from the live family, e.g. a fade's start copy)."""
+            if mobject in self._world_members:
+                frame = (1, 0, [0, 0, 0])
+            else:
+                chain = _posed_ancestors(mobject)
+                frame = _world_frame(chain) if chain else (1, 0, [0, 0, 0])
+            node = root
+            for step in (None,) + tuple(path[:-1]):
+                if step is not None:
+                    children = node.get('children') or []
+                    if len(children) != step[1]:
+                        return None
+                    node = children[step[0]]
+                if frame is None or 'geometry_scale' not in node:
+                    continue
+                scale, angle, (x, y, z) = _snapshot_frame(node)
+                outer_scale, outer_angle, offset = frame
+                cos, sin = math.cos(outer_angle), math.sin(outer_angle)
+                frame = (outer_scale * scale, outer_angle + angle,
+                         [offset[0] + outer_scale * (x * cos - y * sin),
+                          offset[1] + outer_scale * (x * sin + y * cos), offset[2] + outer_scale * z])
+            return frame if frame and frame[0] else None
         root = result[0]
         # Outer members first, so a nested member's own later state is spliced last.
         for member_id, (_, key, route) in sorted(latest.items(), key=lambda item: (item[1][0], len(members[item[0]]))):
@@ -17014,7 +17053,8 @@ class Scene:
             if state is None:
                 continue
             if not route and key in self._world_members:
-                state = _pose_snapshot(state, self._world_members[key])
+                frame = sampled_frame(members[member_id]) or self._world_members[key]
+                state = _pose_snapshot(state, frame)
             root = replace(root, members[member_id], state) or root
         return [root]
 

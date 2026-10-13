@@ -3022,6 +3022,46 @@ class AnimationApiTests(unittest.TestCase):
         # Community adds each Add's mobject when its stage begins.
         self.assertEqual(found, [1, 1, 1, 2, 2, 2, 3, 3, 3, 3])
 
+    def test_become_pads_graph_members_in_place(self):
+        values = scene_values(
+            'o = Graph([1, 2, 3], [(1, 2), (2, 3)], layout="circular")\n'
+            't = o.copy().become(DashedVMobject(Circle(), num_dashes=12).shift(RIGHT * 2 + DOWN))\n'
+            't.update(0)\n'
+            'result = [[t.submobjects.index(t.vertices[k]) for k in (1, 2, 3)],\n'
+            '          [t.submobjects.index(t.edges[k]) for k in ((1, 2), (2, 3))],\n'
+            '          [round(float(v), 3) for v in t.edges[(1, 2)].get_end()[:2]]]\n')
+        # Community 0.22: add_n_more_submobjects puts each member's copies right after it,
+        # and update_edges joins the original edge to its vertices' new centers.
+        self.assertEqual(values, [[0, 3, 5], [8, 10], [1.871, -0.017]])
+
+    def test_fading_an_arrow_and_its_tip_after_a_complex_map(self):
+        found = []
+        lite.render_scene('from manim import *\nclass Empty(Scene):\n    pass\n')
+        namespace = {'FOUND': found}
+        source = (
+            'from manim import *\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = Arrow(LEFT, RIGHT).shift(RIGHT * 2 + DOWN)\n'
+            '        self.add(o)\n'
+            '        self.play(ApplyComplexFunction(lambda z: z * 1j, o))\n'
+            '        self.add_updater(lambda dt: FOUND.append((o.get_top()[1], o[1].get_center()[1])))\n'
+            '        self.play(FadeIn(o), FadeIn(o[1]), run_time=0.2)\n')
+        exec(compile(source, '<test>', 'exec'), namespace)
+        namespace['S']().render()
+        # Community 0.22: the tip stays at the arrow's end throughout the fade.
+        self.assertEqual(plain(found), [[2.75, 2.575]] * 3)
+        frames = json.loads(lite.render_scene(source.replace('FOUND.append', 'id')))['frames']
+        centers = []
+        for frame in frames[-3:]:
+            root = frame['mobjects'][0]
+            tip = root['children'][0]
+            a, t, _, _ = lite._compose_frames(lite._pose_frame(root), lite._pose_frame(tip))
+            points = [a * complex(p[0], p[1]) + t for curve in lite._path_curves(tip) for p in curve]
+            xs, ys = [p.real for p in points], [p.imag for p in points]
+            centers.append([round((min(xs) + max(xs)) / 2, 4), round((min(ys) + max(ys)) / 2, 4)])
+        self.assertEqual(centers, [[1.0, 2.575]] * 3)
+
 
 if __name__ == '__main__':
     unittest.main()

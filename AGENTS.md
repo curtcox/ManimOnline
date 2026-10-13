@@ -1207,3 +1207,9 @@ points moves itself first). become onto a non-NumberLine receiver flattens a sha
 target into own points (the cut shaft) plus members. Two-object fuzz suites (`~/tmp/animchain`
 gen6.py/gen7.py, e*.json) run with FLATTEN_GROUPS=1 (run_one.py flattens Community's exact Group
 roots and skips empty containers); compare with `tri.py SUITE` (skips text and boolean ops).
+become and exposure pad every receiver except NumberLine and tipped paths like Community's
+add_n_more_submobjects (copies right after each member), so Graph tables keep naming originals.
+While exposed, members animated in world coordinates use the exposed ancestors' frame: their
+`_WORLD_TOKENS` frame is swapped for the exposure, and `_later_members` splices them through
+the sampled parents' frames (a fade's start copy may bake its pose). `runpair.sh SUITE` runs
+both libraries on a new suite; `runlite.sh LIB TAG SUITE...` plus `delta.py` diff two lite runs.
