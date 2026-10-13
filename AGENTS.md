@@ -1169,3 +1169,6 @@ Animations with `_finishes_at_terminal` (FadeIn, Grow*, Create, DrawBorderThenFi
 become their prepared `_terminal` on completion when an earlier leaf of the same play shares their
 family (`_shared_terminal`, set by `Scene._mark_restores`), as Community's in-order finish() runs
 interpolate(1) after, e.g., an earlier Rotate of the same object. Live-copy (updater) runs are skipped.
+TransformMatching* tree placement assigns pieces in order through already placed (copied) samples:
+unmatched parts inside matched families (ticks of axes become circles) override the transform, as
+Community's FadeOut(fade_source) follows the matched transforms.

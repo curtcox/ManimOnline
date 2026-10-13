@@ -1062,6 +1062,21 @@ class AnimationApiTests(unittest.TestCase):
             'S().render()\n'),
             [[1, 6, 0, 0], 6.6])
 
+    def test_unmatched_members_of_matched_shapes_still_fade_away(self):
+        # Community 0.22: TransformMatchingShapes' FadeOut follows the matched transforms, so
+        # unmatched ticks and tips inside matched axes drift toward the origin.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        global result\n'
+            '        o = Axes(x_range=[-3, 3], y_range=[-2, 2], x_length=5, y_length=3)\n'
+            '        p = Circle(radius=0.5).shift(LEFT * 2 + UP)\n'
+            '        o.become(p.copy()); self.add(o); result = []\n'
+            '        self.add_updater(lambda dt: result.append(round(max(float(m.get_right()[0]) for r in self.mobjects for m in r.family_members_with_points()), 4)))\n'
+            '        self.play(TransformMatchingShapes(o, p.copy()), run_time=0.4)\n'
+            'S().render()\n'),
+            [-1.5, -1.5, -1.5, -1.0, -0.3085, -0.0563])
+
     def test_ticks_become_copies_of_a_posed_arrow_tip(self):
         # Community 0.22's null_point_align pushes the tip into a submobject; every tick becomes a tip.
         self.assertEqual(scene_values(

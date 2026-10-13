@@ -14755,24 +14755,26 @@ class _TransformMatching(Animation):
         if placed:
             # Community animates the parts inside the source family: one tree keeps them together,
             # each world sample re-posed into its parents' frames.
+            # Later pieces (unmatched parts fading out) override members of earlier ones, as
+            # Community's FadeOut follows the matched transforms; they sit in sampled parents.
             tree = _snapshot_copy(self.start)
-            located = []
             for path, state in placed:
                 node = tree
                 for depth, index in enumerate(path):
-                    if not node.get('geometry_scale'):
-                        located = None
+                    if not node.get('geometry_scale') or index >= len(node.get('children') or ()):
+                        tree = None
                         break
                     if 'position' in node:
                         state = _pose_snapshot(state, _snapshot_frame(node))
                     if depth < len(path) - 1:
-                        node = node['children'][index]
-                if located is None:
+                        # Samples may share lists with their plans: edit owned copies only.
+                        child = dict(node['children'][index], children=list(node['children'][index].get('children') or ()))
+                        node['children'][index] = child
+                        node = child
+                if tree is None:
                     break
-                located.append((node, path[-1], state))
-            if located is not None:
-                for node, index, state in located:
-                    node['children'][index] = state
+                node['children'][path[-1]] = state
+            if tree is not None:
                 states = [tree]
         arrivals = self.__dict__.get('_arrivals')
         if arrivals is not None:
