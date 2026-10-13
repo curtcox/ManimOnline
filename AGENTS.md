@@ -1070,3 +1070,7 @@ idioms match; capture skips childless plain Mobject roots, so frames are unchang
 manual begin/interpolate/finish are no-ops. A FadeIn/Fade copy whose curved-tip flag differs
 from its target goes through a transform plan (`_same_shape`), aligning the drawn shaft. A
 collapsed (zero-scale) path sample follows path_arc by moving its single point.
+Never complete an animation by assigning a deep-copied `__dict__`: members become unlinked
+copies (no `_PARENTS`), so scene calls on them skip world placement. Use library become.
+`_snapshot_lerp`'s same-shape path applies `_lerp_pose` to every node whose pose turns, so
+equivalent angles (differing by 2π, e.g. re-tipped copies) do not spin.

@@ -13361,7 +13361,13 @@ def _snapshot_lerp(start, target):
     """interpolate(start, target, alpha) as a function, aligning the snapshots first when an
     edit changed their representation (e.g. scaling bakes an out-of-plane outline)."""
     if _same_shape(start, target):
-        return lambda alpha: interpolate(start, target, alpha)
+        def poses(result, a, b, alpha):
+            if 'position' in result and _pose_turns(a, b):
+                _lerp_pose(result, a, b, alpha)
+            for child, x, y in zip(result.get('children', ()), a.get('children', ()), b.get('children', ())):
+                poses(child, x, y, alpha)
+            return result
+        return lambda alpha: poses(interpolate(start, target, alpha), start, target, alpha)
     plan = _transform_plan(start, target)
     def sample(alpha):
         states = _sample_transform(plan, alpha)
@@ -14066,7 +14072,7 @@ class Rotate(_PathOptions, Animation):
             self.mobject.become(morph.target)
             return
         final = self.original.copy().rotate(self.angle, self.axis, about_point=self.about_point)
-        self.mobject.__dict__ = copy.deepcopy(final.__dict__)
+        self.mobject.become(final)
 
 
 class Rotating(Rotate):

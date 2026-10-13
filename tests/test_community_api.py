@@ -535,6 +535,21 @@ class AnimationApiTests(unittest.TestCase):
             [['Star', 'Mobject'], [0.4, 0.3677, 0.2226, -0.175, -0.5726, -0.7177],
              [0.0, -0.0137, -0.0659, -0.1277, -0.0659, -0.0137]])
 
+    def test_rotate_keeps_tip_and_fade_keeps_turned_tip_still(self):
+        # Community 0.22: Rotate keeps member identities (tip points stay in world
+        # coordinates); FadeOut's re-tipped copy of a half-turned vector does not spin.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = Vector(UP + RIGHT); self.add(o); tip = o.tip\n'
+            '        self.play(Rotate(o, PI, about_point=ORIGIN), run_time=0.4)\n'
+            '        self.same, self.tip = o.tip is tip, list(o.tip.points[0])\n'
+            '        o.move_to(RIGHT * 2 + UP); self.lefts = []\n'
+            '        self.add_updater(lambda dt: self.lefts.append(o.get_left()[0]))\n'
+            '        self.play(FadeOut(o), run_time=0.4)\n'
+            's = S(); s.render(); result = [s.same, s.tip, sorted(set(s.lefts))]\n'),
+            [True, [-1.0, -1.0, 0.0], [1.5]])
+
     def test_color_values_operators_and_helpers(self):
         self.assertEqual(scene_values(
             'result = [repr(WHITE / 2), list(WHITE / 2), repr(~RED), int(RED), RED[0], repr(RED & BLUE),\n'
