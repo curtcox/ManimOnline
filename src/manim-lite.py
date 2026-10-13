@@ -326,6 +326,23 @@ def _with_local_members(mobject, function, *args, **kwargs):
             _BOUNDS_MEMO.clear()
 
 
+def _localize_copy(source, duplicate, memo):
+    """Copies do not keep a parent's temporary pivot pin (see _enter_world)."""
+    pin = _PINS.get(id(source))
+    if pin is not None and pin[0] is source:
+        duplicate.__dict__.pop('_sampled_geometry_center', None)
+
+
+def _leaf_local(animation, method, *args):
+    """Run a leaf animation's prepare/_complete with the members of its mobject that play()
+    animates in world coordinates (by other animations) back in their parents' frames, so
+    its copies and its completion use one frame for the whole family."""
+    mobject = animation.__dict__.get('mobject') if _is_a(animation, Animation) else None
+    if (not _WORLD_TOKENS or not isinstance(mobject, Mobject) or isinstance(animation, AnimationGroup)):
+        return method(*args)
+    return _with_local_members(mobject, method, *args)
+
+
 def _unpin(parents):
     for parent in parents:
         pin = _PINS[id(parent)]
@@ -3771,6 +3788,8 @@ class Mobject:
             else:
                 state[key] = copy.deepcopy(value, memo)
         result.__setstate__(state)
+        if _PINS:
+            _localize_copy(self, result, memo)
         return result
 
     def __setstate__(self, state):
@@ -15017,6 +15036,9 @@ class FadeTransform(Transform):
                   self._fit(self.target.copy(), self.mobject), self.target.copy())
         self._fade_live = copies if any(_LiveMorph.wanted(m) for m in copies) else None
         self._plan_pairs(*copies)
+        self._add_ghost(scene)
+
+    def _add_ghost(self, scene):
         self._ghost = self._ghost_states = None
         if scene is not None and isinstance(scene, Scene):
             # Community adds Group(mobject, target copy) as a root: the source moves to the
@@ -15407,7 +15429,7 @@ class AnimationGroup:
             animation.__dict__.pop('_holding', None)
             if self.remover:
                 animation.remover = True
-            animation._complete(scene)
+            _leaf_local(animation, animation._complete, scene)
 
     @staticmethod
     def _remove_members(scene, animation):
@@ -15489,11 +15511,12 @@ class Succession(AnimationGroup):
     def _advance(self, stage):
         while self._active < stage:
             if self._active >= 0:
-                self.animations[self._active]._complete(self._scene)
+                active = self.animations[self._active]
+                _leaf_local(active, active._complete, self._scene)
             self._active += 1
             animation = self.animations[self._active]
             self._scene.validate(animation)
-            animation.prepare(self._scene)
+            _leaf_local(animation, animation.prepare, self._scene)
             self._hidden.difference_update(animation.objects())
 
     def _advance_copies(self, dt):
@@ -15559,7 +15582,7 @@ class Succession(AnimationGroup):
         self._advance(len(self.animations) - 1)
         if self.remover:
             self.animations[-1].remover = True
-        self.animations[-1]._complete(scene)
+        _leaf_local(self.animations[-1], self.animations[-1]._complete, scene)
         self._active = len(self.animations)
         if self.remover:
             for animation in self.animations[:-1]:
@@ -16577,6 +16600,12 @@ class Scene:
                     # of one of its members re-exposes what an earlier one exposed.
                     _expose_snapshot(saved, mobject, states[0] if isinstance(states, _SourceStates)
                                      else max(states, key=lambda state:state['opacity']), again=True)
+                    if _WORLD_TOKENS:
+                        # Members animated in world coordinates stay there while exposed.
+                        for member in mobject.get_family()[1:]:
+                            token = _WORLD_TOKENS.get(id(member))
+                            if token is not None and token[0] is member:
+                                _place(member, token[2])
                     blocked.update(mobject.get_family())
             yield blocked
         finally:
@@ -16877,7 +16906,7 @@ class Scene:
                 for mobject, states in earlier.states(0).items():
                     if id(mobject) in shared and states:
                         mobject.become(_sampled_copy(mobject, states, partial=True))
-            animation.prepare(self)
+            _leaf_local(animation, animation.prepare, self)
 
     def _play_frames(self, animations, durations, count):
         self._prepare_in_order(animations)
@@ -16933,7 +16962,7 @@ class Scene:
         # Update-function animations finish last, seeing their neighbors' final states as
         # Community's last frame does (e.g. MaintainPositionRelativeTo a moving object).
         for animation in sorted(animations, key=lambda a: isinstance(a, UpdateFromFunc)):
-            animation._complete(self)
+            _leaf_local(animation, animation._complete, self)
             animation._restore_start()
             mobject = animation.__dict__.get('mobject') if _is_a(animation, Animation) else None
             if (mobject is not None and animation.suspend_mobject_updating and
@@ -23163,12 +23192,27 @@ class FadeTransformPieces(FadeTransform):
 
     def begin(self, scene):
         Animation.begin(self, scene)
-        count = max(len(self.mobject.children) or 1, len(self.replacement.children) or 1)
-        sources, targets = self._pieces(self.mobject, count), self._pieces(self.replacement, count)
-        self._plan_pairs(Group(*[p.copy() for p in sources]),
-                         Group(*[self._fit(s.copy(), t) for s, t in zip(sources, targets)]),
-                         Group(*[self._fit(t.copy(), s) for s, t in zip(sources, targets)]),
-                         Group(*[t.copy() for t in targets]))
+        # Community aligns the submobjects, then ghosts family member onto family member
+        # (zip of get_family()): an arrow's shaft onto the target, its tip onto the padding.
+        source, target = _world_view(self.mobject).copy(), self.target.copy()
+        _call_as_scene(source.align_submobjects, target)
+        def ghosted(first, second):
+            first = first.copy()
+            members, references = _call_as_scene(first.get_family), _call_as_scene(second.get_family)
+            if len(members) != len(references):
+                raise ValueError('zip() argument 2 is shorter than argument 1' if len(members) > len(references)
+                                 else 'zip() argument 2 is longer than argument 1')
+            for member, reference in zip(members, references):
+                if _call_as_scene(reference.get_num_points) or reference.children:
+                    try:
+                        _call_as_scene(member.replace, reference, self.dim_to_match, self.stretch)
+                    except NotImplementedError:
+                        # Glyphs cannot be stretched yet; fit one dimension instead.
+                        _call_as_scene(member.replace, reference, self.dim_to_match)
+            return first
+        self._plan_pairs(source, ghosted(source, target), ghosted(target, source), target)
+        self._fade_live = None
+        self._add_ghost(scene)
 
     def finish(self, scene):
         super().finish(scene)

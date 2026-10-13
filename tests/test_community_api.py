@@ -2903,6 +2903,45 @@ class AnimationApiTests(unittest.TestCase):
         # The tip animates in world coordinates; its family's bounds still use one frame.
         self.assertEqual(plain(found), [[1.3164, 1.7191, 0.0]] * 3)
 
+    def test_family_and_member_animations_keep_one_frame(self):
+        found = []
+        lite.render_scene('from manim import *\nclass Empty(Scene):\n    pass\n')
+        namespace = {'FOUND': found}
+        exec(compile(
+            'from manim import *\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = Arrow(LEFT, RIGHT).shift(RIGHT * 2 + DOWN)\n'
+            '        self.add(o)\n'
+            '        self.add_updater(lambda dt: FOUND.append(list(o.get_corner(UR))))\n'
+            '        self.play(FadeIn(o), FadeIn(o[1]), run_time=0.2)\n'
+            '        self.play(AnimationGroup(FadeIn(o[1]), FadeIn(o), lag_ratio=0.5), run_time=0.6)\n'
+            '        FOUND.append(list(o[1].get_corner(DL)))\n', '<test>', 'exec'), namespace)
+        namespace['S']().render()
+        # Community: the tip's own fade never moves the arrow (or its tip).
+        self.assertEqual(plain(found), [[2.75, -0.825, 0.0]] * 12 + [[2.4, -1.175, 0.0]])
+
+    def test_fade_transform_pieces_ghosts_family_members(self):
+        found = []
+        lite.render_scene('from manim import *\nclass Empty(Scene):\n    pass\n')
+        namespace = {'FOUND': found}
+        exec(compile(
+            'from manim import *\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = Arrow(LEFT, RIGHT).shift(LEFT * 0.75)\n'
+            '        p = ParametricFunction(lambda t: [t, t * t / 2, 0], t_range=[-1, 1]).shift(RIGHT)\n'
+            '        self.add(o, p)\n'
+            '        self.add_updater(lambda dt: FOUND.append([list(m.get_corner(UR)) for m in self.mobjects]))\n'
+            '        self.play(FadeTransformPieces(o, p.copy()), run_time=0.2)\n', '<test>', 'exec'), namespace)
+        namespace['S']().render()
+        # Community 0.22: the shaft ghosts onto the target and the tip onto its padding point;
+        # the target copy is a scene member while the animation runs.
+        self.assertEqual(plain(found), [
+            [[2.0, 0.5, 0.0], [0.0, 0.175, 0.0], [0.0, 0.175, 0.0]],
+            [[2.0, 0.5, 0.0], [0.155, 0.1873, 0.0], [0.3085, 0.2251, 0.0]],
+            [[2.0, 0.5, 0.0], [1.2428, 0.2427, 0.0], [1.6915, 0.4499, 0.0]]])
+
 
 if __name__ == '__main__':
     unittest.main()
