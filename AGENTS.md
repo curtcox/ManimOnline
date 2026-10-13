@@ -1054,3 +1054,6 @@ memo (`_ROUND_CURVES`, copied out) and get_points reads `_round_snapshot`, not t
 A negative Arc/Circle/Dot radius is Community's mirrored arc: stored as |r| with start_angle + PI.
 SpiralIn applies its two opposite turns as the equivalent translation of each shape's
 center of mass (computed once).
+Sphere/Dot3D reuse mapped face geometry by `_surface_key` (`_SURFACE_FACES`) unless a subclass
+overrides func. proportions_along_bezier_curve_for_point is Community's exact test: per-axis
+polynomial roots (`_polynomial_roots`, pure Python) rounded to round_to, intersected.

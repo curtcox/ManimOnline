@@ -8517,6 +8517,19 @@ class ThreeDPrimitiveTests(PointTestCase):
         for a, e in zip(actual, expected):
             self.assertAlmostEqual(a, e, places=places)
 
+    def test_repeated_spheres_reuse_mapped_faces_independently(self):
+        lite._SURFACE_FACES.clear()
+        first, second = lite.Dot3D(point=(1, 2, 3)), lite.Dot3D(point=(1, 2, 3))
+        self.assertEqual(json.dumps(first.to_dict()), json.dumps(second.to_dict()))
+        second.list_of_faces[0].curves[0][0][0] = 99
+        self.assertNotEqual(lite.Dot3D(point=(1, 2, 3)).list_of_faces[0].curves[0][0][0], 99)
+
+        class Squashed(lite.Sphere):
+            def func(self, u, v):
+                x, y, z = lite.Sphere.func(self, u, v)
+                return [x, y, z / 2]
+        self.assertAlmostEqual(Squashed(radius=2).get_depth(), 2)  # Overridden maps are never shared.
+
     def test_sphere_faces_and_extents(self):
         sphere = lite.Sphere(radius=2, resolution=(8, 4))
         # Manim 0.22: 8*4 faces, centered at ORIGIN, 4x4x4 extents.

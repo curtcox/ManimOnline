@@ -18113,6 +18113,11 @@ class ThreeDVMobject(VMobject):
         super().__init__(shade_in_3d=shade_in_3d, **kwargs)
 
 
+# Mapped face geometry of parameter-only surfaces (Sphere, Dot3D), keyed by _surface_key.
+_SURFACE_FACES = {}
+_SURFACE_FACE_KEYS = ('_type', 'curves', 'vertices', 'position', 'angle', 'geometry_scale', 'subpath_lengths')
+
+
 class Surface(VGroup):
     """Community's parametric Surface: a checkerboard grid of face cells.
 
@@ -18161,15 +18166,30 @@ class Surface(VGroup):
         self.list_of_faces = []
         self._func = func
         self._setup_in_uv_space()
-        # Samples of one surface share a bounds memo, as plot_surface does (axes.c2p in
-        # func would otherwise recompute the axes' world frame for every point).
-        memo = {}
-        self._map_points_3d(lambda p: _memo_query(memo, func, p[0], p[1]), ORIGIN, in_place=True)
+        key = self._surface_key(u_res, v_res)
+        cached = _SURFACE_FACES.get(key) if key is not None else None
+        if cached is not None:
+            for face, state in zip(self.list_of_faces, cached):
+                face.__dict__.update(_snapshot_copy(state))
+        else:
+            # Samples of one surface share a bounds memo, as plot_surface does (axes.c2p in
+            # func would otherwise recompute the axes' world frame for every point).
+            memo = {}
+            self._map_points_3d(lambda p: _memo_query(memo, func, p[0], p[1]), ORIGIN, in_place=True)
+            if key is not None:
+                if len(_SURFACE_FACES) >= 64:
+                    _SURFACE_FACES.clear()
+                _SURFACE_FACES[key] = [{name: _snapshot_copy(face.__dict__[name]) for name in _SURFACE_FACE_KEYS
+                                        if name in face.__dict__} for face in self.list_of_faces]
         if self.should_make_jagged:
             self.make_jagged()
 
     def func(self, u, v):
         return self._func(u, v)
+
+    def _surface_key(self, u_res, v_res):
+        """A key for surfaces whose mapped faces depend only on plain parameters, or None."""
+        return None
 
     def _get_u_values_and_v_values(self):
         if isinstance(self.resolution, numbers.Integral) and not isinstance(self.resolution, bool):
@@ -18270,6 +18290,12 @@ class Sphere(Surface):
         super().__init__(self.func, resolution=(24, 12) if resolution is None else resolution,
                          u_range=u_range, v_range=v_range, **kwargs)
         self.shift(center)
+
+    def _surface_key(self, u_res, v_res):
+        if type(self).func is not Sphere.func:
+            return None
+        return ('sphere', float(self.radius), int(u_res), int(v_res), *map(float, self.u_range),
+                *map(float, self.v_range), float(self.pre_function_handle_to_anchor_scale_factor))
 
     def func(self, u, v):
         return [self.radius * math.cos(u) * math.sin(v),
@@ -23999,25 +24025,66 @@ def point_lies_on_bezier(point, control_points, round_to=1e-6):
     return bool(proportions_along_bezier_curve_for_point(point, control_points, round_to))
 
 
+def _polynomial_roots(coefficients):
+    """Complex roots of sum(c[k] t**k) (numpy.polynomial.Polynomial(c).roots(), with zero
+    leading coefficients trimmed): closed forms up to degree 2, else Durand-Kerner."""
+    c = [complex(v) for v in coefficients]
+    while c and c[-1] == 0:
+        c.pop()
+    degree = len(c) - 1
+    if degree < 1:
+        return []
+    c = [v / c[-1] for v in c]
+    if degree == 1:
+        return [-c[0]]
+    if degree == 2:
+        root = cmath.sqrt(c[1] * c[1] - 4 * c[0])
+        return [(-c[1] - root) / 2, (-c[1] + root) / 2]
+    def value(t):
+        total = 0j
+        for coefficient in reversed(c):
+            total = total * t + coefficient
+        return total
+    roots = [(0.4 + 0.9j) ** k for k in range(degree)]
+    for _ in range(1000):
+        moved = 0
+        for i, root in enumerate(roots):
+            denominator = 1
+            for j, other in enumerate(roots):
+                if j != i:
+                    denominator *= root - other
+            if denominator:
+                step = value(root) / denominator
+                roots[i] = root - step
+                moved = max(moved, abs(step))
+        if moved < 1e-15:
+            break
+    return roots
+
+
 def proportions_along_bezier_curve_for_point(point, control_points, round_to=1e-6):
-    """Parameters where a Bézier curve passes through point (sampled, then refined)."""
-    curve, target = bezier(control_points), _point(point)
-    def distance(t):
-        return _norm(curve(t) - target)
-    found = []
-    samples = 400
-    for i in range(samples + 1):
-        lo, hi = max(0, (i - 1) / samples), min(1, (i + 1) / samples)
-        for _ in range(60):
-            m1, m2 = lo + (hi - lo) / 3, hi - (hi - lo) / 3
-            if distance(m1) < distance(m2):
-                hi = m2
-            else:
-                lo = m1
-        t = (lo + hi) / 2
-        if distance(t) <= max(round_to, 1e-9) * 10 and all(abs(t - u) > 1e-4 for u in found):
-            found.append(t)
-    return sorted(found)
+    """Community's exact test: per dimension, the roots of B(t) - point rounded to round_to;
+    the real roots in [0, 1] common to every dimension that is not identically zero."""
+    rows = [_point(p) for p in control_points]
+    target = _point(point)
+    degree, digits = len(rows) - 1, int(math.log10(1 / round_to))
+    common = None
+    for dim in range(3):
+        terms = []
+        for power in range(degree, -1, -1):
+            total, sign = 0, 1
+            for sub in range(power, -1, -1):
+                total += math.comb(power, sub) * sign * rows[sub][dim] - (target[dim] if power == 0 else 0)
+                sign = -sign
+            terms.append(math.comb(degree, power) * total)
+        if all(term == 0 for term in terms):
+            continue  # The curve and the point share this coordinate everywhere.
+        roots = {round(root.real, digits) + 0.0 for root in _polynomial_roots(terms[::-1])
+                 if round(root.imag, digits) == 0}
+        common = roots if common is None else common & roots
+    if common is None:
+        raise TypeError('reduce() of empty iterable with no initial value')
+    return sorted(root for root in common if 0 <= root <= 1)
 
 
 def get_smooth_cubic_bezier_handle_points(anchors):
