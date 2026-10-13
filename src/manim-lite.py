@@ -13164,7 +13164,8 @@ class Animation(metaclass=_CommunityTree):
         return [self.mobject, self.starting_mobject]
 
     def get_all_families_zipped(self):
-        return zip(*(mobject.family_members_with_points() for mobject in self.get_all_mobjects()))
+        # Community's members: a NumberLine itself stands for its own (shaft) points.
+        return zip(*(_call_as_scene(mobject.family_members_with_points) for mobject in self.get_all_mobjects()))
 
     def get_all_mobjects_to_update(self):
         return [m for m in self.get_all_mobjects() if m is not self.mobject]
@@ -15502,14 +15503,17 @@ class Wiggle(Animation):
             NumberLine._real(value, name)
         self.scale_value, self.rotation_angle, self.n_wiggles = scale_value, rotation_angle, n_wiggles
         self.scale_about_point, self.rotate_about_point = scale_about_point, rotate_about_point
-        # Community wiggles each member with points in turn; an arrow member's scale pops and
-        # re-adds its (already wiggled) tips every frame, which a sampled pose cannot show.
-        self._arrow_wiggle = isinstance(mobject, Mobject) and any(
-            isinstance(m, Arrow) and m._tips_by_role() for m in mobject.get_family())
+        # Community wiggles each member with points in turn about the live center, which the
+        # members already wiggled this frame (and the rest, still at the previous frame) move;
+        # an arrow member's scale also pops and re-adds its (already wiggled) tips every frame.
+        # A sampled pose shows neither.
+        family = mobject.get_family() if isinstance(mobject, Mobject) else []
+        self._live_wiggle = any(isinstance(m, Arrow) and m._tips_by_role() for m in family) or \
+            1 < len(mobject.family_members_with_points()) <= self._EXACT_PIVOT_MEMBERS if family else False
 
     @property
     def _community_style(self):
-        if self.__dict__.get('_arrow_wiggle'):
+        if self.__dict__.get('_live_wiggle'):
             return True
         cls = type(self)
         return any(getattr(cls, name) is not getattr(Wiggle, name) for name in self._COMMUNITY_HOOKS)

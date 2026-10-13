@@ -726,7 +726,23 @@ class AnimationApiTests(unittest.TestCase):
             's = S(); s.render(); result = s.out\n'),
             [0.35])
 
-    def test_uncreate_collapses_a_number_line_that_became_a_shape(self):
+    def test_wiggle_measures_the_live_center_between_members(self):
+        # Community 0.22 wiggles each member with points about the mobject's live center, which
+        # earlier members (this frame) and later ones (previous frame) move; a NumberLine is its
+        # own first member, so scaling it moves its ticks too.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        g = VGroup(Square(), Circle().shift(RIGHT * 2)); n = NumberLine(x_range=[-2, 2, 1], length=4)\n'
+            '        self.add(g, n)\n'
+            '        seen = []\n'
+            '        self.add_updater(lambda dt: seen.append([round(float(v), 4) for v in\n'
+            '                         (g.get_left()[0], n.get_left()[0], n.get_top()[1])]))\n'
+            '        self.play(Wiggle(g), Wiggle(n))\n'
+            '        self.out = seen[15]\n'
+            's = S(); s.render(); result = s.out\n'),
+            [-1.2099, -2.2108, 0.1106])
+
         # Community 0.22: the NumberLine's own points trace backwards and stay collapsed
         # on each member's first point after the remover finishes.
         self.assertEqual(scene_values(
