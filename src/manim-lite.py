@@ -1158,7 +1158,8 @@ class PreviewConfig:
             template = TexTemplate()
             object.__setattr__(self, name, template)
             return template
-        raise AttributeError(f"'PreviewConfig' object has no attribute '{name}'")
+        kind = type(self).__name__ if self.__dict__.get('_camera') else 'ManimConfig'
+        raise AttributeError(f"'{kind}' object has no attribute '{name}'")
 
     def __init__(self, **kwargs):
         # Community's default frame: 8 units tall, 16:9 (14.22 units wide).
@@ -1297,6 +1298,44 @@ class PreviewConfig:
 
 
 config = PreviewConfig()
+
+
+class Camera(PreviewConfig):
+    """Community's Camera: a scene's frame and background settings in the preview."""
+
+    def set_background(self, pixel_array, convert_from_floats=False):
+        """Community's background pixel array: drawn stretched over the frame, behind every
+        mobject (the preview encodes it as a PNG image once)."""
+        rows = pixel_array.tolist() if hasattr(pixel_array, 'tolist') else [list(row) for row in pixel_array]
+        if not rows or not isinstance(rows[0], list) or not rows[0]:
+            raise ValueError('Background pixel arrays need at least one row and column')
+        height, width = len(rows), len(rows[0])
+        if height > 4096 or width > 4096 or any(len(row) != width for row in rows):
+            raise ValueError('Background pixel arrays must be rectangular, at most 4096 pixels on a side')
+        def channel(value):
+            value = value * 255 if convert_from_floats else value
+            if isinstance(value, bool) or not isinstance(value, _REAL) or not math.isfinite(value):
+                raise ValueError('Background pixel values must be finite numbers')
+            return max(0, min(255, int(value)))
+        def pixel(value):
+            channels = list(value) if isinstance(value, (list, tuple)) else [value]
+            if len(channels) == 1:
+                channels = channels * 3
+            if len(channels) == 3:
+                channels.append(1 if convert_from_floats else 255)
+            if len(channels) != 4:
+                raise ValueError('Background pixels need 1, 3 or 4 channels')
+            return tuple(channel(v) for v in channels)
+        self.__dict__['_background_image'] = _png_data_uri([[pixel(value) for value in row] for row in rows])
+        self.__dict__['background'] = pixel_array
+        return self
+
+    def to_dict(self, *args, **kwargs):
+        result = super().to_dict(*args, **kwargs)
+        image = self.__dict__.get('_background_image')
+        if image:
+            result['background_image'] = image
+        return result
 
 
 # Classes whose __init__ defaults were changed by set_default, with their own original
@@ -6588,7 +6627,7 @@ class CameraFrame(Rectangle):
         return self.scale(height / self.get_height())
 
 
-class MovingCamera(PreviewConfig):
+class MovingCamera(Camera):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         object.__setattr__(self, '_frame', CameraFrame(width=self.frame_width, height=self.frame_height))
@@ -16441,7 +16480,7 @@ def _expose_snapshot(saved, mobject, snapshot, again=False):
 
 
 class Scene:
-    camera_class = PreviewConfig
+    camera_class = Camera
 
     def __init__(self, camera_config=None, *, renderer=None, camera_class=None, always_update_mobjects=False,
                  random_seed=None, skip_animations=False):
@@ -17370,8 +17409,6 @@ class Scene:
                 'math_estimated': sorted(_MATH_ESTIMATED), 'typst_pending': sorted(_TYPST_PENDING)}
 
 
-Camera = PreviewConfig
-
 
 class MultiCamera(MovingCamera):
     """Community's camera that also draws image mobjects of other cameras (ZoomedScene's
@@ -18062,7 +18099,7 @@ def _camera_rotation_matrix(phi, theta, gamma):
     return result
 
 
-class ThreeDCamera(PreviewConfig):
+class ThreeDCamera(Camera):
     """Community's ThreeDCamera: orientation trackers and perspective projection.
 
     The frame dict stays the plain PreviewConfig shape; phi/theta/gamma/zoom/
@@ -25971,7 +26008,17 @@ def _pooled_json(result, default):
         key = store(dumps(node))
         seen_nodes[id(original)] = (original, key)
         return key
-    frames = [dumps(dict(frame, mobjects=[intern(m) for m in frame['mobjects']])) for frame in result['frames']]
+    images = {}
+    def camera(data):
+        # A background image (a long data URI) travels once, as a pooled string.
+        image = data.get('background_image') if isinstance(data, dict) else None
+        if not isinstance(image, str):
+            return data
+        if image not in images:
+            images[image] = {'$pool': store(dumps(image))}
+        return dict(data, background_image=images[image])
+    frames = [dumps(dict(frame, mobjects=[intern(m) for m in frame['mobjects']], **(
+        {'camera': camera(frame['camera'])} if 'camera' in frame else {}))) for frame in result['frames']]
     head = dumps({key: value for key, value in result.items() if key != 'frames'})
     return head[:-1] + ', "pool": [' + ', '.join(pool) + '], "frames": [' + ', '.join(frames) + ']}'
 

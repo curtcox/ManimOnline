@@ -65,3 +65,15 @@ test('flat XYZ entries and pooled bases expand to full nodes', () => {
   assert.throws(() => expandPooledScene({ pool: [{ $base: 0 }], frames: [] }), /Invalid pooled/);
   assert.throws(() => expandPooledScene({ pool: [[1], { $base: 0 }], frames: [] }), /Invalid pooled/);
 });
+
+test('pooled camera background images expand to their data URI', () => {
+  const uri = 'data:image/png;base64,iVBORw0KGgo=';
+  const scene = expandPooledScene({
+    pool: [uri, { type: 'circle' }],
+    frames: [{ mobjects: [1], camera: { background_image: { $pool: 0 } } }, { mobjects: [], camera: {} }]
+  });
+  assert.equal(scene.frames[0].camera.background_image, uri);
+  assert.equal(scene.frames[1].camera.background_image, undefined);
+  assert.throws(() => expandPooledScene({ pool: [{ type: 'circle' }], frames: [{ mobjects: [], camera: { background_image: { $pool: 0 } } }] }),
+    /Invalid pooled frame data/);
+});

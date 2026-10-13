@@ -64,6 +64,13 @@ function expandPooledScene(scene) {
       if (!Number.isInteger(index) || index < 0 || index >= pool.length) throw new Error('Invalid pooled frame data.');
       return pool[index];
     });
+    const image = frame.camera && frame.camera.background_image;
+    if (image && typeof image === 'object' && '$pool' in image) {
+      // Camera background images travel once, as pooled strings.
+      const value = Number.isInteger(image.$pool) ? pool[image.$pool] : undefined;
+      if (typeof value !== 'string') throw new Error('Invalid pooled frame data.');
+      frame.camera = { ...frame.camera, background_image: value };
+    }
   }
   return rest;
 }

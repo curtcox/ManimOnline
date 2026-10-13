@@ -554,3 +554,16 @@ test('children added to the back of text paint behind its glyphs', () => {
   assert.ok(!has(layers[1], 'circle'));
   assert.ok(has(layers[2], 'rect') || has(layers[2], 'path'));
 });
+
+test('camera background images draw over the backdrop and accept only inline PNG data', () => {
+  const png = 'data:image/png;base64,iVBORw0KGgo=';
+  const svg = renderer.render({camera:{pixel_width:80,pixel_height:40,background_image:png},mobjects:[{type:'circle',radius:1}]});
+  const image = svg.children[1];
+  assert.equal(image.tag, 'image');
+  assert.equal(image.getAttribute('href'), png);
+  assert.equal(image.getAttribute('width'), '80');
+  assert.equal(image.getAttribute('preserveAspectRatio'), 'none');
+  assert.equal(image.getAttribute('data-manim-background'), 'true');
+  for (const bad of ['https://example.com/a.png', 'data:image/svg+xml;base64,PHN2Zz4=', 7])
+    assert.throws(() => renderer.render({camera:{background_image:bad},mobjects:[]}), /background image/);
+});

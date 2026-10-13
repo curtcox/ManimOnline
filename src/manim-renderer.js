@@ -42,6 +42,21 @@ const ManimRenderer = {
     backdrop.setAttribute('fill', background);
     backdrop.setAttribute('data-manim-background', 'true');
     svg.appendChild(backdrop);
+    if (camera.background_image !== undefined) {
+      // Camera.set_background: a pixel array stretched over the frame, behind everything.
+      // Only inline base64 PNG data is accepted (no external or scripted content).
+      if (typeof camera.background_image !== 'string' ||
+          !/^data:image\/png;base64,[A-Za-z0-9+/]+=*$/.test(camera.background_image)) {
+        throw new Error('Invalid camera background image');
+      }
+      const image = document.createElementNS(this.SVG_NS, 'image');
+      image.setAttribute('width', width);
+      image.setAttribute('height', height);
+      image.setAttribute('preserveAspectRatio', 'none');
+      image.setAttribute('href', camera.background_image);
+      image.setAttribute('data-manim-background', 'true');
+      svg.appendChild(image);
+    }
     const mainGroup = document.createElementNS(this.SVG_NS, 'g');
     mainGroup.setAttribute('transform', `translate(${width / 2}, ${height / 2}) scale(${width / frameWidth / this.UNIT_SCALE}, ${-height / frameHeight / this.UNIT_SCALE})`);
     if (center[0] || center[1]) mainGroup.setAttribute('transform', mainGroup.getAttribute('transform') + ` translate(${-center[0] * this.UNIT_SCALE}, ${-center[1] * this.UNIT_SCALE})`);
