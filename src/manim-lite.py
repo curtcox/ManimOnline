@@ -12504,7 +12504,9 @@ def _align_path_snapshots(start, target):
                   'square', 'rectangle', 'triangle', 'line', 'arrow', 'annulus')
     if (start['type'] == target['type'] == 'arrow' and not (start.get('_shaft_fixed') and target.get('_shaft_fixed'))
             and (start.get('geometry_scale', 1), start.get('angle', 0)) != (target.get('geometry_scale', 1), target.get('angle', 0))
-            and (start['start'], start['end']) != (target['start'], target['end'])):
+            and ((start['start'], start['end']) != (target['start'], target['end']) or
+                 # Fixed-size tips move the family pivot of a scaled arrow with unchanged ends.
+                 start.get('geometry_center') != target.get('geometry_center'))):
         # Refit shafts keep their type, but their ends move in a straight line (pointwise),
         # which separate lerps of the local ends and the turning pose would not.
         def baked(snapshot):

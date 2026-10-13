@@ -1183,3 +1183,5 @@ bounds (`_family_bound_points`) measure the pivot once but keep `_point_to_world
 order: tests sit on rounding ties, and `_points_to_world` groups its sums differently.
 reverse_points freezes tipped shafts first (NumberLine and TipableVMobject `_freeze_shaft`): the
 scene view cuts a shaft end by tip role, which would cut the wrong end once the shaft is reversed.
+`_align_path_snapshots` also bakes refit arrows whose pose scales with unchanged logical ends when
+their geometry_center changes: fixed-size tips move the family pivot, so a pose lerp would curve.

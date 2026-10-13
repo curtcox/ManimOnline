@@ -1118,6 +1118,19 @@ class AnimationApiTests(unittest.TestCase):
             'S().render()\n'),
             [True, 5])
 
+    def test_scaling_arrow_moves_its_shaft_ends_straight(self):
+        # Community 0.22 values: fixed-size tips move the family pivot while the shaft scales.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        global result\n'
+            '        o = Vector(UP + RIGHT).rotate(2.5).shift(DOWN); self.add(o); result = []\n'
+            '        self.add_updater(lambda dt: result.append([round(float(v), 4) + 0.0 for v in (*o.get_corner(DL)[:2], *o.get_corner(UR)[:2])]))\n'
+            '        self.play(o.animate.scale(0.3).shift(UP * 2), run_time=0.4)\n'
+            '        result = result[1:4]\n'
+            'S().render()\n'),
+            [[-0.186, -0.6661, 1.186, -0.3197], [-0.1243, -0.4049, 1.1243, -0.0586], [0.0451, 0.3111, 0.9549, 0.6575]])
+
     def test_reversed_number_line_keeps_its_cut_shaft(self):
         # Community 0.22 reverses the own points as cut at the tip base.
         self.assertEqual(scene_values(
