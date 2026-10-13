@@ -830,6 +830,33 @@ class AnimationApiTests(unittest.TestCase):
         self.assertEqual([round(v, 4) for v in drawn['position'][:2]] + [round(drawn['angle'], 4)],
                          [0.5607, 0.4838, -2.1416])
 
+    def test_transform_matching_shapes_fades_a_turned_arrow_once(self):
+        frames = json.loads(lite.render_scene(
+            'from manim import *\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = Arrow(LEFT, RIGHT).rotate(1)\n'
+            '        self.add(o)\n'
+            '        self.play(TransformMatchingShapes(o, Square().shift(RIGHT * 2)))\n'))['frames']
+        def drawn(node):
+            own = [node['type']] if node.get('opacity', 1) and node['type'] != 'vgroup' else []
+            return own + [kind for child in node.get('children') or () for kind in drawn(child)]
+        self.assertEqual(sorted(kind for root in frames[1]['mobjects'] for kind in drawn(root)),
+                         ['arrow', 'polyline', 'square'])
+        # Community shifts the arrow toward the square's center: x min at frame 2 is -0.3683.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        global result\n'
+            '        o = Arrow(LEFT, RIGHT).rotate(1)\n'
+            '        self.add(o)\n'
+            '        seen = []\n'
+            '        self.add_updater(lambda dt: seen.append(min(float(m.get_left()[0]) for r in self.mobjects\n'
+            '                                                    for m in r.family_members_with_points())))\n'
+            '        self.play(TransformMatchingShapes(o, Square().shift(RIGHT * 2)))\n'
+            '        result = seen[2]\n'
+            'S().render()\n'), -0.3683)
+
     def test_members_of_collapsed_families_report_world_bounds(self):
         self.assertEqual(scene_values(
             'R = lambda p: [round(float(v), 4) + 0.0 for v in p[:2]]\n'

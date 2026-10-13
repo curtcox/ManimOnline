@@ -846,7 +846,8 @@ clean_up_from_scene runs after finish(). Rotate fixes its pivot at the center wh
 Rotating resolves about_edge at begin.
 TransformMatching*: unmatched targets fade in as a real `_arrivals` VGroup introduced at begin
 (Community's FadeIn copy) with one group snapshot; unmatched sources fade out by one shared
-shift. When every piece is a childless leaf under identity-pose containers, pieces are folded
+shift. Parts are world views, and parts inside another part's family (an arrow's tip) move with it.
+When every piece is reached through identity-pose containers, pieces are folded
 back into one snapshot of the source tree so updaters see the whole family.
 ShowPassingFlash accepts arrows: families with their own path cut every member with points
 via pointwise_become_partial of `_own_outline` (a childless copy keeping the tip-trimmed

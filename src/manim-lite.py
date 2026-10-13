@@ -14462,6 +14462,15 @@ class _TransformMatching(Animation):
                 pairs.extend(zip(source.pop(key1), target.pop(key2)))
         lost = [part for key in source if key not in target for part in source[key]]
         new = [part for key in target if key not in source for part in target[key]]
+        # A part that is also a member of another part (an arrow's tip) moves with it: Community's
+        # groups of parts move each family member once. Parts are drawn in world coordinates.
+        def inner(parts):
+            return {id(member) for part in parts for member in part.get_family()[1:]}
+        covered = inner([a for a, _ in pairs])
+        pairs = [(_world_view(a), _world_view(b)) for a, b in pairs if id(a) not in covered]
+        covered_lost, covered_new = inner(lost), inner(new)
+        lost = [_world_view(part) for part in lost if id(part) not in covered_lost]
+        new = [_world_view(part) for part in new if id(part) not in covered_new]
         if self.transform_mismatches and lost and new:
             pairs.append((VGroup(*lost).copy(), VGroup(*new).copy()))
             lost, new = [], []
@@ -14499,13 +14508,12 @@ class _TransformMatching(Animation):
 
     @staticmethod
     def _leaf_paths(mobject):
-        """Paths of childless members reached only through identity-pose containers, whose
-        snapshots are world snapshots and can stand in for the member in the root's tree."""
+        """Paths of members reached only through identity-pose containers, whose snapshots
+        are world snapshots and can stand in for the member in the root's tree."""
         paths = {}
         def visit(node, path):
-            if not node.children:
-                paths[id(node)] = path
-            elif node._world_container():
+            paths[id(node)] = path
+            if node.children and node._world_container():
                 for index, child in enumerate(node.children):
                     visit(child, path + (index,))
         visit(mobject, ())
