@@ -887,6 +887,17 @@ class AnimationApiTests(unittest.TestCase):
              ['TypeError', "setter() got an unexpected keyword argument 'color'"],
              0.0, 'ValueTracker', 'VGroup'])
 
+    def test_fade_transform_of_a_group_fails_when_restoring(self):
+        # Community 0.22's clean_up_from_scene restores the source with become, which a Group cannot do.
+        with self.assertRaisesRegex(Exception, 'Please override in a child class'):
+            scene_values(
+                'class S(Scene):\n'
+                '    def construct(self):\n'
+                '        o = Group(Square(), Dot().shift(UP))\n'
+                '        self.add(o)\n'
+                '        self.play(FadeTransform(o, Dot(UP * 2)), run_time=0.2)\n'
+                'S().render()\n')
+
     def test_collapsing_members_and_spiralling_axes_follow_community(self):
         # Community 0.22: padded ticks shrink linearly (once) inside their collapsing group,
         # and SpiralIn moves each shape by its scene-view center of mass.

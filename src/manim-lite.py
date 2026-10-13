@@ -14741,6 +14741,9 @@ class FadeTransform(Transform):
         if self.__dict__.get('_ghost') is not None:
             scene.remove(self._ghost)
         scene.remove(self.mobject)
+        if not isinstance(self.mobject, (VMobject, PMobject, AbstractImageMobject)):
+            # Community's restore is become(saved_state), whose interpolate_color plain Mobjects lack.
+            raise NotImplementedError('Please override in a child class.')
         if self.mobject in scene._world_members and self._world_saved is not None:
             self.mobject.become(self._world_saved)
         else:
