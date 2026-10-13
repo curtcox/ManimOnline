@@ -5365,6 +5365,16 @@ self.wait(1)""")
         for invalid in [-1, float('nan'), float('inf'), '1']:
             with self.assertRaises(ValueError): lite.TracedPath(lambda:lite.ORIGIN, dissipating_time=invalid)
 
+    def test_trace_transformed_into_another_outline_keeps_tracing(self):
+        point = [0, 0, 0]
+        trace = lite.TracedPath(lambda: point)
+        trace.update()
+        trace.become(lite.Square())
+        point[:] = [3, 0, 0]
+        trace.update()
+        self.assertEqual(trace.get_end(), lite.Vector(point))
+        self.assertAlmostEqual(trace.get_start()[0], 1)
+
     def test_trace_become_keeps_provider_clock_and_callback(self):
         point = [1, 0, 0]
         trace = lite.TracedPath(lambda:point, dissipating_time=1)
@@ -7026,8 +7036,8 @@ class Demo(Scene):
 
     def test_transform_from_copy_conflicts_and_invalid_objects(self):
         source, target = lite.Square(), lite.Circle()
-        with self.assertRaises(ValueError):
-            lite.TransformFromCopy(source, source)
+        # Community accepts a copy of an object transformed into itself.
+        lite.Scene().add(source).play(lite.TransformFromCopy(source, source))
         with self.assertRaises(TypeError):
             lite.TransformFromCopy(source, 'target')
         lite.Scene().add(lite.VGroup(target.copy()).scale(2).rotate(1)).play(lite.TransformFromCopy(source, target))

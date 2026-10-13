@@ -982,6 +982,26 @@ class AnimationApiTests(unittest.TestCase):
             'S().render()\n'),
             [1.2, 1.35])
 
+    def test_lagged_transforms_move_cut_shafts_and_reject_point_mobjects(self):
+        # Community 0.22: lagged members move the shaft (cut at the tip bases) and its tip on their
+        # own sub-alphas; align_data cannot pad a plain Group with get_point_mobject.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        global result\n'
+            '        a = Arrow(LEFT * 2, RIGHT * 2); ax = Axes(x_range=[-3, 3], y_range=[-2, 2], x_length=5, y_length=3)\n'
+            '        self.add(a, ax); rights = []\n'
+            '        self.add_updater(lambda dt: rights.append([round(float(a.get_right()[0]), 4), round(float(ax.get_right()[0]), 4)]))\n'
+            '        self.play(Transform(a, a.copy().shift(RIGHT)), Transform(ax, ax.copy().shift(RIGHT)), lag_ratio=0.2, run_time=0.4)\n'
+            '        try:\n'
+            '            self.play(Transform(Group(Group()), Group(Group(Square()))), run_time=0.2); error = None\n'
+            '        except NotImplementedError as e:\n'
+            '            error = str(e)\n'
+            '        result = [rights, error]\n'
+            'S().render()\n'),
+            [[[1.75, 2.5], [1.75, 2.7337], [1.7913, 3.4815], [2.1342, 3.5], [2.4842, 3.5], [2.7087, 3.5]],
+             'get_point_mobject not implemented for Group'])
+
     def test_ticks_become_copies_of_a_posed_arrow_tip(self):
         # Community 0.22's null_point_align pushes the tip into a submobject; every tick becomes a tip.
         self.assertEqual(scene_values(

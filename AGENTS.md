@@ -1153,3 +1153,10 @@ logic needs; DashedVMobject alone reads the unsnapped seam (`snap=False`). Dashe
 Community's dash intervals and length table operation for operation (`_community_length_table`,
 `_np_interp`), so dashes ending on a cubic boundary keep or drop a null curve as Community does
 (a closed path's single full dash collapses; an open ratio-1 pattern adds an empty dash).
+Lagged plans (`_transform_plan(..., lagged=True)`) freeze arrow shafts at their tip-base cuts and
+cut NumberLine shaft children there (`_cut_number_line_shaft`): Community's own points move on
+their own sub-alpha, so a lagging tip must not drag or trail the shaft. Own bounds of tipped lines
+still use the logical start/end (they set the pose pivot; cutting them breaks Arrow.scale).
+Transform.begin replays align_data's padding walk (`_check_point_mobjects`) and raises
+Community's get_point_mobject NotImplementedError for plain Mobject/Group members.
+TracedPath materializes non-polyline outlines (left by Transform/become) before appending.

@@ -5429,6 +5429,8 @@ class TracedPath(VMobject):
 
     def update_path(self, mob, dt):
         point = self._corners([self.traced_point_func()])[0]
+        # A Transform can leave another outline type (no vertices): continue from its points.
+        self._materialize_path()
         # Bake accumulated transforms before adding a new world-space sample.
         # Otherwise a changing path bounding box would move the old rotation pivot.
         if self._type == 'bezierpath':
@@ -12696,6 +12698,28 @@ def _own_shaft(snapshot, other):
     return result
 
 
+def _cut_number_line_shaft(snapshot):
+    """A NumberLine snapshot whose straight shaft child ends at its tip bases (Community's
+    own points), so lagged members move a shaft that does not run past its tips."""
+    children = snapshot.get('children') or []
+    shafts = [child for child in children if child.get('_number_line_role') == 'shaft']
+    if snapshot.get('_shaft_fixed') or not shafts or shafts[0].get('type') != 'line':
+        return snapshot
+    inverse = _snapshot_pose(shafts[0])[1]
+    shaft = None
+    for child in children:
+        curves = _path_curves(child) if child.get('_number_line_role') == 'tip' else None
+        if not curves or inverse is None:
+            continue
+        middle = len(curves) / 2
+        base = _snapshot_pose(child)[0](VMobject._bezier_point(curves[min(int(middle), len(curves) - 1)], middle - int(middle)))
+        shaft = shaft or _snapshot_copy(shafts[0])
+        shaft['start' if child.get('_tip_at_start') else 'end'] = inverse(base)
+    if shaft is None:
+        return snapshot
+    return dict(snapshot, _shaft_fixed=True, children=[shaft if child is shafts[0] else child for child in children])
+
+
 def _transform_plan(start, target, origins=None, lagged=False):
     """Align immutable family snapshots once, before sampling their timeline. origins holds
     the world origin in each side's parent frame (where empty families pad with points).
@@ -12711,6 +12735,8 @@ def _transform_plan(start, target, origins=None, lagged=False):
         inverse = _snapshot_pose(node)[1]
         return inverse(origin) if inverse else None
     start, target = _own_shaft(start, target), _own_shaft(target, start)
+    if lagged:
+        start, target = _cut_number_line_shaft(start), _cut_number_line_shaft(target)
     if start['type'] == 'vgroup' or target['type'] == 'vgroup':
         def as_group(snapshot):
             if snapshot['type'] == 'vgroup':
@@ -12774,10 +12800,10 @@ def _transform_plan(start, target, origins=None, lagged=False):
             return any(role in last and (first[role]['type'] != last[role]['type'] or
                                          _path_curves(first[role]) != _path_curves(last[role]))
                        for role in first)
-        if (bool(start.get('_shaft_fixed')) != bool(target.get('_shaft_fixed')) or reshaped()
+        if (lagged or bool(start.get('_shaft_fixed')) != bool(target.get('_shaft_fixed')) or reshaped()
                 or set(tips(start)) != set(tips(target))):
             # Community moves shaft points on their own: a refit shaft (which follows its tip
-            # bases) interpolates between its drawn ends, not with cut or reshaped tips.
+            # bases) interpolates between its drawn ends, not with cut, reshaped or lagging tips.
             for own,source in ((own_start,start),(own_target,target)):
                 if own['type'] in ('line','arrow') and not own.get('_shaft_fixed'):
                     drawn = _refresh_tip_shafts(_snapshot_copy(source))
@@ -14113,6 +14139,29 @@ def _arc_factor(alpha, path_arc):
     return complex(scale * math.cos(angle), scale * math.sin(angle))
 
 
+def _check_point_mobjects(start, target):
+    """Community's align_data pads a member without submobjects by get_point_mobject(), which
+    plain Mobjects (Group, Mobject) do not implement: replay its push/pad walk and raise."""
+    def points(mobject, pushed):
+        return pushed or isinstance(mobject, (ValueTracker, AbstractImageMobject)) or mobject.has_points()
+    def walk(a, b, pushed_a=False, pushed_b=False):
+        first = [] if pushed_a else [(child, False) for child in a.children]
+        second = [] if pushed_b else [(child, False) for child in b.children]
+        if not points(a, pushed_a) and points(b, pushed_b):
+            second.append((b, True))  # push_self_into_submobjects
+        elif not points(b, pushed_b) and points(a, pushed_a):
+            first.append((a, True))
+        for mobject, mine, other in ((a, first, second), (b, second, first)):
+            if not mine and other and not isinstance(mobject, (VMobject, PMobject)):
+                raise NotImplementedError(f'get_point_mobject not implemented for {type(mobject).__name__}')
+        if first and second:
+            count = max(len(first), len(second))
+            for index in range(count):
+                (x, px), (y, py) = first[index * len(first) // count], second[index * len(second) // count]
+                walk(x, y, px, py)
+    walk(start, target)
+
+
 class Transform(_PathOptions, Animation):
     def __init__(self, mobject, target_mobject=None, path_arc=0, path_arc_axis=OUT, path_func=None,
                  path_arc_centers=None, replace_mobject_with_target_in_scene=False, **kwargs):
@@ -14146,6 +14195,7 @@ class Transform(_PathOptions, Animation):
             if not isinstance(target, Mobject):
                 raise TypeError('create_target must return a Mobject')
             self.target = _world_copy(target)
+        _check_point_mobjects(self.mobject, self.target)
         super().begin(scene)
         self._transform_plan = None
         self._canonical = None
@@ -14264,8 +14314,6 @@ class TransformFromCopy(Transform):
     def __init__(self, mobject, target_mobject, **kwargs):
         if not isinstance(mobject, Mobject) or not isinstance(target_mobject, Mobject):
             raise TypeError('TransformFromCopy expects two mobjects')
-        if mobject is target_mobject:
-            raise ValueError('TransformFromCopy source and target must be different objects')
         super().__init__(target_mobject, target_mobject, **kwargs)
         # Community's TransformFromCopy targets the source, so its updaters also run here.
         self.source = self._target_source = mobject
