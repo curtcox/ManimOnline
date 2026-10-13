@@ -13473,6 +13473,10 @@ class Animation(metaclass=_CommunityTree):
             self.finish(scene)
         else:
             self.finish()  # A Community-signature override: finish(self).
+        terminal = self.__dict__.get('_terminal')
+        if (self.__dict__.pop('_shared_terminal', False) and terminal and len(terminal) == 1
+                and live is None):
+            self.mobject.become(_sampled_copy(self.mobject, terminal))
         self._on_finish(scene)
         if self.remover:
             scene.remove(self.mobject)
@@ -13481,6 +13485,9 @@ class Animation(metaclass=_CommunityTree):
     # interpolate(0), ShowPassingFlash's full partial). Sampling never edits the live object,
     # so this only matters when another animation of the play did (Scene._mark_restores).
     _restores_start = False
+    # Community's finish leaves these at interpolate(1), their prepared terminal state, even
+    # when an earlier animation of the play changed the same object (Scene._mark_restores).
+    _finishes_at_terminal = False
 
     def _restore_start(self):
         start = self.__dict__.get('start')
@@ -13652,6 +13659,7 @@ class _PathOptions:
 
 class FadeIn(_PathOptions, Animation):
     """Fade in, optionally from a shift, a starting position and a scale."""
+    _finishes_at_terminal = True
     _fading_in = True
     _start_follows_updaters = True
 
@@ -13790,6 +13798,7 @@ def _strip_children(data):
 
 class GrowFromPoint(_PathOptions, Animation):
     """Scale a snapshot from a fixed XY point to its original geometry."""
+    _finishes_at_terminal = True
     def __init__(self, mobject, point, point_color=None, **kwargs):
         kwargs.setdefault('introducer', True)
         path = self._path_kwargs(kwargs)
@@ -13914,6 +13923,7 @@ class ShrinkToCenter(GrowFromCenter):
 
 class Create(Animation):
     """Trace outlines; Community's default lag_ratio=1 draws members in sequence."""
+    _finishes_at_terminal = True
     _lagged = True
     _start_follows_updaters = True
 
@@ -14044,6 +14054,7 @@ def _collapse_drawn(mobject, unfill=False):
 
 class DrawBorderThenFill(Animation):
     """Draw each member's outline, then interpolate to its fill and stroke."""
+    _finishes_at_terminal = True
     _lagged = True
     _start_follows_updaters = True
 
@@ -14386,6 +14397,7 @@ class Restore(Transform):
 
 class Indicate(_PathOptions, Animation):
     """Temporarily scale and recolor a snapshot without changing live state."""
+    _finishes_at_terminal = True
     def __init__(self, mobject, scale_factor=1.2, color=PURE_YELLOW,
                  rate_func=there_and_back, **kwargs):
         path = self._path_kwargs(kwargs)
@@ -15796,6 +15808,7 @@ class SpinInFromNothing(GrowFromCenter):
 
 
 class Wiggle(Animation):
+    _finishes_at_terminal = True
     def __init__(self, mobject, scale_value=1.1, rotation_angle=0.01 * TAU, n_wiggles=6,
                  scale_about_point=None, rotate_about_point=None, run_time=2, **kwargs):
         super().__init__(mobject, run_time=run_time, **kwargs)
@@ -16812,7 +16825,7 @@ class Scene:
                 leaves.append(animation)
         for animation in animations:
             walk(animation)
-        if len(leaves) < 2 or not any(a._restores_start for a in leaves):
+        if len(leaves) < 2 or not any(a._restores_start or a._finishes_at_terminal for a in leaves):
             return
         families = [{id(m) for o in a.objects() if isinstance(o, Mobject) for m in o.get_family()}
                     for a in leaves]
@@ -16820,6 +16833,8 @@ class Scene:
             if animation._restores_start:
                 animation._shared_restore = any(families[index] & family for other, family
                                                 in enumerate(families) if other != index)
+            if animation._finishes_at_terminal and not animation._community_style:
+                animation._shared_terminal = any(families[index] & family for family in families[:index])
 
     def validate(self, *animations):
         # Community lets several animations drive one object or shared members (the last

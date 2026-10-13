@@ -1029,6 +1029,23 @@ class AnimationApiTests(unittest.TestCase):
             'result = [round(float(v), 4) for v in (*m.get_end()[:2], m.get_right()[0])]\n'),
             [1.4868, 0.1989, 1.4868])
 
+    def test_later_animations_finish_shared_objects_at_their_end_state(self):
+        # Community 0.22 finishes animations in order: FadeIn/Grow/Create/Indicate/Wiggle end at
+        # interpolate(1), undoing an earlier Rotate of the same object; listed first, they do not.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        global result\n'
+            '        result = []\n'
+            '        for kind in (FadeIn, GrowFromCenter, Create, Indicate, Wiggle, ApplyWave):\n'
+            '            for first in (False, True):\n'
+            '                p = Triangle(); self.add(p)\n'
+            '                pair = [kind(p), Rotate(p, 0.5)] if first else [Rotate(p, 0.5), kind(p)]\n'
+            '                self.play(AnimationGroup(*pair), run_time=0.2)\n'
+            '                result.append(round(float(p.get_right()[0]), 4)); self.remove(p)\n'
+            'S().render()\n'),
+            [0.866, 1.1196, 0.866, -0.0, 0.866, -0.3596, 0.866, 1.1196, 0.866, 1.1196, 0.866, 1.1196])
+
     def test_ticks_become_copies_of_a_posed_arrow_tip(self):
         # Community 0.22's null_point_align pushes the tip into a submobject; every tick becomes a tip.
         self.assertEqual(scene_values(

@@ -1164,3 +1164,7 @@ TracedPath materializes non-polyline outlines (left by Transform/become) before 
 `_link_children` keeps skipped plain-group links in `_OTHER_PARENTS`; `_parent_of` falls back to a
 live one when the linked family was collected (PolarPlane regroups members from temporary VGroups),
 so world calls on members of posed families still find their ancestors.
+Animations with `_finishes_at_terminal` (FadeIn, Grow*, Create, DrawBorderThenFill, Indicate, Wiggle)
+become their prepared `_terminal` on completion when an earlier leaf of the same play shares their
+family (`_shared_terminal`, set by `Scene._mark_restores`), as Community's in-order finish() runs
+interpolate(1) after, e.g., an earlier Rotate of the same object. Live-copy (updater) runs are skipped.
