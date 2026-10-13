@@ -963,7 +963,7 @@ Scene-code become first pads a copy of the target like Community's align_data
 VGroup of world-view members plus a childless shaft-frozen copy; under posed ancestors the push
 falls back to a center point), so receivers keep
 the larger structure; library become (Transform completion, restore) does not. Families with
-text or SVG are left unaligned (`_alignable`); NumberLines are aligned only as receivers
+text or SVG are left unaligned (`_alignable`; exact Group/Mobject containers of VMobjects align); NumberLines are aligned only as receivers
 (`_alignable(True)`), as their shaft's own points plus `_number_line_members`, and become
 pairs only those members (the shaft has no counterpart).
 Property setters that check their caller must use `_from_scene()`, which skips that frame.

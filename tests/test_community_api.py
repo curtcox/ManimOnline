@@ -805,6 +805,19 @@ class AnimationApiTests(unittest.TestCase):
             '          [type(d).__name__, isinstance(d, DashedLine), isinstance(d, Line), d.dash_length]]\n'),
             [['Square', 'VectorizedPoint'], 0.01, ['Ellipse', 'Ellipse', 'Ellipse'], ['DashedLine', True, True, 0.05]])
 
+    def test_transforming_a_group_into_a_leaf_keeps_its_members(self):
+        # align_data also runs for plain Group receivers: the target is pushed into a member.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = Group(Square(), Dot().shift(UP))\n'
+            '        self.play(Transform(o, Dot(UP * 2)))\n'
+            '        global result\n'
+            '        result = [[type(m).__name__, len(m.points), [round(float(v), 4) for v in m.get_center()[:2]]]\n'
+            '                  for m in o.get_family()]\n'
+            'S().render()\n'),
+            [['Group', 0, [0.0, 2.0]], ['Square', 32, [0.0, 2.0]], ['Dot', 32, [0.0, 2.0]]])
+
     def test_uncreate_collapses_a_number_line_that_became_a_shape(self):
         # Community 0.22: the NumberLine's own points trace backwards and stay collapsed
         # on each member's first point after the remover finishes.

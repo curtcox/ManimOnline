@@ -3688,10 +3688,11 @@ class Mobject:
         """Whether Lite's family matches Community's submobject structure (no text, SVG or
         NumberLine scene views), so align_data's padding can be reproduced. A receiver's
         NumberLines count as their shaft's own points plus their other members."""
-        return isinstance(self, VMobject) and not any(
+        family = self.get_family()
+        return all(isinstance(member, VMobject) or type(member) in (Group, Mobject) for member in family) and not any(
             isinstance(member, (Text, SVGMobject, Code, Paragraph)) or
             (isinstance(member, NumberLine) and _has_shaft(member) and not receiving)
-            for member in self.get_family())
+            for member in family)
 
     def _aligned_target(self, mobject, root_points=False):
         """Community's become runs align_data first: a pointless member facing one with
