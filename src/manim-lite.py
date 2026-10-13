@@ -13816,7 +13816,7 @@ class Uncreate(Create):
 def _collapse_drawn(mobject, unfill=False):
     """Collapse every drawn outline onto its first point (a fully undrawn ShowPartial)."""
     for member in mobject.get_family():
-        if member._type in _PATH_TYPES and _is_a(member, VMobject):
+        if member._type in _PATH_TYPES and _own_drawn_path(member):
             points = member.get_points()
             if points:
                 VMobject.set_points(member, [points[0]] * 4)
@@ -15867,7 +15867,7 @@ def _expose_snapshot(saved, mobject, snapshot, again=False):
     if shaft is not None and not (progress is not None and progress < 1):
         VMobject.set_points(mobject, shaft)
     if progress is not None and progress < 1 and snapshot['type'] in _PATH_TYPES and \
-            _is_a(mobject, VMobject):
+            _own_drawn_path(mobject):
         # Community traces outlines by pointwise_become_partial: queries such as
         # get_end() follow the drawn part.
         try:
@@ -26187,6 +26187,12 @@ CameraFrame.__name__ = CameraFrame.__qualname__ = 'ScreenRectangle'
 
 def _has_shaft(line):
     return any(child.__dict__.get('_number_line_role') == 'shaft' for child in line.children)
+
+
+def _own_drawn_path(member):
+    """Whether member's own points are a drawable VMobject path (a shaftless NumberLine
+    draws its own points, like Community's)."""
+    return _is_a(member, VMobject) or isinstance(member, NumberLine) and not _has_shaft(member)
 
 
 def _number_line_members(line):

@@ -712,6 +712,20 @@ class AnimationApiTests(unittest.TestCase):
             's = S(); s.render(); result = s.out\n'),
             [[1.9174, 0.969], [-0.3547, -0.9772], 0.9587, 1.0, [0.0, 0.0, 0.0]])
 
+    def test_uncreate_collapses_a_number_line_that_became_a_shape(self):
+        # Community 0.22: the NumberLine's own points trace backwards and stay collapsed
+        # on each member's first point after the remover finishes.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = NumberLine(x_range=[-2, 2, 1], length=4)\n'
+            '        self.play(o.animate.scale(0.5))\n'
+            '        self.play(o.animate.become(Triangle()))\n'
+            '        self.play(Uncreate(o)); self.add(o)\n'
+            '        self.out = [round(float(o.width), 4), round(float(o.height), 4)]\n'
+            's = S(); s.render(); result = s.out\n'),
+            [0.0, 0.75])
+
     def test_color_values_operators_and_helpers(self):
         self.assertEqual(scene_values(
             'result = [repr(WHITE / 2), list(WHITE / 2), repr(~RED), int(RED), RED[0], repr(RED & BLUE),\n'
