@@ -23994,7 +23994,7 @@ class _PCG64:
 
 
 DEFAULT_SCALAR_FIELD_COLORS = [_PALETTE[name] for name in ('BLUE_E', 'GREEN_C', 'YELLOW_C', 'RED_C')]
-_FIELD_POINT_LIMIT = 5000
+_FIELD_POINT_LIMIT = 10000
 
 
 def _field_vector(value, name='Vector field output'):
