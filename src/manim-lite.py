@@ -3118,6 +3118,14 @@ class Mobject:
             center = self._pivot_point()
             self.shift((center - pivot) * (scale_factor - 1))
         self.geometry_scale *= scale_factor
+        if (not self.geometry_scale and self.children and _is_a(self, VMobject) and
+                not isinstance(self, (NumberLine, CoordinateSystem)) and
+                not (isinstance(self, TipableVMobject) and self._tips_by_role())):
+            # A collapsed pose has no inverse: collapse the members themselves, as Community's points.
+            if self._type == 'vgroup' or not self.get_points():
+                self._clear_pose()
+            else:
+                self._materialize_path(bake=True)
         return self
 
     def rotate_about_origin(self, angle, axis=OUT, **kwargs):
@@ -3777,11 +3785,14 @@ class Mobject:
                     not all(math.isfinite(v) for v in (*target.position,target.get_width(),target.get_height()))):
                 raise ValueError('Camera frames must remain positive axis-aligned XY rectangles')
         replacements, used = {}, set()
+        # Community's tip attributes keep referring to the receiver's own members.
+        roles = {id(member): member.__dict__.get('_tip_role') for member in self.get_family()}
         def replace(source, replacement):
             replacements[id(replacement)] = source
             used.add(source)
             children, live, count = [], source.children, len(replacement.children)
-            if 0 < len(live) < count and type(source) in (Group, VGroup, Mobject):
+            if 0 < len(live) < count and (type(source) in (Group, VGroup, Mobject) or (
+                    isinstance(source, TipableVMobject) and replacement._type != 'vgroup')):
                 # align_data pads the receiver too: each member's (faded) copies follow it.
                 # (Role-structured families such as NumberLine keep their slots.)
                 slots, seen = [], set()
@@ -3824,6 +3835,17 @@ class Mobject:
             state.update(retained, children=children)
             source.__dict__ = state
             _link_children(source, children)
+            if isinstance(source, TipableVMobject) and any(
+                    child.__dict__.get('_tip_role') in ('start', 'end') and
+                    child.__dict__.get('_tip_role') != roles.get(id(child)) for child in children):
+                # The receiver's points are the target's drawn shaft, cut at the target's tips.
+                source._freeze_shaft()
+                for child in children:
+                    role = roles.get(id(child))
+                    if role is None:
+                        child.__dict__.pop('_tip_role', None)
+                    else:
+                        child._tip_role = role
         replace(self, target)
         return self
 
@@ -6478,6 +6500,10 @@ class Line(TipableVMobject):
             if all(a == b for a, b in zip(current_start, current_end)) and not self.get_tips().children:
                 return self.set_points_by_ends(start, end)
             return TipableVMobject.put_start_and_end_on(self, start, end)
+        if isinstance(self, Arrow) and any(child.__dict__.get('_tip_role') not in ('start', 'end')
+                                           for child in self.children):
+            # Other members move with the family: Community scales (Arrow.scale), rotates and shifts it.
+            return Mobject.put_start_and_end_on(self, start, end)
         self._unfreeze_shaft()
         # Encode the requested endpoints in the current transform's local space.
         # This keeps ordinary endpoint animations linear even on rotated lines.
@@ -12273,6 +12299,20 @@ def _path_subpaths(snapshot, include_pending=True):
 def _align_path_snapshots(start, target):
     path_types = ('polyline', 'polygon', 'bezierpath', 'circle', 'arc', 'ellipse',
                   'square', 'rectangle', 'triangle', 'line', 'arrow', 'annulus')
+    if (start['type'] == target['type'] == 'arrow' and not (start.get('_shaft_fixed') and target.get('_shaft_fixed'))
+            and (start.get('geometry_scale', 1), start.get('angle', 0)) != (target.get('geometry_scale', 1), target.get('angle', 0))
+            and (start['start'], start['end']) != (target['start'], target['end'])):
+        # Refit shafts keep their type, but their ends move in a straight line (pointwise),
+        # which separate lerps of the local ends and the turning pose would not.
+        def baked(snapshot):
+            forward, _ = _snapshot_pose(snapshot)
+            result = _snapshot_copy(snapshot)
+            result['start'], result['end'] = [list(forward(list(p) + [0] * (3 - len(p))))
+                                              for p in (snapshot['start'], snapshot['end'])]
+            result['position'], result['angle'], result['geometry_scale'] = [0, 0, 0], 0, 1
+            result['geometry_center'] = [(a + b) / 2 for a, b in zip(result['start'], result['end'])]
+            return result
+        return baked(start), baked(target)
     if any(snapshot['type']=='arrow' and not snapshot.get('explicit_tips') for snapshot in (start,target)):
         return None
     if start['type'] not in path_types or target['type'] not in path_types:

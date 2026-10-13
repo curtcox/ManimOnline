@@ -1078,3 +1078,11 @@ Arrow.scale(0) freezes the collapsed shaft (`_shaft_fixed`): Community never cut
 shaft at the tip bases. Line.put_start_and_end_on on a non-line own path (after become/Transform)
 regenerates a straight path when the ends coincide exactly, else maps the family generically;
 pop_tips materializes analytical own paths first, so Arrow.scale on a morphed arrow follows suit.
+Refit arrow shafts whose pose turns and whose local ends change are baked to identity poses in
+`_align_path_snapshots`, so their ends move in straight lines. A 2D VMobject family scaled to
+zero bakes the collapse into its members (no zero-scale parent pose; tipped families and
+coordinate systems excepted). become never transfers tip roles (Community's tip attributes keep
+naming the receiver's members): members keep their own roles, new members get none, and when
+roles change the receiver's shaft is first frozen at the target's tip bases. Tipped receivers
+pad with copies of their own members unless the target is a pushed-in vgroup. An Arrow with
+non-tip members runs Community's literal put_start_and_end_on (Arrow.scale, rotate, shift).

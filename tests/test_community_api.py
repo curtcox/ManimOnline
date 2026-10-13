@@ -571,6 +571,23 @@ class AnimationApiTests(unittest.TestCase):
             [[4, [-1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], [4, [-0.25, 0.75, 0.0], [-0.75, 0.25, 0.0]],
              [4, [-1.0, 0.0, 0.0], [1.0, 0.0, 0.0]]])
 
+    def test_transform_keeps_receiver_tip_roles(self):
+        # Community 0.22: tip attributes are never transferred: an Arrow transformed into a
+        # DoubleArrow keeps one tip (its padded member is plain) and the target's cut shaft.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        a = Arrow(LEFT, RIGHT); self.add(a)\n'
+            '        self.play(Transform(a, DoubleArrow(LEFT * 2, RIGHT * 2)), run_time=0.2)\n'
+            '        l = Line(LEFT, RIGHT); self.add(l)\n'
+            '        self.play(Transform(l, Arrow(LEFT * 2, RIGHT * 2)), run_time=0.2)\n'
+            '        self.out = [a.has_tip(), a.has_start_tip(), a.get_start()[0], a.get_length(),\n'
+            '                    l.has_tip(), l.get_end()[0]]\n'
+            '        a.put_start_and_end_on(DOWN, UP)\n'
+            '        self.out.append([list(m.get_center()) for m in a.submobjects])\n'
+            's = S(); s.render(); result = s.out\n'),
+            [True, False, -1.4, 3.15, False, 1.4, [[0.0, -1.1031, 0.0], [0.0, 0.825, 0.0]]])
+
     def test_color_values_operators_and_helpers(self):
         self.assertEqual(scene_values(
             'result = [repr(WHITE / 2), list(WHITE / 2), repr(~RED), int(RED), RED[0], repr(RED & BLUE),\n'
