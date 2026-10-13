@@ -805,6 +805,14 @@ class AnimationApiTests(unittest.TestCase):
             '          [type(d).__name__, isinstance(d, DashedLine), isinstance(d, Line), d.dash_length]]\n'),
             [['Square', 'VectorizedPoint'], 0.01, ['Ellipse', 'Ellipse', 'Ellipse'], ['DashedLine', True, True, 0.05]])
 
+    def test_members_of_collapsed_families_report_world_bounds(self):
+        self.assertEqual(scene_values(
+            'R = lambda p: [round(float(v), 4) + 0.0 for v in p[:2]]\n'
+            'o = CurvedArrow(LEFT, RIGHT).scale(0, about_edge=DOWN)\n'
+            'v = VGroup(Arrow(LEFT, RIGHT), Square().shift(DOWN)).scale(0, about_edge=DOWN)\n'
+            'result = [[R(m.get_critical_point(UR)) for m in x.family_members_with_points()] for x in (o, v)]\n'),
+            [[[0.0, -0.497], [0.0, -0.497]], [[0.0, -2.0], [0.0, -2.0], [0.0, -2.0]]])
+
     def test_transforming_a_group_into_a_leaf_keeps_its_members(self):
         # align_data also runs for plain Group receivers: the target is pushed into a member.
         self.assertEqual(scene_values(

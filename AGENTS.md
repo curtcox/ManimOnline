@@ -709,7 +709,8 @@ World calls: posed families (Arrow, rotated NumberLine/Axes, shapes with childre
 children in the parent frame, and library code relies on that. Calls from scene code
 (any file other than manim-lite.py, so tests count too) go through `_scene_call`: the
 member is placed in world coordinates (`_enter_world`, pinning posed ancestors' pivots),
-the method runs, and it is placed back. Parents are tracked weakly in `_PARENTS`; link
+the method runs, and it is placed back. Zero-scale ancestors cannot be inverted: read-only scene queries (get_/has_/is_, world
+properties) then run on a collapsed world copy. Parents are tracked weakly in `_PARENTS`; link
 new children (`_link_children`) whenever you assign `children` outside
 `_replace_children`. Reference arguments (`_REFERENCE_METHODS`, constructors such as
 Brace or Line) get world copies (`_world_view`). play() animates posed members in world

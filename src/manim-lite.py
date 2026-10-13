@@ -171,14 +171,15 @@ def _posed_ancestors(mobject):
     return chain if posed else []
 
 
-def _world_frame(chain):
-    """(scale, angle, offset) of the similarity taking chain[0]'s frame to the world."""
+def _world_frame(chain, collapsed=False):
+    """(scale, angle, offset) of the similarity taking chain[0]'s frame to the world
+    (None for a zero-scale chain, which cannot be inverted, unless collapsed is set)."""
     scale, angle, offset = 1, 0, Vector(ORIGIN)
     for parent in chain:
         scale *= parent.geometry_scale
         angle += parent.angle
         offset = parent._point_to_world(offset)
-    return (scale, angle, offset) if scale else None
+    return (scale, angle, offset) if scale or collapsed else None
 
 
 def _place(mobject, frame, inverse=False):
@@ -316,6 +317,14 @@ def _world_args(args, kwargs):
 def _in_world(mobject, function, *args, **kwargs):
     """function(mobject, ...) with mobject placed in world coordinates."""
     token = _enter_world(mobject) if mobject in _PARENTS else None
+    if token is None and mobject in _PARENTS and id(mobject) not in _IN_WORLD:
+        name = function.__name__.removeprefix('_scene_')
+        chain = _posed_ancestors(mobject)
+        if chain and (name.startswith(('get_', 'has_', 'is_')) or name in _WORLD_PROPERTIES):
+            frame = _world_frame(chain, collapsed=True)
+            if not frame[0]:
+                # A zero-scale ancestor cannot be undone: queries read a collapsed world copy.
+                return function(_place(mobject.copy(), frame), *args, **kwargs)
     try:
         return function(mobject, *args, **kwargs)
     finally:
