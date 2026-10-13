@@ -772,6 +772,27 @@ class AnimationApiTests(unittest.TestCase):
             '          [R(m.get_center()) for m in p.submobjects]]\n'),
             [[[-0.525, 0.0], [-0.825, 0.0]], [-1.0, 0.0], [-0.7, 0.0], [[0.8237, -0.0453], [0.6487, -0.3453]]])
 
+    def test_saved_state_surround_and_creation_type_checks(self):
+        # Community 0.22: saved_state exists only after save_state; surrounding a zero-width
+        # target leaves shapes collapsed; partial-drawing animations reject plain Groups.
+        self.assertEqual(scene_values(
+            'R = lambda x: [round(float(v), 4) for v in x[:2]]\n'
+            'o = Square(); before = hasattr(o, "saved_state"); o.save_state()\n'
+            'line = Line(DOWN, UP).shift(LEFT * 3)\n'
+            'c = Circle().surround(line); v = Vector(UP + RIGHT).surround(line)\n'
+            'errors = []\n'
+            'for make in (Create, Uncreate, ShowPassingFlash, DrawBorderThenFill, Write):\n'
+            '    try:\n'
+            '        make(Group(Square()))\n'
+            '    except TypeError as error:\n'
+            '        errors.append(str(error))\n'
+            'result = [before, hasattr(o, "saved_state"), R(c.get_center()), round(float(c.width), 4),\n'
+            '          round(float(v.width), 4), errors]\n'),
+            [False, True, [-3.0, 0.0], 0.0, 0.35,
+             ['Create only works for VMobjects.', 'Uncreate only works for VMobjects.',
+              'ShowPassingFlash only works for VMobjects.',
+              'DrawBorderThenFill only works for vectorized Mobjects', 'Write only works for vectorized Mobjects']])
+
     def test_uncreate_collapses_a_number_line_that_became_a_shape(self):
         # Community 0.22: the NumberLine's own points trace backwards and stay collapsed
         # on each member's first point after the remover finishes.

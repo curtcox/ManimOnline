@@ -452,9 +452,9 @@ now occurs at construction through Arc, including radius=None's unit fallback.
 Read `examples/surround_scene.py` for uniform XY fitting and Circle.surround.
 Mobject.rescale_to_fit uses current family dimensions and scale; zero dimensions
 remain a no-op. replace captures target center/length before mutating the source.
-Circle.surround computes the diagonal directly rather than first fitting the
-chosen dimension: vertical/horizontal line targets must not cause premature
-collapse. Preserve child identities, signed pose and target geometry. Nonuniform
+Circle.surround computes the diagonal directly, except that a target with zero length
+along dim_to_match collapses the circle (Community's replace runs first); Mobject.surround
+leaves such collapsed results alone instead of dividing by zero. Preserve child identities, signed pose and target geometry. Nonuniform
 stretch flags fail explicitly until the runtime can represent family stretching.
 
 

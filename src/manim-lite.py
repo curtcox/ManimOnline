@@ -3891,9 +3891,9 @@ class Mobject:
 
     @property
     def saved_state(self):
-        """Community's saved_state: a copy of the checkpoint (None before save_state)."""
+        """Community's saved_state: a copy of the checkpoint (absent before save_state)."""
         if '_saved_state' not in self.__dict__:
-            return None
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute 'saved_state'")
         state = object.__new__(type(self))
         state.__dict__ = copy.deepcopy(self._saved_state)
         _link_children(state, state.children)
@@ -4007,6 +4007,10 @@ class Mobject:
     def surround(self, mobject, dim_to_match=0, stretch=False, buff=MED_SMALL_BUFF):
         self.replace(mobject, dim_to_match, stretch)
         length = mobject.length_over_dim(dim_to_match)
+        if not length:
+            # Community scales the collapsed result by an infinite factor (NaN points, or a
+            # no-op for arrows); it stays collapsed here.
+            return self
         return self.scale((length + buff) / length)
 
     def space_out_submobjects(self, factor=1.5, **kwargs):
@@ -5900,6 +5904,9 @@ class Circle(Arc):
         target = self.copy()
         if stretch:
             target.replace(mobject,dim_to_match,stretch=True)
+        elif not mobject.length_over_dim(dim_to_match):
+            # Community's replace collapses the circle first; its width cannot be restored.
+            return self.become(target.scale(0).move_to(center))
         target.scale_to_fit_width(diameter).move_to(center)
         return self.become(target)
 
@@ -13726,6 +13733,7 @@ class Create(Animation):
     _start_follows_updaters = True
 
     def __init__(self, mobject, lag_ratio=1.0, introducer=True, **kwargs):
+        _partial_drawable(self, mobject)
         _glyph_family(mobject)
         super().__init__(mobject, lag_ratio=lag_ratio, introducer=introducer, **kwargs)
 
@@ -13759,6 +13767,7 @@ class ShowPassingFlash(Animation):
     _start_follows_updaters = True
 
     def __init__(self, mobject, time_width=.1, **kwargs):
+        _partial_drawable(self, mobject)
         kwargs.setdefault('introducer', True)
         kwargs.setdefault('remover', True)
         super().__init__(mobject, **kwargs)
@@ -13827,6 +13836,12 @@ class Uncreate(Create):
 
 
 
+def _partial_drawable(animation, mobject):
+    """Community's ShowPartial check: only VMobjects and point clouds draw partially."""
+    if not isinstance(mobject, (VMobject, PMobject)):
+        raise TypeError(f'{type(animation).__name__} only works for VMobjects.')
+
+
 def _collapse_drawn(mobject, unfill=False):
     """Collapse every drawn outline onto its first point (a fully undrawn ShowPartial)."""
     for member in mobject.get_family():
@@ -13847,6 +13862,8 @@ class DrawBorderThenFill(Animation):
 
     def __init__(self, vmobject, run_time=2, rate_func=double_smooth, stroke_width=2,
                  stroke_color=None, introducer=True, **kwargs):
+        if not isinstance(vmobject, VMobject):
+            raise TypeError(f'{type(self).__name__} only works for vectorized Mobjects')
         super().__init__(vmobject, run_time=run_time, rate_func=rate_func, introducer=introducer, **kwargs)
         Mobject._validate_width(stroke_width)
         self.outline_width, self.outline_color = stroke_width, stroke_color
