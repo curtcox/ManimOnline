@@ -6410,7 +6410,16 @@ class Line(TipableVMobject):
     def _orient_tip(self, tip, at_start):
         if self._type not in ('line', 'arrow'):
             return TipableVMobject._orient_tip(self, tip, at_start)  # Edited into a free path.
-        vector = Vector(self.start)-Vector(self.end) if at_start else Vector(self.end)-Vector(self.start)
+        anchor, toward = (Vector(self.start), Vector(self.end)) if at_start else (Vector(self.end), Vector(self.start))
+        other = self._tip(not at_start)
+        if (other is not None and self.__dict__.get('_public_tip') and anchor != toward and
+                not self.__dict__.get('_shaft_fixed')):
+            # Community positions a tip along the shaft as cut for the other tip: it reverses
+            # when that tip's base passed this end (a tip longer than the shaft). A zero-length
+            # shaft was never cut.
+            base = self._tip_base(other, current=True)
+            toward = toward if base is None else Vector(base)
+        vector = anchor-toward
         if vector[2]:
             self._turn_tip_3d(tip, vector)
         else:

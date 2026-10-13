@@ -761,6 +761,17 @@ class AnimationApiTests(unittest.TestCase):
             's = S(); s.render(); result = s.out\n'),
             [0.0, [0.0]])
 
+    def test_double_arrow_shorter_than_its_tips_turns_the_start_tip(self):
+        # Community 0.22: re-adding the end tip of a shaft shorter than the tip reverses the
+        # shaft, so the start tip is aimed along it (forward), then the family refits.
+        self.assertEqual(scene_values(
+            'R = lambda x: [round(float(v), 4) for v in x[:2]]\n'
+            'o = DoubleArrow(LEFT * 2, RIGHT).scale(0.12)\n'
+            'p = DoubleArrow(LEFT * 2, RIGHT); p.arrange(DOWN); p.scale(0.5)\n'
+            'result = [[R(m.get_center()) for m in o.submobjects], R(o.points[0]), R(o.points[-1]),\n'
+            '          [R(m.get_center()) for m in p.submobjects]]\n'),
+            [[[-0.525, 0.0], [-0.825, 0.0]], [-1.0, 0.0], [-0.7, 0.0], [[0.8237, -0.0453], [0.6487, -0.3453]]])
+
     def test_uncreate_collapses_a_number_line_that_became_a_shape(self):
         # Community 0.22: the NumberLine's own points trace backwards and stay collapsed
         # on each member's first point after the remover finishes.
