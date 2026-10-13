@@ -182,6 +182,17 @@ def _world_frame(chain, collapsed=False):
     return (scale, angle, offset) if scale or collapsed else None
 
 
+def _moved_children(mobject):
+    """A container's children that move independently: a member also reached through
+    another child's family (e.g. an arrow and its own tip) moves with that child, as
+    Community moves each family member's points once."""
+    children = mobject.children
+    if len(children) < 2 or not any(child.children for child in children):
+        return children
+    inner = {id(member) for child in children if child.children for member in child.get_family()[1:]}
+    return [child for child in children if id(child) not in inner]
+
+
 def _place(mobject, frame, inverse=False):
     """Apply a world frame (or its inverse) to a mobject as a pure similarity."""
     scale, angle, offset = frame
@@ -189,7 +200,7 @@ def _place(mobject, frame, inverse=False):
         # An unposed container subclass (e.g. a NumberLine) keeps rotations as its own pose
         # but passes shifts and scales on, so entering and leaving the world would leave it
         # posed. Placing its children keeps the round trip exact.
-        for child in mobject.children:
+        for child in _moved_children(mobject):
             _place(child, frame, inverse)
         mobject.__dict__.pop('_family_pivot_cache', None)
         return mobject
@@ -1753,7 +1764,7 @@ class Mobject:
             lambda total, vector: total + Vector(vector), vectors[1:], Vector(vectors[0]))
         if self._world_container():
             direction = Vector(direction)
-            for child in self.children:
+            for child in _moved_children(self):
                 child.shift(direction)
             self.__dict__.pop('_family_pivot_cache', None)
             return self
@@ -2573,7 +2584,7 @@ class Mobject:
     def _compute_local_bounds(self):
         if not self.children:
             return self._own_local_bounds()
-        bounds = [child._bounds() for child in self.children if not child._is_pointless()]
+        bounds = [child._bounds() for child in _moved_children(self) if not child._is_pointless()]
         if not bounds:
             return self._own_local_bounds()
         has_outline = (self._type not in ('mobject','vgroup','valuetracker') or
@@ -2617,7 +2628,7 @@ class Mobject:
             # A tipped curve's refit shaft moves with its tips: key its own geometry by the raw curves.
             own = (tuple(map(tuple, (p for curve in self.curves for p in curve)))
                    if self.__dict__.get('_curved_tip_path') else self._own_local_bounds())
-            child_bounds = tuple(child._bounds() for child in self.children)
+            child_bounds = tuple(child._bounds() for child in _moved_children(self))
             previous = self.__dict__.get('_family_pivot_cache')
             if previous is not None and previous[0] == own and previous[1] != child_bounds:
                 delta = center-Vector(previous[2])
@@ -3020,7 +3031,7 @@ class Mobject:
             else:
                 own = []
         local = [Vector(p) for p in own]
-        for child in self.children:
+        for child in _moved_children(self):
             local.extend(child._family_bound_points())
         return [self._point_to_world(p) for p in local]
 
@@ -3115,7 +3126,7 @@ class Mobject:
                                        matrix=[[scale_factor, 0, 0], [0, scale_factor, 0], [0, 0, scale_factor]])
         if self._world_container():
             pivot = self.get_center() if about_point is None else Vector(about_point)
-            for child in self.children:
+            for child in _moved_children(self):
                 Mobject.scale(child, scale_factor, about_point=pivot)
             self.__dict__.pop('_family_pivot_cache', None)
             return self
@@ -3177,7 +3188,7 @@ class Mobject:
             # Like shift and scale, a pure container turns its members about one pivot,
             # keeping their (Community) world coordinates.
             pivot = self.get_center() if about_point is None else Vector(about_point)
-            for child in self.children:
+            for child in _moved_children(self):
                 Mobject.rotate(child, angle, about_point=pivot)
             self.__dict__.pop('_family_pivot_cache', None)
             return self
@@ -13063,17 +13074,27 @@ def _mark_shared(mobject, data):
     """Hide all but the last occurrence of a member reached twice in a family: Community's
     family keeps only that one, so it is drawn and animated once."""
     occurrences = []
-    def walk(member, node):
-        occurrences.append((id(member), node))
+    def walk(member, node, parent=None):
+        occurrences.append((id(member), node, member, parent))
         for child, child_node in zip(member.children, node['children']):
-            walk(child, child_node)
+            walk(child, child_node, member)
     walk(mobject, data)
-    if len({key for key, _ in occurrences}) == len(occurrences):
+    if len({entry[0] for entry in occurrences}) == len(occurrences):
         return data
-    last = {key: index for index, (key, _) in enumerate(occurrences)}
-    for index, (key, node) in enumerate(occurrences):
+    last = {entry[0]: index for index, entry in enumerate(occurrences)}
+    for index, (key, node, member, parent) in enumerate(occurrences):
         if last[key] != index:
             node['opacity'], node['_shared_copy'] = 0, True
+            continue
+        ref = _PARENTS.get(member)
+        home = ref() if ref is not None else None
+        if home is None or home is parent or not any(child is member for child in home.children):
+            continue
+        # The member's state is in its own parent's frame; the drawn occurrence sits under
+        # another parent, so pose it through the world into that parent's frame.
+        frames = [_world_frame([owner, *_posed_ancestors(owner)], collapsed=True) for owner in (home, parent)]
+        if frames[1][0]:
+            node.update(_pose_snapshot(_pose_snapshot(node, frames[0], inverse=False), frames[1]))
     return data
 
 
@@ -15921,6 +15942,15 @@ def _expose_snapshot(saved, mobject, snapshot, again=False):
                 member = (VGroup() if child.get('type') == 'vgroup' else
                           VMobject() if child.get('type') in _PATH_TYPES else Mobject())
             _PARENTS[member] = weakref.ref(mobject)
+        ref = _PARENTS.get(member)
+        home = ref() if ref is not None else None
+        if (home is not None and home is not mobject and not child.get('_shared_copy')
+                and any(other is member for other in home.children)):
+            # A member drawn under a second parent (see _mark_shared) lives in its own
+            # parent's frame.
+            frames = [_world_frame([owner, *_posed_ancestors(owner)], collapsed=True) for owner in (mobject, home)]
+            if frames[1][0]:
+                child = _pose_snapshot(_pose_snapshot(child, frames[0], inverse=False), frames[1])
         _expose_snapshot(saved, member, child, again)
         children.append(member)
     mobject.children = children

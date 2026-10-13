@@ -805,6 +805,31 @@ class AnimationApiTests(unittest.TestCase):
             '          [type(d).__name__, isinstance(d, DashedLine), isinstance(d, Line), d.dash_length]]\n'),
             [['Square', 'VectorizedPoint'], 0.01, ['Ellipse', 'Ellipse', 'Ellipse'], ['DashedLine', True, True, 0.05]])
 
+    def test_groups_holding_an_arrow_and_its_own_tip_move_the_tip_once(self):
+        # VGroup(*arrow.family_members_with_points()) shares the tip; Community moves it once.
+        self.assertEqual(scene_values(
+            'R = lambda p: [round(float(v), 4) + 0.0 for v in p[:2]]\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        global result\n'
+            '        o = Arrow(LEFT, RIGHT).rotate(1)\n'
+            '        g = VGroup(*o.family_members_with_points())\n'
+            '        result = [R(g.get_center())]\n'
+            '        g.shift(UP).rotate(1)\n'
+            '        result += [R(g.get_center()), R(o.tip.get_center()), R(o.get_start())]\n'
+            '        self.play(FadeOut(g, shift=RIGHT * 2))\n'
+            'S().render()\n'),
+            [[0.0, 0.0], [-0.0067, 1.0], [-0.1665, 1.4864], [0.3121, 0.318]])
+        frame = json.loads(lite.render_scene(
+            'from manim import *\n'
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = Arrow(LEFT, RIGHT).rotate(1)\n'
+            '        self.add(VGroup(*o.family_members_with_points()))\n'))['frames'][-1]['mobjects'][0]
+        drawn = frame['children'][1]
+        self.assertEqual([round(v, 4) for v in drawn['position'][:2]] + [round(drawn['angle'], 4)],
+                         [0.5607, 0.4838, -2.1416])
+
     def test_members_of_collapsed_families_report_world_bounds(self):
         self.assertEqual(scene_values(
             'R = lambda p: [round(float(v), 4) + 0.0 for v in p[:2]]\n'

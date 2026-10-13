@@ -1118,3 +1118,8 @@ the group `opacity` channel), point paddings and get_point_mobject take the owne
 (`_match_snapshot_style`/match_style), and sampled pointless group nodes keep the start style.
 `_own_shaft` also hoists posed bezierpath shafts (e.g. after apply_complex_function), cut at the
 tip bases; `_expose_snapshot` pairs a hoisted sample's children with `_number_line_members`.
+Shared members (a group holding an arrow and its own tip, as family_members_with_points
+builds): containers move, scale, rotate and bound only `_moved_children` (members not reached
+through another child), so the tip moves once; `_mark_shared` re-poses the drawn (last)
+occurrence from its real parent's frame into the containing one, and `_expose_snapshot`
+inverts that for the live member.
