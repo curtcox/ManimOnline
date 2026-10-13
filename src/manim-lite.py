@@ -5561,6 +5561,9 @@ class TipableVMobject(VMobject):
     def pop_tips(self):
         # Community's pop_tips: remove the tips, then put_start_and_end_on(their points),
         # which moves any other members with the shaft.
+        if (self._type not in ('line', 'arrow', 'bezierpath', 'polyline', 'vgroup') and
+                self._tips_by_role() and self.get_points()):
+            self._materialize_path()
         points = {role: Vector(tip.tip_point) for role, tip in self._tips_by_role().items()}
         drawn = self._drawn_ends() if points else None
         members = [child for child in self.children if child.__dict__.get('_tip_role') not in ('start', 'end')]
@@ -6469,6 +6472,12 @@ class Line(TipableVMobject):
 
     def put_start_and_end_on(self, start, end):
         start, end = self._endpoints(start, end)
+        if self._type not in ('line', 'arrow'):
+            # Community's Line regenerates a straight path when its own ends coincide exactly.
+            current_start, current_end = self.get_start_and_end()
+            if all(a == b for a, b in zip(current_start, current_end)) and not self.get_tips().children:
+                return self.set_points_by_ends(start, end)
+            return TipableVMobject.put_start_and_end_on(self, start, end)
         self._unfreeze_shaft()
         # Encode the requested endpoints in the current transform's local space.
         # This keeps ordinary endpoint animations linear even on rotated lines.
@@ -6739,6 +6748,9 @@ class Arrow(Line):
                 about_point = Vector((s+e)/2+(edge[i] > 0)*abs(e-s)/2-(edge[i] < 0)*abs(e-s)/2
                                      for i,(s,e) in enumerate(zip(start,end)))
             Line.put_start_and_end_on(self,about_point,about_point)
+            if self.get_tips().children:
+                # A zero-length shaft is never cut at the tip bases.
+                self._shaft_fixed = True
             self.stroke_width = 0
             return self
         # Community pops the tips, scales the bare line (so default pivots come from its

@@ -550,6 +550,27 @@ class AnimationApiTests(unittest.TestCase):
             's = S(); s.render(); result = [s.same, s.tip, sorted(set(s.lefts))]\n'),
             [True, [-1.0, -1.0, 0.0], [1.5]])
 
+    def test_zero_scaled_tipped_arrow_keeps_collapsed_shaft(self):
+        # Community 0.22: re-adding tips to a zero-length shaft never cuts it at their bases.
+        self.assertEqual(scene_values(
+            'a, d = Arrow(LEFT * 3, RIGHT * 2).scale(0), DoubleArrow(LEFT * 3, RIGHT * 2).scale(0)\n'
+            'result = [[list(m.points[0]), list(m.points[-1]), m.get_left()[0], m.get_right()[0]] for m in (a, d)]\n'),
+            [[[-0.5, 0.0, 0.0], [-0.5, 0.0, 0.0], -0.5, -0.15]] * 2)
+
+    def test_closed_line_regenerates_between_new_ends(self):
+        # Community 0.22: Line.put_start_and_end_on (also via pop_tips and Arrow.scale)
+        # regenerates a straight path when the own ends coincide exactly.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        l = Line(LEFT, RIGHT); l.become(Square()); l.put_start_and_end_on(LEFT, UP)\n'
+            '        v = Vector(UP + RIGHT); self.play(Transform(v, Square().shift(LEFT)), run_time=0.2)\n'
+            '        a, b = v.copy(), v.copy(); a.scale(0.5); b.put_start_and_end_on(LEFT, RIGHT)\n'
+            '        self.out = [[len(m.points), list(m.points[0]), list(m.points[-1])] for m in (l, a, b)]\n'
+            's = S(); s.render(); result = s.out\n'),
+            [[4, [-1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], [4, [-0.25, 0.75, 0.0], [-0.75, 0.25, 0.0]],
+             [4, [-1.0, 0.0, 0.0], [1.0, 0.0, 0.0]]])
+
     def test_color_values_operators_and_helpers(self):
         self.assertEqual(scene_values(
             'result = [repr(WHITE / 2), list(WHITE / 2), repr(~RED), int(RED), RED[0], repr(RED & BLUE),\n'

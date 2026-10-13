@@ -1074,3 +1074,7 @@ Never complete an animation by assigning a deep-copied `__dict__`: members becom
 copies (no `_PARENTS`), so scene calls on them skip world placement. Use library become.
 `_snapshot_lerp`'s same-shape path applies `_lerp_pose` to every node whose pose turns, so
 equivalent angles (differing by 2π, e.g. re-tipped copies) do not spin.
+Arrow.scale(0) freezes the collapsed shaft (`_shaft_fixed`): Community never cuts a zero-length
+shaft at the tip bases. Line.put_start_and_end_on on a non-line own path (after become/Transform)
+regenerates a straight path when the ends coincide exactly, else maps the family generically;
+pop_tips materializes analytical own paths first, so Arrow.scale on a morphed arrow follows suit.
