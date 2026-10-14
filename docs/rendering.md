@@ -2567,3 +2567,15 @@ gallery includes a child panel inside a rotated square, and browser export pixel
 checks distinguish its upper/lower colors from the former incorrect direction.
 Shared members with ambiguous parent placement and exact sampled animation bounds
 remain parity work.
+
+
+Verification (2026-10-14, 2D family gradients): all 731 Python and 124 JavaScript
+tests passed in CI. Bundled local Python passed with one Pygments skip. Local
+Chromium and WebKit, and CI Chromium/Firefox/WebKit, passed halfway-fade and nested
+gradient SVG-to-canvas pixel checks as well as DOT, Manim, NumPy, 3D and raster
+paint checks. The deployed gallery showed all three panels at four seconds,
+removed all shape rectangles at eight seconds, and switched to three DOT nodes.
+The published browser initially retained v348 after an incomplete offline update;
+Retry offline setup and Update and reload installed v349 and the nested source.
+Both implementation commits passed CI and Pages deployment. Exact animated bounds,
+ambiguous shared-parent placement and Cairo pixel parity remain open.
