@@ -491,6 +491,15 @@ def _foreign_members(mobject):
     return found
 
 
+def _cut_subdivided_tips(mobject):
+    """Tips subdivided by alignment keep Community's shaft cut at their length-weighted base."""
+    for member in mobject.get_family():
+        if member.__dict__.pop('_subdivided_tip', None):
+            parent = _parent_of(member)
+            if isinstance(parent, TipableVMobject):
+                parent._cut_shaft()
+
+
 def _with_foreign_world(mobject, function, *args, **kwargs):
     """function(...) with mobject's foreign members (see _foreign_members) in world coordinates."""
     members = _foreign_members(mobject)
@@ -4008,9 +4017,12 @@ class Mobject:
                         signature(aligned) != signature(mobject)):
                     become = Mobject.become
                     getattr(become, '__wrapped__', become)(mobject, aligned)
+                    _cut_subdivided_tips(mobject)
                 mobject = aligned
         become = Mobject.become
-        return getattr(become, '__wrapped__', become)(self, mobject, *args, **kwargs)
+        result = getattr(become, '__wrapped__', become)(self, mobject, *args, **kwargs)
+        _cut_subdivided_tips(self)
+        return result
 
     def _alignable(self, receiving=False):
         """Whether Lite's family matches Community's submobject structure (no text, SVG or
@@ -4125,6 +4137,9 @@ class Mobject:
                 if len(aligned.get_points()) != len(theirs.get_points()):
                     if tipped:
                         target._freeze_shaft()
+                    if target.__dict__.get('_tip_role') in ('start', 'end'):
+                        # Subdivision moves the tip's cubic-array midpoint off Community's cut.
+                        target._subdivided_tip = True
                     lengths = aligned.__dict__.get('subpath_lengths')
                     VMobject.set_points(target, aligned.get_points())
                     if lengths:
@@ -4843,7 +4858,7 @@ class Mobject:
         center = self._geometry_center()
         result = _snapshot_copy({key: value for key, value in self.__dict__.items()
                                 if (key in _POINT_KEYS and type(value) is list or not _holds_mobject(value) and not callable(value)) and
-                                key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_scalar_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache', '_flow_points', '_name', '_mobject_points', '_scene_keys', '_init_positioning_axis', '_community_values', '_arc_ends') and
+                                key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_scalar_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache', '_flow_points', '_name', '_mobject_points', '_scene_keys', '_init_positioning_axis', '_community_values', '_arc_ends', '_subdivided_tip') and
                                 key not in self._frame_excluded})
         result['type'] = result.pop('_type')
         result['geometry_center'] = list(center)
@@ -7273,8 +7288,10 @@ class Arrow(Line):
         about_point,about_edge = kwargs.get('about_point'),kwargs.get('about_edge')
         if about_point is not None and about_edge is not None:
             raise ValueError('Pass about_point or about_edge, not both')
-        if factor == 0 and self._type in ('line', 'arrow'):
+        if factor == 0 and self._type in ('line', 'arrow') and all(
+                child.__dict__.get('_tip_role') in ('start', 'end') for child in self.children):
             # The collapsed shaft has no direction: Community turns each tip to point along -x.
+            # (Other members take the general path: put_start_and_end_on would scale again.)
             self._unfreeze_shaft()
             if about_point is None:
                 start,end = self.get_start_and_end()
@@ -14817,6 +14834,9 @@ class Transform(_PathOptions, Animation):
             return rate_func(max(0, min(1, alpha * full - next(index) * self.lag_ratio)))
         return _sample_transform(plan, rate_func(alpha), self._path, member_alpha)
 
+    def _before_become(self):
+        pass
+
     def finish(self, scene):
         if not (abs(self.rate_func(1)) < 1e-9 and not self.reverse_rate_function):
             # Like Community's final interpolate(rate_func(1)), a there-and-back transform
@@ -14832,7 +14852,9 @@ class Transform(_PathOptions, Animation):
                     # Community interpolates only members with points: a pointless root keeps its
                     # style (.animate's _MethodAnimation.finish reapplies the methods instead).
                     target.match_style(self.mobject, family=False)
+            self._before_become()
             self.mobject.become(target)
+            _cut_subdivided_tips(self.mobject)
             if self._path and not (isinstance(self._path, _REAL) and abs(self._path) == math.pi):
                 # Community ends a curved path at the target only up to rounding, so a closed
                 # outline's ends no longer coincide exactly (see Arrow.scale). A half turn
@@ -15557,6 +15579,14 @@ class Animate(Transform):
             for name, args, kwargs in self.operations:
                 getattr(self.target, name)(*args, **kwargs)
         super().begin(scene)
+
+    def _before_become(self):
+        if self._builder and self.operations and self.__dict__.get('_overridden') is None:
+            # Community's _MethodAnimation.finish applies the methods to the mobject itself
+            # before the final interpolation (to the target aligned at begin), so
+            # restructuring methods (Arrow.scale re-adding its tips) keep members in their slots.
+            for name, args, kwargs in self.operations:
+                _call_as_scene(getattr(self.mobject, name), *args, **kwargs)
 
     def __getattr__(self, name):
         if name.startswith('_'):

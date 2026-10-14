@@ -2179,6 +2179,22 @@ class AnimationApiTests(unittest.TestCase):
             's = S(); s.render(); result = s.out\n'),
             [[0.0, -2.0, 0.0], [3.0, 0.0, 0.0], 28, 16])
 
+    def test_animate_reapplies_methods_so_arrow_members_keep_their_slots(self):
+        # _MethodAnimation.finish runs Arrow.scale on the mobject itself (tips re-added last);
+        # the tip subdivided to match the Dot keeps the shaft cut at its base.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = Arrow(LEFT, RIGHT).add(Dot())\n'
+            '        z = o.copy().scale(0)\n'
+            '        self.play(o.animate.scale(0.5, about_edge=UL))\n'
+            '        c = o.copy().scale(0.7)\n'
+            '        self.out = [z.get_corner(UR), [type(m).__name__ for m in o.submobjects],\n'
+            '                    c[1].get_corner(DL), c.get_corner(DL), c.get_corner(UR)]\n'
+            's = S(); s.render(); result = s.out\n'),
+            [[0.35, 0.175, 0.0], ['Dot', 'ArrowTriangleFilledTip'], [-0.5355, 0.04, 0.0],
+             [-0.6375, -0.1228, 0.0], [-0.1125, 0.2272, 0.0]])
+
     def test_rotate_and_dashed_endpoints_follow_community_finishes(self):
         self.assertEqual(scene_values(
             'class S(Scene):\n'

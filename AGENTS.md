@@ -1243,3 +1243,11 @@ Fuzz generator gen9.py (H suites) covers polygrams, braces, charts, planes and r
 Transform.finish aligns targets that are only receiver-alignable (`_alignable(True)`, e.g. planes
 and axes) like scene become; in `_aligned_target` a NumberLine member facing a shafted NumberLine
 pairs only `_number_line_members` and keeps the target's shaft slot (both shafts are own points).
+`.animate` builders follow _MethodAnimation.finish: Transform.finish computes the aligned target
+first, then `_before_become` re-applies the recorded methods to the live mobject (scene calls),
+then becomes the target, so restructuring methods (Arrow.scale re-adding tips last) keep member
+identities in their slots. Tips that `_aligned_target` subdivides get `_subdivided_tip` and
+`_cut_subdivided_tips` cuts their parent's shaft at the length-weighted base (Community's cut
+survives subdivision; the cubic-array midpoint does not). Arrow.scale(0) with non-tip members
+takes the general pop/scale/re-add path (the literal put_start_and_end_on would recurse).
+Fuzz generator gen10.py (J suites): nested posed groups, target animations, scene restructuring.
