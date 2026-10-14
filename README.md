@@ -1688,3 +1688,14 @@ gallery includes a child panel inside a rotated square, and browser export pixel
 checks distinguish its upper/lower colors from the former incorrect direction.
 Shared members with ambiguous parent placement and exact sampled animation bounds
 remain parity work.
+
+
+The **Copy styles across different shapes** example copies fill/stroke/background
+color and opacity stops, widths, sheen and raster paint without replacing target
+geometry. `match_style` repeats identities when family sizes differ and uses a
+leaf source's style for receiver children; it does not add/remove children.
+Full `get_style`/`set_style` round trips retain all supported opacity stops.
+Explicit RGBA gradients do not gain duplicated sheen stops during copying.
+Pillow loads automatically for `background_image` style arguments. This extends
+the Lite style representation; exact stored-RGBA regeneration and every Community
+sheen-reset edge case remain parity work.

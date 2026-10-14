@@ -2579,3 +2579,14 @@ The published browser initially retained v348 after an incomplete offline update
 Retry offline setup and Update and reload installed v349 and the nested source.
 Both implementation commits passed CI and Pages deployment. Exact animated bounds,
 ambiguous shared-parent placement and Cairo pixel parity remain open.
+
+
+The **Copy styles across different shapes** example copies fill/stroke/background
+color and opacity stops, widths, sheen and raster paint without replacing target
+geometry. `match_style` repeats identities when family sizes differ and uses a
+leaf source's style for receiver children; it does not add/remove children.
+Full `get_style`/`set_style` round trips retain all supported opacity stops.
+Explicit RGBA gradients do not gain duplicated sheen stops during copying.
+Pillow loads automatically for `background_image` style arguments. This extends
+the Lite style representation; exact stored-RGBA regeneration and every Community
+sheen-reset edge case remain parity work.

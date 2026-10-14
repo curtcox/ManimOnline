@@ -84,7 +84,8 @@ test('field image factories request Pillow without requiring an explicit PIL imp
   for (const source of ['from PIL import Image', 'field.get_colored_background_image()',
                         'field.get_colored_background_image (sampling_rate=10)',
                         'StreamLines(lambda p: p)', 'shape.color_using_background_image(image)',
-                        'factory = field.get_colored_background_image', 'shape.match_background_image(other)']) {
+                        'factory = field.get_colored_background_image', 'shape.match_background_image(other)',
+                        'shape.set_style(background_image=data_uri)']) {
     assert.equal(requiresPillow(source), true);
   }
   assert.equal(requiresPillow('ImageMobject([[255]])'), false);

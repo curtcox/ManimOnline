@@ -77,7 +77,8 @@ const RASTER_PAINT = [
   '        image.putpixel((0,1), (0,255,0))',
   '        image.putpixel((1,1), (255,255,0))',
   '        box = Rectangle(width=config.frame_width,height=config.frame_height,fill_opacity=1,stroke_width=0)',
-  '        box.color_using_background_image(image)',
+  '        template = Square(fill_opacity=1,stroke_width=0).color_using_background_image(image)',
+  '        box.match_style(template)',
   '        self.play(FadeIn(box),run_time=0.2)',
   '        self.wait(0.2)',
 ].join('\n');

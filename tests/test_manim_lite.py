@@ -9174,6 +9174,91 @@ self.play(FadeOut(shape),run_time=2,rate_func=linear)""")
         parent.shift(3*lite.UP)
         self.assertEqual(parent.to_dict()['children'][0]['gradient_points'],old)
 
+    def test_match_style_preserves_all_channels_geometry_and_callbacks(self):
+        source = lite.Circle(fill_color=[lite.RED,lite.GREEN],fill_opacity=[.2,.8],
+                             stroke_color=[lite.BLUE,lite.WHITE],stroke_opacity=[.4,.9],stroke_width=7,
+                             sheen_factor=.2,sheen_direction=lite.RIGHT)
+        source.set_background_stroke([lite.PURPLE,lite.YELLOW],width=11,opacity=[.3,.7])
+        receiver = lite.Square().shift(2*lite.UP).rotate(lite.PI/5).scale(1.3)
+        callback = lambda mob: None
+        receiver.add_updater(callback).save_state()
+        points = point_list(receiver)
+        checkpoint = receiver._saved_state
+        source_before = source.to_dict()
+        receiver.match_style(source)
+        for channel in ('fill','stroke','background_stroke'):
+            actual, expected = receiver._channel_rgbas(channel), source._channel_rgbas(channel)
+            self.assertEqual(len(actual), len(expected))
+            for row, target in zip(actual, expected): self.assertPointAlmostEqual(row,target)
+        self.assertEqual((receiver.stroke_width,receiver.background_stroke_width,receiver.sheen_factor), (7,11,.2))
+        self.assertEqual(receiver.sheen_direction,lite.RIGHT)
+        self.assertEqual(point_list(receiver), points)
+        self.assertIs(receiver._saved_state, checkpoint)
+        self.assertEqual(receiver.updaters,[callback])
+        self.assertEqual(source.to_dict(), source_before)
+        self.assertEqual(receiver.to_dict()['fill_color'],source_before['fill_color'])
+        copy = lite.Square().set_style(**source.get_style())
+        for row, target in zip(copy.get_stroke_rgbas(), source.get_stroke_rgbas()):
+            self.assertPointAlmostEqual(row,target)
+        self.assertEqual(list(copy.get_stroke_colors(background=True)),[lite.PURPLE,lite.YELLOW])
+
+    def test_style_matching_pairs_unequal_families_and_leaf_sources(self):
+        left = lite.VGroup(*[lite.Dot(color=lite.WHITE) for _ in range(5)])
+        right = lite.VGroup(lite.Dot(color=lite.RED),lite.Dot(color=lite.BLUE))
+        identities = [id(child) for child in left.children]
+        left.match_style(right)
+        self.assertEqual([child.get_color() for child in left.children], [lite.RED]*3+[lite.BLUE]*2)
+        self.assertEqual([id(child) for child in left.children],identities)
+        leaf = lite.Circle(color=lite.GREEN,fill_opacity=.4)
+        left.match_style(leaf)
+        self.assertEqual([child.get_color() for child in left.children],[lite.GREEN]*5)
+        short = lite.VGroup(lite.Dot(),lite.Dot())
+        long = lite.VGroup(*[lite.Dot(color=color) for color in [lite.RED,lite.GREEN,lite.BLUE,lite.YELLOW,lite.PURPLE]])
+        short.match_style(long)
+        self.assertEqual([child.get_color() for child in short.children],[lite.BLUE,lite.PURPLE])
+        children_before = [child.to_dict() for child in left.children]
+        left.match_style(lite.Circle(color=lite.RED),family=False)
+        self.assertEqual([child.to_dict() for child in left.children],children_before)
+
+    def test_sheen_does_not_duplicate_explicit_rgba_stops(self):
+        shape = lite.Square(fill_color=[lite.RED,lite.BLUE],fill_opacity=1,sheen_factor=.3)
+        shape.set_background_stroke(lite.BLUE,width=8,opacity=.6)
+        frame = shape.to_dict()
+        self.assertEqual(frame['fill_color'],[lite.RED,lite.BLUE])
+        self.assertEqual(len(frame['background_stroke_color']),2)
+        shape.set_stroke(lite.GREEN,opacity=[.2,.8])
+        frame = shape.to_dict()
+        self.assertEqual(frame['stroke_color'],lite.GREEN)
+        self.assertEqual(frame['stroke_opacities'],[.2,.8])
+
+    def test_style_matching_copies_raster_paint_without_geometry_or_source_mutation(self):
+        image = [[[255,0,0],[0,0,255]],[[0,255,0],[255,255,0]]]
+        source = lite.Square(fill_opacity=1,stroke_width=0).color_using_background_image(image)
+        receiver = lite.Circle(radius=.7).shift(3*lite.RIGHT)
+        before_points = point_list(receiver)
+        before = source.to_dict()
+        receiver.match_style(source)
+        self.assertIs(receiver.get_background_image(),image)
+        self.assertEqual(receiver.to_dict()['raster_background'],before['raster_background'])
+        self.assertEqual(receiver.fill_opacity,1)
+        self.assertEqual(receiver.stroke_width,0)
+        self.assertEqual(point_list(receiver),before_points)
+        self.assertEqual(source.to_dict(),before)
+
+    def test_style_copy_gallery_preserves_shapes_and_cleans_up(self):
+        result = json.loads(lite.render_scene((ROOT / 'examples/style_copy_scene.py').read_text()))
+        self.assertEqual(result['duration'],8)
+        before = result['frames'][15]['mobjects'][1]['children']
+        after = result['frames'][60]['mobjects'][1]['children']
+        self.assertEqual([child['type'] for child in before],[child['type'] for child in after])
+        for initial, styled in zip(before,after):
+            for key in ('position','angle','geometry_scale','side_length','vertices','radius'):
+                if key in initial: self.assertEqual(styled[key],initial[key])
+            self.assertEqual(styled['background_stroke_color'],[lite.PURPLE,lite.RED])
+            self.assertEqual(styled['background_stroke_opacities'],[.2,.9])
+            self.assertEqual(styled['fill_color'],[lite.BLUE,lite.YELLOW])
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+
     def test_sheen_caps_joints_and_stroke_scaling_reach_frames(self):
         circle = lite.Circle(fill_opacity=1).set_sheen(-0.3, lite.DR)
         data = circle.to_dict()

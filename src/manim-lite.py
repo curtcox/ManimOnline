@@ -3678,21 +3678,18 @@ class Mobject:
         if isinstance(fill_opacity, list) and len(fill_opacity) == 1:
             fill_opacity = fill_opacity[0]
         background = single(kwargs.get('background_stroke_color'))
-        if isinstance(background, list):
-            kwargs['background_stroke_color'] = background[0]
-        elif background is not None:
-            kwargs['background_stroke_color'] = background
-        if kwargs.get('background_image') is not None:
-            self.color_using_background_image(kwargs['background_image'])
+        self.set_fill(fill_color, fill_opacity, family=family)
+        self.set_stroke(stroke_color, stroke_width, stroke_opacity, family=family)
+        if any(kwargs.get(key) is not None for key in
+               ('background_stroke_color', 'background_stroke_width', 'background_stroke_opacity')):
+            self.set_background_stroke(background, kwargs.get('background_stroke_width'),
+                                       kwargs.get('background_stroke_opacity'), family=family)
         if kwargs.get('sheen_factor') is not None or kwargs.get('sheen_direction') is not None:
             self.set_sheen(self.sheen_factor if kwargs.get('sheen_factor') is None else kwargs['sheen_factor'],
                            kwargs.get('sheen_direction'), family=family)
-        if any(kwargs.get(key) is not None for key in
-               ('background_stroke_color', 'background_stroke_width', 'background_stroke_opacity')):
-            self.set_background_stroke(kwargs.get('background_stroke_color'), kwargs.get('background_stroke_width'),
-                                       kwargs.get('background_stroke_opacity'), family=family)
-        self.set_fill(fill_color, fill_opacity, family=family)
-        return self.set_stroke(stroke_color, stroke_width, stroke_opacity, family=family)
+        if kwargs.get('background_image') is not None:
+            self.color_using_background_image(kwargs['background_image'])
+        return self
 
     def set_background_stroke(self, color=None, width=None, opacity=None, family=True, **kwargs):
         """Community's background stroke: drawn behind the fill (e.g. index labels, braces)."""
@@ -3832,7 +3829,7 @@ class Mobject:
                          stroke_color=self.get_stroke_color())
         else:
             style.update(fill_color=self.get_fill_colors(), fill_opacity=self.get_fill_opacities(),
-                         stroke_color=self.get_stroke_colors(),
+                         stroke_color=self.get_stroke_colors(), stroke_opacity=self.get_stroke_opacities(),
                          background_stroke_color=self.get_stroke_colors(background=True),
                          background_stroke_width=self.get_stroke_width(background=True),
                          background_stroke_opacity=self.get_stroke_opacities(background=True),
@@ -3875,12 +3872,13 @@ class Mobject:
         if not isinstance(mobject, Mobject):
             raise TypeError('Style matching expects a Mobject')
         self.color = mobject.color
-        self.set_fill(mobject.fill_color, mobject.fill_opacity, family=False)
-        self.set_stroke(mobject.stroke_color, mobject.stroke_width, mobject.stroke_opacity, family=False)
-        if family:
-            # Community pairs children by position after aligning family sizes;
-            # here unmatched children keep their style.
-            for child, source in zip(self.children, mobject.children):
+        self.set_style(**mobject.get_style(), family=False)
+        if family and self.children:
+            # Community extends the shorter family by repeated identities; it
+            # never adds/removes geometry just to match styles.
+            sources = mobject.children or [mobject]
+            receivers, sources = make_even(self.children, sources)
+            for child, source in zip(receivers, sources):
                 child.match_style(source)
         return self
 
@@ -4893,11 +4891,17 @@ class Mobject:
         """Community's Cairo gradients: colors (plus their sheen-lightened copies) run
         from center - offset to center + offset, offset = half extents times the sheen direction."""
         if self.sheen_factor:
-            def sheen(colors):
-                colors = colors if isinstance(colors, list) else [colors]
-                lit = [_rgb_color([min(1, max(0, v + self.sheen_factor)) for v in _color_rgb(c)]) for c in colors]
-                return list(colors) + lit
-            result['fill_color'], result['stroke_color'] = sheen(self.fill_color), sheen(self.stroke_color)
+            for channel in ('fill', 'stroke', 'background_stroke'):
+                color = result.get(channel + '_color')
+                if color is None:
+                    continue
+                colors = color if isinstance(color, list) else [color]
+                alphas = result.get(channel + '_opacities') or [result.get(channel + '_opacity', 1)]
+                # Community adds a lit stop only when the normalized RGBA array
+                # has one row. Explicit color/opacity gradients already define it.
+                if len(colors) == len(alphas) == 1:
+                    lit = _rgb_color([min(1, max(0, v + self.sheen_factor)) for v in _color_rgb(colors[0])])
+                    result[channel + '_color'] = [colors[0], lit]
         if 'gradient_points' in result:
             return
         if self.shade_in_3d:

@@ -526,3 +526,10 @@ composed frame is inverted without mutating live objects or snapshot geometry.
 Negative parent scaling and repeated serialization have regression coverage, and
 browser pixel checks distinguish the nested panel's world color direction.
 Ambiguous shared-member parents and exact sampled animated bounds remain open.
+
+
+Style matching now copies all supported paint channels, opacity stops, sheen and
+raster references and follows Community's unequal-family pairing. Target geometry,
+identities, callbacks and saved state stay intact. Background color lists survive
+style round trips and explicit RGBA gradients no longer duplicate sheen colors.
+Exact stored-RGBA regeneration and sheen-reset edge cases remain open.

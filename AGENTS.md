@@ -1337,3 +1337,12 @@ Nested 2D gradient endpoints use _primary_posed_ancestors and _world_frame. Map
 family bounds into world coordinates, keep sheen_direction in that world frame,
 then invert the ancestor and own poses for local paint. Do not modify live geometry
 to measure it. Shared-member ambiguous parents and sampled animation bounds remain open.
+
+
+Read examples/style_copy_scene.py for full-channel style matching across unequal
+families. match_style uses set_style on the receiver and make_even child pairing;
+leaf sources repeat their own style. Keep geometry, callbacks and checkpoints.
+Full style dictionaries retain opacity arrays and all background color stops.
+_gradient_paint adds sheen only for a single normalized RGBA row, including
+background strokes; copied explicit gradients must not get duplicate lit stops.
+Stored-RGBA regeneration and sheen-reset edge cases remain open.
