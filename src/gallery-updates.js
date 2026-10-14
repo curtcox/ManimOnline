@@ -1,12 +1,10 @@
 /* Bring returning visitors' cached editors and catalogs up to the current release. */
 (() => {
   if (!('serviceWorker' in navigator)) return;
-  let controlled = Boolean(navigator.serviceWorker.controller);
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    // A first installation already has matching page code. An upgrade must reload
-    // the catalog and gallery scripts together; editor tabs preserve edits separately.
-    if (controlled) location.reload();
-    else controlled = true;
+    // The first claim can also replace a catalog reused from an older HTTP cache.
+    // Always reload matching gallery scripts; editor tabs preserve edits separately.
+    location.reload();
   });
   navigator.serviceWorker.register('service-worker.js', { updateViaCache: 'none' }).then(async registration => {
     const activate = () => registration.waiting?.postMessage({ type: 'activate-update' });
