@@ -63,6 +63,30 @@ test('formula gradients invert nested glyph coordinates for fill and background 
   } finally { delete global.DOMParser; }
 });
 
+test('formula viewport paint matches implicit translation and viewBox fitting', () => {
+  const viewport = new Element('svg');
+  for (const [key,value] of Object.entries({x:20,y:30,width:400,height:800,viewBox:'100 200 200 200'})) viewport.setAttribute(key,value);
+  viewport.hasAttribute = name=>viewport.getAttribute(name)!==null;
+  const path = new Element('path');path.setAttribute('d','M 0 0 L 1000 0');
+  path.hasAttribute = name=>path.getAttribute(name)!==null;
+  viewport.appendChild(path);
+  global.DOMParser = class { parseFromString() { return {documentElement:{children:[viewport]}}; } };
+  try {
+    const glyphs = new Map([['x',{svg:'<svg/>',viewBox:[0,-700,1000,900]}]]);
+    for (const [aspect,expected] of [['xMidYMid meet',[340,960,340,-1040]],['none',[340,630,340,-370]],
+                                    ['xMaxYMin slice',[320,630,320,-370]]]) {
+      viewport.setAttribute('preserveAspectRatio',aspect);
+      const nodes = renderer.renderMobject({type:'mathtex',text:'x',font_size:48,
+        fill_color:['#FF0000','#0000FF'],gradient_points:[[0,-1],[0,1]]},glyphs).querySelectorAll();
+      const leaf = nodes.find(e=>e.tag==='path');
+      const gradient = nodes.find(e=>e.getAttribute('id')===leaf.getAttribute('fill').slice(5,-1));
+      const actual = ['x1','y1','x2','y2'].map(k=>Number(gradient.getAttribute(k)));
+      expected.forEach((value,index)=>assert.ok(Math.abs(actual[index]-value)<1e-8));
+      assert.equal(nodes.find(e=>e.tag==='svg').getAttribute('preserveAspectRatio'),aspect);
+    }
+  } finally {delete global.DOMParser;}
+});
+
 test('disconnected cubic contours use separate moves and close individually', () => {
   const path = renderer.renderMobject({type:'bezierpath',curves:[
     [[0,0],[1,0],[1,1],[0,0]],

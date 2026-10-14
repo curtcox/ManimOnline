@@ -166,6 +166,12 @@ const GLYPH_GRADIENT = [
   '        self.wait(.2)',
 ].join('\n');
 
+const GLYPH_VIEWPORT = GLYPH_GRADIENT.replace(
+  '\\rule{8em}{8em}',
+  '\\left(\\begin{matrix}a\\\\b\\\\c\\\\d\\\\e\\\\f\\\\g\\\\h\\\\i\\\\j\\end{matrix}\\right)')
+  .replace('class GlyphGradient','class GlyphViewport')
+  .replace('        self.add(formula)','        formula.set_background_stroke([PURE_GREEN,WHITE],width=3)\n        self.add(formula)');
+
 async function open(browser, source) {
   const page = await browser.newPage();
   const errors = [];
@@ -237,7 +243,24 @@ async function renderManim(browser, source, verifyRaster = false) {
     }
     const paintOpaque = verifyRaster !== 'glyph' || [...preview.querySelectorAll('[opacity],[fill-opacity],[stop-opacity]')].every(e=>
       ['opacity','fill-opacity','stop-opacity'].every(name=>!e.hasAttribute(name) || Number(e.getAttribute(name))===1));
-    return { rasterPixels, paintOpaque, images: preview ? preview.querySelectorAll('image').length : 0, frames: Number(seek.max) + 1, paths: preview ? preview.querySelectorAll('path, circle, ellipse, polygon, polyline, rect, line').length : 0, codecs };
+    let viewportPaintMatches = true;
+    if (verifyRaster === 'viewport') {
+      const reference = preview.querySelector('g[aria-label]');
+      const endpoints = node => {
+        const paint = node.getAttribute('fill') === 'none' ? node.getAttribute('stroke') : node.getAttribute('fill');
+        const id = paint?.match(/^url\(#([^)]*)\)$/)?.[1];
+        const gradient = id && preview.querySelector('#'+id);
+        const matrix = node.getScreenCTM();
+        return gradient && matrix && [1,2].map(i=>new DOMPoint(Number(gradient.getAttribute('x'+i)),Number(gradient.getAttribute('y'+i))).matrixTransform(matrix));
+      };
+      const expected = reference && endpoints(reference);
+      const paths = [...preview.querySelectorAll('path')];
+      viewportPaintMatches = preview.querySelectorAll('svg').length>0 && expected && paths.length>0 && paths.every(path=>{
+        const actual = endpoints(path);
+        return actual && actual.every((point,i)=>Math.abs(point.x-expected[i].x)<.02 && Math.abs(point.y-expected[i].y)<.02);
+      });
+    }
+    return { rasterPixels, paintOpaque, viewportPaintMatches, images: preview ? preview.querySelectorAll('image').length : 0, frames: Number(seek.max) + 1, paths: preview ? preview.querySelectorAll('path, circle, ellipse, polygon, polyline, rect, line').length : 0, codecs };
   }, verifyRaster);
   await page.close();
   if (state.error) throw new Error('Manim render failed: ' + state.error);
@@ -280,11 +303,13 @@ async function renderManim(browser, source, verifyRaster = false) {
       const direction = await checkManim(browser, GLYPH_GRADIENT, 'nested');
       const [dr0,dg0,db0,da0,dr1,dg1,db1,da1] = direction.rasterPixels;
       if (!(db0>dr0+40 && dr1>db1+40 && dg0===0 && dg1===0 && da0===255 && da1===255)) throw new Error('Glyph gradient direction pixels: '+JSON.stringify(direction.rasterPixels));
+      const viewport = await checkManim(browser, GLYPH_VIEWPORT, 'viewport');
+      if (!viewport.viewportPaintMatches) throw new Error('Formula viewport gradient endpoints differ from browser coordinates');
       const depth = await checkManim(browser, THREE_D).catch(error => { throw new Error('3D scene: ' + error.message); });
       console.log(name + ': DOT ok; Manim ' + manim.frames + ' frames, ' + manim.paths +
                   ' shapes; NumPy scene ' + numpy.frames + ' frames, ' + numpy.paths +
                   ' shapes; 3D scene ' + depth.frames + ' frames, ' + depth.paths +
-                  ' shapes; field image ' + fieldImage.frames + ' frames, ' + fieldImage.images + ' image; raster paint/export and halfway gradient-fade and sheen-fade and nested gradient and style-morph and manual interpolation and glyph-style and glyph-direction pixels ok; video encoders ' + JSON.stringify(manim.codecs));
+                  ' shapes; field image ' + fieldImage.frames + ' frames, ' + fieldImage.images + ' image; raster paint/export and halfway gradient-fade and sheen-fade and nested gradient and style-morph and manual interpolation and glyph-style and glyph-direction pixels and viewport coordinates ok; video encoders ' + JSON.stringify(manim.codecs));
     } catch (error) {
       failed = true;
       console.log(name + ': FAILED ' + error.message);

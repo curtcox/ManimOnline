@@ -40,10 +40,32 @@ function svgPaintMatrix(value) {
   return matrix;
 }
 
+function svgPaintViewport(node) {
+  if (node.localName !== 'svg') return [1,0,0,1,0,0];
+  const x = Number(node.getAttribute('x') || 0), y = Number(node.getAttribute('y') || 0);
+  if (![x,y].every(Number.isFinite)) throw new Error('Invalid glyph viewport position');
+  const raw = node.getAttribute('viewBox');
+  if (!raw) return [1,0,0,1,x,y];
+  const box = raw.trim().split(/[\s,]+/).map(Number);
+  const width = Number(node.getAttribute('width')), height = Number(node.getAttribute('height'));
+  if (node.getAttribute('width') === null || node.getAttribute('height') === null ||
+      box.length !== 4 || !box.every(Number.isFinite) || box[2]<=0 || box[3]<=0 ||
+      ![width,height].every(Number.isFinite) || width<0 || height<0) throw new Error('Invalid glyph viewport dimensions');
+  let sx = width/box[2], sy = height/box[3];
+  const aspect = (node.getAttribute('preserveAspectRatio') || 'xMidYMid meet').trim();
+  if (aspect === 'none') return [sx,0,0,sy,x-box[0]*sx,y-box[1]*sy];
+  const match = /^x(Min|Mid|Max)Y(Min|Mid|Max)(?:\s+(meet|slice))?$/.exec(aspect);
+  if (!match) throw new Error('Invalid glyph viewport aspect ratio');
+  sx = sy = match[3] === 'slice' ? Math.max(sx,sy) : Math.min(sx,sy);
+  const align = {Min:0,Mid:.5,Max:1};
+  return [sx,0,0,sy,x+(width-box[2]*sx)*align[match[1]]-box[0]*sx,
+          y+(height-box[3]*sy)*align[match[2]]-box[1]*sy];
+}
+
 function glyphPaintPoints(root, points, unitScale) {
   const frames = new Map();
   function visit(node, parent) {
-    const m = multiplyPaintMatrices(parent,svgPaintMatrix(node.getAttribute('transform')));
+    const m = multiplyPaintMatrices(multiplyPaintMatrices(parent,svgPaintMatrix(node.getAttribute('transform'))),svgPaintViewport(node));
     const determinant = m[0]*m[3]-m[1]*m[2];
     if (determinant && Number.isFinite(determinant)) {
       const local = points.map(([x,y]) => {
@@ -1062,7 +1084,7 @@ const ManimRenderer = {
     // characters MathJax has no glyph for with a generic browser font.
     const tags = new Set(['g', 'svg', 'path', 'rect', 'line', 'polygon', 'polyline', 'circle', 'ellipse', 'text']);
     const attributes = ['d', 'transform', 'x', 'y', 'x1', 'y1', 'x2', 'y2', 'width', 'height', 'points', 'cx', 'cy', 'r', 'rx', 'ry',
-      'viewBox', 'font-size', 'font-style', 'font-weight'];
+      'viewBox', 'preserveAspectRatio', 'font-size', 'font-style', 'font-weight'];
     function copyGeometry(node) {
       if (!tags.has(node.localName)) throw new Error('Unsupported math SVG geometry: ' + node.localName);
       const element = document.createElementNS('http://www.w3.org/2000/svg', node.localName);

@@ -602,3 +602,13 @@ collapsed. The glyph-style gallery now uses vertical gradients, and the browser
 smoke checks a vertical MathJax rule with top/bottom exported pixels. Bounds still
 use rectangular glyph boxes, and sampled animation bounds, 3D glyph gradients,
 stored-RGBA/sheens and exact Cairo pixel parity remain open.
+
+
+MathJax's clipped delimiter pieces now include their nested SVG viewport offsets
+and numeric viewBox mapping in paint conversion. Default meet alignment, slice
+alignment and explicit nonuniform fitting preserve their SVG geometry; supported
+`preserveAspectRatio` values are retained when copying inert assets. Unit tests
+cover default and nonuniform viewport fitting. Browser smoke compares foreground
+and background gradient endpoints with native SVG coordinate transforms on tall
+delimiters, independently of the renderer's matrix arithmetic. Percentage viewport
+lengths, exact glyph outlines/bounds and 3D glyph paint remain open.
