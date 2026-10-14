@@ -25,6 +25,7 @@ async function check(engine) {
     for (const [name, result, expected] of [
       ['proxy timeout',{status:522,body:'error code: 522'},/AllOrigins .*HTTP 522.*Retry later/],
       ['rate limit',{json:{contents:'Error: rate limit exceeded',status:{http_code:502}}},/is.gd .*rate limit exceeded.*Wait at least one minute/],
+      ['database failure',{json:{contents:'Error, database insert failed',status:{http_code:200}}},/is.gd .*database insert failed.*problem with the shortening service.*Retry later/],
       ['large source',{json:{contents:'Error: URL too long.',status:{http_code:400}}},/URL too long.*Save to HashBin/],
       ['bad reply',{body:'not json',contentType:'text/plain'},/unreadable response.*Retry later/],
       ['unexpected URL',{json:{contents:'https://evil.test/link'}},/unexpected short-link address.*rejected/],

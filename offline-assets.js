@@ -1,6 +1,6 @@
 /** Exact offline dependencies. Bump VERSION whenever any listed local file changes. */
 const OfflineAssets = {
-  VERSION: 'manimonline-offline-v366',
+  VERSION: 'manimonline-offline-v367',
   local: [
     'src/modl.js', 'src/hashbin.js', 'src/hashbin-panel.js', 'examples/basic_diagram.modl',
     'examples/glyph_style_scene.py',

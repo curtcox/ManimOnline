@@ -71,21 +71,23 @@ class ShareClient {
       catch (_) { throw new ShareError('response', 'AllOrigins returned an unreadable response. Retry later, or choose Save to HashBin.'); }
       const upstreamStatus = Number(result?.status?.http_code);
       if (Number.isInteger(upstreamStatus) && upstreamStatus >= 400 &&
-          !(typeof result?.contents === 'string' && /^\s*Error:/i.test(result.contents))) {
+          !(typeof result?.contents === 'string' && /^\s*Error\b/i.test(result.contents))) {
         throw this.httpError('is.gd (shortening service)', upstreamStatus);
       }
       if (typeof result?.contents !== 'string' || !result.contents.trim() ||
-          (result.contents.length > 256 && !/^\s*Error:/i.test(result.contents))) {
+          (result.contents.length > 256 && !/^\s*Error\b/i.test(result.contents))) {
         throw new ShareError('response', 'AllOrigins returned an incomplete or unexpected response instead of a short link. Retry later, or choose Save to HashBin.');
       }
       const contents = result.contents.trim();
-      if (/^Error:/i.test(contents)) {
-        const detail = contents.replace(/^Error:\s*/i, '').replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 256);
+      if (/^Error\b/i.test(contents)) {
+        const detail = contents.replace(/^Error\b[\s:,]*/i, '').replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 256);
         const status = Number(result.status?.http_code);
         const guidance = /\brate[\s-]+limits?\b|\btoo many\b|\blimit exceeded\b/i.test(detail) || status === 502
           ? 'Wait at least one minute before retrying, or choose Save to HashBin.'
           : /too long|maximum.*length|length.*exceed/i.test(detail)
             ? 'Choose Save to HashBin to share this source without sending a long URL to is.gd.'
+            : /database|insert failed|maintenance|internal.*error/i.test(detail)
+              ? 'This is a problem with the shortening service. Retry later, or choose Save to HashBin.'
             : status === 400 || status === 406
               ? 'Copy the source link to check it, or choose Save to HashBin instead.'
               : 'Retry later, or choose Save to HashBin.';

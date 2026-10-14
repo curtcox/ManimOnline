@@ -105,12 +105,13 @@ test('is.gd rejection details and upstream failures survive the proxy response',
     ['Error: URL too long.',400,/without sending a long URL/],
     ['Error: Invalid original URL',400,/check it/],
     ['Error: Could not generate a short link',400,/check it/],
-    ['Error: Maintenance in progress',503,/Retry later/]
+    ['Error: Maintenance in progress',503,/Retry later/],
+    ['Error, database insert failed',200,/problem with the shortening service.*Retry later/]
   ]) {
     const client = new ShareClient({fetchLink:async()=>({ok:true,json:async()=>({contents,status:{http_code:status}})})});
     const result = await client.shorten(snapshot);
     assert.equal(result.error.code,'provider');
-    assert.ok(result.error.message.includes(contents.replace(/^Error: /,'')));
+    assert.ok(result.error.message.includes(contents.replace(/^Error[:,] /,'')));
     assert.match(result.error.message,guidance);
     assert.ok(!result.error.message.includes('..'));
   }
