@@ -890,7 +890,7 @@ self.play(d[2].animate.shift(UP*2))""")
         self.assertAlmostEqual(arc.get_bottom()[1],-0.9510565162951536)
         for bad in ('<svg><rect width="x"/></svg>','<html/>','<svg><path d="L 1 1"/></svg>'):
             with self.assertRaises(ValueError): lite.SVGMobject(bad)
-        with self.assertRaises(NotImplementedError): lite.SVGMobject('logo.svg')
+        with self.assertRaises(NotImplementedError): lite.SVGMobject('no-such-file.svg')
         with self.assertRaises(ValueError): lite.SVGMobject('<!DOCTYPE svg [<!ENTITY a "b">]><svg/>')
         with self.assertRaises(ValueError): lite.SVGMobject('<!DOCTYPE svg SYSTEM "a.dtd"><!DOCTYPE svg [<!ENTITY a "b">]><svg/>')
         plain=lite.SVGMobject('<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"\n "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">'

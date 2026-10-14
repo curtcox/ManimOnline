@@ -1240,3 +1240,6 @@ lengths: Python's sum() compensates exact floats but not np.float64), since sear
 Rotate.finish ends at rate_func(1) (wiggle/there_and_back return to the start). A tipped
 DashedLine's get_end is the last tip child's last point (Community's submobjects[-1].get_end()).
 Fuzz generator gen9.py (H suites) covers polygrams, braces, charts, planes and rarer animations.
+Transform.finish aligns targets that are only receiver-alignable (`_alignable(True)`, e.g. planes
+and axes) like scene become; in `_aligned_target` a NumberLine member facing a shafted NumberLine
+pairs only `_number_line_members` and keeps the target's shaft slot (both shafts are own points).

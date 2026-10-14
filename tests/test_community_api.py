@@ -2166,6 +2166,19 @@ class AnimationApiTests(unittest.TestCase):
             [[-1.5009, -0.7504], [-1.0009, -0.5004], [-0.5009, -0.2504], [-0.0009, -0.0004],
              [-0.5009, -0.2504, 0.0]])
 
+    def test_transform_into_a_plane_pads_its_empty_group_at_the_origin(self):
+        # align_data pushes the shape into a member facing PolarPlane's empty VGroup, whose
+        # get_point_mobject sits at the origin: the member collapses there.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = BackgroundRectangle(Circle(0.5), fill_opacity=0.5)\n'
+            '        p = PolarPlane(radius_max=1, size=2).shift(RIGHT * 2 + DOWN)\n'
+            '        self.play(Transform(o, p), run_time=0.2)\n'
+            '        self.out = [o.get_corner(DL), o.get_corner(UR), len(o.get_family()), len(o[1][0].points)]\n'
+            's = S(); s.render(); result = s.out\n'),
+            [[0.0, -2.0, 0.0], [3.0, 0.0, 0.0], 28, 16])
+
     def test_rotate_and_dashed_endpoints_follow_community_finishes(self):
         self.assertEqual(scene_values(
             'class S(Scene):\n'

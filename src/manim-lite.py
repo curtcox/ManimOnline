@@ -4078,6 +4078,10 @@ class Mobject:
                     return None
                 return target._point_from_world(origin)
             target_points = target.has_points() or isinstance(target, NumberLine) and _has_shaft(target)
+            # NumberLine onto NumberLine: the shafts are both sides' own points; only the
+            # other members pair up (become keeps the shaft slot).
+            shafts = (receiver is not None and id(receiver) in line_owns and isinstance(target, NumberLine)
+                      and _has_shaft(target))
             if has_points and not target_points:
                 sources.append((True, [], drawn(receiver)))
                 has_points = False
@@ -4101,7 +4105,7 @@ class Mobject:
                     leaf._replace_children([])
                     target = VGroup(*[_world_view(child) for child in members], leaf)
                     target.match_style(leaf, family=False)
-            elif (has_points and (root_points or not root) and receiver is not None
+            elif (not shafts and has_points and (root_points or not root) and receiver is not None
                   and pointy(mine := drawn(receiver)) and pointy(theirs := drawn(target))
                   and (isinstance(target, TipableVMobject) and target._tips_by_role()
                        or len(mine.get_points()) != len(theirs.get_points()))):
@@ -4125,12 +4129,13 @@ class Mobject:
                     VMobject.set_points(target, aligned.get_points())
                     if lengths:
                         target.subpath_lengths = lengths
-            members = list(target.children)
+            members = _number_line_members(target) if shafts else list(target.children)
+            kept = [child for child in target.children if child not in members] if shafts else []
             count = len(sources) - len(members)
             members = padded(members, count, point, lambda item: item.copy().fade(1))
             sources = padded(sources, -count, lambda: (True, [], None), lambda item: item)
             inner = local_origin()
-            members = [align(*pair, origin=inner) for pair in zip(sources, members)]
+            members = kept + [align(*pair, origin=inner) for pair in zip(sources, members)]
             if len(members) != len(target.children) or any(a is not b for a, b in zip(members, target.children)):
                 target._replace_children(members)
             return target
@@ -14819,7 +14824,7 @@ class Transform(_PathOptions, Animation):
             # callbacks and checkpoints. Community's align_data leaves the mobject with the
             # aligned family structure and point counts.
             target = self.target
-            if self.mobject._alignable(True) and target._alignable():
+            if self.mobject._alignable(True) and target._alignable(True):
                 target = self.mobject._aligned_target(target, root_points=True)
                 # (A NumberLine's own points are its shaft, so it takes the target's style.)
                 if (self.mobject.children and not _call_as_scene(self.mobject.has_points) and target.children
