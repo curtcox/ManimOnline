@@ -2473,3 +2473,36 @@ smoke rendered DOT, Manim, NumPy, 3D and the field image. Local Pyodide gallery
 playback showed one PNG color map with arrows and an advected marker at four
 seconds; the final frame had no image or shape geometry. Switching to DOT rendered
 three graph nodes. CI installs numpy, pillow and pygments to cover package tests.
+
+
+Try **Color paths from a screen image** (`examples/raster_paint_scene.py`).
+`color_using_background_image(image)` and `match_background_image(other)` now
+paint vector fills and strokes from a raster stretched over the current camera
+frame, following Community's background-colored path display. Inputs may be
+Pillow images, local image files or inert image data URIs; frames contain a PNG
+URI rather than the native image object. The API retains the original image for
+get_background_image/get_style, and None clears the paint. Invalid images fail
+before family style changes.
+
+The SVG renderer multiplies each complete posed path layer by the screen image
+in sRGB, retaining colors, fill/stroke alpha, creation progress and ancestor poses.
+The image stays aligned to the screen as a path moves or the camera pans/zooms.
+Inset camera views use their own source frame. SVG/PNG/video snapshots retain
+inert local filter definitions; one filter/image is shared per raster and view.
+Frame pooling also stores each raster string once across changing stream paths.
+
+Flat colored StreamLines now use Community's sampled background image instead
+of the previous gradient along each line's chord. Spatial streams retain the
+existing per-anchor gradient. Pillow loads automatically for StreamLines, raster
+paint methods, factory references and explicit imports. Pixel-camera APIs, exact
+Cairo antialiasing/transparent-raster arithmetic and complete spatial-stream color
+parity remain unfinished; this does not implement Mobject.get_image.
+
+
+Reference: [Community's background-colored vector display](https://docs.manim.community/en/stable/reference/manim.camera.camera.BackgroundColoredVMobjectDisplayer.html).
+Verification (2026-10-14): 721 Python tests ran successfully with one local Pygments
+skip, and all 120 Node tests passed. WebKit passed actual four-corner raster/export
+pixel checks; local Firefox has the documented profile-folder launch failure.
+Local Pyodide gallery playback showed the moving image-colored ring and flowing
+strokes, then no filters or shape geometry at eight seconds. Switching to DOT
+rendered three nodes. Pixel-camera APIs and exact Cairo raster parity remain open.

@@ -64,6 +64,8 @@ const ManimRenderer = {
     // Community strokes are stroke_width * 0.01 scene units, so they thicken
     // on screen as a moving camera zooms in (Cairo user-space line widths).
     this._strokeUnit = 0.01 * this.UNIT_SCALE;
+    this._rasterContext = { root: svg, filters: new Map() };
+    const rasterBounds = [center[0]-frameWidth/2, center[1]-frameHeight/2, frameWidth, frameHeight];
 
     // Sort drawable leaves globally, keeping each leaf's ancestor transforms.
     // A child can sit behind or in front of a shape outside its VGroup.
@@ -107,8 +109,10 @@ const ManimRenderer = {
       const view = views.get(leaf.camera_screen);
       const element = view ? this.renderCameraView(view, leaf, layers, mathGlyphs)
         : this.renderMobject(branch, mathGlyphs);
-      if (element) mainGroup.appendChild(element);
+      if (element) mainGroup.appendChild(!view && leaf.raster_background
+        ? this.renderRasterPaint(element, leaf.raster_background, rasterBounds) : element);
     }
+    delete this._rasterContext;
     delete this._strokeUnit;
     return svg;
   },
@@ -312,11 +316,68 @@ const ManimRenderer = {
       // Other displays' own boxes stay out of a view: no recursive cameras.
       if (layer.views.includes(view.id) || Number.isInteger(layer.leaf.camera_screen)) continue;
       const element = this.renderMobject(layer.branch, mathGlyphs);
-      if (element) content.appendChild(element);
+      if (element) content.appendChild(layer.leaf.raster_background
+        ? this.renderRasterPaint(element, layer.leaf.raster_background,
+          [sourceLeft, sourceBottom, sourceRight-sourceLeft, sourceTop-sourceBottom]) : element);
     }
     body.appendChild(content);
     group.appendChild(body);
     return group;
+  },
+
+  /** Multiply the complete posed vector layer by a screen-aligned image. */
+  renderRasterPaint(element, href, bounds) {
+    if (typeof href !== 'string' || !/^data:image\/png;base64,[A-Za-z0-9+/]+=*$/.test(href)) {
+      throw new Error('Invalid vector background image');
+    }
+    const [left,bottom,width,height] = bounds.map(value=>value*this.UNIT_SCALE);
+    const key = JSON.stringify(bounds);
+    const context = this._rasterContext;
+    let variants = context?.filters.get(href);
+    if (context && !variants) context.filters.set(href,variants = new Map());
+    let id = variants?.get(key);
+    let defs = null;
+    if (!id) {
+      id = `manim-raster-${this._rasterSerial = (this._rasterSerial || 0)+1}`;
+      defs = document.createElementNS(this.SVG_NS,'defs');
+      const filter = document.createElementNS(this.SVG_NS,'filter');
+      filter.setAttribute('id',id);
+      filter.setAttribute('filterUnits','userSpaceOnUse');
+      filter.setAttribute('primitiveUnits','userSpaceOnUse');
+      filter.setAttribute('color-interpolation-filters','sRGB');
+      for (const [name,value] of Object.entries({x:left,y:-bottom-height,width,height})) filter.setAttribute(name,value);
+      const image = document.createElementNS(this.SVG_NS,'feImage');
+      image.setAttribute('href',href);
+      image.setAttribute('preserveAspectRatio','none');
+      image.setAttribute('result','raster');
+      for (const [name,value] of Object.entries({x:left,y:-bottom-height,width,height})) image.setAttribute(name,value);
+      const composite = document.createElementNS(this.SVG_NS,'feComposite');
+      composite.setAttribute('in','SourceGraphic');
+      composite.setAttribute('in2','raster');
+      composite.setAttribute('operator','arithmetic');
+      for (const [name,value] of Object.entries({k1:1,k2:0,k3:0,k4:0})) composite.setAttribute(name,value);
+      filter.appendChild(image);
+      filter.appendChild(composite);
+      defs.appendChild(filter);
+      if (context) {
+        variants.set(key,id);
+        context.root.appendChild(defs);
+        defs = null;
+      }
+    }
+    // Filter image coordinates run top-to-bottom. Two flips preserve the path's
+    // existing world pose while making the raster agree with canvas pixel rows.
+    const outer = document.createElementNS(this.SVG_NS,'g');
+    outer.setAttribute('transform','scale(1,-1)');
+    if (defs) outer.appendChild(defs);
+    const filtered = document.createElementNS(this.SVG_NS,'g');
+    filtered.setAttribute('filter',`url(#${id})`);
+    const geometry = document.createElementNS(this.SVG_NS,'g');
+    geometry.setAttribute('transform','scale(1,-1)');
+    geometry.appendChild(element);
+    filtered.appendChild(geometry);
+    outer.appendChild(filtered);
+    return outer;
   },
 
   /**

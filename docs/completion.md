@@ -483,3 +483,11 @@ RGB image, usable directly in ImageMobject. Worker dependency detection, exact
 sample coordinates/colors, limits, serialization and advected-marker cleanup have
 regression coverage. Raster painting inside vector paths, per-pixel StreamLines
 coloring and pixel cameras remain unfinished.
+
+
+Raster-colored vector fills/strokes and flat StreamLines now use screen-aligned
+PNG paint with shared SVG filters and pooled frame strings. Regression coverage
+checks source/style preservation, failure atomicity, transformed geometry,
+per-frame image sharing, animation cleanup and exported pixel colors. Pixel cameras,
+exact Cairo antialiasing/transparent-raster arithmetic and complete spatial-stream
+color parity remain open.

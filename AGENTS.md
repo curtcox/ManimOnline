@@ -1288,3 +1288,16 @@ Pillow objects in snapshots. Vector-shape raster paint and pixel cameras remain 
 Native verification installs numpy, pillow and pygments (as CI does) to exercise
 package-backed tests. Browser smoke includes a field image factory without a PIL
 import; require one actual SVG image, not just a successful Python render.
+
+
+Read `examples/raster_paint_scene.py` for screen-raster vector painting and colored
+StreamLines. color_using_background_image preflights and encodes once per family;
+keep the native background_image for style/getters, exclude it and background_img
+from frame JSON, and serialize raster_background as a PNG URI. Flat z_range
+[0,.5,.5] streams share this image; spatial lines keep their gradient. Renderer
+filters multiply the complete posed SourceGraphic by feImage in sRGB, with two
+Y flips to preserve both geometry and raster rows. Pool filters per URI/view and
+strings across frame nodes. Inset cameras use source-frame bounds. Browser smoke
+checks four corner colors after SVG-to-canvas export, so orientation/actual paint
+are proven beyond inspecting filter DOM. Transparent raster/Cairo rounding parity
+and pixel cameras remain open.

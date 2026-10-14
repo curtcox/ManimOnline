@@ -3843,11 +3843,12 @@ class Mobject:
         return style
 
     def color_using_background_image(self, background_image):
-        """Recorded for get_style; the preview cannot paint raster backgrounds into shapes."""
-        self.background_image = background_image
-        self.set_color(WHITE, family=False)
-        for child in self.children:
-            child.color_using_background_image(background_image)
+        """Paint this family with a screen-aligned raster, retaining the native source."""
+        uri = _raster_image_uri(background_image)
+        for member in self.get_family():
+            member.background_image = background_image
+            member.raster_background = uri
+            member.set_color(WHITE, family=False)
         return self
 
     def get_background_image(self):
@@ -4876,7 +4877,7 @@ class Mobject:
         center = self._geometry_center()
         result = _snapshot_copy({key: value for key, value in self.__dict__.items()
                                 if (key in _POINT_KEYS and type(value) is list or not _holds_mobject(value) and not callable(value)) and
-                                key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_scalar_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache', '_flow_points', '_name', '_mobject_points', '_scene_keys', '_init_positioning_axis', '_community_values', '_arc_ends', '_subdivided_tip') and
+                                key not in ('_saved_state', 'background_image', 'background_img', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_scalar_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache', '_flow_points', '_name', '_mobject_points', '_scene_keys', '_init_positioning_axis', '_community_values', '_arc_ends', '_subdivided_tip') and
                                 key not in self._frame_excluded})
         result['type'] = result.pop('_type')
         result['geometry_center'] = list(center)
@@ -23439,6 +23440,24 @@ def _rgba_rows(pixels, limit=255):
     return result
 
 
+def _raster_image_uri(image):
+    """Inline a native image/file for SVG paint; never send Pillow objects to JSON."""
+    if image is None:
+        return None
+    import os, base64, io
+    if isinstance(image, (str, os.PathLike)):
+        source = str(image).strip()
+        source = source if source.startswith('data:') else _image_file_uri(source)
+        width,height = _data_uri_size(source)
+        if width < 1 or height < 1 or width * height > _IMAGE_PIXEL_LIMIT:
+            raise ValueError('Raster paint needs 1 to 4 million pixels')
+        if source.startswith('data:image/png;base64,'):
+            return source
+        from PIL import Image
+        image = Image.open(io.BytesIO(base64.b64decode(source.split(',',1)[1])))
+    return _png_data_uri(_rgba_rows(image))
+
+
 def _png_data_uri(rows):
     import base64, zlib
     height, width = len(rows), len(rows[0])
@@ -24803,6 +24822,11 @@ class StreamLines(VectorField):
             return (p[0] < x0 - padding or p[0] > x1 + padding - xs or p[1] < y0 - padding
                     or p[1] > y1 + padding - ys or p[2] < z0 - padding or p[2] > z1 + padding - zs)
         lines = []
+        raster = None
+        if not self.single_color:
+            self.background_img = self.get_colored_background_image()
+            if list(self.z_range) == [0, .5, .5]:
+                raster = _raster_image_uri(self.background_img)
         for start in starts:
             points = [start]
             for _ in range(max_steps):
@@ -24819,9 +24843,13 @@ class StreamLines(VectorField):
             line.set_points_as_corners(plane if len(plane) > 1 else plane * 2).make_smooth()
             if self.single_color:
                 line.set_stroke(color=self.color, width=stroke_width, opacity=opacity)
+            elif raster is not None:
+                # Share one encoded raster across all lines, as the native camera does.
+                line.background_image = self.background_img
+                line.raster_background = raster
+                line.set_stroke(color=WHITE, width=stroke_width, opacity=opacity)
             else:
-                # Community samples a raster of field colors under each stroke; approximate it
-                # with a gradient along the line's chord, sampled at evenly spaced anchors.
+                # Spatial streams retain their per-anchor color gradient.
                 samples = [points[min(len(points) - 1, round(i * (len(points) - 1) / 7))] for i in range(8)]
                 line.set_stroke(color=[self.pos_to_color(p) for p in samples], width=stroke_width, opacity=opacity)
                 line.gradient_points = [[points[0][0], points[0][1]], [points[-1][0], points[-1][1]]]
@@ -26535,6 +26563,11 @@ def _pooled_json(result, default):
         if hit is not None and hit[0] is original:
             return hit[1]
         node = dict(original)
+        raster = node.get('raster_background')
+        if isinstance(raster,str):
+            if raster not in images:
+                images[raster] = {'$pool':store(dumps(raster))}
+            node['raster_background'] = images[raster]
         for name, value in node.items():
             # Large arrays (curves, vertices) often outlive style-only changes such as
             # draw_progress or opacity, so they are pooled as {"$pool": index} too.

@@ -56,6 +56,23 @@ const FIELD_IMAGE = [
   '        self.wait(0.2)',
 ].join('\n');
 
+const RASTER_PAINT = [
+  'from manim import *',
+  'from PIL import Image',
+  'config.pixel_width = 80',
+  'config.pixel_height = 40',
+  'class RasterPaint(Scene):',
+  '    def construct(self):',
+  '        image = Image.new("RGB", (2,2), (255,0,0))',
+  '        image.putpixel((1,0), (0,0,255))',
+  '        image.putpixel((0,1), (0,255,0))',
+  '        image.putpixel((1,1), (255,255,0))',
+  '        box = Rectangle(width=config.frame_width,height=config.frame_height,fill_opacity=1,stroke_width=0)',
+  '        box.color_using_background_image(image)',
+  '        self.play(FadeIn(box),run_time=0.2)',
+  '        self.wait(0.2)',
+].join('\n');
+
 async function open(browser, source) {
   const page = await browser.newPage();
   const errors = [];
@@ -75,13 +92,13 @@ async function checkDot(browser) {
   if (edges !== 3) throw new Error('DOT graph has ' + edges + ' edges');
 }
 
-async function checkManim(browser, source) {
+async function checkManim(browser, source, verifyRaster = false) {
   const { page, errors } = await open(browser, source);
   await page.waitForFunction(() => {
     const seek = document.querySelector('[aria-label="Animation position"]');
     return (seek && Number(seek.max) > 0) || document.querySelector('#review.error');
   }, null, { timeout: 240000 });
-  const state = await page.evaluate(async () => {
+  const state = await page.evaluate(async verifyRaster => {
     const failure = document.querySelector('#review.error');
     if (failure) return { error: document.querySelector('#error').textContent.slice(0, 500) };
     const seek = document.querySelector('[aria-label="Animation position"]');
@@ -99,8 +116,25 @@ async function checkManim(browser, source) {
         }
       }
     }
-    return { images: preview ? preview.querySelectorAll('image').length : 0, frames: Number(seek.max) + 1, paths: preview ? preview.querySelectorAll('path, circle, ellipse, polygon, polyline, rect, line').length : 0, codecs };
-  });
+    let rasterPixels;
+    if (verifyRaster) {
+      const url=URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(preview)],{type:'image/svg+xml'}));
+      try {
+        const image=new Image();
+        await new Promise((resolve,reject)=>{
+          const timer=setTimeout(()=>reject(new Error('Raster SVG export timed out')),10000);
+          image.onload=()=>{clearTimeout(timer);resolve();};
+          image.onerror=()=>{clearTimeout(timer);reject(new Error('Raster SVG export failed'));};
+          image.src=url;
+        });
+        const canvas=document.createElement('canvas');
+        canvas.width=80;canvas.height=40;
+        const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0);
+        rasterPixels=[[10,5],[70,5],[10,35],[70,35]].flatMap(([x,y])=>[...ctx.getImageData(x,y,1,1).data]);
+      } finally { URL.revokeObjectURL(url); }
+    }
+    return { rasterPixels, images: preview ? preview.querySelectorAll('image').length : 0, frames: Number(seek.max) + 1, paths: preview ? preview.querySelectorAll('path, circle, ellipse, polygon, polyline, rect, line').length : 0, codecs };
+  }, verifyRaster);
   await page.close();
   if (state.error) throw new Error('Manim render failed: ' + state.error);
   if (errors.length) throw new Error('Page errors: ' + errors.join('; '));
@@ -119,11 +153,13 @@ async function checkManim(browser, source) {
       const numpy = await checkManim(browser, NUMPY).catch(error => { throw new Error('NumPy scene: ' + error.message); });
       const fieldImage = await checkManim(browser, FIELD_IMAGE).catch(error => { throw new Error('Field image scene: ' + error.message); });
       if (fieldImage.images !== 1) throw new Error('Field image scene drew ' + fieldImage.images + ' images');
+      const raster = await checkManim(browser, RASTER_PAINT, true);
+      if (JSON.stringify(raster.rasterPixels)!==JSON.stringify([255,0,0,255,0,0,255,255,0,255,0,255,255,255,0,255])) throw new Error('Raster pixels: '+JSON.stringify(raster.rasterPixels));
       const depth = await checkManim(browser, THREE_D).catch(error => { throw new Error('3D scene: ' + error.message); });
       console.log(name + ': DOT ok; Manim ' + manim.frames + ' frames, ' + manim.paths +
                   ' shapes; NumPy scene ' + numpy.frames + ' frames, ' + numpy.paths +
                   ' shapes; 3D scene ' + depth.frames + ' frames, ' + depth.paths +
-                  ' shapes; field image ' + fieldImage.frames + ' frames, ' + fieldImage.images + ' image; video encoders ' + JSON.stringify(manim.codecs));
+                  ' shapes; field image ' + fieldImage.frames + ' frames, ' + fieldImage.images + ' image; raster paint/export pixels ok; video encoders ' + JSON.stringify(manim.codecs));
     } catch (error) {
       failed = true;
       console.log(name + ': FAILED ' + error.message);

@@ -567,3 +567,32 @@ test('camera background images draw over the backdrop and accept only inline PNG
   for (const bad of ['https://example.com/a.png', 'data:image/svg+xml;base64,PHN2Zz4=', 7])
     assert.throws(() => renderer.render({camera:{background_image:bad},mobjects:[]}), /background image/);
 });
+
+
+test('raster path paint shares one screen-space filter and preserves posed geometry', () => {
+  const png='data:image/png;base64,AAAA';
+  const svg=renderer.render({camera:{frame_width:10,frame_height:6,frame_center:[2,1,0]},mobjects:[
+    {type:'vgroup',position:[1,2,0],angle:.3,geometry_scale:2,children:[
+      {type:'circle',radius:1,fill_opacity:.4,raster_background:png},
+      {type:'line',start:[0,0,0],end:[2,1,0],raster_background:png}
+    ]}
+  ]});
+  const all=svg.querySelectorAll();
+  const filters=all.filter(e=>e.tag==='filter');
+  assert.equal(filters.length,1);
+  assert.deepEqual(['x','y','width','height'].map(k=>filters[0].getAttribute(k)),['-150','-200','500','300']);
+  const raster=all.find(e=>e.tag==='feImage');
+  assert.equal(raster.getAttribute('href'),png);
+  const multiply=all.find(e=>e.tag==='feComposite');
+  assert.equal(multiply.getAttribute('operator'),'arithmetic');
+  assert.equal(multiply.getAttribute('k1'),'1');
+  assert.equal(filters[0].getAttribute('color-interpolation-filters'),'sRGB');
+  assert.equal(all.filter(e=>e.getAttribute('filter')===`url(#${filters[0].getAttribute('id')})`).length,2);
+  assert.ok(all.some(e=>/rotate/.test(e.getAttribute('transform')||'')));
+  assert.equal(all.find(e=>e.tag==='circle').getAttribute('fill-opacity'),'0.4');
+  const second=renderer.render({mobjects:[{type:'circle',radius:1,raster_background:png}]}).querySelectorAll().find(e=>e.tag==='filter');
+  assert.notEqual(second.getAttribute('id'),filters[0].getAttribute('id'));
+  for(const href of ['https://example.com/image.png','data:image/svg+xml,<svg/>','data:image/png;base64,!']) {
+    assert.throws(()=>renderer.render({mobjects:[{type:'circle',radius:1,raster_background:href}]}),/background image/);
+  }
+});

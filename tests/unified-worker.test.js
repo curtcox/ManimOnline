@@ -82,9 +82,20 @@ test('pooled camera background images expand to their data URI', () => {
 test('field image factories request Pillow without requiring an explicit PIL import', () => {
   const { requiresPillow } = require('../src/unified-worker.js');
   for (const source of ['from PIL import Image', 'field.get_colored_background_image()',
-                        'field.get_colored_background_image (sampling_rate=10)']) {
+                        'field.get_colored_background_image (sampling_rate=10)',
+                        'StreamLines(lambda p: p)', 'shape.color_using_background_image(image)',
+                        'factory = field.get_colored_background_image', 'shape.match_background_image(other)']) {
     assert.equal(requiresPillow(source), true);
   }
   assert.equal(requiresPillow('ImageMobject([[255]])'), false);
   assert.equal(requiresPillow('ArrowVectorField(lambda p: p)'), false);
+});
+
+
+test('vector paint raster references expand to a shared string',()=>{
+  const href='data:image/png;base64,AAAA';
+  const scene=expandPooledScene({pool:[href,{type:'line',raster_background:{$pool:0}},
+    {type:'circle',raster_background:{$pool:0}}],frames:[{mobjects:[1,2],camera:{}}]});
+  assert.equal(scene.frames[0].mobjects[0].raster_background,href);
+  assert.equal(scene.frames[0].mobjects[1].raster_background,href);
 });

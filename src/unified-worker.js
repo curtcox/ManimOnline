@@ -1,6 +1,6 @@
 /** Package required by explicit PIL use or the field image factory. */
 function requiresPillow(source) {
-  return /\bPIL\b|\bget_colored_background_image\s*\(/.test(source);
+  return /\b(?:PIL|StreamLines|get_colored_background_image|color_using_background_image|match_background_image)\b/.test(source);
 }
 
 /** Python lives in this worker; the main thread enforces its hard deadline. */

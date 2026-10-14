@@ -98,6 +98,55 @@ def render_3d(body):
 
 
 class SceneTests(PointTestCase):
+    def test_raster_paint_gallery_keeps_image_fixed_and_cleans_up(self):
+        result=json.loads(lite.render_scene((ROOT/'examples/raster_paint_scene.py').read_text()))
+        self.assertEqual(result['duration'],8)
+        first=result['frames'][30]['mobjects'][0]
+        last=result['frames'][75]['mobjects'][0]
+        self.assertEqual(first['raster_background'],last['raster_background'])
+        self.assertNotEqual(first['position'],last['position'])
+        streams=result['frames'][60]['mobjects'][1]['children']
+        self.assertTrue(streams)
+        self.assertEqual(len({line['raster_background'] for line in streams}),1)
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+
+    def test_raster_path_style_source_serialization_copy_and_atomic_validation(self):
+        from PIL import Image
+        image=Image.new('RGB',(2,2),(20,100,200))
+        child=lite.Circle(fill_opacity=.4)
+        parent=lite.VGroup(child,lite.Line(lite.LEFT,lite.RIGHT))
+        parent.color_using_background_image(image)
+        self.assertIs(parent.get_background_image(),image)
+        self.assertIs(child.get_background_image(),image)
+        self.assertEqual(child.get_style()['background_image'],image)
+        self.assertEqual(child.fill_color,lite.WHITE)
+        snapshot=parent.to_dict()
+        json.dumps(snapshot)
+        self.assertNotIn('background_image',snapshot)
+        self.assertEqual(snapshot['raster_background'],snapshot['children'][0]['raster_background'])
+        parent.save_state()
+        saved=parent.to_dict()
+        child.set_color(lite.RED)
+        self.assertEqual(child.raster_background,snapshot['raster_background'])
+        restore_state(parent)
+        self.assertEqual(parent.to_dict(),saved)
+        self.assertEqual(parent.copy().to_dict(),saved)
+        before=parent.to_dict()
+        with self.assertRaises((ValueError,NotImplementedError)):
+            parent.color_using_background_image('https://example.com/not-a-local-image.png')
+        self.assertEqual(parent.to_dict(),before)
+        parent.color_using_background_image(None)
+        self.assertIsNone(parent.get_background_image())
+        self.assertIsNone(parent.to_dict()['children'][0]['raster_background'])
+
+    def test_raster_streams_pool_one_image_across_lines_and_frames(self):
+        source='from manim import *\nclass Demo(Scene):\n    def construct(self):\n        stream=StreamLines(lambda p: UP+RIGHT*.2,x_range=[-1,1,1],y_range=[-1,1,1],virtual_time=.2)\n        self.add(stream)\n        stream.start_animation()\n        self.wait(.5)'
+        result=json.loads(lite.render_scene(source,compact=True))
+        images=[value for value in result['pool'] if isinstance(value,str) and value.startswith('data:image/png;base64,')]
+        self.assertEqual(len(images),1)
+        import base64
+        self.assertEqual(lite._decode_png(base64.b64decode(images[0].split(',',1)[1]))[0][0][-1],255)
+
     def test_vector_field_image_gallery_serialization_motion_and_cleanup(self):
         try:
             import PIL
@@ -626,8 +675,10 @@ class Demo(Scene):
             for value,expected in zip(list(points[0][:2])+list(points[-1][:2]),first+last):
                 self.assertAlmostEqual(value,expected,places=3)
             self.assertAlmostEqual(lines[index].duration,3.05)
-        self.assertEqual(len(lines[0].__dict__['stroke_color']),8)
-        self.assertEqual(len(lines[0].gradient_points),2)
+        self.assertEqual(lines[0].stroke_color,lite.WHITE)
+        self.assertTrue(lines[0].raster_background.startswith('data:image/png;base64,'))
+        self.assertIs(lines[0].background_image,stream.background_img)
+        self.assertIs(lines[0].raster_background,lines[-1].raster_background)
         small=lite.StreamLines(func,x_range=[-2,2,1],y_range=[-1,1,1],virtual_time=1,color=lite.BLUE)
         self.assertEqual(small.stream_lines[0].stroke_color,lite.BLUE)
         with self.assertRaises(ValueError): small.end_animation()

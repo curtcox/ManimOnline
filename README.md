@@ -1623,3 +1623,27 @@ API, following Community. The gallery displays the resulting color map behind
 arrows and an advected marker, then removes all three. This adds field-image
 generation; raster coloring inside vector shapes and per-pixel StreamLines painting
 remain unfinished. It does not implement Mobject.get_image or pixel cameras.
+
+
+Try **Color paths from a screen image** (`examples/raster_paint_scene.py`).
+`color_using_background_image(image)` and `match_background_image(other)` now
+paint vector fills and strokes from a raster stretched over the current camera
+frame, following Community's background-colored path display. Inputs may be
+Pillow images, local image files or inert image data URIs; frames contain a PNG
+URI rather than the native image object. The API retains the original image for
+get_background_image/get_style, and None clears the paint. Invalid images fail
+before family style changes.
+
+The SVG renderer multiplies each complete posed path layer by the screen image
+in sRGB, retaining colors, fill/stroke alpha, creation progress and ancestor poses.
+The image stays aligned to the screen as a path moves or the camera pans/zooms.
+Inset camera views use their own source frame. SVG/PNG/video snapshots retain
+inert local filter definitions; one filter/image is shared per raster and view.
+Frame pooling also stores each raster string once across changing stream paths.
+
+Flat colored StreamLines now use Community's sampled background image instead
+of the previous gradient along each line's chord. Spatial streams retain the
+existing per-anchor gradient. Pillow loads automatically for StreamLines, raster
+paint methods, factory references and explicit imports. Pixel-camera APIs, exact
+Cairo antialiasing/transparent-raster arithmetic and complete spatial-stream color
+parity remain unfinished; this does not implement Mobject.get_image.
