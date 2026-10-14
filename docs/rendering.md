@@ -2600,3 +2600,17 @@ opacity getters read the first RGBA row while internal scalar channels remain
 independent of stops. Browser pixel checks cover the halfway solid-to-gradient
 color transition. Glyph style morphs, exact float-to-hex quantization and sampled
 gradient-bound parity remain open.
+
+
+Verification (2026-10-14, style matching and interpolation): all 739 Python and
+124 JavaScript tests passed in CI. Bundled local Python passed with one Pygments
+skip. Local WebKit and a retried Chromium run passed the expanded smoke suite;
+the initial Chromium run timed out loading a scene. CI Chromium, Firefox and
+WebKit passed raster-style-copy, halfway gradient-fade, nested gradient and new
+style-morph SVG-to-canvas pixel checks. The in-app browser independently sampled
+the halfway style-morph pixel as [190,128,192,255]. The published eight-second
+style-copy gallery preserved all target shapes, showed the interpolated paint,
+removed all shape geometry at the end, and switched to three DOT nodes. Both
+implementation commits passed CI and Pages deployment. Native stored-RGBA reset,
+glyph style interpolation, float quantization and sampled gradient-bound parity
+remain open.
