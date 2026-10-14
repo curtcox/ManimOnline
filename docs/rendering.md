@@ -2522,3 +2522,12 @@ Chromium, Firefox and WebKit. Local WebKit passed the smoke suite; local Chromiu
 timed out loading the separate 3D scene. The deployed gradient scene showed
 three colored dots and 44 spatial gradient stops, and switching to DOT showed
 three nodes without an error.
+
+
+The **Gradients through a moving 3D camera** example shows depth-directed color
+and shaded-path corner gradients. ThreeDScene captures world-space endpoints and
+the SVG renderer projects them through the sampled camera, including fixed-frame
+and fixed-orientation handling. Endpoints stay independent of pooled `rigid3d`
+geometry, so animation cannot apply the same pose twice. Sheen direction setters
+accept finite XYZ vectors and rotation supports any nonzero finite axis. Gradient
+bounds include vector-family anchors; text-child bounds remain approximate.

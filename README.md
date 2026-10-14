@@ -1654,3 +1654,12 @@ one RGBA row per input, including an empty `(0, 4)` result. Inputs are clipped t
 the gradient bounds, descending ranges work, and opacity occupies the fourth
 column. NumPy loads automatically for calls or references to this method. Inputs
 must be finite one-dimensional sequences, limited to 100000 samples.
+
+
+The **Gradients through a moving 3D camera** example shows depth-directed color
+and shaded-path corner gradients. ThreeDScene captures world-space endpoints and
+the SVG renderer projects them through the sampled camera, including fixed-frame
+and fixed-orientation handling. Endpoints stay independent of pooled `rigid3d`
+geometry, so animation cannot apply the same pose twice. Sheen direction setters
+accept finite XYZ vectors and rotation supports any nonzero finite axis. Gradient
+bounds include vector-family anchors; text-child bounds remain approximate.

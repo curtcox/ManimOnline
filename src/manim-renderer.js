@@ -250,6 +250,10 @@ const ManimRenderer = {
           const shift = orient ? sub(project(orient), orient) : null;
           const map = shift ? p => [p[0] + shift[0], p[1] + shift[1], (p[2] ?? 0) + shift[2]] : project;
           out.curves = curves.map(curve => curve.map(map));
+          // Python supplies gradient endpoints in the sampled world frame, even
+          // when curves are shared under a rigid3d map. Project them exactly once.
+          if (Array.isArray(leaf.gradient_points) && leaf.gradient_points.length === 2 &&
+              leaf.gradient_points.every(point3)) out.gradient_points = leaf.gradient_points.map(map);
           if (leaf.vertices) out.vertices = leaf.vertices.map(map);
           for (const key of ['start', 'end', 'shaft_start', 'shaft_end']) {
             if (point3(leaf[key])) out[key] = map(leaf[key]);

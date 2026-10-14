@@ -8447,6 +8447,61 @@ class Demo(Scene):
 
 
 class ThreeDTests(PointTestCase):
+    def test_spatial_gradient_world_bounds_shaded_corners_and_animated_samples(self):
+        source = """from manim import *
+class Demo(ThreeDScene):
+    def construct(self):
+        square = Square(fill_color=[RED, BLUE]).shift(2*RIGHT + OUT)
+        shaded = Square(fill_color=[RED, BLUE], shade_in_3d=True).shift(2*LEFT + 2*OUT)
+        self.add(square, shaded)
+        self.play(square.animate.shift(OUT), run_time=.2)
+"""
+        frames = json.loads(lite.render_scene(source))['frames']
+        for frame in frames:
+            square, shaded = frame['mobjects']
+            self.assertEqual(square['gradient_points'][0][:2], [3, -1])
+            self.assertEqual(square['gradient_points'][1][:2], [1, 1])
+            point = square['curves'][0][0]
+            matrix = square.get('rigid3d')
+            depth = sum(a*b for a,b in zip(matrix[6:9], point)) + matrix[11] if matrix else point[2]
+            self.assertAlmostEqual(square['gradient_points'][0][2], depth)
+            points = [p for curve in shaded['curves'] for p in curve]
+            self.assertEqual(shaded['gradient_points'], [points[0], points[((len(points)-1)//6)*3]])
+        self.assertEqual(frames[-1]['mobjects'][0]['gradient_points'], [[3,-1,2], [1,1,2]])
+        square = lite.Square(shade_in_3d=True)
+        self.assertEqual(list(square.get_gradient_start_and_end_points()),
+                         list(lite.get_3d_vmob_gradient_start_and_end_points(square)))
+
+    def test_spatial_gradient_gallery_camera_motion_and_cleanup(self):
+        result = json.loads(lite.render_scene((ROOT / 'examples/spatial_gradient_scene.py').read_text()))
+        self.assertEqual(result['duration'], 8)
+        middle = result['frames'][60]
+        self.assertEqual(len(middle['mobjects']), 2)
+        self.assertTrue(all(len(point) == 3 for leaf in middle['mobjects'] for point in leaf['gradient_points']))
+        self.assertNotEqual(middle['camera']['three_d']['theta'], result['frames'][0]['camera']['three_d']['theta'])
+        self.assertEqual(result['frames'][-1]['mobjects'], [])
+
+    def test_sheen_directions_support_depth_rotation_and_atomic_validation(self):
+        square = lite.Square(fill_color=[lite.RED, lite.BLUE]).set_sheen_direction(lite.UP)
+        square.rotate_sheen_direction(lite.PI/2, axis=lite.RIGHT)
+        self.assertPointAlmostEqual(square.get_sheen_direction(), lite.OUT)
+        source = """from manim import *
+class Demo(ThreeDScene):
+    def construct(self):
+        square = Square(fill_color=[RED,BLUE]).rotate(PI/2,axis=RIGHT).shift(OUT)
+        square.set_sheen_direction(OUT)
+        self.add(square)
+"""
+        leaf = json.loads(lite.render_scene(source))['frames'][-1]['mobjects'][0]
+        for actual, expected in zip(leaf['gradient_points'], [(0,0,0),(0,0,2)]):
+            self.assertPointAlmostEqual(actual, expected)
+        before = square.get_sheen_direction()
+        for call in (lambda: square.set_sheen_direction((0,0,math.nan)),
+                     lambda: square.rotate_sheen_direction(math.inf),
+                     lambda: square.rotate_sheen_direction(1,axis=lite.ORIGIN)):
+            with self.assertRaises(ValueError): call()
+            self.assertEqual(square.get_sheen_direction(), before)
+
     def test_text_rotated_out_of_the_plane_is_planar_like_community(self):
         # Manim 0.22: Tex('z').shift(RIGHT).rotate(PI/2, axis=RIGHT) has zero height and
         # spans z by half its glyph height.

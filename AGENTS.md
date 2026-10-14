@@ -1309,3 +1309,10 @@ references. Keep finite one-dimensional validation and the 100000-sample cap.
 Spatial StreamLines use every cubic anchor (including repeated endpoints) and
 the normal sheen-direction gradient; flat lines retain shared screen rasters.
 Projected spatial-gradient parity remains open.
+
+
+Read examples/spatial_gradient_scene.py for depth-directed sheen, shaded-path
+corner gradients and camera motion. ThreeDScene path gradient_points are sampled
+world XYZ coordinates, independent of rigid3d base geometry; project them once
+with the same fixed/orientation policy as the path. Ordinary 2D snapshots retain
+local XY gradient endpoints. Glyph-child gradient bounds remain approximate.

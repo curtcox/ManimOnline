@@ -498,3 +498,10 @@ package on demand. Spatial StreamLines sample all cubic anchors rather than eigh
 positions along a chord, and use the ordinary sheen-direction gradient. This
 matches Cairo's color construction; projected spatial gradients and exact Cairo
 pixel arithmetic still require parity work.
+
+
+Spatial path gradients now carry sampled world-space endpoints through camera
+projection, including depth-directed sheen and shaded corner rules. Projected
+color placement has regression coverage for ordinary, fixed and pooled rigid
+geometry. Exact shading at both corners, glyph-family gradient bounds and Cairo
+pixel parity remain open.

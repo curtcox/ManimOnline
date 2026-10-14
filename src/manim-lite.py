@@ -3614,7 +3614,7 @@ class Mobject:
         """Community's sheen: each color gains a copy lightened by factor, as a gradient."""
         NumberLine._real(factor, 'Sheen factor')
         if direction is not None:
-            direction = self._xy_vector(direction, 'Sheen direction')
+            direction = self._finite_vector(direction, 'Sheen direction')
         for member in (self.get_family() if family else [self]):
             member.sheen_factor = factor
             if direction is not None:
@@ -3629,19 +3629,19 @@ class Mobject:
 
     def set_sheen_direction(self, direction, family=True):
         # Community stores None too; such a gradient then has no direction to run along.
-        direction = None if direction is None else self._xy_vector(direction, 'Sheen direction')
+        direction = None if direction is None else self._finite_vector(direction, 'Sheen direction')
         for member in (self.get_family() if family else [self]):
             member.sheen_direction = direction
         return self
 
     def rotate_sheen_direction(self, angle, axis=OUT, family=True):
-        if Vector(axis) not in (OUT, IN):
-            raise NotImplementedError('Sheen directions rotate about OUT/IN only')
-        angle = angle if Vector(axis) == OUT else -angle
+        NumberLine._real(angle, 'Sheen rotation angle')
+        axis = self._finite_vector(axis, 'Sheen rotation axis')
+        if not _norm(axis):
+            raise ValueError('Sheen rotation axis must be nonzero')
+        matrix = rotation_matrix(angle, axis)
         for member in (self.get_family() if family else [self]):
-            x, y = member.sheen_direction[0], member.sheen_direction[1]
-            member.sheen_direction = Vector((x * math.cos(angle) - y * math.sin(angle),
-                                             x * math.sin(angle) + y * math.cos(angle), 0))
+            member.sheen_direction = Vector(_apply_rows(matrix, member.sheen_direction))
         return self
 
     def set_z_index(self, z_index_value, family=True):
@@ -3858,6 +3858,8 @@ class Mobject:
         return self.color_using_background_image(vmobject.get_background_image())
 
     def get_gradient_start_and_end_points(self):
+        if self.shade_in_3d:
+            return get_3d_vmob_gradient_start_and_end_points(self)
         direction = self.get_sheen_direction()
         center = self.get_center()
         offset = Vector(ORIGIN)
@@ -19081,6 +19083,28 @@ class ThreeDScene(Scene):
                     spans.append(walk(child, world_map, node_opacity, group, map_key))
             else:
                 emit_leaf(node, world_map, node_opacity, group)
+            if kind in _PATH_TYPES and (node.get('sheen_factor') or
+                    any(isinstance(node.get(key), list) for key in ('fill_color', 'stroke_color')) or
+                    'fill_opacities' in node or 'stroke_opacities' in node):
+                own = group[start]
+                own_points = [p for curve in own.get('curves') or () for p in curve]
+                if node.get('shade_in_3d') and own_points:
+                    # Community's shaded path gradient joins its start/end corners.
+                    own['gradient_points'] = [own_points[0], own_points[((len(own_points) - 1) // 6) * 3]]
+                elif node.get('sheen_direction', UL) is not None:
+                    # These are world-space endpoints. Keep them independent of the
+                    # rigid3d base geometry map: bounds are sampled anew each frame.
+                    points = [p for leaf in group[start:] for curve in leaf.get('curves') or ()
+                              for p in (curve[0], curve[-1])]
+                    points += [p for leaf in group[start:] for p in leaf.get('vertices') or ()]
+                    points += [leaf['anchor3d'] for leaf in group[start:] if 'anchor3d' in leaf]
+                    if points:
+                        low = [min(p[i] if len(p) > i else 0 for p in points) for i in range(3)]
+                        high = [max(p[i] if len(p) > i else 0 for p in points) for i in range(3)]
+                        center = [(a + b) / 2 for a, b in zip(low, high)]
+                        offset = [(b - a) / 2 * d for a, b, d in zip(low, high, node.get('sheen_direction', UL))]
+                        own['gradient_points'] = [[c - d for c, d in zip(center, offset)],
+                                                  [c + d for c, d in zip(center, offset)]]
             return start, len(group), spans
 
         mobject = root

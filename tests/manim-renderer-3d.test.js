@@ -103,3 +103,24 @@ test('text leaves are planar objects projected through the camera', () => {
   assert.equal(standing.angle, 0);
   assert.equal(standing.geometry_scale, 1);
 });
+
+
+test('world gradient endpoints follow perspective, fixed orientation and rigid geometry', () => {
+  const three = { phi: Math.PI/2, theta: -Math.PI/2, gamma: 0, zoom: 1, focal_distance: 20,
+    frame_center: [0,0,0], light_source: [-7,-9,10] };
+  const ends = [[1,2,3], [-1,-2,1]];
+  const leaf = {type:'bezierpath', curves:[[ends[0],ends[0],ends[1],ends[1]]],
+    gradient_points:ends, position:[0,0,0], angle:0, geometry_scale:1};
+  const before = JSON.stringify(leaf);
+  const [out] = renderer.projectThreeD([leaf],three);
+  close(out.gradient_points[0], [20/22,60/22,-2]);
+  close(out.gradient_points[1], [-20/18,20/18,2]);
+  assert.equal(JSON.stringify(leaf),before);
+  const [fixed] = renderer.projectThreeD([{...leaf,_fixed_in_frame:true}],three);
+  assert.deepEqual(fixed.gradient_points,ends);
+  const [orient] = renderer.projectThreeD([{...leaf,orient_center:[0,2,3]}],three);
+  close(orient.gradient_points[0],[1,60/22, -2]);
+  const [rigid] = renderer.projectThreeD([{...leaf,rigid3d:[1,0,0,0,1,0,0,0,1,4,0,0]}],three);
+  assert.deepEqual(rigid.gradient_points,out.gradient_points);
+  assert.notDeepEqual(rigid.curves,out.curves);
+});
