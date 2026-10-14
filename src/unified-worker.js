@@ -1,3 +1,8 @@
+/** Package required by explicit PIL use or the field image factory. */
+function requiresPillow(source) {
+  return /\bPIL\b|\bget_colored_background_image\s*\(/.test(source);
+}
+
 /** Python lives in this worker; the main thread enforces its hard deadline. */
 let runtimePromise;
 const PYODIDE_URL = 'https://cdn.jsdelivr.net/pyodide/v0.27.0/full/';
@@ -74,7 +79,7 @@ function expandPooledScene(scene) {
   }
   return rest;
 }
-if (typeof module !== 'undefined') module.exports = { expandPooledScene };
+if (typeof module !== 'undefined') module.exports = { expandPooledScene, requiresPillow };
 
 // Serialize requests even during loading; Python cannot execute concurrently.
 let queue = Promise.resolve();
@@ -94,7 +99,7 @@ self.onmessage = event => {
       // By URL: the lock file's networkx entry pulls in matplotlib, which import networkx never needs.
       if (/\b(?:networkx|nx)\b/.test(code)) await runtime.loadPackage(NETWORKX_WHEEL);
       // Scenes that draw or save images with Pillow; ImageMobject itself decodes PNG without it.
-      if (/\bPIL\b/.test(code)) await runtime.loadPackage('pillow');
+      if (requiresPillow(code)) await runtime.loadPackage('pillow');
       self.postMessage({ id, type: 'pyodide-ready' });
       // Rebuild the compatibility definitions and use a fresh source namespace.
       await runtime.runPythonAsync(source);

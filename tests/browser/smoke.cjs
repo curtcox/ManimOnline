@@ -43,6 +43,19 @@ const THREE_D = [
   '',
 ].join('\n');
 
+const FIELD_IMAGE = [
+  'from manim import *',
+  'config.pixel_width = 64',
+  'config.pixel_height = 36',
+  'class FieldImage(Scene):',
+  '    def construct(self):',
+  '        field = VectorField(lambda p: p)',
+  '        image = ImageMobject(field.get_colored_background_image(sampling_rate=4))',
+  '        image.height = config.frame_height',
+  '        self.play(FadeIn(image), FadeIn(Dot()), run_time=0.2)',
+  '        self.wait(0.2)',
+].join('\n');
+
 async function open(browser, source) {
   const page = await browser.newPage();
   const errors = [];
@@ -86,7 +99,7 @@ async function checkManim(browser, source) {
         }
       }
     }
-    return { frames: Number(seek.max) + 1, paths: preview ? preview.querySelectorAll('path, circle, ellipse, polygon, polyline, rect, line').length : 0, codecs };
+    return { images: preview ? preview.querySelectorAll('image').length : 0, frames: Number(seek.max) + 1, paths: preview ? preview.querySelectorAll('path, circle, ellipse, polygon, polyline, rect, line').length : 0, codecs };
   });
   await page.close();
   if (state.error) throw new Error('Manim render failed: ' + state.error);
@@ -104,11 +117,13 @@ async function checkManim(browser, source) {
       await checkDot(browser);
       const manim = await checkManim(browser, MANIM);
       const numpy = await checkManim(browser, NUMPY).catch(error => { throw new Error('NumPy scene: ' + error.message); });
+      const fieldImage = await checkManim(browser, FIELD_IMAGE).catch(error => { throw new Error('Field image scene: ' + error.message); });
+      if (fieldImage.images !== 1) throw new Error('Field image scene drew ' + fieldImage.images + ' images');
       const depth = await checkManim(browser, THREE_D).catch(error => { throw new Error('3D scene: ' + error.message); });
       console.log(name + ': DOT ok; Manim ' + manim.frames + ' frames, ' + manim.paths +
                   ' shapes; NumPy scene ' + numpy.frames + ' frames, ' + numpy.paths +
                   ' shapes; 3D scene ' + depth.frames + ' frames, ' + depth.paths +
-                  ' shapes; video encoders ' + JSON.stringify(manim.codecs));
+                  ' shapes; field image ' + fieldImage.frames + ' frames, ' + fieldImage.images + ' image; video encoders ' + JSON.stringify(manim.codecs));
     } catch (error) {
       failed = true;
       console.log(name + ': FAILED ' + error.message);

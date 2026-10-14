@@ -408,9 +408,11 @@ success/failure; live shortening-service availability is not guaranteed.
 
 ## Verification
 
-No dependency installation is needed for the tests:
+Core tests use Python and Node. Install the optional runtime packages to exercise
+NumPy points, Pillow images and syntax-highlighted code as well:
 
 ```sh
+python3 -m pip install numpy pillow pygments
 python3 -m unittest discover -s tests -v
 node --test tests/*.test.js
 ```
@@ -1605,3 +1607,19 @@ TeX word spacing, `\\` line breaks and `&` alignment use LaTeX's row spacing, an
 seconds). As in Community, the SVG is imported like `SVGMobject`, scaled by
 `font_size`, recolored, and `select()` finds `<label>` content and `{{ body : label }}`
 groups. Custom font paths are not available in the browser.
+
+
+The **Sample a vector-field color map** gallery example uses
+`VectorField.get_colored_background_image(sampling_rate=5)` to produce a Pillow
+RGB image of the configured screen frame. Samples include both frame boundaries,
+with rows running top to bottom; each pixel uses the existing field/color scheme.
+ImageMobject now accepts Pillow images directly, alongside arrays and image files.
+The worker loads Pillow automatically for this factory, even without a PIL import;
+the existing optional offline Pillow wheel remains available.
+
+Sampling rate must be positive and finite. Empty grids and images above four
+million pixels fail before field callbacks run. Single-color fields reject this
+API, following Community. The gallery displays the resulting color map behind
+arrows and an advected marker, then removes all three. This adds field-image
+generation; raster coloring inside vector shapes and per-pixel StreamLines painting
+remain unfinished. It does not implement Mobject.get_image or pixel cameras.

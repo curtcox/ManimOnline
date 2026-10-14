@@ -15,8 +15,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      # The worker loads NumPy for sources that use np; examples rely on it.
-      - run: python3 -m pip install numpy
+      # Exercise optional runtime packages used by browser scenes and their native tests.
+      - run: python3 -m pip install numpy pillow pygments
       - run: python3 -m unittest discover -s tests -v
       - run: node --test tests/*.test.js
       - run: |

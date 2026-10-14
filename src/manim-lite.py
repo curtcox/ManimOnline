@@ -23399,7 +23399,13 @@ RESAMPLING_ALGORITHMS = {'nearest': 0, 'none': 0, 'lanczos': 1, 'antialias': 1, 
 
 def _rgba_rows(pixels, limit=255):
     """Rows of RGBA tuples (channels 0..limit) from a NumPy array or nested lists (2D gray, RGB or RGBA)."""
-    if hasattr(pixels, 'tolist'):
+    if hasattr(pixels, 'getdata') and hasattr(pixels, 'size'):
+        width, height = pixels.size
+        if width < 1 or height < 1 or width * height > _IMAGE_PIXEL_LIMIT:
+            raise ValueError('ImageMobject needs 1 to 4 million pixels')
+        flat = list(getattr(pixels, 'get_flattened_data', pixels.getdata)())
+        pixels = [flat[index:index + width] for index in range(0, len(flat), width)]
+    elif hasattr(pixels, 'tolist'):
         pixels = pixels.tolist()
     rows = [list(row) for row in pixels]
     if not rows or not rows[0]:
@@ -24683,7 +24689,28 @@ class VectorField(VGroup):
         return self
 
     def get_colored_background_image(self, sampling_rate=5):
-        raise NotImplementedError('Raster background images are not supported in the browser preview')
+        """Sample Community's screen-coordinate color grid as a Pillow RGB image."""
+        if self.single_color:
+            raise ValueError('A single-color vector field has no color scheme')
+        NumberLine._real(sampling_rate, 'sampling_rate', positive=True)
+        columns, rows = config.pixel_width / sampling_rate, config.pixel_height / sampling_rate
+        if not math.isfinite(columns) or not math.isfinite(rows):
+            raise ValueError('Vector field image dimensions must be finite')
+        width, height = int(columns), int(rows)
+        if width < 1 or height < 1:
+            raise ValueError('Vector field images need at least one row and column')
+        if width * height > _IMAGE_PIXEL_LIMIT:
+            raise ValueError('Vector field images are limited to 4 million pixels')
+        xs = _linspace(-config.frame_width / 2, config.frame_width / 2, width)
+        ys = _linspace(config.frame_height / 2, -config.frame_height / 2, height)
+        # Import before callbacks, so a missing optional package cannot run user
+        # functions and then fail to construct the requested image.
+        from PIL import Image
+        data = bytearray()
+        for y in ys:
+            for x in xs:
+                data.extend(int(value * 255) for value in self.pos_to_rgb(Vector((x, y, 0))))
+        return Image.frombytes('RGB', (width, height), bytes(data))
 
     def get_vectorized_rgba_gradient_function(self, start, end, colors):
         rgbs = [color_to_rgb(c) for c in colors]

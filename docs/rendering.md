@@ -2448,3 +2448,28 @@ forwarding allows. A single-center path_arc_centers moves posed analytic shapes 
 Every Animation and AnimationGroup accepts _on_finish, run once before removal.
 TexFontTemplates and TexTemplateLibrary list Community's template names and descriptions;
 their preambles and fonts are not applied by MathJax.
+
+
+The **Sample a vector-field color map** gallery example uses
+`VectorField.get_colored_background_image(sampling_rate=5)` to produce a Pillow
+RGB image of the configured screen frame. Samples include both frame boundaries,
+with rows running top to bottom; each pixel uses the existing field/color scheme.
+ImageMobject now accepts Pillow images directly, alongside arrays and image files.
+The worker loads Pillow automatically for this factory, even without a PIL import;
+the existing optional offline Pillow wheel remains available.
+
+Sampling rate must be positive and finite. Empty grids and images above four
+million pixels fail before field callbacks run. Single-color fields reject this
+API, following Community. The gallery displays the resulting color map behind
+arrows and an advected marker, then removes all three. This adds field-image
+generation; raster coloring inside vector shapes and per-pixel StreamLines painting
+remain unfinished. It does not implement Mobject.get_image or pixel cameras.
+
+
+Reference: [Community field-image sampling](https://docs.manim.community/en/stable/reference/manim.mobject.vector_field.VectorField.html).
+Verification (2026-10-14): 718 Python tests ran successfully with one Pygments
+skip in the bundled local interpreter, and all 118 Node tests passed. Chromium
+smoke rendered DOT, Manim, NumPy, 3D and the field image. Local Pyodide gallery
+playback showed one PNG color map with arrows and an advected marker at four
+seconds; the final frame had no image or shape geometry. Switching to DOT rendered
+three graph nodes. CI installs numpy, pillow and pygments to cover package tests.

@@ -98,6 +98,56 @@ def render_3d(body):
 
 
 class SceneTests(PointTestCase):
+    def test_vector_field_image_gallery_serialization_motion_and_cleanup(self):
+        try:
+            import PIL
+        except ImportError:
+            self.skipTest('Pillow is required for field images')
+        result=json.loads(lite.render_scene((ROOT/'examples/field_image_scene.py').read_text()))
+        self.assertEqual(result['duration'],8)
+        at_start=result['frames'][30]['mobjects']
+        at_end=result['frames'][90]['mobjects']
+        image=at_start[0]
+        self.assertEqual(image['type'],'image')
+        self.assertTrue(image['href'].startswith('data:image/png;base64,'))
+        self.assertEqual((image['pixel_width'],image['pixel_height']),(80,45))
+        self.assertNotEqual(at_start[-1]['position'],at_end[-1]['position'])
+        self.assertEqual(image['href'],at_end[0]['href'])
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+
+    def test_vector_field_background_sampling_dimensions_colors_and_callbacks(self):
+        try:
+            from PIL import Image
+        except ImportError:
+            self.skipTest('Pillow is required for field images')
+        old = (lite.config.pixel_width,lite.config.pixel_height,lite.config.frame_width,lite.config.frame_height)
+        try:
+            lite.config.pixel_width,lite.config.pixel_height = 6,4
+            lite.config.frame_width,lite.config.frame_height = 4,2
+            calls=[]
+            def field_function(point):
+                calls.append(tuple(point))
+                return point
+            field=lite.VectorField(field_function,color_scheme=lambda p:p[0],
+                                   min_color_scheme_value=-2,max_color_scheme_value=2,
+                                   colors=[lite.BLACK,lite.WHITE])
+            image=field.get_colored_background_image(sampling_rate=2)
+            self.assertIsInstance(image,Image.Image)
+            self.assertEqual((image.mode,image.size),('RGB',(3,2)))
+            self.assertEqual(calls,[(-2,1,0),(0,1,0),(2,1,0),(-2,-1,0),(0,-1,0),(2,-1,0)])
+            self.assertEqual([image.getpixel((x,0)) for x in range(3)],[(0,0,0),(127,127,127),(255,255,255)])
+            mob=lite.ImageMobject(image)
+            self.assertEqual((mob.pixel_width,mob.pixel_height),(3,2))
+            self.assertEqual(mob.get_pixel_array()[0][1].tolist() if HAS_NUMPY else mob.get_pixel_array()[0][1], [127,127,127,255])
+            calls.clear()
+            for rate in (0,-1,float('nan'),float('inf'),True,10,1e-10,1e-320):
+                with self.assertRaises(ValueError): field.get_colored_background_image(rate)
+                self.assertEqual(calls,[])
+            with self.assertRaises(ValueError): lite.VectorField(field_function,color=lite.RED).get_colored_background_image()
+            self.assertEqual(calls,[])
+        finally:
+            lite.config.pixel_width,lite.config.pixel_height,lite.config.frame_width,lite.config.frame_height=old
+
     def test_removing_a_zoomed_display_frame_removes_the_display_like_community(self):
         source = """from manim import *
 class Demo(ZoomedScene):

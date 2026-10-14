@@ -1275,3 +1275,16 @@ members keep their pose.
 VectorizedPoint reports Community's artificial width/height, but length_over_dim (rescale_to_fit,
 replace, FadeTransformPieces ghosts) measures its points, as Community does. `_transform_plan`
 reads missing snapshot `children` as empty.
+
+
+Read `examples/field_image_scene.py` for VectorField raster sampling. The image
+factory returns Pillow RGB with Community's inclusive screen-coordinate grid;
+validate the rate, dimensions and pixel cap before callbacks. requiresPillow in
+unified-worker loads the existing optional Pillow package for factory calls as
+well as explicit PIL imports. ImageMobject accepts Pillow images without requiring
+NumPy conversion. Keep images as pooled PNG data URIs in frame JSON; never place
+Pillow objects in snapshots. Vector-shape raster paint and pixel cameras remain open.
+
+Native verification installs numpy, pillow and pygments (as CI does) to exercise
+package-backed tests. Browser smoke includes a field image factory without a PIL
+import; require one actual SVG image, not just a successful Python render.

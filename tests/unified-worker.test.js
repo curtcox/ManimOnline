@@ -77,3 +77,14 @@ test('pooled camera background images expand to their data URI', () => {
   assert.throws(() => expandPooledScene({ pool: [{ type: 'circle' }], frames: [{ mobjects: [], camera: { background_image: { $pool: 0 } } }] }),
     /Invalid pooled frame data/);
 });
+
+
+test('field image factories request Pillow without requiring an explicit PIL import', () => {
+  const { requiresPillow } = require('../src/unified-worker.js');
+  for (const source of ['from PIL import Image', 'field.get_colored_background_image()',
+                        'field.get_colored_background_image (sampling_rate=10)']) {
+    assert.equal(requiresPillow(source), true);
+  }
+  assert.equal(requiresPillow('ImageMobject([[255]])'), false);
+  assert.equal(requiresPillow('ArrowVectorField(lambda p: p)'), false);
+});

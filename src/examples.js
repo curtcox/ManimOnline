@@ -1,5 +1,6 @@
 /** Supported, local examples and a loader that ignores superseded requests. */
 const ExampleCatalog = Object.freeze([
+  { id: 'fieldimage', label: 'Sample a vector-field color map', path: 'examples/field_image_scene.py' },
   { id: 'minimal', label: 'First animation', path: 'examples/minimal_scene.py' },
   { id: 'math', label: 'Math formulas', path: 'examples/math_scene.py' },
   { id: 'scenes', label: 'Multiple scenes', path: 'examples/multiple_scenes.py' },

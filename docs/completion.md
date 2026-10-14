@@ -476,3 +476,10 @@ Scene-code become reproduces Community's align_data padding, so receivers keep t
 family (faded or point members) with Community's child counts and order. Transform completion
 and text/SVG families still use Lite's structure. Seeded fuzz runs now differ in a handful of
 programs per 400 (mostly DoubleArrow edge cases and nested become inside arranged families).
+
+
+VectorField.get_colored_background_image now returns Community's sampled Pillow
+RGB image, usable directly in ImageMobject. Worker dependency detection, exact
+sample coordinates/colors, limits, serialization and advected-marker cleanup have
+regression coverage. Raster painting inside vector paths, per-pixel StreamLines
+coloring and pixel cameras remain unfinished.
