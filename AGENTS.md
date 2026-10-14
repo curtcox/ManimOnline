@@ -26,6 +26,10 @@ compatibility layer, not a server running full Manim Community.
 6. `docs/rendering.md` for current gaps and next milestones.
    `src/examples.js` contains the editor gallery catalog and stale-load protection.
    `gallery.html` and `src/gallery.js`/`src/gallery.css` provide searchable cards,
+   `src/gallery-updates.js` checks for and reloads complete cache updates. The
+   gallery must work with older id/label/path-only catalogs and older url-based
+   editors while updating. Service workers activate after a complete matching
+   cache is saved; existing editor hooks preserve unsaved source before reload.
    pre-rendered covers/videos and `?example=<id>` editor links. Gallery media in
    `gallery/previews/` are intentional shipped assets. Rebuild with
    `node scripts/render-gallery.cjs http://localhost:8000/ [example IDs ...]`;
@@ -125,6 +129,10 @@ demand over the network and do not block offline readiness.
 CI runs the three browsers as independent jobs, with gallery, rendering,
 language/HashBin and sharing checks as separate steps. Media error tests use
 a real missing URL because media interception differs across browser builds.
+`node tests/browser/upgrade.cjs chromium firefox webkit` reproduces a returning
+visitor's historical cached editor/catalog, verifies covers/links during the
+upgrade, automatic activation, unsaved-source preservation and offline covers.
+It has its own local fixture server and does not test live CDN availability.
 Playwright's Firefox build may fail to launch on recent macOS ("Could not find profile folder").
 Update the README and these notes when adding test commands or changing the
 runtime. Do not claim full Manim compatibility from a subset implementation.

@@ -13,12 +13,22 @@ self.addEventListener('install', event => {
     const cache = await caches.open(CACHE);
     try {
       // CORS responses are readable; opaque responses cannot prove readiness.
-      await cache.addAll(assets.map(url => new Request(url, { mode: 'cors', cache: 'reload' })));
+      const local = OfflineAssets.local.map(path => new URL(path, scope).href);
+      await cache.addAll(local.map(url => new Request(url, { mode: 'cors', cache: 'reload' })));
+      // Pinned remote runtimes do not change with an application release. Reuse
+      // already saved copies so an upgrade does not depend on CDN availability.
+      await Promise.all(OfflineAssets.remote.map(async url => {
+        const saved = await caches.match(url);
+        if (saved && saved.ok && saved.type !== 'opaque') await cache.put(url, saved);
+        else await cache.addAll([new Request(url, { mode: 'cors', cache: 'reload' })]);
+      }));
     } catch (error) {
       await caches.delete(CACHE);
       throw error;
     }
-    // Updates wait for current pages to close, or an explicit update action.
+    // Activate only after a complete matching cache is ready. Existing editor
+    // controllerchange handlers preserve their source/options before reloading.
+    await self.skipWaiting();
   })());
 });
 

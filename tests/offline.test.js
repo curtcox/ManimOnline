@@ -7,8 +7,11 @@ const { ExampleCatalog } = require('../src/examples.js');
 
 function harness() {
   const handlers = {}, stores = new Map();
-  let online = true, failURL = '', claims = 0;
+  let online = true, failURL = '', claims = 0, activations = 0;
   const caches = {
+    match: async url => {
+      for (const store of stores.values()) if (store.has(url)) return store.get(url).clone();
+    },
     open: async name => {
       if (!stores.has(name)) stores.set(name, new Map());
       const store = stores.get(name);
@@ -31,16 +34,16 @@ function harness() {
   };
   vm.runInNewContext(fs.readFileSync('service-worker.js', 'utf8'), {
     OfflineAssets: Assets, importScripts() {}, caches, fetch, Request, Response,
-    self: { registration: { scope: 'https://example.test/ManimOnline/' },
+    URL, self: { registration: { scope: 'https://example.test/ManimOnline/' },
       addEventListener: (name, handler) => handlers[name] = handler,
-      clients: { claim: async () => claims++ }, skipWaiting() {} }
+      clients: { claim: async () => claims++ }, skipWaiting() { activations++; } }
   });
   const run = (type, args = {}) => {
     let result;
     handlers[type]({ ...args, waitUntil: promise => result = promise, respondWith: promise => result = promise });
     return result;
   };
-  return { stores, run, setOnline: value => online = value, fail: url => failURL = url, get claims() { return claims; } };
+  return { stores, run, setOnline: value => online = value, fail: url => failURL = url, get claims() { return claims; }, get activations() { return activations; } };
 }
 
 test('offline manifest covers gallery, editor dependencies, and every local script', () => {
@@ -69,6 +72,7 @@ test('cache keys respect project scope, normalize navigation and versions, and e
 test('complete install supports fresh offline navigation, workers, math, and gallery fetches', async () => {
   const h = harness();
   await h.run('install');
+  assert.equal(h.activations, 1);
   h.stores.set('manimonline-offline-old', new Map());
   h.stores.set('unrelated-cache', new Map());
   await h.run('activate');
@@ -92,8 +96,20 @@ test('failed preparation deletes incomplete new cache and preserves the old vers
   h.stores.set('manimonline-offline-old', new Map());
   h.fail(Assets.remote.at(-1));
   await assert.rejects(h.run('install'));
+  assert.equal(h.activations, 0);
   assert.ok(!h.stores.has(Assets.VERSION));
   assert.ok(h.stores.has('manimonline-offline-old'));
+});
+
+test('upgrades reuse pinned remote files when the CDN is unavailable', async () => {
+  const h = harness();
+  const old = new Map(Assets.remote.map(url => [url, new Response('saved runtime')]));
+  h.stores.set('manimonline-offline-old', old);
+  h.fail(Assets.remote.at(-1));
+  await h.run('install');
+  assert.equal(h.activations, 1);
+  const cached = h.stores.get(Assets.VERSION);
+  for (const url of Assets.remote) assert.equal(await cached.get(url).text(), 'saved runtime');
 });
 
 test('partial cache offline provides a recovery page instead of a broken editor', async () => {

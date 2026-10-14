@@ -26,6 +26,7 @@ jobs:
           node --check src/manim-renderer.js
           node --check src/examples.js
           node --check src/gallery.js
+          node --check src/gallery-updates.js
           node --check scripts/render-gallery.cjs
           node --check src/manim-math.js
           node --check src/manim-export.js
@@ -42,6 +43,7 @@ jobs:
           node --check tests/browser/smoke.cjs
           node --check tests/browser/sharing.cjs
           node --check tests/browser/gallery.cjs
+          node --check tests/browser/upgrade.cjs
   browsers:
     runs-on: ubuntu-latest
     strategy:
@@ -61,6 +63,8 @@ jobs:
           sleep 2
       - name: Gallery playback and editor links
         run: node tests/browser/gallery.cjs http://localhost:8000/ ${{ matrix.browser }}
+      - name: Returning visitor upgrades
+        run: node tests/browser/upgrade.cjs ${{ matrix.browser }}
       - name: Rendering and exports
         run: node tests/browser/smoke.cjs http://localhost:8000/ ${{ matrix.browser }}
       - name: Languages and HashBin

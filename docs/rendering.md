@@ -286,12 +286,17 @@ queries include tip points; own points describe the trimmed shaft. Buffers and
 straight tip attachment are supported. CurvedArrow/CurvedDoubleArrow support is described below. Attachment to
 object boundaries remains unsupported.
 
-The editor's example picker loads supported Python scenes and a DOT diagram
-from a fixed local catalog in `src/examples.js`. It resets scene selection and
+The editor links to `gallery.html`, which shows pre-rendered covers and playable
+samples from a fixed local catalog in `src/examples.js`. Loading resets scene selection and
 URL source/type overrides, then uses the normal render and sharing pipeline.
 Revision checks discard superseded responses and errors, including when edits
 arrive during response-body loading. Failed loads leave editor source unchanged.
 Toolbar controls wrap, with preview placement tracking the toolbar height.
+Gallery fields are derived for older cached catalogs, and legacy source URLs
+keep their load links usable during an update. The gallery checks for service
+worker updates; completed caches activate automatically. Existing editor tabs
+preserve unsaved source through their reload hooks. Pinned remote runtimes are
+reused from the preceding cache.
 
 `MathTex` serializes a formula and standard Mobject styles in the Python worker.
 `src/manim-math.js` lazily loads MathJax 3.2.2 and compiles each distinct formula

@@ -5,7 +5,15 @@
   const type = document.getElementById('sample-type');
   const names = { manim: 'MANIM ANIMATION', graphviz: 'GRAPHVIZ DOT', modl: 'MODL DIAGRAM' };
   const cards = [];
-  for (const example of ExampleCatalog) {
+  // A previous service worker may supply a catalog containing only id/label/path.
+  // Derive the gallery fields instead of making links and images from undefined.
+  for (const entry of ExampleCatalog) {
+    const type = entry.type || (entry.path.endsWith('.py') ? 'manim' : entry.path.endsWith('.dot') ? 'graphviz' : 'modl');
+    const example = { ...entry, type,
+      cover: entry.cover || `gallery/previews/${entry.id}.png`,
+      video: entry.video ?? (type === 'manim' ? `gallery/previews/${entry.id}.mp4` : null),
+      editorURL: entry.editorURL || `./?url=${encodeURIComponent(entry.path)}`
+    };
     const card = document.createElement('article');
     card.className = 'card';
     card.id = example.id;

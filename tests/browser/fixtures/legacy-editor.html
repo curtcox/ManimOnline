@@ -1,0 +1,1505 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+  <title>ManimOnline</title>
+  <!-- HashBin's Manim Online app. Public ID, no secret; see README for other deployments. -->
+  <meta name="hashbin-client-id" content="app_ea30117c-555b-4759-b01a-e75dc402d177">
+  <style type="text/css" media="screen">
+    body {
+      overflow: hidden;
+      margin: 0 0;
+    }
+
+    body.presentation #editor {
+      display: none;
+    }
+
+    body.presentation #options {
+      left: 0;
+    }
+
+    body.presentation #review {
+      left: 0;
+    }
+
+    #editor-toggle {
+      position: absolute;
+      left: 0;
+      top: 50%;
+      z-index: 10;
+      transform: translateY(-50%);
+    }
+
+    #toggle-btn {
+      cursor: pointer;
+      padding: 10px 6px;
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(4px);
+      border: 1px solid rgba(222, 226, 230, 0.7);
+      border-left: none;
+      border-radius: 0 6px 6px 0;
+      color: #495057;
+      font-size: 12px;
+      font-weight: 600;
+      box-shadow: 2px 0 4px rgba(0,0,0,0.08);
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 40px;
+      width: 20px;
+    }
+
+    #toggle-btn:hover {
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 2px 0 6px rgba(0,0,0,0.12);
+      color: #212529;
+    }
+
+    #toggle-btn:active {
+      background: rgba(233, 236, 239, 0.8);
+      box-shadow: 1px 0 3px rgba(0,0,0,0.05);
+    }
+
+    #toggle-btn.collapsed {
+      background: linear-gradient(to right, #ffffff, #f8f9fa);
+      border: 1px solid #dee2e6;
+      box-shadow: 2px 0 4px rgba(0,0,0,0.08);
+      color: #495057;
+    }
+
+    #toggle-btn.collapsed:hover {
+      background: linear-gradient(to right, #f8f9fa, #e9ecef);
+      color: #212529;
+    }
+
+    #editor {
+      margin: 0;
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      transition: width 0.3s ease;
+      width: 50%;
+    }
+
+    #editor.collapsed {
+      width: 0 !important;
+      overflow: hidden;
+    }
+
+    #splitter {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 5px;
+      background: #ccc;
+      cursor: col-resize;
+      z-index: 5;
+      transition: left 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 2px 0 4px rgba(0,0,0,0.08);
+    }
+
+    #splitter::before {
+      content: '⋮';
+      color: #555;
+      font-size: 20px;
+      font-weight: bold;
+      pointer-events: none;
+      line-height: 1;
+    }
+
+    #splitter:hover {
+      background: #999;
+    }
+
+    #splitter:hover::before {
+      color: #222;
+    }
+
+    #splitter.dragging {
+      background: #666;
+      transition: none;
+    }
+
+    #splitter.dragging::before {
+      color: #fff;
+    }
+
+    #review {
+      margin: 0;
+      position: absolute;
+      top: 42px;
+      bottom: 0;
+      right: 0;
+      left: calc(50% + 5px);
+      overflow: scroll;
+      transition: left 0.3s ease;
+    }
+
+    #review.expanded {
+      left: 0 !important;
+    }
+
+    #options {
+      margin: 0;
+      position: fixed;
+      left: calc(50% + 5px);
+      right: 0;
+      flex: 0 0 auto;
+      background: linear-gradient(to bottom, #ffffff, #f8f9fa);
+      border-bottom: 1px solid #dee2e6;
+      padding: 8px 12px;
+      overflow: hidden;
+      transition: left 0.3s ease;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 14px;
+      z-index: 10;
+    }
+
+    #options.expanded {
+      left: 0 !important;
+    }
+
+    #example-picker { max-width: 190px; }
+    #example-status { color: #495057; font-size: 12px; }
+
+    #options label {
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #495057;
+      font-weight: 500;
+    }
+
+    #options select {
+      padding: 4px 8px;
+      border: 1px solid #ced4da;
+      border-radius: 4px;
+      background: white;
+      color: #212529;
+      font-size: 14px;
+      cursor: pointer;
+      transition: border-color 0.15s ease;
+    }
+
+    #options select:hover {
+      border-color: #adb5bd;
+    }
+
+    #options select:focus {
+      outline: none;
+      border-color: #80bdff;
+      box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+    }
+
+    #options input[type="checkbox"] {
+      cursor: pointer;
+    }
+
+    #options input[type="button"], #hashbin-save, #hashbin-load {
+      padding: 5px 12px;
+      border: 1px solid #ced4da;
+      border-radius: 4px;
+      background: white;
+      color: #212529;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    #options input[type="button"]:hover, #hashbin-save:hover, #hashbin-load:hover {
+      background: #f8f9fa;
+      border-color: #adb5bd;
+    }
+
+    #options input[type="button"]:active, #hashbin-save:active, #hashbin-load:active {
+      background: #e9ecef;
+    }
+
+    #options .graphviz-options {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    #options .graphviz-options.hidden,
+    #options .manim-options.hidden {
+      display: none;
+    }
+
+    #options #raw.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    #options #raw.disabled input {
+      cursor: not-allowed;
+    }
+
+    #type-indicator {
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    #type-indicator.graphviz {
+      background: #e3f2fd;
+      color: #1565c0;
+    }
+
+    #type-indicator.manim {
+      background: #fff3e0;
+      color: #e65100;
+    }
+
+    #type-indicator.modl { background: #7550a0; color: white; }
+    #hashbin-cid { min-width: 0; max-width: 100%; padding: 5px; border: 1px solid #ced4da; border-radius: 4px; }
+    #hashbin-dialog { max-width: min(440px, 85vw); border-radius: 8px; }
+    #hashbin-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+
+    #type-indicator.unknown {
+      background: #f5f5f5;
+      color: #757575;
+    }
+
+    #pyodide-status {
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      background: #f5f5f5;
+      color: #757575;
+    }
+
+    #pyodide-status.loading {
+      background: #fff8e1;
+      color: #f57f17;
+    }
+
+    #pyodide-status.ready {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+
+    #pyodide-status.hidden {
+      display: none;
+    }
+
+    #status {
+      width: 100%;
+      position: fixed;
+      bottom: 0;
+      display: block;
+      color: #FFF;
+      z-index: 999;
+    }
+
+    #review svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    #review #text {
+      font-size: 12px;
+      font-family: monaco, courier, monospace;
+      white-space: pre;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+    }
+
+    #review img {
+      display: block;
+      margin: 0 auto;
+    }
+
+    #review.working svg,
+    #output.error svg,
+    #review.working #text,
+    #output.error #text,
+    #review.working img,
+    #output.error img {
+      opacity: 0.4;
+    }
+
+    #review.error #error {
+      display: inherit;
+    }
+
+    #review #error {
+      display: none;
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      margin-right: 20px;
+      background: red;
+      color: white;
+      z-index: 1;
+      padding: 10px;
+      border-radius: 4px;
+      max-width: 80%;
+      white-space: pre-wrap;
+      font-family: monospace;
+    }
+
+    #download {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      text-decoration: none;
+      background: white;
+      color: #212529;
+      padding: 5px 12px;
+      border: 1px solid #ced4da;
+      border-radius: 4px;
+      display: inline-block;
+      transition: all 0.15s ease;
+    }
+
+    #download:hover {
+      background: #f8f9fa;
+      border-color: #adb5bd;
+    }
+
+    #download:active {
+      background: #e9ecef;
+    }
+
+    #shareurl {
+      display: none;
+      padding: 4px 8px;
+      border: 1px solid #ced4da;
+      border-radius: 4px;
+      background: white;
+      color: #212529;
+      font-size: 14px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      width: 300px;
+    }
+
+    #shareurl:focus {
+      outline: none;
+      border-color: #80bdff;
+      box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+    }
+    .manim-player { position: absolute; inset: 0; display: flex; flex-direction: column; background: #000; }
+    .manim-stage { position: relative; flex: 1; min-height: 0; }
+    .manim-controls { display: flex; align-items: center; gap: 10px; padding: 12px; color: white; background: #252525; font: 13px sans-serif; }
+    .manim-controls input { flex: 1; min-width: 40px; }
+    .manim-controls button { padding: 5px 10px; cursor: pointer; }
+    .manim-controls span { white-space: nowrap; }
+    @media (max-width: 760px) {
+      body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: auto; }
+      #options { position: relative; left: 0 !important; right: auto; order: 0; box-sizing: border-box;
+        width: 100%; max-height: 35vh; max-height: 35dvh; overflow: auto; padding: 8px; gap: 8px; transition: none; }
+      #options label { flex-wrap: wrap; }
+      #options select, #options input[type="button"], #options button, #download { min-height: 44px; box-sizing: border-box; }
+      #options .graphviz-options { flex-wrap: wrap; gap: 8px; }
+      #options input[type="text"] { min-height: 36px; font-size: 16px; max-width: 100%; box-sizing: border-box; }
+      #shareurl { max-width: 100%; box-sizing: border-box; }
+      #editor-toggle { position: relative; top: auto; transform: none; order: 1; flex: 0 0 auto; background: #252525; }
+      #toggle-btn { width: auto; min-width: 100px; height: 44px; font-size: 14px; border-radius: 0; }
+      #editor { position: relative; order: 2; top: auto; bottom: auto; left: 0;
+        width: 100% !important; height: 32vh; height: 32dvh; min-height: 160px; flex: 0 0 auto; transition: none; }
+      #editor.collapsed { display: none; }
+      #splitter, .github-fork-ribbon-wrapper { display: none !important; }
+      #review { position: relative; order: 3; top: auto !important; bottom: auto; left: 0 !important;
+        right: auto; width: 100%; min-height: 220px; flex: 1 0 220px; overflow: auto; transition: none; }
+      #review img { max-width: 100%; height: auto; }
+      .manim-controls { flex-wrap: wrap; padding: 8px; gap: 8px; }
+      .manim-controls button { min-height: 44px; }
+      .manim-controls input { min-height: 44px; }
+      .manim-controls span { margin-left: auto; }
+      #status { pointer-events: none; }
+      body.presentation #editor-toggle { display: none; }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="editor-toggle">
+    <button id="toggle-btn" type="button" aria-controls="editor" aria-expanded="true" aria-label="Hide code editor">&#9664;</button>
+  </div>
+  <pre id="editor">from manim import *
+
+class HelloWorld(Scene):
+    def construct(self):
+        # Create shapes with colors
+        circle = Circle(color=BLUE)
+        square = Square(color=RED).shift(RIGHT * 2)
+        triangle = Triangle(color=GREEN).shift(LEFT * 2)
+
+        # Add text
+        title = Text("ManimOnline", color=WHITE).shift(UP * 2)
+
+        self.play(Create(circle), FadeIn(title), FadeIn(triangle))
+        self.play(Transform(circle, square))
+        self.wait(1)</pre>
+  <div id="splitter"></div>
+  <div id="options">
+    <span id="type-indicator" class="manim">Manim</span>
+    <label>Renderer:
+      <select id="renderer-mode" aria-label="Renderer">
+        <option value="auto">Auto</option>
+        <option value="manim">Manim</option>
+        <option value="graphviz">Graphviz</option>
+        <option value="modl">modl</option>
+      </select>
+    </label>
+    <span id="pyodide-status" class="hidden" role="status" aria-live="polite">Python loading...</span>
+    <span class="manim-options">
+      <button id="render-animation" type="button">Render animation</button>
+      <button id="cancel-render" type="button" hidden>Cancel render</button>
+    </span>
+
+    <label>Example:
+      <select id="example-picker" aria-label="Example">
+        <option value="">Choose an example</option>
+      </select>
+    </label>
+    <input type="button" id="load-example" value="Load example" disabled>
+    <span id="example-status" role="status" aria-live="polite"></span>
+
+    <label class="manim-options" id="scene-option">
+      Scene:
+      <input id="scene-name" type="text" placeholder="First scene" list="scene-names"
+        aria-label="Scene class name" autocomplete="off" spellcheck="false" size="16">
+      <datalist id="scene-names"></datalist>
+    </label>
+
+    <div class="graphviz-options hidden">
+      <label id="engine">
+        Engine:
+        <select>
+          <option>circo</option>
+          <option selected="">dot</option>
+          <option>fdp</option>
+          <option>nop</option>
+          <option>nop2</option>
+          <option>neato</option>
+          <option>sfdp</option>
+          <option>twopi</option>
+          <option>osage</option>
+          <option>patchwork</option>
+        </select>
+      </label>
+
+      <label id="format">
+        Format:
+        <select>
+          <option selected="">svg</option>
+          <option>png</option>
+          <option>json</option>
+          <option>xdot</option>
+          <option>plain</option>
+          <option>ps</option>
+        </select>
+      </label>
+
+      <label id="raw" class="disabled">
+        <input type="checkbox" disabled=""> Show raw output
+      </label>
+    </div>
+
+    <label>
+      <a href="#" target="_blank" id="download">Download</a>
+    </label>
+    <label class="manim-options" id="manim-export-option">
+      Export:
+      <select id="manim-export-format" aria-label="Export format">
+        <option value="svg">SVG frame</option>
+        <option value="png">PNG frame</option>
+        <option value="mp4">MP4 video</option>
+        <option value="webm">WebM video</option>
+      </select>
+    </label>
+    <span id="export-status" role="status"></span>
+    <span id="offline-status" role="status"></span>
+    <button type="button" id="offline-action" hidden>Retry offline setup</button>
+
+    <label>
+      <input type="button" value="Share" id="share">
+    </label>
+
+    <input type="text" value="" id="shareurl" aria-label="Share link" readonly>
+    <button type="button" id="shorten-share" hidden>Shorten link</button>
+    <span id="share-status" role="status" aria-live="polite"></span>
+
+    <button type="button" id="hashbin-save">Save to HashBin</button>
+    <input type="text" id="hashbin-cid" placeholder="HashBin CID or saved link" aria-label="HashBin CID or saved link" size="22">
+    <button type="button" id="hashbin-load">Load from HashBin</button>
+    <span id="hashbin-status" role="status" aria-live="polite"></span>
+
+  </div>
+  <dialog id="hashbin-dialog" aria-labelledby="hashbin-title">
+    <h2 id="hashbin-title">Save to HashBin</h2>
+    <p id="hashbin-message" style="white-space: pre-wrap" role="status"></p>
+    <p><a href="https://hashbin.org/account.html" target="_blank" rel="noopener noreferrer">Account settings</a></p>
+    <button type="button" id="hashbin-confirm" disabled>Save</button>
+    <button type="button" id="hashbin-disconnect" hidden>Disconnect</button>
+    <button type="button" id="hashbin-close">Close</button>
+  </dialog>
+  <div id="review">
+    <div id="error"></div>
+  </div>
+  <div id="status"></div>
+  <div class="github-fork-ribbon-wrapper right">
+    <div class="github-fork-ribbon">
+      <a href="https://github.com/curtcox/ManimOnline">Fork me on GitHub</a>
+    </div>
+  </div>
+
+  <script src="ace/ace.js" type="text/javascript" charset="utf-8"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"
+    integrity="sha512-qtX0GLM3qX8rxJN1gyDfcnMFFrKvixfoEOwbBib9VafR5vbChV5LeE5wSI/x+IlCkTY5ZFddFDCCfaVJJNnuKQ=="
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="viz-global.js"></script>
+  <script src="svg-pan-zoom.min.js" type="text/javascript" charset="utf-8"></script>
+  <script src="src/modl.js?v=1"></script>
+  <script src="src/hashbin.js?v=1"></script>
+  <script src="src/hashbin-panel.js?v=1"></script>
+  <script src="src/detector.js?v=3"></script>
+  <script src="src/render-scheduler.js?v=1"></script>
+  <script src="src/share-links.js?v=4"></script>
+  <script src="src/manim-renderer.js?v=parts-4"></script>
+  <script src="src/manim-client.js"></script>
+  <script src="src/manim-player.js?v=mathtex-1"></script>
+  <script src="src/examples.js"></script>
+  <script src="src/manim-math.js?v=7"></script>
+  <script src="src/manim-typst.js?v=2"></script>
+  <script src="src/manim-export.js?v=1"></script>
+  <script src="src/manim-video.js?v=1"></script>
+  <script src="src/offline.js?v=1"></script>
+  <script>
+    const editorElement = document.getElementById('editor');
+    const reviewElement = document.getElementById('review');
+    const optionsElement = document.getElementById('options');
+    // Wrapped controls must not cover the preview when the panel is narrow.
+    new ResizeObserver(() => {
+      reviewElement.style.top = `${optionsElement.offsetHeight}px`;
+      resizeSVG();
+    }).observe(optionsElement);
+    const toggleBtn = document.getElementById('toggle-btn');
+    const splitter = document.getElementById('splitter');
+    const typeIndicator = document.getElementById('type-indicator');
+    const pyodideStatus = document.getElementById('pyodide-status');
+    const graphvizOptions = document.querySelector('.graphviz-options');
+    const sceneNameInput = document.getElementById('scene-name');
+    const sceneNamesList = document.getElementById('scene-names');
+
+    let isCollapsed = false;
+    let isDragging = false;
+    let currentSplitPercentage = 50;
+    const mobileLayout = window.matchMedia('(max-width: 760px)');
+    function updateToggleLabel() {
+      toggleBtn.textContent = mobileLayout.matches ? (isCollapsed ? 'Show code' : 'Hide code') : (isCollapsed ? '▶' : '◀');
+      toggleBtn.setAttribute('aria-expanded', String(!isCollapsed));
+      toggleBtn.setAttribute('aria-label', isCollapsed ? 'Show code editor' : 'Hide code editor');
+      ace.edit('editor').getSession().setUseWrapMode(mobileLayout.matches);
+    }
+    mobileLayout.addEventListener('change', updateToggleLabel);
+    updateToggleLabel();
+    new ResizeObserver(() => {
+      ace.edit('editor').resize();
+      resizeSVG();
+    }).observe(editorElement);
+    new ResizeObserver(resizeSVG).observe(reviewElement);
+
+    // Current content type
+    let currentType = 'unknown';
+
+    // Splitter drag functionality
+    splitter.addEventListener('mousedown', (e) => {
+      if (isCollapsed) return;
+      isDragging = true;
+      splitter.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+      editorElement.style.transition = 'none';
+      splitter.style.transition = 'none';
+      reviewElement.style.transition = 'none';
+      optionsElement.style.transition = 'none';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+
+      const windowWidth = window.innerWidth;
+      const newLeft = e.clientX;
+      const percentage = (newLeft / windowWidth) * 100;
+
+      if (percentage >= 10 && percentage <= 90) {
+        currentSplitPercentage = percentage;
+        updatePanelSizes(percentage);
+      }
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        splitter.classList.remove('dragging');
+        document.body.style.cursor = '';
+        editorElement.style.transition = '';
+        splitter.style.transition = '';
+        reviewElement.style.transition = '';
+        optionsElement.style.transition = '';
+        setTimeout(resizeSVG, 100);
+      }
+    });
+
+    function updatePanelSizes(percentage) {
+      if (!isCollapsed) {
+        editorElement.style.width = `${percentage}%`;
+        splitter.style.left = `${percentage}%`;
+        reviewElement.style.left = `calc(${percentage}% + 5px)`;
+        optionsElement.style.left = `calc(${percentage}% + 5px)`;
+      }
+    }
+
+    toggleBtn.addEventListener('click', () => {
+      isCollapsed = !isCollapsed;
+
+      if (isCollapsed) {
+        editorElement.style.transition = 'width 0.3s ease';
+        splitter.style.transition = 'left 0.3s ease, opacity 0.3s ease';
+        reviewElement.style.transition = 'left 0.3s ease';
+        optionsElement.style.transition = 'left 0.3s ease';
+
+        editorElement.classList.add('collapsed');
+        reviewElement.classList.add('expanded');
+        optionsElement.classList.add('expanded');
+        toggleBtn.classList.add('collapsed');
+        splitter.style.opacity = '0';
+        splitter.style.left = '0';
+        updateToggleLabel();
+
+        setTimeout(() => {
+          splitter.style.display = 'none';
+        }, 300);
+      } else {
+        splitter.style.left = '0';
+        splitter.style.opacity = '0';
+        splitter.style.display = 'flex';
+
+        editorElement.style.transition = 'width 0.3s ease';
+        splitter.style.transition = 'left 0.3s ease, opacity 0.3s ease';
+        reviewElement.style.transition = 'left 0.3s ease';
+        optionsElement.style.transition = 'left 0.3s ease';
+
+        setTimeout(() => {
+          editorElement.classList.remove('collapsed');
+          reviewElement.classList.remove('expanded');
+          optionsElement.classList.remove('expanded');
+          toggleBtn.classList.remove('collapsed');
+          updateToggleLabel();
+          updatePanelSizes(currentSplitPercentage);
+          splitter.style.opacity = '1';
+        }, 10);
+      }
+
+      setTimeout(resizeSVG, 300);
+    });
+
+    window.addEventListener('resize', resizeSVG);
+
+    function resizeSVG() {
+      const svg = document.querySelector('#review svg');
+      if (svg && currentType === 'graphviz') {
+        try {
+          const panZoom = svgPanZoom(svg);
+          panZoom.resize();
+          panZoom.fit();
+          panZoom.center();
+
+          svg.style.width = '100%';
+          svg.style.height = '100%';
+        } catch (e) {
+          // Ignore pan-zoom errors
+        }
+      }
+    }
+
+    (async function (document) {
+      window.URL = window.URL || window.webkitURL;
+      var el_stetus = document.getElementById("status"),
+        t_stetus = -1,
+        reviewer = document.getElementById("review"),
+        scale = window.devicePixelRatio || 1,
+        downloadBtn = document.getElementById("download"),
+        editor = ace.edit("editor"),
+        parser = new DOMParser(),
+        formatEl = document.querySelector("#format select"),
+        engineEl = document.querySelector("#engine select"),
+        rawEl = document.querySelector("#raw input"),
+        shareEl = document.querySelector("#share"),
+        shareURLEl = document.querySelector("#shareurl"),
+        errorEl = document.querySelector("#error");
+
+      const renderAnimationButton = document.getElementById('render-animation');
+      const cancelRenderButton = document.getElementById('cancel-render');
+      function setRenderBusy(busy) {
+        renderAnimationButton.disabled = busy;
+        cancelRenderButton.hidden = !busy;
+      }
+      let renderRevision = 0;
+      let player = null;
+      let modlPreview = null;
+      let modlPositions = Object.create(null);
+      let savedHashbin = null;
+      const storage = kind => { try { return window[kind]; } catch (_) { return null; } };
+      const hashbinStore = new HashBinStore({
+        clientId: document.querySelector('meta[name="hashbin-client-id"]').content,
+        redirectUri: location.origin + location.pathname.replace(/index\.html$/, ''),
+        storage: storage('localStorage'), transactionStorage: storage('sessionStorage')
+      });
+      function sourceSnapshot() {
+        const src = editor.getValue();
+        const type = rendererMode.value === 'auto' ? ContentDetector.detect(src).type : rendererMode.value;
+        return { src, type, scene: sceneNameInput.value, engine: engineEl.value,
+          outputFormat: formatEl.value, pos: modlPositions };
+      }
+      const hashbinPanel = new HashBinPanel({ store: hashbinStore, getSnapshot: sourceSnapshot,
+        getFingerprint: currentShareFingerprint,
+        onLoad: applyLoadedSource,
+        onSaved: (cid, fingerprint, link) => {
+          savedHashbin = { cid, fingerprint };
+          history.pushState(null, '', link);
+          clearShare();
+          shareURLEl.style.display = 'inline';
+          shareURLEl.value = link;
+        }
+      });
+      function applyLoadedSource(snapshot, cid = null) {
+        const url = new URL(location.href);
+        for (const key of ['raw', 'compressed', 'url', 'type', 'scene', 'engine', 'format', 'modlpos']) url.searchParams.delete(key);
+        if (snapshot.type) url.searchParams.set('type', snapshot.type === 'graphviz' ? 'dot' : snapshot.type);
+        url.hash = cid || encodeURIComponent(snapshot.src);
+        history.replaceState(null, '', url);
+        modlPositions = HashBinDocuments.positions(snapshot.pos);
+        sceneNameInput.value = snapshot.scene || '';
+        if (['dot','circo','fdp','nop','nop2','neato','sfdp','twopi','osage','patchwork'].includes(snapshot.engine)) engineEl.value = snapshot.engine;
+        else engineEl.value = 'dot';
+        if (['svg','png','json','xdot','plain','ps'].includes(snapshot.outputFormat)) formatEl.value = snapshot.outputFormat;
+        else formatEl.value = 'svg';
+        editor.setValue(snapshot.src, -1);
+        detectAndUpdateType();
+        savedHashbin = cid ? { cid, fingerprint: currentShareFingerprint() } : null;
+        render();
+      }
+      const shareClient = new ShareClient();
+      const shortenShare = document.getElementById('shorten-share');
+      const shareStatus = document.getElementById('share-status');
+      let shareSnapshot = null;
+      let shareFingerprint = '';
+      function currentShareFingerprint() {
+        return JSON.stringify([editor.getSession().getDocument().getValue(),
+          rendererMode.value, sceneNameInput.value, engineEl.value, formatEl.value, modlPositions]);
+      }
+      function clearShare() {
+        shareClient.cancel();
+        shareSnapshot = null;
+        shareFingerprint = '';
+        shareURLEl.value = '';
+        shareURLEl.style.display = 'none';
+        shortenShare.hidden = true;
+        shortenShare.disabled = false;
+        shareStatus.textContent = '';
+      }
+      shortenShare.addEventListener('click', async () => {
+        if (!shareSnapshot) return;
+        const snapshot = shareSnapshot;
+        shortenShare.disabled = true;
+        shareStatus.textContent = 'Shortening link…';
+        const result = await shareClient.shorten(snapshot);
+        if (snapshot !== shareSnapshot || !result) return;
+        shareURLEl.value = result.url;
+        shortenShare.disabled = false;
+        shareStatus.textContent = result.shortened ? 'Short link ready.' : result.error.message;
+      });
+      const rendererMode = document.getElementById('renderer-mode');
+      let exportingPNG = false;
+      const frameFormat = document.getElementById('manim-export-format');
+      const exportStatus = document.getElementById('export-status');
+      window.addEventListener('offline-before-reload', () => {
+        const url = new URL(location.href);
+        for (const parameter of ['raw', 'compressed', 'url']) url.searchParams.delete(parameter);
+        url.hash = encodeURIComponent(editor.getSession().getDocument().getValue());
+        applySceneToURL(url);
+        history.replaceState(null, '', url);
+      });
+      let videoExport = null;
+      function saveBlob(blob, name) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = name;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+      async function exportVideo(format) {
+        // A second click while encoding cancels the export.
+        if (videoExport) { videoExport.abort(); return; }
+        if (exportingPNG) return;
+        if (!player || reviewer.classList.contains('working') || reviewer.classList.contains('error')) {
+          exportStatus.textContent = 'Render an animation before downloading a video.';
+          return;
+        }
+        const snapshotPlayer = player;
+        const revision = renderRevision;
+        const label = format === 'mp4' ? 'MP4' : 'WebM';
+        snapshotPlayer.pause();
+        const shown = snapshotPlayer.stage.firstElementChild;
+        const controller = new AbortController();
+        videoExport = controller;
+        downloadBtn.setAttribute('aria-busy', 'true');
+        downloadBtn.textContent = 'Cancel video';
+        exportStatus.textContent = `Encoding ${label}… 0%`;
+        try {
+          const serializer = new XMLSerializer();
+          const blob = await ManimVideo.encode({
+            format, frameCount: snapshotPlayer.frames.length, fps: snapshotPlayer.fps,
+            width: Number(shown.getAttribute('width')), height: Number(shown.getAttribute('height')),
+            svgFor: index => serializer.serializeToString(ManimRenderer.render(snapshotPlayer.frames[index], snapshotPlayer.mathGlyphs)),
+            onProgress: progress => {
+              if (revision === renderRevision) exportStatus.textContent = `Encoding ${label}… ${Math.floor(progress * 100)}%`;
+            },
+            signal: controller.signal
+          });
+          if (revision !== renderRevision || player !== snapshotPlayer) return;
+          saveBlob(blob, `manim.${format}`);
+          exportStatus.textContent = `${label} downloaded.`;
+        } catch (error) {
+          if (revision === renderRevision) exportStatus.textContent = error.name === 'AbortError' ? 'Video export cancelled.' : error.message;
+        } finally {
+          videoExport = null;
+          downloadBtn.textContent = 'Download';
+          downloadBtn.removeAttribute('aria-busy');
+          if (revision !== renderRevision) exportStatus.textContent = '';
+        }
+      }
+      downloadBtn.addEventListener('click', async event => {
+        if (currentType !== 'manim' || frameFormat.value === 'svg') return;
+        event.preventDefault();
+        if (frameFormat.value !== 'png') return exportVideo(frameFormat.value);
+        if (exportingPNG || videoExport) return;
+        if (!player || reviewer.classList.contains('working') || reviewer.classList.contains('error')) {
+          exportStatus.textContent = 'Render an animation before downloading a frame.';
+          return;
+        }
+        const snapshotPlayer = player;
+        const revision = renderRevision;
+        snapshotPlayer.pause();
+        const snapshotSVG = snapshotPlayer.stage.firstElementChild;
+        const source = new XMLSerializer().serializeToString(snapshotSVG);
+        const pixelWidth = Number(snapshotSVG.getAttribute('width'));
+        const pixelHeight = Number(snapshotSVG.getAttribute('height'));
+        exportingPNG = true;
+        downloadBtn.setAttribute('aria-busy', 'true');
+        exportStatus.textContent = 'Preparing PNG…';
+        try {
+          const blob = await ManimExport.png(source, pixelWidth, pixelHeight);
+          if (revision !== renderRevision || player !== snapshotPlayer) return;
+          saveBlob(blob, 'manim.png');
+          exportStatus.textContent = 'PNG downloaded.';
+        } catch (error) {
+          if (revision === renderRevision) exportStatus.textContent = error.message;
+        } finally {
+          exportingPNG = false;
+          downloadBtn.removeAttribute('aria-busy');
+          if (revision !== renderRevision) exportStatus.textContent = '';
+        }
+      });
+      frameFormat.addEventListener('change', () => { exportStatus.textContent = ''; });
+      const manimClient = new ManimClient({ onStatus: text => {
+        pyodideStatus.textContent = text;
+        pyodideStatus.className = 'loading';
+      }});
+
+      const examplePicker = document.getElementById('example-picker');
+      const loadExampleButton = document.getElementById('load-example');
+      const exampleStatus = document.getElementById('example-status');
+      for (const example of ExampleCatalog) {
+        const option = document.createElement('option');
+        option.value = example.id;
+        option.textContent = example.label;
+        examplePicker.appendChild(option);
+      }
+      const exampleLoader = new ExampleLoader({
+        onStatus: (message, loading) => {
+          exampleStatus.textContent = message;
+          loadExampleButton.disabled = loading || !examplePicker.value;
+        },
+        onError: error => { exampleStatus.textContent = error.message; },
+        onLoad: source => {
+          savedHashbin = null;
+          modlPositions = Object.create(null);
+          sceneNameInput.value = '';
+          // Loading an example opts into automatic detection, even from a typed link.
+          const url = new URL(location.href);
+          for (const parameter of ['type', 'scene', 'raw', 'compressed', 'url', 'modlpos']) {
+            url.searchParams.delete(parameter);
+          }
+          history.replaceState(null, '', url);
+          editor.getSession().setValue(source);
+          render();
+        }
+      });
+      examplePicker.addEventListener('change', () => exampleLoader.cancel());
+      loadExampleButton.addEventListener('click', () => exampleLoader.load(examplePicker.value));
+
+      function invalidateRender() {
+        hashbinPanel.cancelLoad();
+        if (shareSnapshot && shareFingerprint !== currentShareFingerprint()) clearShare();
+        renderRevision++;
+        if (videoExport) videoExport.abort();
+        exportStatus.textContent = '';
+        if (manimClient.pending) manimClient.cancel();
+        if (player) player.pause();
+        reviewer.classList.remove('working');
+        pyodideStatus.className = 'hidden';
+        setRenderBusy(false);
+      }
+
+      const scheduler = new RenderScheduler({ detect: detectAndUpdateType, render });
+      renderAnimationButton.addEventListener('click', render);
+      cancelRenderButton.addEventListener('click', () => {
+        scheduler.cancel();
+        invalidateRender();
+        clearError();
+        pyodideStatus.textContent = 'Render cancelled';
+        pyodideStatus.className = '';
+        show_status('Render cancelled. Choose Render animation to retry.');
+        renderAnimationButton.focus();
+      });
+      rendererMode.addEventListener('change', () => {
+        exampleLoader.cancel();
+        const url = new URL(location.href);
+        // Preserve the latest edits even when the previous render failed.
+        for (const parameter of ['raw', 'compressed', 'url']) url.searchParams.delete(parameter);
+        url.hash = encodeURIComponent(editor.getSession().getDocument().getValue());
+        if (rendererMode.value === 'auto') url.searchParams.delete('type');
+        else url.searchParams.set('type', rendererMode.value === 'graphviz' ? 'dot' : rendererMode.value);
+        history.replaceState(null, '', url);
+        render();
+      });
+
+      function show_status(text, hide) {
+        hide = hide || 0;
+        clearTimeout(t_stetus);
+        el_stetus.innerHTML = text;
+        if (hide) {
+          t_stetus = setTimeout(function () {
+            el_stetus.innerHTML = "";
+          }, hide);
+        }
+      }
+
+      function show_error(e) {
+        console.error(e);
+        show_status("error", 500);
+        reviewer.classList.remove("working");
+        reviewer.classList.add("error");
+        var message = e.message === undefined ? "An error occurred while processing the input." : e.message;
+        while (errorEl.firstChild) {
+          errorEl.removeChild(errorEl.firstChild);
+        }
+        errorEl.appendChild(document.createTextNode(message));
+      }
+
+      function clearError() {
+        reviewer.classList.remove("error");
+        while (errorEl.firstChild) {
+          errorEl.removeChild(errorEl.firstChild);
+        }
+      }
+
+      function svgXmlToImage(svgXml, callback) {
+        var pngImage = new Image(), svgImage = new Image();
+
+        svgImage.onload = function () {
+          var canvas = document.createElement("canvas");
+          canvas.width = svgImage.width * scale;
+          canvas.height = svgImage.height * scale;
+
+          var context = canvas.getContext("2d");
+          context.drawImage(svgImage, 0, 0, canvas.width, canvas.height);
+
+          pngImage.src = canvas.toDataURL("image/png");
+          pngImage.width = svgImage.width;
+          pngImage.height = svgImage.height;
+
+          if (callback !== undefined) {
+            callback(null, pngImage);
+          }
+        }
+
+        svgImage.onerror = function (e) {
+          if (callback !== undefined) {
+            callback(e);
+          }
+        }
+        svgImage.src = svgXml;
+      }
+
+      function copyShareURL(e) {
+        clearShare();
+        const code = editor.getSession().getDocument().getValue();
+        const mode = rendererMode.value;
+        shareSnapshot = ShareLinks.build({ url: location.href, code, mode,
+          type: mode === 'auto' ? ContentDetector.detect(code).type : mode,
+          scene: sceneNameInput.value, engine: engineEl.value, format: formatEl.value,
+          positions: modlPositions,
+          compress: typeof LZString === 'undefined' ? null : text => LZString.compressToEncodedURIComponent(text) });
+        shareFingerprint = currentShareFingerprint();
+        shareURLEl.style.display = 'inline';
+        shareURLEl.value = shareSnapshot.fallback;
+        shareURLEl.select();
+        shortenShare.hidden = false;
+        shareStatus.textContent = 'Source link ready to copy.';
+      }
+
+      // Detect content type and update UI
+      function detectAndUpdateType() {
+        const code = editor.getSession().getDocument().getValue();
+
+        // Check URL override first
+        const urlType = ContentDetector.getTypeFromURL();
+        rendererMode.value = urlType || 'auto';
+        if (urlType) {
+          updateTypeIndicator(urlType);
+          return urlType;
+        }
+
+        const detection = ContentDetector.detect(code);
+        updateTypeIndicator(detection.type);
+        return detection.type;
+      }
+
+      function updateTypeIndicator(type) {
+        document.querySelectorAll('.manim-options').forEach(option => option.classList.toggle('hidden', type !== 'manim'));
+        currentType = type;
+        typeIndicator.className = type;
+
+        if (type === 'graphviz') {
+          typeIndicator.textContent = 'Graphviz';
+          graphvizOptions.classList.remove('hidden');
+          editor.getSession().setMode("ace/mode/dot");
+        } else if (type === 'manim') {
+          typeIndicator.textContent = 'Manim';
+          graphvizOptions.classList.add('hidden');
+          editor.getSession().setMode("ace/mode/python");
+        } else if (type === 'modl') {
+          typeIndicator.textContent = 'modl';
+          graphvizOptions.classList.add('hidden');
+          editor.getSession().setMode("ace/mode/text");
+        } else {
+          typeIndicator.textContent = 'Unknown';
+          graphvizOptions.classList.add('hidden');
+        }
+      }
+
+      // Unified render function
+      async function render() {
+        scheduler.cancel();
+        clearError();
+        invalidateRender();
+        const type = detectAndUpdateType();
+
+        if (type === 'graphviz') {
+          renderGraphviz();
+        } else if (type === 'manim') {
+          await renderManim();
+        } else if (type === 'modl') {
+          renderModl();
+        } else {
+          // Try Graphviz as fallback
+          renderGraphviz();
+        }
+      }
+
+      function renderModl() {
+        const revision = renderRevision;
+        const saved = savedHashbin?.fingerprint === currentShareFingerprint();
+        try {
+          const preview = Modl.create(editor.getValue(), {
+            positions: modlPositions,
+            onChange: positions => {
+              if (revision !== renderRevision) return;
+              modlPositions = positions;
+              clearShare();
+              updateState();
+            },
+            onFrame: svg => {
+              if (revision !== renderRevision) return;
+              downloadBtn.href = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(svg));
+              downloadBtn.download = 'modl.svg';
+            }
+          });
+          clearReviewContent();
+          modlPreview = preview;
+          modlPositions = preview.positions();
+          if (saved) savedHashbin.fingerprint = currentShareFingerprint();
+          const wrapper = document.createElement('a');
+          wrapper.append(preview.svg);
+          reviewer.append(wrapper);
+          updateState();
+          show_status('done', 500);
+        } catch (error) { show_error(error); }
+      }
+
+      function renderGraphviz() {
+        const revision = renderRevision;
+        reviewer.classList.add("working");
+        reviewer.classList.remove("error");
+
+        show_status("rendering...");
+        Viz.instance().then(function (viz) {
+          if (revision !== renderRevision) return;
+          let dotContent = editor.getSession().getDocument().getValue();
+          let options = {
+            format: formatEl.value,
+            engine: engineEl.value,
+          };
+          let result = null;
+
+          if (["svg", "png"].indexOf(formatEl.value) > -1) {
+            result = viz.renderSVGElement(dotContent, options);
+          } else {
+            result = viz.render(dotContent, options);
+          }
+
+          if (result.status !== undefined && result.status != "success") {
+            show_error(result.errors && result.errors.length > 0 && result.errors[0] || result);
+          } else {
+            updateGraphvizOutput(result);
+          }
+        }).catch((err) => {
+          if (revision === renderRevision) show_error(err);
+        }).finally(() => {
+          if (revision !== renderRevision) return;
+          reviewer.classList.remove("working");
+          if (!reviewer.classList.contains("error")) show_status("done", 500)
+        });
+      }
+
+      const mathMetrics = new Map();
+      const typstSvgs = new Map();
+      async function renderManim() {
+        const revision = renderRevision;
+        reviewer.classList.add('working');
+        setRenderBusy(true);
+        show_status('rendering Manim…');
+        try {
+          const code = editor.getSession().getDocument().getValue();
+          const sceneName = sceneNameInput.value.trim();
+          const renderOptions = () => ({ sceneName, mathMetrics: Object.fromEntries(mathMetrics),
+            typstSvgs: Object.fromEntries(typstSvgs) });
+          let sceneData = await manimClient.render(code, renderOptions());
+          if (revision !== renderRevision) return;
+          // Typst documents are compiled here (typst.ts) and imported by Python on a second pass.
+          if ((sceneData.typst_pending || []).length) {
+            pyodideStatus.textContent = 'Compiling Typst…';
+            const compiled = await ManimTypst.compile(sceneData.typst_pending, () => revision === renderRevision);
+            if (revision !== renderRevision || !compiled) return;
+            for (const [source, svg] of Object.entries(compiled)) {
+              typstSvgs.delete(source);
+              typstSvgs.set(source, svg);
+              if (typstSvgs.size > 256) typstSvgs.delete(typstSvgs.keys().next().value);
+            }
+            sceneData = await manimClient.render(code, renderOptions());
+            if (revision !== renderRevision) return;
+          }
+          const expressions = ManimMath.expressions(sceneData);
+          if (expressions.size) pyodideStatus.textContent = 'Rendering math…';
+          sceneData.mathGlyphs = await ManimMath.prepare(sceneData, () => revision === renderRevision);
+          if (revision !== renderRevision) return;
+          for (const [expression, size] of Object.entries(ManimMath.metrics(sceneData.mathGlyphs))) {
+            mathMetrics.delete(expression);
+            mathMetrics.set(expression, size);
+            if (mathMetrics.size > 1024) mathMetrics.delete(mathMetrics.keys().next().value);
+          }
+          // Python placed unmeasured formulas with estimates; repeat once with real sizes.
+          if ((sceneData.math_estimated || []).some(expression => mathMetrics.has(expression))) {
+            pyodideStatus.textContent = 'Placing math…';
+            sceneData = await manimClient.render(code, renderOptions());
+            if (revision !== renderRevision) return;
+            sceneData.mathGlyphs = await ManimMath.prepare(sceneData, () => revision === renderRevision);
+            if (revision !== renderRevision) return;
+          }
+          sceneNamesList.replaceChildren(...sceneData.scenes.map(name => {
+            const option = document.createElement('option');
+            option.value = name;
+            return option;
+          }));
+          updateManimOutput(sceneData);
+          pyodideStatus.textContent = 'Python ready';
+          pyodideStatus.className = 'ready';
+          show_status('done', 500);
+        } catch (error) {
+          if (revision !== renderRevision || error.name === 'AbortError') return;
+          pyodideStatus.textContent = 'Render failed';
+          pyodideStatus.className = '';
+          show_error(error);
+        } finally {
+          if (revision === renderRevision) {
+            reviewer.classList.remove('working');
+            setRenderBusy(false);
+          }
+        }
+      }
+
+      function updateGraphvizOutput(result) {
+        const revision = renderRevision;
+        if (formatEl.value === "svg") {
+          document.querySelector("#raw").classList.remove("disabled");
+          rawEl.disabled = false;
+        } else {
+          document.querySelector("#raw").classList.add("disabled");
+          rawEl.disabled = true;
+        }
+
+        clearReviewContent();
+
+        if (!result) {
+          return;
+        }
+
+        reviewer.classList.remove("working");
+        reviewer.classList.remove("error");
+
+        if (formatEl.value == "svg" && !rawEl.checked) {
+          var serializer = new XMLSerializer();
+          var source = serializer.serializeToString(result);
+          const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(source);
+          downloadBtn.href = url;
+          downloadBtn.download = "diagram.svg";
+          var a = document.createElement("a");
+          a.appendChild(result);
+          reviewer.appendChild(a);
+          svgPanZoom(result, {
+            zoomEnabled: true,
+            controlIconsEnabled: true,
+            fit: true,
+            center: true,
+          });
+        } else if (formatEl.value == "png") {
+          var serializer = new XMLSerializer();
+          var source = serializer.serializeToString(result);
+          let resultWithPNGHeader = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(source)));
+          svgXmlToImage(resultWithPNGHeader, function (err, image) {
+            if (revision !== renderRevision) return;
+            if (err) {
+              show_error(err)
+              return
+            }
+            image.setAttribute("title", "diagram");
+            downloadBtn.href = image.src;
+            downloadBtn.download = "diagram.png";
+            var a = document.createElement("a");
+            a.appendChild(image);
+            reviewer.appendChild(a);
+          })
+        } else {
+          var text = document.createElement("div");
+          text.id = "text";
+          if (formatEl.value == "svg") {
+            let serializer = new XMLSerializer();
+            result = serializer.serializeToString(result);
+          } else {
+            result = result.output;
+          }
+          text.appendChild(document.createTextNode(result));
+          reviewer.appendChild(text);
+        }
+
+        updateState();
+      }
+
+      function updateManimOutput(sceneData) {
+        clearReviewContent();
+        reviewer.classList.remove('working', 'error');
+        player = new ManimPlayer(reviewer, sceneData, svg => {
+          const source = new XMLSerializer().serializeToString(svg);
+          downloadBtn.href = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(source);
+          downloadBtn.download = 'manim.svg';
+        });
+        updateState();
+      }
+
+      function clearReviewContent() {
+        if (modlPreview) { modlPreview.destroy(); modlPreview = null; }
+        if (player) { player.destroy(); player = null; }
+        var text = reviewer.querySelector("#text");
+        if (text) {
+          reviewer.removeChild(text);
+        }
+
+        var a = reviewer.querySelector("a");
+        if (a) {
+          reviewer.removeChild(a);
+        }
+      }
+
+      function applySceneToURL(url) {
+        const scene = sceneNameInput.value.trim();
+        if (currentType === 'manim' && scene) url.searchParams.set('scene', scene);
+        else url.searchParams.delete('scene');
+      }
+
+      function updateState() {
+        const updatedUrl = new URL(window.location)
+        for (const parameter of ['raw', 'compressed', 'url', 'modlpos']) updatedUrl.searchParams.delete(parameter);
+        const content = encodeURIComponent(editor.getSession().getDocument().getValue());
+        updatedUrl.hash = savedHashbin?.fingerprint === currentShareFingerprint() ? savedHashbin.cid : content;
+        if (currentType === 'modl' && Object.keys(modlPositions).length) updatedUrl.searchParams.set('modlpos', JSON.stringify(modlPositions));
+        applySceneToURL(updatedUrl);
+        if (currentType === 'graphviz') {
+          updatedUrl.searchParams.set("engine", engineEl.value)
+        }
+        history.replaceState({ "content": content, "type": currentType }, "", updatedUrl.toString())
+      }
+
+      // Set editor theme based on detected type
+      editor.setTheme("ace/theme/twilight");
+
+      // Debounced change handler
+      editor.getSession().on("change", function () {
+        exampleLoader.cancel();
+        invalidateRender();
+        sceneNamesList.replaceChildren();
+        scheduler.schedule();
+      });
+
+      window.onpopstate = function (event) {
+        if (event.state != null && event.state.content != undefined) {
+          editor.getSession().setValue(decodeURIComponent(event.state.content));
+        }
+      };
+      window.addEventListener('hashchange', () => {
+        if (HashBinDocuments.isCID(location.hash.slice(1))) hashbinPanel.load(location.hash);
+      });
+
+      sceneNameInput.addEventListener('input', () => {
+        exampleLoader.cancel();
+        invalidateRender();
+        scheduler.schedule({ detect: false });
+      });
+      sceneNameInput.addEventListener('keydown', event => {
+        if (event.key === 'Enter') render();
+      });
+      formatEl.addEventListener("change", render);
+      engineEl.addEventListener("change", render);
+      rawEl.addEventListener("change", render);
+      shareEl.addEventListener("click", copyShareURL);
+
+      HTMLOptionsCollection.prototype.indexOf = function (name) {
+        for (let i = 0; i < this.length; i++) {
+          if (this[i].value == name) {
+            return i;
+          }
+        }
+        return -1;
+      };
+
+      // URL parameter parsing
+      const callbackRevision = renderRevision;
+      const callback = await hashbinStore.callback(location.search);
+      if (callback) {
+        const url = new URL(location.href);
+        for (const key of ['code', 'state', 'error', 'error_description']) url.searchParams.delete(key);
+        history.replaceState(null, '', url);
+        if (callbackRevision === renderRevision && callback.snapshot) applyLoadedSource(callback.snapshot);
+        hashbinPanel.status.textContent = callback.error || 'Connected to HashBin. Choose Save to HashBin to review the cost.';
+        if (callback.snapshot) return;
+      }
+      const params = new URLSearchParams(location.search.substring(1));
+      try { modlPositions = HashBinDocuments.positions(JSON.parse(params.get('modlpos') || '{}')); } catch (_) { /* Ignore invalid layout. */ }
+      sceneNameInput.value = params.get('scene') || '';
+
+      if (params.has('engine')) {
+        const engine = params.get('engine');
+        const index = engineEl.options.indexOf(engine);
+        if (index > -1) {
+          engineEl.selectedIndex = index;
+        }
+      }
+
+      if (params.has('format')) {
+        const format = params.get('format');
+        const index = formatEl.options.indexOf(format);
+        if (index > -1) {
+          formatEl.selectedIndex = index;
+        }
+      }
+
+      if (params.has("presentation")) {
+        document.body.classList.add("presentation");
+      }
+
+      if (params.has('raw')) {
+        editor.getSession().setValue(params.get('raw'));
+        render();
+      } else if (params.has('compressed')) {
+        const compressed = params.get('compressed');
+        editor.getSession().setValue(LZString.decompressFromEncodedURIComponent(compressed));
+        render();
+      } else if (params.has('url')) {
+        const url = params.get('url');
+        const revision = renderRevision;
+        let ok = false;
+        fetch(url)
+          .then(res => {
+            ok = res.ok;
+            return res.text();
+          })
+          .then(res => {
+            if (revision !== renderRevision) return;
+            if (!ok) {
+              throw { message: res };
+            }
+            editor.getSession().setValue(res);
+            render();
+          }).catch(e => {
+            if (revision === renderRevision) show_error(e);
+          });
+      } else if (HashBinDocuments.isCID(location.hash.slice(1))) {
+        hashbinPanel.load(location.hash);
+      } else if (location.hash.length > 1) {
+        editor.getSession().setValue(decodeURIComponent(location.hash.substring(1)));
+        render();
+      } else if (editor.getValue()) {
+        // Initial render with default content
+        detectAndUpdateType();
+        render();
+      }
+
+    })(document);
+  </script>
+</body>
+
+</html>

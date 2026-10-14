@@ -109,7 +109,8 @@ const ExampleCatalog = Object.freeze([
   type: example.path.endsWith('.py') ? 'manim' : example.path.endsWith('.dot') ? 'graphviz' : 'modl',
   cover: `gallery/previews/${example.id}.png`,
   video: example.path.endsWith('.py') ? `gallery/previews/${example.id}.mp4` : null,
-  editorURL: `./?example=${encodeURIComponent(example.id)}`
+  // Older cached editors understand url=, while current editors use the catalog ID.
+  editorURL: `./?example=${encodeURIComponent(example.id)}&url=${encodeURIComponent(example.path)}`
 })));
 
 class ExampleLoader {

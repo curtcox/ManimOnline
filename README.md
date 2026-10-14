@@ -405,10 +405,12 @@ are generated locally and use compression when available. A first-ever visit wit
 load the site; connect for the initial setup. If saved files are incomplete on
 an offline reload, the service worker shows a recovery page.
 
-New versions show **Update and reload** once their files are saved. Updates wait
-for that action or for old tabs to close. Applying an update reloads other open
-tabs too; each tab preserves its latest source and scene selection in its URL
-before reloading. Maintainers must bump the version in
+New versions activate automatically once their files are saved. Both the editor
+and gallery check for updates; existing editor tabs preserve their latest source
+and scene selection in the URL before reloading. Gallery links also work with an
+older cached editor while an update is being prepared. Previously saved pinned
+Python/MathJax files are reused, so updates do not redownload unchanged runtimes.
+Maintainers must bump the version in
 `offline-assets.js` when changing a cached local file. The pinned Python assets
 follow the [Pyodide deployment manifest](https://pyodide.org/en/0.27.0/usage/downloading-and-deploying.html).
 
@@ -462,6 +464,7 @@ node tests/browser/smoke.cjs http://localhost:8000/ chromium firefox webkit
 node tests/browser/languages.cjs http://localhost:8000/ chromium firefox webkit
 node tests/browser/sharing.cjs http://localhost:8000/ chromium firefox webkit
 node tests/browser/gallery.cjs http://localhost:8000/ chromium firefox webkit
+node tests/browser/upgrade.cjs chromium firefox webkit
 ```
 
 The language check runs real Graphviz, modl and Pyodide/Manim previews, plus HashBin OAuth return, quote, save, reload, legacy modl/inline CID loading, and stale-load protection against a mocked service. It spends no account funds and does not prove live HashBin registration or service availability. Playwright's Firefox build may fail to launch on recent macOS with “Could not find profile folder”; CI runs the browser matrix on Ubuntu.
@@ -473,6 +476,11 @@ preserved source link without creating real short links.
 
 CI runs Chromium, Firefox, and WebKit as separate jobs, with each browser's
 gallery, rendering, language/HashBin, and sharing checks in separate steps.
+The upgrade check serves a historical cached editor/catalog, opens the new
+gallery before the update can finish, checks covers and links with that old
+catalog, then verifies automatic activation, edit preservation, and offline
+gallery browsing. It isolates local application upgrades; the unit suite covers
+pinned CDN cache reuse and incomplete offline setup.
 The gallery check verifies every shipped cover, real MP4 playback, filtering,
 editor links for all three languages, edited-source reloads, stale loads, and
 the narrow-screen layout. Gallery covers and sources are included in offline
