@@ -1,0 +1,10 @@
+# Size and shape distinguish the project from the people supporting it.
+project big hex purple Project
+design circle pink Design
+build square blue Build
+quality diamond green Quality
+
+design -> project solid pink Research
+build -> project bold blue Develop
+quality -> project dashed green Verify
+design -> build dotted gray Handoff

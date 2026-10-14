@@ -1,0 +1,20 @@
+// Nodes on the same rank stay aligned; shared prerequisites merge paths.
+digraph Build {
+  graph [rankdir=LR, bgcolor="#f8fafc", pad=0.2];
+  node [shape=box, style="rounded,filled", fillcolor="#ede9fe", color="#8b5cf6", fontname="Arial"];
+  edge [color="#64748b"];
+  source [label="Source"];
+  assets [label="Assets"];
+  compile [label="Compile"];
+  tests [label="Tests"];
+  bundle [label="Bundle"];
+  release [label="Release", fillcolor="#dcfce7", color="#16a34a"];
+  { rank=same; source; assets; }
+  { rank=same; compile; tests; }
+  source -> compile;
+  source -> tests;
+  compile -> bundle;
+  assets -> bundle;
+  bundle -> release;
+  tests -> release [style=dashed, label="Pass", fontname="Arial", fontsize=10];
+}

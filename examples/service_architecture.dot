@@ -1,0 +1,22 @@
+// Subgraphs whose names start with cluster_ draw grouped boundaries.
+digraph Services {
+  graph [rankdir=LR, bgcolor="#f8fafc", pad=0.2];
+  node [shape=box, style="rounded,filled", fillcolor="#dbeafe", color="#3b82f6", fontname="Arial"];
+  edge [color="#64748b", fontname="Arial", fontsize=10];
+  browser [label="Browser"];
+  subgraph cluster_app {
+    label="Application"; fontname="Arial"; color="#93c5fd"; style=rounded;
+    api [label="API"];
+    worker [label="Worker"];
+  }
+  subgraph cluster_storage {
+    label="Storage"; fontname="Arial"; color="#86efac"; style=rounded;
+    database [label="Database", shape=cylinder, fillcolor="#dcfce7", color="#16a34a"];
+    queue [label="Queue", fillcolor="#dcfce7", color="#16a34a"];
+  }
+  browser -> api [label="Request"];
+  api -> database;
+  api -> queue [label="Job"];
+  queue -> worker;
+  worker -> database [label="Result"];
+}

@@ -27,6 +27,11 @@ cover; animation samples also have a **Play preview** control and native video
 controls for seeking and replay. Videos load only when requested, and playing a
 second preview pauses the first. Browsing needs no Python execution.
 
+The gallery includes six Graphviz and six modl diagrams. Graphviz samples cover
+decision branches, clustered services, build dependencies, record ports, and state
+machines. modl samples cover chained pipelines, feedback loops, navigation,
+team responsibilities, and shapes, sizes, edge styles, and quoted labels.
+
 Choose **Load in editor** on any card to open its source and render it. You can
 edit the loaded code, select a scene, seek, and export as usual. Direct
 `?example=minimal` links also work. Loading clears any earlier scene selection

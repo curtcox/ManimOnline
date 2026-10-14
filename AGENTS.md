@@ -35,6 +35,9 @@ compatibility layer, not a server running full Manim Community.
    `node scripts/render-gallery.cjs http://localhost:8000/ [example IDs ...]`;
    source/runtime fingerprints skip unchanged assets. Keep lazy video loading,
    source persistence after loading, and stale-load protection on newer edits.
+   The six DOT and six modl samples also cover branches, clusters, record ports,
+   chains, feedback, shapes and quoting. Gallery browser checks load and render
+   every diagram card; add each new source to the offline asset list.
    `src/manim-math.js` prepares vector formula glyphs for playback and SVG export.
    `src/manim-export.js` rasterizes current-frame PNG snapshots with bounded loading.
  `src/manim-video.js` encodes all frames with WebCodecs and muxes MP4/WebM in memory;

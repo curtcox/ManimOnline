@@ -1,0 +1,8 @@
+# A chain applies the same edge style to each step.
+collect square blue Collect
+clean square teal Clean
+analyze hex purple Analyze
+report circle green Report
+
+collect -> clean -> analyze -> report bold teal
+collect -> report dotted gray Audit

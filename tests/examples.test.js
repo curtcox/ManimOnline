@@ -5,6 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { createHash } = require('node:crypto');
 const { ExampleCatalog, ExampleLoader } = require('../src/examples.js');
+const Modl = require('../src/modl.js');
 
 function deferred() {
   let resolve, reject;
@@ -18,7 +19,11 @@ test('catalog points only to shipped local examples with unique IDs', () => {
   for (const example of ExampleCatalog) {
     assert.match(example.path, /^examples\/[a-z_]+\.(py|dot|modl)$/);
     const source = fs.readFileSync(path.join(__dirname, '..', example.path), 'utf8');
-    assert.match(source, example.path.endsWith('.py') ? /class \w+\((?:Scene|MovingCameraScene|ZoomedScene|LinearTransformationScene|ThreeDScene)\)/ : example.path.endsWith('.modl') ? /editor -> preview/ : /digraph/);
+    if (example.type === 'modl') {
+      const diagram = Modl.parse(source);
+      assert.deepEqual(diagram.errors, [], example.id);
+      assert.ok(diagram.nodes.size > 0 && diagram.edges.length > 0, example.id);
+    } else assert.match(source, example.type === 'manim' ? /class \w+\((?:Scene|MovingCameraScene|ZoomedScene|LinearTransformationScene|ThreeDScene)\)/ : /digraph/);
   }
 });
 

@@ -1,6 +1,11 @@
 /** Supported, local examples and a loader that ignores superseded requests. */
 const ExampleCatalog = Object.freeze([
   { id: 'modl', label: 'modl diagram', path: 'examples/basic_diagram.modl' },
+  { id: 'modlpipeline', label: 'Data pipeline with chained edges', path: 'examples/data_pipeline.modl' },
+  { id: 'modlfeedback', label: 'Design feedback loop', path: 'examples/design_feedback.modl' },
+  { id: 'modlnavigation', label: 'Website navigation map', path: 'examples/site_navigation.modl' },
+  { id: 'modlteam', label: 'Team responsibilities', path: 'examples/team_responsibilities.modl' },
+  { id: 'modlstyles', label: 'Shapes, sizes and quoted labels', path: 'examples/diagram_styles.modl' },
   { id: 'glyphstyle', label: 'Gradient styles on text and formulas', path: 'examples/glyph_style_scene.py' },
   { id: 'stylecopy', label: 'Copy styles across different shapes', path: 'examples/style_copy_scene.py' },
   { id: 'familygradient', label: 'Rotated and family color gradients', path: 'examples/family_gradient_scene.py' },
@@ -104,7 +109,12 @@ const ExampleCatalog = Object.freeze([
   { id: 'indicate', label: 'Highlight objects', path: 'examples/indicate_scene.py' },
   { id: 'copy', label: 'Transform a copy', path: 'examples/copy_scene.py' },
   { id: 'connector', label: 'Move connector endpoints', path: 'examples/connector_scene.py' },
-  { id: 'dot', label: 'Graphviz diagram', path: 'examples/basic_graph.dot' }
+  { id: 'dot', label: 'Graphviz diagram', path: 'examples/basic_graph.dot' },
+  { id: 'dotdecision', label: 'Decision flowchart', path: 'examples/decision_flow.dot' },
+  { id: 'dotservices', label: 'Service architecture with clusters', path: 'examples/service_architecture.dot' },
+  { id: 'dotdependencies', label: 'Build dependency graph', path: 'examples/build_dependencies.dot' },
+  { id: 'dottables', label: 'Data tables with record ports', path: 'examples/data_tables.dot' },
+  { id: 'dotstates', label: 'Order state machine', path: 'examples/order_states.dot' }
 ].map(example => Object.freeze({ ...example,
   type: example.path.endsWith('.py') ? 'manim' : example.path.endsWith('.dot') ? 'graphviz' : 'modl',
   cover: `gallery/previews/${example.id}.png`,

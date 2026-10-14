@@ -30,7 +30,7 @@ async function ready(page, type) {
         await page.waitForFunction(id => {
           const img = document.querySelector(`#${id} img`);
           return img.complete && img.naturalWidth > 0;
-        }, example.id);
+        }, example.id).catch(error => { throw new Error(`${engine}: cover failed to load for ${example.id}`, { cause: error }); });
       }
       assert.ok(!requests.some(url => /pyodide|unified-worker|\.mp4/.test(url)), 'gallery browsing loads covers without Python or video');
       console.log(`${engine}: all ${ExampleCatalog.length} gallery covers loaded without Python or video`);
@@ -48,7 +48,7 @@ async function ready(page, type) {
       assert.equal(await page.locator('#no-samples').isVisible(), true);
       await page.locator('#sample-search').fill('');
       await page.locator('#sample-type').selectOption('graphviz');
-      assert.equal(await page.locator('.card:visible').count(), 1);
+      assert.equal(await page.locator('.card:visible').count(), ExampleCatalog.filter(example => example.type === 'graphviz').length);
       await page.locator('#dot .load').click();
       await ready(page, 'graphviz');
       assert.equal(await page.evaluate(() => ace.edit('editor').getValue()), sourceFor('dot'));
@@ -61,6 +61,17 @@ async function ready(page, type) {
       assert.equal(await page.evaluate(() => ace.edit('editor').getValue()), sourceFor('dot'));
       await popup.close();
       console.log(`${engine}: DOT load and gallery navigation preserve the editor`);
+      // Exercise every diagram card through its actual gallery link and renderer.
+      for (const example of ExampleCatalog.filter(example => example.type !== 'manim')) {
+        await page.goto(new URL('gallery.html', base).href);
+        await page.locator('#sample-type').selectOption(example.type);
+        assert.equal(await page.locator('.card:visible').count(), ExampleCatalog.filter(item => item.type === example.type).length);
+        await page.locator(`#${example.id} .load`).click();
+        await ready(page, example.type);
+        assert.equal(await page.evaluate(() => ace.edit('editor').getValue()), sourceFor(example.id));
+        assert.equal(await page.locator('#renderer-mode').inputValue(), 'auto');
+      }
+      console.log(`${engine}: every Graphviz and modl gallery link loaded and rendered`);
       for (const [id, type] of [['modl', 'modl'], ['minimal', 'manim']]) {
         await page.goto(new URL(`?example=${id}&type=dot&scene=Old#old-source`, base).href);
         await ready(page, type);

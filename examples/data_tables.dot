@@ -1,0 +1,11 @@
+// Record fields with named ports let edges connect to specific columns.
+digraph Tables {
+  graph [rankdir=LR, bgcolor="#f8fafc", pad=0.25, nodesep=0.4];
+  node [shape=record, style=filled, fillcolor="#e0f2fe", color="#0284c7", fontname="Arial", fontsize=12];
+  edge [color="#64748b", arrowsize=0.8];
+  customer [label="Customer|<id> id|name"];
+  order [label="Order|<id> id|<customer> customer_id|date"];
+  item [label="Order item|<order> order_id|product|quantity"];
+  customer:id -> order:customer;
+  order:id -> item:order;
+}

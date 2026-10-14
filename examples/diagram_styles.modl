@@ -1,0 +1,11 @@
+# Quoted keywords are labels, rather than style attributes.
+"circle node" normal circle blue "blue"
+square normal square teal "square"
+diamond big diamond orange "diamond"
+triangle small triangle pink "triangle"
+hex normal hex purple "hex"
+
+"circle node" -> diamond solid blue "solid"
+diamond -> hex dashed orange "dashed"
+hex -> square dotted purple "dotted"
+square -> triangle bold teal "bold"

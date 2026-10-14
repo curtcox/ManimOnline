@@ -1,0 +1,10 @@
+# Separate lines make branches and a feedback loop.
+draft circle blue Idea
+prototype square teal Prototype
+review diamond orange Test
+shipped hex green Launch
+
+draft -> prototype solid blue Build
+prototype -> review solid teal Try
+review -> shipped bold green Ready
+review -> draft dashed orange Revise

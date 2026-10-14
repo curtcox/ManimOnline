@@ -1,11 +1,15 @@
 /** Exact offline dependencies. Bump VERSION whenever any listed local file changes. */
 const OfflineExamples = typeof module !== 'undefined' ? require('./src/examples.js').ExampleCatalog : globalThis.ExampleCatalog;
 const OfflineAssets = {
-  VERSION: 'manimonline-offline-v370',
+  VERSION: 'manimonline-offline-v371',
   local: [
     'gallery.html', 'src/gallery.js', 'src/gallery.css', 'src/gallery-updates.js',
     ...OfflineExamples.map(example => example.cover),
     'src/modl.js', 'src/hashbin.js', 'src/hashbin-panel.js', 'examples/basic_diagram.modl',
+    'examples/data_pipeline.modl', 'examples/design_feedback.modl', 'examples/site_navigation.modl',
+    'examples/team_responsibilities.modl', 'examples/diagram_styles.modl',
+    'examples/decision_flow.dot', 'examples/service_architecture.dot', 'examples/build_dependencies.dot',
+    'examples/data_tables.dot', 'examples/order_states.dot',
     'examples/glyph_style_scene.py',
     'examples/style_copy_scene.py',
     'examples/family_gradient_scene.py',

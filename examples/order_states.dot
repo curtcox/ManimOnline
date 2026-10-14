@@ -1,0 +1,16 @@
+// A point marks the start; double circles mark final states.
+digraph OrderStates {
+  graph [rankdir=LR, bgcolor="#f8fafc", pad=0.25];
+  node [shape=circle, style=filled, fillcolor="#dbeafe", color="#3b82f6", fontname="Arial", fontsize=12];
+  edge [color="#64748b", fontname="Arial", fontsize=10];
+  start [shape=point, color="#64748b"];
+  new [label="New"];
+  paid [label="Paid"];
+  sent [label="Sent", shape=doublecircle, fillcolor="#dcfce7", color="#16a34a"];
+  cancelled [label="Cancelled", shape=doublecircle, fillcolor="#fee2e2", color="#ef4444"];
+  start -> new;
+  new -> paid [label="Pay"];
+  paid -> sent [label="Ship"];
+  new -> cancelled [label="Cancel"];
+  paid -> cancelled [label="Refund"];
+}

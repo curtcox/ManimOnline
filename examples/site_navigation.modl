@@ -1,0 +1,11 @@
+# A small hierarchy; labels can be quoted to keep spaces together.
+home big hex blue Home
+gallery square purple Gallery
+guides square teal Guides
+about square orange About
+samples circle purple Samples
+
+home -> gallery solid purple
+home -> guides solid teal
+home -> about solid orange
+gallery -> samples dotted purple

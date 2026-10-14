@@ -1,0 +1,14 @@
+// Diamonds, labeled branches, and a loop back for revisions.
+digraph Review {
+  graph [bgcolor="#f8fafc", pad=0.25];
+  node [shape=box, style="rounded,filled", fillcolor="#dbeafe", color="#3b82f6", fontname="Arial"];
+  edge [color="#64748b", fontname="Arial", fontsize=11];
+  draft [label="Draft"];
+  review [label="Ready?", shape=diamond, fillcolor="#fef3c7", color="#d97706"];
+  revise [label="Revise"];
+  publish [label="Publish", fillcolor="#dcfce7", color="#16a34a"];
+  draft -> review;
+  review -> publish [label="Yes"];
+  review -> revise [label="No"];
+  revise -> draft;
+}

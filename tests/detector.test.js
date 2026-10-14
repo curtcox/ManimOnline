@@ -7,7 +7,7 @@ const { ExampleCatalog } = require('../src/examples.js');
 test('all shipped gallery examples select their intended renderer', () => {
   for (const example of ExampleCatalog) {
     assert.equal(Detector.detect(fs.readFileSync(example.path, 'utf8')).type,
-      example.id === 'dot' ? 'graphviz' : example.id === 'modl' ? 'modl' : 'manim', example.path);
+      example.type, example.path);
   }
 });
 
