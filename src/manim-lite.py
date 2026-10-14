@@ -13277,8 +13277,12 @@ def _transform_plan(start, target, origins=None, lagged=False):
             return any(role in last and (first[role]['type'] != last[role]['type'] or
                                          _path_curves(first[role]) != _path_curves(last[role]))
                        for role in first)
+        def moved_tip():
+            # Members pair by index: a tip facing another member (Arrow.scale re-adds tips last).
+            return any(a.get('_tip_role') != b.get('_tip_role') and (a.get('_tip_role') or b.get('_tip_role'))
+                       for a, b in zip(start.get('children') or (), target.get('children') or ()))
         if (lagged or bool(start.get('_shaft_fixed')) != bool(target.get('_shaft_fixed')) or reshaped()
-                or set(tips(start)) != set(tips(target))):
+                or set(tips(start)) != set(tips(target)) or moved_tip()):
             # Community moves shaft points on their own: a refit shaft (which follows its tip
             # bases) interpolates between its drawn ends, not with cut, reshaped or lagging tips.
             for own,source in ((own_start,start),(own_target,target)):

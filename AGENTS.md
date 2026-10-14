@@ -1251,3 +1251,6 @@ identities in their slots. Tips that `_aligned_target` subdivides get `_subdivid
 survives subdivision; the cubic-array midpoint does not). Arrow.scale(0) with non-tip members
 takes the general pop/scale/re-add path (the literal put_start_and_end_on would recurse).
 Fuzz generator gen10.py (J suites): nested posed groups, target animations, scene restructuring.
+Transform plans also freeze refit straight shafts when tip roles differ index by index (a tip
+facing another member, as after Arrow.scale re-adds tips last): Community pairs members by index,
+so the tip morphs into that member while the cut shaft interpolates its own points.

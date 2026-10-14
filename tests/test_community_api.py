@@ -2195,6 +2195,18 @@ class AnimationApiTests(unittest.TestCase):
             [[0.35, 0.175, 0.0], ['Dot', 'ArrowTriangleFilledTip'], [-0.5355, 0.04, 0.0],
              [-0.6375, -0.1228, 0.0], [-0.1125, 0.2272, 0.0]])
 
+    def test_fading_an_arrow_with_members_pairs_its_reordered_tip_by_index(self):
+        # The faded copy's Arrow.scale(1) re-adds the tip last: the tip morphs into the Dot
+        # (and back) while the cut shaft stays put.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        p = Arrow(LEFT, RIGHT).add(Dot()); self.out = []\n'
+            '        self.add_updater(lambda dt: self.out.append(p.get_critical_point(UR)[0]))\n'
+            '        self.play(FadeOut(p), run_time=0.6)\n'
+            's = S(); s.render(); result = s.out[3:6]\n'),
+            [0.6467, 0.507, 0.507])
+
     def test_rotate_and_dashed_endpoints_follow_community_finishes(self):
         self.assertEqual(scene_values(
             'class S(Scene):\n'
