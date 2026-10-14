@@ -1,5 +1,6 @@
 /** Supported, local examples and a loader that ignores superseded requests. */
 const ExampleCatalog = Object.freeze([
+  { id: 'familygradient', label: 'Rotated and family color gradients', path: 'examples/family_gradient_scene.py' },
   { id: 'spatialgradient', label: 'Gradients through a moving 3D camera', path: 'examples/spatial_gradient_scene.py' },
   { id: 'rasterpaint', label: 'Color paths from a screen image', path: 'examples/raster_paint_scene.py' },
   { id: 'fieldimage', label: 'Sample a vector-field color map', path: 'examples/field_image_scene.py' },

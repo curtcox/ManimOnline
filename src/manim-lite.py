@@ -3282,8 +3282,7 @@ class Mobject:
         if self._type == 'pointcloud':
             return [_cloud_xyz(p) for p in self.cloud] or None
         if self._type in ('square', 'rectangle', 'triangle'):
-            return [curve[0] for curve in _path_curves(self.to_dict() if self._type == 'triangle' else
-                    {'type': self._type, 'side_length': self.__dict__.get('side_length', 0),
+            return [curve[0] for curve in _path_curves({'type': self._type, 'side_length': self.__dict__.get('side_length', 0),
                      'width': self.__dict__.get('width', 0), 'height': self.__dict__.get('height', 0)})]
         return None
 
@@ -3704,16 +3703,17 @@ class Mobject:
             raise NotImplementedError('Unsupported background stroke options: ' + ', '.join(kwargs))
         if width is not None:
             self._validate_width(width)
-        if opacity is not None:
-            self._validate_opacity(opacity)
         color = _paint(color)
+        raw_opacity = opacity
+        if opacity is not None:
+            opacity = self._opacity_channel('background_stroke', opacity)
         for member in (self.get_family() if family else [self]):
             if color is not None:
                 member.background_stroke_color = color
             if width is not None:
                 member.background_stroke_width = width
             if opacity is not None:
-                member.background_stroke_opacity = opacity
+                member.background_stroke_opacity = member._opacity_channel('background_stroke', raw_opacity)
         return self
 
     def get_color(self):
@@ -3765,18 +3765,16 @@ class Mobject:
         return _number_array(rgbas)
 
     def _channel_rgbas(self, channel):
-        if channel == 'background_stroke':
-            return self.generate_rgbas_array(self.get_stroke_color(True), self.get_stroke_opacity(True))
-        color = getattr(self, channel + '_color')
+        color = self.get_stroke_color(True) if channel == 'background_stroke' else getattr(self, channel + '_color')
         stops = self.__dict__.get(channel + '_opacities')
-        opacity = getattr(self, channel + '_opacity')
+        opacity = self.get_stroke_opacity(True) if channel == 'background_stroke' else getattr(self, channel + '_opacity')
         return self.generate_rgbas_array(color, [opacity * s for s in stops] if stops else opacity)
 
     def _set_channel_rgbas(self, channel, rgbas):
         rows = [list(row) for row in (rgbas.tolist() if hasattr(rgbas, 'tolist') else rgbas)]
         if not rows:
             raise ValueError('RGBA arrays need at least one row')
-        colors = [rgba_to_color(row[:3]) for row in rows]
+        colors = [rgba_to_color([float(v) for v in row[:3]]) for row in rows]
         opacities = [row[3] if len(row) > 3 else 1 for row in rows]
         color = colors[0] if len(colors) == 1 else colors
         opacity = opacities[0] if len(opacities) == 1 else opacities
@@ -3785,7 +3783,7 @@ class Mobject:
         elif channel == 'stroke':
             self.set_stroke(color, None, opacity, family=False)
         else:
-            self.set_background_stroke(colors[0], None, opacities[0], family=False)
+            self.set_background_stroke(color, None, opacity, family=False)
 
     fill_rgbas = property(lambda self: self._channel_rgbas('fill'),
                           lambda self, value: self._set_channel_rgbas('fill', value))
@@ -3837,7 +3835,7 @@ class Mobject:
                          stroke_color=self.get_stroke_colors(),
                          background_stroke_color=self.get_stroke_colors(background=True),
                          background_stroke_width=self.get_stroke_width(background=True),
-                         background_stroke_opacity=self.get_stroke_opacity(background=True),
+                         background_stroke_opacity=self.get_stroke_opacities(background=True),
                          sheen_factor=self.get_sheen_factor(), sheen_direction=self.get_sheen_direction(),
                          background_image=self.get_background_image())
         return style
@@ -4885,8 +4883,9 @@ class Mobject:
         result['geometry_center'] = list(center)
         result['children'] = [child.to_dict() for child in self.children]
         if result['type'] in _GRADIENT_TYPES and (self.sheen_factor or isinstance(self.fill_color, list) or
-                                                  isinstance(self.stroke_color, list) or 'fill_opacities' in result
-                                                  or 'stroke_opacities' in result):
+                                                  isinstance(self.stroke_color, list) or isinstance(result.get('background_stroke_color'), list) or
+                                                  any(key in result for key in ('fill_opacities', 'stroke_opacities',
+                                                                                'background_stroke_opacities'))):
             self._gradient_paint(result)
         return _refresh_tip_shafts(result)
 
@@ -4899,19 +4898,22 @@ class Mobject:
                 lit = [_rgb_color([min(1, max(0, v + self.sheen_factor)) for v in _color_rgb(c)]) for c in colors]
                 return list(colors) + lit
             result['fill_color'], result['stroke_color'] = sheen(self.fill_color), sheen(self.stroke_color)
-        if 'gradient_points' in result or self.sheen_direction is None:
+        if 'gradient_points' in result:
             return
-        left, bottom, right, top = self._own_local_bounds()
-        dx, dy = self.sheen_direction[0], self.sheen_direction[1]
-        # The direction is a world direction; the gradient lives in the local frame.
-        cos, sin = math.cos(-self.angle), math.sin(-self.angle)
-        dx, dy = dx * cos - dy * sin, dx * sin + dy * cos
-        if self.geometry_scale < 0:
-            dx, dy = -dx, -dy
-        ox, oy = (right - left) / 2 * dx, (top - bottom) / 2 * dy
-        if ox or oy:
-            cx, cy = (left + right) / 2, (bottom + top) / 2
-            result['gradient_points'] = [[cx - ox, cy - oy], [cx + ox, cy + oy]]
+        if self.shade_in_3d:
+            # Avoid get_points -> to_dict recursion; corners belong to own geometry.
+            points = [point for curve in _path_curves(result) for point in curve]
+            if points:
+                result['gradient_points'] = [list(points[0][:2]), list(points[((len(points) - 1) // 6) * 3][:2])]
+            return
+        if self.sheen_direction is None or not self.geometry_scale:
+            return
+        # Community measures the current axis-aligned family bounds, then places
+        # the gradient in world directions. Invert only our own pose for SVG paint.
+        # This also includes descendants and measured glyph boxes in the bounds.
+        endpoints = self.get_gradient_start_and_end_points()
+        result['gradient_points'] = [list(self._point_from_world(point)[:2]) for point in endpoints]
+
 
 
 def _int_array(values):
@@ -13020,7 +13022,7 @@ def _lerp_pose(result, start, target, alpha):
 
 _STYLE_KEYS = ('color', 'fill_color', 'fill_opacity', 'fill_opacities', 'stroke_color', 'stroke_opacity',
                'stroke_opacities', 'stroke_width', 'background_stroke_color', 'background_stroke_opacity',
-               'background_stroke_width')
+               'background_stroke_opacities', 'background_stroke_width')
 
 
 def _fade_snapshot(node):
@@ -13055,9 +13057,8 @@ def _fade_node(node, factor):
         value = node.get(key)
         if isinstance(value, _REAL) and not isinstance(value, bool):
             node[key] = value * factor
-    for key in ('fill_opacities', 'stroke_opacities'):
-        if isinstance(node.get(key), list):
-            node[key] = [value * factor for value in node[key]]
+    # Stop alpha is multiplied by the scalar channel in SVG. Scaling both would
+    # square the fade factor, darkening gradient fills/strokes too quickly.
     for child in node.get('children') or ():
         _fade_node(child, factor)
     return node
@@ -14217,7 +14218,7 @@ class FadeIn(_PathOptions, Animation):
             node.update(interpolate(_strip_children(start), _strip_children(end), a))
             source = _lookup(self.start, path)
             node['opacity'] = source['opacity']
-            for key in ('fill_opacity', 'stroke_opacity', 'background_stroke_opacity', 'fill_opacities', 'stroke_opacities'):
+            for key in ('fill_opacity', 'stroke_opacity', 'background_stroke_opacity', 'fill_opacities', 'stroke_opacities', 'background_stroke_opacities'):
                 if key in source:
                     node[key] = source[key]
             _fade_node(node, self._visibility(a))
@@ -19085,7 +19086,7 @@ class ThreeDScene(Scene):
                 emit_leaf(node, world_map, node_opacity, group)
             if kind in _PATH_TYPES and (node.get('shade_in_3d') or node.get('sheen_factor') or
                     any(isinstance(node.get(key), list) for key in ('fill_color', 'stroke_color')) or
-                    'fill_opacities' in node or 'stroke_opacities' in node):
+                    any(key in node for key in ('fill_opacities','stroke_opacities','background_stroke_opacities'))):
                 own = group[start]
                 own_points = [p for curve in own.get('curves') or () for p in curve]
                 if node.get('shade_in_3d') and own_points:

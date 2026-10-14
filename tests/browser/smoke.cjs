@@ -82,6 +82,20 @@ const RASTER_PAINT = [
   '        self.wait(0.2)',
 ].join('\n');
 
+const GRADIENT_FADE = [
+  'from manim import *',
+  'config.pixel_width = 80',
+  'config.pixel_height = 40',
+  'config.frame_width = 8',
+  'config.frame_height = 4',
+  'class GradientFade(Scene):',
+  '    def construct(self):',
+  '        box = Rectangle(width=8,height=4,fill_color=WHITE,fill_opacity=[.25,.75],stroke_width=0)',
+  '        box.set_sheen_direction(RIGHT)',
+  '        self.add(box)',
+  '        self.play(FadeOut(box),run_time=2,rate_func=linear)',
+].join('\n');
+
 async function open(browser, source) {
   const page = await browser.newPage();
   const errors = [];
@@ -111,7 +125,7 @@ async function checkManim(browser, source, verifyRaster = false) {
     const failure = document.querySelector('#review.error');
     if (failure) return { error: document.querySelector('#error').textContent.slice(0, 500) };
     const seek = document.querySelector('[aria-label="Animation position"]');
-    seek.value = seek.max;
+    seek.value = verifyRaster === 'fade' ? Math.floor(Number(seek.max)/2) : seek.max;
     seek.dispatchEvent(new Event('input', { bubbles: true }));
     await new Promise(resolve => setTimeout(resolve, 500));
     const preview = document.querySelector('svg[aria-label="Manim animation preview"]');
@@ -139,7 +153,7 @@ async function checkManim(browser, source, verifyRaster = false) {
         const canvas=document.createElement('canvas');
         canvas.width=80;canvas.height=40;
         const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0);
-        rasterPixels=[[10,5],[70,5],[10,35],[70,35]].flatMap(([x,y])=>[...ctx.getImageData(x,y,1,1).data]);
+        rasterPixels=(verifyRaster === 'fade' ? [[40,20]] : [[10,5],[70,5],[10,35],[70,35]]).flatMap(([x,y])=>[...ctx.getImageData(x,y,1,1).data]);
       } finally { URL.revokeObjectURL(url); }
     }
     return { rasterPixels, images: preview ? preview.querySelectorAll('image').length : 0, frames: Number(seek.max) + 1, paths: preview ? preview.querySelectorAll('path, circle, ellipse, polygon, polyline, rect, line').length : 0, codecs };
@@ -164,11 +178,13 @@ async function checkManim(browser, source, verifyRaster = false) {
       if (fieldImage.images !== 1) throw new Error('Field image scene drew ' + fieldImage.images + ' images');
       const raster = await checkManim(browser, RASTER_PAINT, true);
       if (JSON.stringify(raster.rasterPixels)!==JSON.stringify([255,0,0,255,0,0,255,255,0,255,0,255,255,255,0,255])) throw new Error('Raster pixels: '+JSON.stringify(raster.rasterPixels));
+      const fade = await checkManim(browser, GRADIENT_FADE, 'fade');
+      if (fade.rasterPixels.slice(0,3).some(v=>v<63 || v>66) || fade.rasterPixels[3]!==255) throw new Error('Gradient fade pixels: '+JSON.stringify(fade.rasterPixels));
       const depth = await checkManim(browser, THREE_D).catch(error => { throw new Error('3D scene: ' + error.message); });
       console.log(name + ': DOT ok; Manim ' + manim.frames + ' frames, ' + manim.paths +
                   ' shapes; NumPy scene ' + numpy.frames + ' frames, ' + numpy.paths +
                   ' shapes; 3D scene ' + depth.frames + ' frames, ' + depth.paths +
-                  ' shapes; field image ' + fieldImage.frames + ' frames, ' + fieldImage.images + ' image; raster paint/export pixels ok; video encoders ' + JSON.stringify(manim.codecs));
+                  ' shapes; field image ' + fieldImage.frames + ' frames, ' + fieldImage.images + ' image; raster paint/export and halfway gradient-fade pixels ok; video encoders ' + JSON.stringify(manim.codecs));
     } catch (error) {
       failed = true;
       console.log(name + ': FAILED ' + error.message);

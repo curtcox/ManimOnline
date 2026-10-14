@@ -1671,3 +1671,12 @@ longer gradients retain their first two normalized rows. Fill, stroke and
 background-stroke opacity remain independent. Cube face shading is checked against
 the Python camera's independent lighting calculation. Exact Cairo antialiasing
 and byte-level raster arithmetic remain open.
+
+
+The **Rotated and family color gradients** example shows current axis-aligned
+bounds controlling a rotated shape's gradient, descendant bounds extending a
+parent's gradient, and independent background-stroke color/opacity stops. RGBA
+background rows and style round trips preserve every stop. FadeIn/FadeOut multiply
+scalar opacity once, retaining relative stop alpha so exported colors do not
+fade twice. Gradient placement through separately posed ancestors and exact
+animated bounds remain parity work; this is not complete Cairo rendering.

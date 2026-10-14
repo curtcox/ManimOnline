@@ -1322,3 +1322,12 @@ local XY gradient endpoints. Glyph-child gradient bounds remain approximate.
 Normalize color/opacity row counts before selecting the first two rows, retain
 alpha, and use corner-specific normals. Solid shaded paths need gradient endpoints
 too. Do not replace background-stroke paint servers with comma-joined color arrays.
+
+
+Read examples/family_gradient_scene.py for rotated gradient bounds, descendant
+bounds, background opacity stops and fades. _gradient_paint converts current
+parent-frame endpoints back to the object's local pose. Background RGBA rows use
+the same stop-alpha/scalar-opacity representation as fill/stroke. _fade_node must
+scale scalar channels once; scaling the stop arrays too squares the fade. Keep
+background stop arrays in style copying and member sampling. Separately posed
+ancestor gradients and exact animated gradient bounds remain open.

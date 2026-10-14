@@ -9091,6 +9091,69 @@ s.shuffle_submobjects()""", g)
         self.assertEqual((g['mid'].fill_color, g['mid'].stroke_color, g['mid'].fill_opacity), ('#FDB0AA', '#ABE1EE', 0.5))
         self.assertCountEqual(list(g['s']), g['members'])
 
+    def test_rotated_gradient_uses_current_family_bounds_in_world_directions(self):
+        box = lite.Rectangle(width=4, height=2, fill_color=[lite.RED,lite.BLUE]).rotate(lite.PI/4)
+        data = box.to_dict()
+        for actual, expected in zip(data['gradient_points'], [(0,-3), (0,3)]):
+            self.assertPointAlmostEqual(actual, expected)
+        box.scale(-2).shift(3*lite.RIGHT)
+        data = box.to_dict()
+        world = [box._point_to_world(lite.Vector(point)) for point in data['gradient_points']]
+        span = 3*math.sqrt(2)
+        for actual, expected in zip(world, [(3+span,-span,0),(3-span,span,0)]):
+            self.assertPointAlmostEqual(actual, expected)
+        family = lite.Square(fill_color=[lite.RED,lite.BLUE])
+        child = lite.Dot(4*lite.RIGHT)
+        family.add(child)
+        self.assertEqual(family.to_dict()['gradient_points'], [[4.08,-1],[-1,1]])
+        family.remove(child)
+        self.assertEqual(family.to_dict()['gradient_points'], [[1,-1],[-1,1]])
+        # Analytical triangle bounds no longer recurse through paint serialization.
+        triangle = lite.Triangle(fill_color=[lite.RED,lite.BLUE]).rotate(lite.PI/5)
+        self.assertEqual(len(triangle.to_dict()['gradient_points']), 2)
+
+    def test_background_only_gradient_and_shaded_2d_corners_reach_frames(self):
+        box = lite.Rectangle(width=4,height=2).set_stroke([lite.RED,lite.BLUE],width=8,background=True)
+        self.assertEqual(box.to_dict()['gradient_points'], [[2,-1],[-2,1]])
+        box.set_stroke(lite.BLUE,opacity=[.2,.8],background=True)
+        self.assertEqual(box.to_dict()['background_stroke_opacities'], [.2,.8])
+        self.assertIn('gradient_points', box.to_dict())
+        shaded = lite.Square(fill_color=[lite.RED,lite.BLUE],shade_in_3d=True)
+        data = shaded.to_dict()
+        points = [point for curve in lite._path_curves(data) for point in curve]
+        self.assertEqual(data['gradient_points'], [points[0][:2],points[((len(points)-1)//6)*3][:2]])
+        collapsed = box.copy().scale(0)
+        self.assertIsInstance(collapsed.to_dict(), dict)
+
+    def test_background_rgba_rows_style_roundtrip_and_gradient_fades(self):
+        shape = lite.Square()
+        shape.background_stroke_rgbas = [[1,0,0,.2],[0,0,1,.8]]
+        self.assertPointAlmostEqual(shape.get_stroke_opacities(background=True), [.2,.8])
+        self.assertEqual(list(shape.get_stroke_colors(background=True)), [lite.PURE_RED,lite.PURE_BLUE])
+        duplicate = lite.Square().set_style(**shape.get_style())
+        self.assertPointAlmostEqual(duplicate.get_stroke_opacities(background=True), [.2,.8])
+        before = shape.to_dict()
+        with self.assertRaises(ValueError): shape.set_background_stroke(opacity=[.2,math.nan])
+        self.assertEqual(shape.to_dict(), before)
+        result = render("""shape = Square(fill_opacity=[.2,.8],stroke_opacity=[.4,1])
+shape.set_stroke(WHITE,width=8,opacity=[.2,.8],background=True)
+self.add(shape)
+self.play(FadeOut(shape),run_time=2,rate_func=linear)""")
+        middle = result['frames'][15]['mobjects'][0]
+        for channel, expected in (('fill',[.1,.4]),('stroke',[.2,.5]),('background_stroke',[.1,.4])):
+            self.assertPointAlmostEqual([middle[channel+'_opacity']*v for v in middle[channel+'_opacities']], expected)
+        self.assertEqual(result['frames'][-1]['mobjects'], [])
+
+    def test_family_gradient_gallery_fades_once_and_cleans_up(self):
+        result = json.loads(lite.render_scene((ROOT / 'examples/family_gradient_scene.py').read_text()))
+        self.assertEqual(result['duration'],8)
+        solid = result['frames'][60]['mobjects'][1]
+        fading = result['frames'][75]['mobjects'][1]
+        self.assertPointAlmostEqual([fading['fill_opacity']*v for v in fading['fill_opacities']], [.15,.5])
+        self.assertPointAlmostEqual([fading['background_stroke_opacity']*v for v in fading['background_stroke_opacities']], [.1,.5])
+        self.assertEqual(fading['gradient_points'],solid['gradient_points'])
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+
     def test_sheen_caps_joints_and_stroke_scaling_reach_frames(self):
         circle = lite.Circle(fill_opacity=1).set_sheen(-0.3, lite.DR)
         data = circle.to_dict()

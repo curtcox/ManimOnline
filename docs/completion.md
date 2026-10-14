@@ -511,3 +511,11 @@ The renderer now shades both native corners and uses the native two-row RGBA
 selection for fill/stroke/background strokes. Solid shaded shapes also carry
 corner gradient endpoints. Cube lighting colors agree with the independent Python
 camera hook. Glyph-family bounds and exact Cairo pixel parity remain open.
+
+
+2D gradients now use current rotated family bounds and invert the object's pose
+for local SVG paint. Background-only gradients get endpoints, background RGBA
+arrays preserve all stops, and gradient fades no longer square the opacity factor.
+A browser SVG-to-canvas halfway-fade pixel check covers the rendered result.
+Separately posed ancestor gradients, exact animated bounds and Cairo pixel parity
+remain open.

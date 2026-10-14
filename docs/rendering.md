@@ -2550,3 +2550,12 @@ The published eight-second gallery showed both gradient panels at four seconds,
 removed all path geometry at the end, and switched to a three-node DOT graph.
 A separate published scene also displayed a valid shaded background-stroke
 paint server. SVG rasterization returned a colored pixel inside the panel.
+
+
+The **Rotated and family color gradients** example shows current axis-aligned
+bounds controlling a rotated shape's gradient, descendant bounds extending a
+parent's gradient, and independent background-stroke color/opacity stops. RGBA
+background rows and style round trips preserve every stop. FadeIn/FadeOut multiply
+scalar opacity once, retaining relative stop alpha so exported colors do not
+fade twice. Gradient placement through separately posed ancestors and exact
+animated bounds remain parity work; this is not complete Cairo rendering.
