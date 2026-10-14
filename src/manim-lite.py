@@ -3435,8 +3435,8 @@ class Mobject:
                 not (isinstance(self, TipableVMobject) and self._tips_by_role())):
             # A collapsed pose has no inverse: collapse the members themselves, as Community's points.
             pivot = list(Vector(about_point) if about_point is not None else self._pivot_point())
-            if not self.children and all(list(p) == pivot for p in self.get_points()):
-                return self  # Already exactly the pivot (pose-only collapse).
+            if not self.children and (scale_factor or all(list(p) == pivot for p in self.get_points())):
+                return self  # Collapsed earlier, or already exactly the pivot (pose-only collapse).
             if self._type == 'vgroup' or not self.get_points():
                 self._clear_pose()
             else:
@@ -4009,6 +4009,12 @@ class Mobject:
                 raise NotImplementedError('Please override in a child class.')
             if isinstance(self, VMobject) and not isinstance(mobject, VMobject):
                 raise AttributeError(f"{type(mobject).__name__} object has no attribute 'fill_rgbas'")
+            names = ('match_height', 'match_width', 'match_depth', 'match_center', 'stretch')
+            options = dict(zip(names, args), **kwargs)
+            if any(options.get(name) for name in names):
+                # Community fits a copy of the target first; align_data then pads that copy.
+                mobject = self._become_fitted(mobject, **options)
+                args, kwargs = (), {}
             if self._alignable(True) and mobject._alignable(True):
                 aligned = self._aligned_target(mobject)
                 # align_data pads and subdivides the target itself, not a copy (Community).
@@ -4158,14 +4164,8 @@ class Mobject:
             return target
         return align(shape(self), mobject.copy(), True)
 
-    def become(self, mobject, match_height=False, match_width=False, match_depth=False, match_center=False,
-               stretch=False):
-        """Replace supported geometry while retaining identity and updater registrations."""
-        if not isinstance(mobject, Mobject):
-            raise TypeError('become expects a Mobject')
-        for special in (CameraFrame, ValueTracker):
-            if isinstance(self, special) != isinstance(mobject, special):
-                raise ValueError('Camera frames and trackers can only become their own kind')
+    def _become_fitted(self, mobject, match_height=False, match_width=False, match_depth=False,
+                       match_center=False, stretch=False):
         target = mobject.copy()
         if stretch:
             target.stretch_to_fit_height(self.get_height())
@@ -4180,6 +4180,17 @@ class Mobject:
                 target.match_depth(self)
         if match_center:
             target.move_to(self.get_center())
+        return target
+
+    def become(self, mobject, match_height=False, match_width=False, match_depth=False, match_center=False,
+               stretch=False):
+        """Replace supported geometry while retaining identity and updater registrations."""
+        if not isinstance(mobject, Mobject):
+            raise TypeError('become expects a Mobject')
+        for special in (CameraFrame, ValueTracker):
+            if isinstance(self, special) != isinstance(mobject, special):
+                raise ValueError('Camera frames and trackers can only become their own kind')
+        target = self._become_fitted(mobject, match_height, match_width, match_depth, match_center, stretch)
         if isinstance(self, CameraFrame):
             if (target.angle or target.position[2] or target.get_width() <= 0 or target.get_height() <= 0 or
                     not all(math.isfinite(v) for v in (*target.position,target.get_width(),target.get_height()))):
@@ -13306,7 +13317,7 @@ def _transform_plan(start, target, origins=None, lagged=False):
                     own.pop('_curved_tip_path')
         own_start['children'],own_target['children'] = [],[]
         first,last = VGroup().to_dict(),VGroup().to_dict()
-        first['children'],last['children'] = start['children'],target['children']
+        first['children'],last['children'] = start.get('children') or [],target.get('children') or []
         for empty,full,own,other in ((first,last,start,target),(last,first,target,start)):
             if not empty['children'] and full['children'] and own.get('type') in _PATH_TYPES:
                 # Community pads a childless family with point mobjects at its center
@@ -15241,7 +15252,7 @@ class _TransformMatching(Animation):
         if not self.sliding:
             paths = self._leaf_paths(self.mobject)
             pieces = members + [[part] for part in lost_live]
-            if all(piece is not None and all(paths.get(id(part)) for part in piece) for piece in pieces):
+            if all(piece is not None and all(paths.get(id(part)) is not None for part in piece) for piece in pieces):
                 self._piece_paths = [[paths[id(part)] for part in piece] for piece in pieces]
         # Community fades in a copy of the unmatched targets, added to the scene at begin.
         self._arrivals = VGroup(*[part.copy() for part in new]) if new else None
@@ -15308,6 +15319,10 @@ class _TransformMatching(Animation):
             # Community's FadeOut follows the matched transforms; they sit in sampled parents.
             tree = _snapshot_copy(self.start)
             for path, state in placed:
+                if not path:
+                    # The root itself is a piece: later pieces sit in its sample.
+                    tree = dict(state, children=list(state.get('children') or ()))
+                    continue
                 node = tree
                 for depth, index in enumerate(path):
                     if not node.get('geometry_scale') or index >= len(node.get('children') or ()):

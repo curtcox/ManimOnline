@@ -1267,3 +1267,8 @@ become freezes a receiver's shaft with the target's tip roles (length-weighted b
 target's tips were subdivided). Arrow.scale(0) with non-tip members collapses them at the pivot in
 the arrow's frame. scale(0) also bakes a childless outline whose collapsed pose misses the pivot by
 rounding, so zero-width checks (match_width) stay exact.
+Scene become with match_*/stretch options fits a copy of the target first (`_become_fitted`), and
+align_data pads that copy, as in Community; the target itself is then left unchanged. A
+TransformMatching root that is itself a matched piece hosts the other pieces' samples (empty path).
+The childless scale(0) bake only runs on the collapsing call itself; later scales of collapsed
+members keep their pose.

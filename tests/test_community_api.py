@@ -2246,6 +2246,39 @@ class AnimationApiTests(unittest.TestCase):
             's = S(); s.render(); result = s.out\n'),
             [[2.0, 0.0, 0.0], True])
 
+    def test_matched_roots_carry_their_unmatched_members_toward_the_fade_target(self):
+        # The empty fade target centers at the origin; become fits a copy before padding it.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = Circle().add(Line(ORIGIN, RIGHT).scale(0)); p = Dot(radius=0.3).shift(RIGHT * 2 + DOWN)\n'
+            '        o.match_height(p).move_to(p); self.out = []\n'
+            '        self.add_updater(lambda dt: self.out.append(o.get_corner(DL)[0]))\n'
+            '        self.play(TransformMatchingShapes(o, p.copy()), run_time=0.6)\n'
+            '        q = VGroup(Line(LEFT, RIGHT), Elbow()).shift(UP)\n'
+            '        q.become(NumberPlane(x_range=[-1, 1], y_range=[-1, 1], x_length=2, y_length=2)\n'
+            '                 .shift(RIGHT * 2), match_center=True)\n'
+            '        self.out = [self.out[4:8], q.get_corner(DL), q.get_corner(UR), o.submobjects[0].get_center()]\n'
+            's = S(); s.render(); result = s.out\n'),
+            [[1.3701, 0.7799, 0.3316, 0.113], [-1.0, 0.0, 0.0], [1.0, 2.1, 0.0], [2.15, -1.0, 0.0]])
+
+    def test_shrinking_a_morphed_family_with_an_arrow_member(self):
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = Square().rotate(0.3).add(Arrow(ORIGIN, UP)); p = Dot(radius=0.3).shift(RIGHT * 2 + DOWN)\n'
+            '        self.play(Transform(o, p.copy(), lag_ratio=0.3))\n'
+            '        self.play(o.animate.next_to(p, DOWN).align_to(p, LEFT)); self.play(ShrinkToCenter(o))\n'
+            '        self.out = [o.get_corner(DL), o.get_corner(UR)]\n'
+            's = S(); s.render(); result = s.out\n'),
+            [[2.0, -1.85, 0.0], [2.0, -1.85, 0.0]])
+
+    def test_scaling_a_family_moves_its_collapsed_members(self):
+        self.assertEqual(scene_values(
+            'o = Circle().add(Line(ORIGIN, RIGHT).scale(0)); o.scale(0.3)\n'
+            'result = o.submobjects[0].get_center()\n'),
+            [0.15, 0.0, 0.0])
+
     def test_rotate_and_dashed_endpoints_follow_community_finishes(self):
         self.assertEqual(scene_values(
             'class S(Scene):\n'
