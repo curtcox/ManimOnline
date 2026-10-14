@@ -17355,6 +17355,16 @@ class Scene:
             # play() options override each animation, as in Community.
             for animation in animations:
                 animation.rate_func = rate_func
+        def freeze_tips(animation):
+            # A tip animated on its own leaves the shaft where Community cut it (in the
+            # parent frame, before world placement).
+            for inner in animation.__dict__.get('animations') or ():
+                freeze_tips(inner)
+            mobject = animation.__dict__.get('mobject')
+            if isinstance(mobject, Mobject):
+                _freeze_tip_owner(mobject)
+        for animation in animations:
+            freeze_tips(animation)
         tokens = self._enter_world_members(animations)
         try:
             self._play_frames(animations, durations, count)

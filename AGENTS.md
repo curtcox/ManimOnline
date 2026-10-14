@@ -1254,3 +1254,6 @@ Fuzz generator gen10.py (J suites): nested posed groups, target animations, scen
 Transform plans also freeze refit straight shafts when tip roles differ index by index (a tip
 facing another member, as after Arrow.scale re-adds tips last): Community pairs members by index,
 so the tip morphs into that member while the cut shaft interpolates its own points.
+play() freezes the owner's shaft for every (nested) animation whose mobject is a tip, before
+`_enter_world_members` places it in world coordinates (freezing a world-placed tip writes world
+points into the parent frame); Rotate/Transform/ScaleInPlace of a tip leave Community's cut shaft.

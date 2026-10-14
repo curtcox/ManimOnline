@@ -2207,6 +2207,18 @@ class AnimationApiTests(unittest.TestCase):
             's = S(); s.render(); result = s.out[3:6]\n'),
             [0.6467, 0.507, 0.507])
 
+    def test_animating_a_scaled_arrows_tip_leaves_its_shaft_cut(self):
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = Vector([1, -1]); o.set_width(2); self.add(o)\n'
+            '        self.play(Rotate(o[-1], 1))\n'
+            '        q = Vector([1, -1]); self.add(q)\n'
+            '        self.play(Transform(q.tip, Square(0.3)))\n'
+            '        self.out = [o.get_corner(DL), q.get_end(), q.points[-1]]\n'
+            's = S(); s.render(); result = s.out\n'),
+            [[-0.5, -1.504, 0.0], [0.15, 0.15, 0.0], [0.7525, -0.7525, 0.0]])
+
     def test_rotate_and_dashed_endpoints_follow_community_finishes(self):
         self.assertEqual(scene_values(
             'class S(Scene):\n'
