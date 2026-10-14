@@ -63,7 +63,11 @@ test('HTTP, connection, body, and invalid short-link responses retain a source l
     ...[undefined, 'Error: rate limit', 'javascript:alert(1)', 'https://evil.test/abc', 'https://is.gd/a?q=x', 'http://is.gd/abc', 'https://user@is.gd/abc'].map(contents => ({ok:true,json:async()=>({contents})}))];
   for (const response of responses) {
     const client = new ShareClient({ fetchLink: async () => { if (!response) throw new Error('Offline'); return response; } });
-    assert.deepEqual(await client.shorten(snapshot), { url: snapshot.fallback, shortened: false });
+    const result = await client.shorten(snapshot);
+    assert.equal(result.url, snapshot.fallback);
+    assert.equal(result.shortened, false);
+    assert.match(result.error.message, /source link above is still ready to copy/);
+    assert.match(result.error.message, /Retry|retry|Check|Reconnect|Wait/);
   }
 });
 
@@ -74,10 +78,60 @@ test('deadline covers stalled network and response body even when abort is ignor
       timers: {setTimeout: callback=>{expire=callback;return 1;},clearTimeout: id=>cleared=id} });
     const pending = client.shorten(snapshot);
     expire();
-    assert.deepEqual(await pending, {url:snapshot.fallback,shortened:false});
+    const result = await pending;
+    assert.equal(result.url, snapshot.fallback);
+    assert.equal(result.shortened, false);
+    assert.equal(result.error.code, 'timeout');
+    assert.match(result.error.message, /10 seconds.*Retry later/);
     assert.ok(signal.aborted);
     assert.equal(cleared, 1);
   }
+});
+
+test('proxy HTTP errors identify the service/status and a concrete recovery step', async () => {
+  for (const [status, guidance] of [[522,/Retry later/], [429,/at least one minute/], [414,/too large.*Save to HashBin/], [403,/refused.*Save to HashBin/]]) {
+    const client = new ShareClient({fetchLink:async()=>({ok:false,status})});
+    const result = await client.shorten(snapshot);
+    assert.equal(result.error.code, 'http');
+    assert.match(result.error.message,new RegExp(`AllOrigins .*HTTP ${status}`));
+    assert.match(result.error.message,guidance);
+    assert.equal(result.url,snapshot.fallback);
+  }
+});
+
+test('is.gd rejection details and upstream failures survive the proxy response', async () => {
+  for (const [contents, status, guidance] of [
+    ['Error: rate limit exceeded',502,/Wait at least one minute/],
+    ['Error: URL too long.',400,/without sending a long URL/],
+    ['Error: Invalid original URL',400,/check it/],
+    ['Error: Could not generate a short link',400,/check it/],
+    ['Error: Maintenance in progress',503,/Retry later/]
+  ]) {
+    const client = new ShareClient({fetchLink:async()=>({ok:true,json:async()=>({contents,status:{http_code:status}})})});
+    const result = await client.shorten(snapshot);
+    assert.equal(result.error.code,'provider');
+    assert.ok(result.error.message.includes(contents.replace(/^Error: /,'')));
+    assert.match(result.error.message,guidance);
+    assert.ok(!result.error.message.includes('..'));
+  }
+  for (const contents of ['Service unavailable', undefined, 'a'.repeat(300)]) {
+    const client = new ShareClient({fetchLink:async()=>({ok:true,json:async()=>({contents,status:{http_code:503}})})});
+    assert.match((await client.shorten(snapshot)).error.message,/is.gd .*HTTP 503/);
+  }
+});
+
+test('offline and opaque browser failures provide guidance without inventing an HTTP status', async () => {
+  let calls=0;
+  const offline = new ShareClient({isOnline:()=>false,fetchLink:async()=>{calls++;}});
+  const result = await offline.shorten(snapshot);
+  assert.equal(calls,0);
+  assert.equal(result.error.code,'offline');
+  assert.match(result.error.message,/offline.*Reconnect/);
+  const blocked = new ShareClient({isOnline:()=>true,fetchLink:async()=>{throw new TypeError('Failed to fetch');}});
+  const failure = await blocked.shorten(snapshot);
+  assert.equal(failure.error.code,'network');
+  assert.match(failure.error.message,/did not provide a response.*content blockers/);
+  assert.ok(!failure.error.message.includes('HTTP'));
 });
 
 test('edits and newer requests discard stale short links', async () => {

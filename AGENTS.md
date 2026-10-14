@@ -108,6 +108,10 @@ Chromium, Firefox and WebKit; see README for the local command.
 HashBin OAuth/source restoration, quote/upload/reload, legacy/inline CIDs and stale
 loads with a mocked service. Run it with the same URL/browser arguments. These
 checks do not prove live HashBin app registration or spend account funds.
+`tests/browser/sharing.cjs` uses the same URL/browser arguments to check visible
+shortening diagnostics, source-link fallback, retry and discarded stale errors
+with a mocked proxy. Do not guess HTTP statuses when browser restrictions hide
+the response. Keep remote messages as text and short-link URLs strictly validated.
 Playwright's Firefox build may fail to launch on recent macOS ("Could not find profile folder").
 Update the README and these notes when adding test commands or changing the
 runtime. Do not claim full Manim compatibility from a subset implementation.

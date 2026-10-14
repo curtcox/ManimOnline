@@ -546,7 +546,7 @@ class HelloWorld(Scene):
 
     <input type="text" value="" id="shareurl" aria-label="Share link" readonly>
     <button type="button" id="shorten-share" hidden>Shorten link</button>
-    <span id="share-status" role="status"></span>
+    <span id="share-status" role="status" aria-live="polite"></span>
 
     <button type="button" id="hashbin-save">Save to HashBin</button>
     <input type="text" id="hashbin-cid" placeholder="HashBin CID or saved link" aria-label="HashBin CID or saved link" size="22">
@@ -583,7 +583,7 @@ class HelloWorld(Scene):
   <script src="src/hashbin-panel.js?v=1"></script>
   <script src="src/detector.js?v=3"></script>
   <script src="src/render-scheduler.js?v=1"></script>
-  <script src="src/share-links.js?v=2"></script>
+  <script src="src/share-links.js?v=3"></script>
   <script src="src/manim-renderer.js?v=parts-4"></script>
   <script src="src/manim-client.js"></script>
   <script src="src/manim-player.js?v=mathtex-1"></script>
@@ -837,7 +837,7 @@ class HelloWorld(Scene):
         if (snapshot !== shareSnapshot || !result) return;
         shareURLEl.value = result.url;
         shortenShare.disabled = false;
-        shareStatus.textContent = result.shortened ? 'Short link ready.' : 'Shortening unavailable. Use the source link.';
+        shareStatus.textContent = result.shortened ? 'Short link ready.' : result.error.message;
       });
       const rendererMode = document.getElementById('renderer-mode');
       let exportingPNG = false;

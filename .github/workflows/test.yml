@@ -38,6 +38,7 @@ jobs:
           node --check offline-assets.js
           node --check service-worker.js
           node --check tests/browser/smoke.cjs
+          node --check tests/browser/sharing.cjs
   browsers:
     runs-on: ubuntu-latest
     steps:
@@ -52,3 +53,4 @@ jobs:
           sleep 2
           node tests/browser/smoke.cjs http://localhost:8000/ chromium firefox webkit
           node tests/browser/languages.cjs http://localhost:8000/ chromium firefox webkit
+          node tests/browser/sharing.cjs http://localhost:8000/ chromium firefox webkit

@@ -415,7 +415,13 @@ the displayed link to avoid copying an outdated version.
 
 **Shorten link** optionally sends that captured source URL through the existing
 AllOrigins/is.gd services. If the request fails, stalls for ten seconds, or
-returns an invalid link, the source link remains available. Editing cancels
+returns an invalid link, the source link remains available. The status identifies
+the failing service/HTTP status or is.gd's rejection reason when available, and
+gives a next step: reconnect, check browser blockers, retry later, or use
+**Save to HashBin**. Rate-limit errors advise waiting at least one minute;
+oversized URLs advise HashBin. Browsers can hide HTTP details for blocked or
+cross-origin responses; in that case the message describes the unknown cause
+instead of guessing a status code. Editing cancels
 pending shortening and ignores its later response. Tests simulate service
 success/failure; live shortening-service availability is not guaranteed.
 
@@ -446,9 +452,15 @@ npm install --no-save playwright && npx playwright install chromium firefox webk
 python3 -m http.server 8000 &
 node tests/browser/smoke.cjs http://localhost:8000/ chromium firefox webkit
 node tests/browser/languages.cjs http://localhost:8000/ chromium firefox webkit
+node tests/browser/sharing.cjs http://localhost:8000/ chromium firefox webkit
 ```
 
 The language check runs real Graphviz, modl and Pyodide/Manim previews, plus HashBin OAuth return, quote, save, reload, legacy modl/inline CID loading, and stale-load protection against a mocked service. It spends no account funds and does not prove live HashBin registration or service availability. Playwright's Firefox build may fail to launch on recent macOS with “Could not find profile folder”; CI runs the browser matrix on Ubuntu.
+
+The sharing check simulates shortening-service HTTP failures, rate limits,
+oversized links, unreadable replies, blocked/offline requests, retry success and
+stale errors after editing. It checks the visible cause/recovery message and
+preserved source link without creating real short links.
 
 ## Credits
 
