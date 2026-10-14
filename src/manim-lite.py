@@ -3714,6 +3714,8 @@ class Mobject:
         return self
 
     def get_color(self):
+        if _from_scene():
+            return self._scene_get_color()
         # Community's VMobject color: the stroke color when the fill is transparent.
         if isinstance(self, VMobject) and self.__dict__.get('fill_color') is not None:
             stops = self.__dict__.get('fill_opacities')
@@ -3723,9 +3725,11 @@ class Mobject:
         return self.__dict__.get('color')
 
     def get_fill_color(self):
-        return self.fill_color
+        return self._scene_get_fill_color() if _from_scene() else self.fill_color
 
     def get_stroke_color(self, background=False):
+        if _from_scene():
+            return self._scene_get_stroke_color(background)
         return self.__dict__.get('background_stroke_color', BLACK) if background else self.stroke_color
 
     def _one_color(self, value):
@@ -3733,19 +3737,30 @@ class Mobject:
         return value[0] if type(value) is list and value and isinstance(self, VMobject) else value
 
     def _scene_get_color(self):
+        if isinstance(self, VMobject):
+            return (self._scene_get_stroke_color() if not any(self.get_fill_opacities())
+                    else self._scene_get_fill_color())
         return self._one_color(self.get_color())
 
     def _scene_get_fill_color(self):
-        return self._one_color(self.get_fill_color())
+        return self.get_fill_colors()[0]
 
     def _scene_get_stroke_color(self, background=False):
-        return self._one_color(self.get_stroke_color(background))
+        return self.get_stroke_colors(background)[0]
 
     def get_fill_opacity(self):
-        return self.fill_opacity
+        return self._scene_get_fill_opacity() if _from_scene() else self.fill_opacity
 
     def get_stroke_opacity(self, background=False):
+        if _from_scene():
+            return self._scene_get_stroke_opacity(background)
         return self.__dict__.get('background_stroke_opacity', 1) if background else self.stroke_opacity
+
+    def _scene_get_fill_opacity(self):
+        return float(self.get_fill_opacities()[0])
+
+    def _scene_get_stroke_opacity(self, background=False):
+        return float(self.get_stroke_opacities(background)[0])
 
     def get_stroke_width(self, background=False):
         return self.__dict__.get('background_stroke_width', 0) if background else self.stroke_width
@@ -3823,10 +3838,10 @@ class Mobject:
         return self
 
     def get_style(self, simple=False):
-        style = {'stroke_opacity': self.get_stroke_opacity(), 'stroke_width': self.get_stroke_width()}
+        style = {'stroke_opacity': float(self.get_stroke_opacities()[0]), 'stroke_width': self.get_stroke_width()}
         if simple:
-            style.update(fill_color=self.get_fill_color(), fill_opacity=self.get_fill_opacity(),
-                         stroke_color=self.get_stroke_color())
+            style.update(fill_color=self.get_fill_colors()[0], fill_opacity=float(self.get_fill_opacities()[0]),
+                         stroke_color=self.get_stroke_colors()[0])
         else:
             style.update(fill_color=self.get_fill_colors(), fill_opacity=self.get_fill_opacities(),
                          stroke_color=self.get_stroke_colors(), stroke_opacity=self.get_stroke_opacities(),
@@ -5124,10 +5139,10 @@ def _style_property(name, setter):
     def get(self):
         if sys._getframe(1).f_code.co_filename != _LIB_FILE:
             if name == 'color':
-                return self.get_color()
+                return self._scene_get_color()
             if isinstance(self, VMobject):
                 # Community's VMobject properties report one color, even for gradients.
-                return self._one_color(self.__dict__.get(name))
+                return self._scene_get_fill_color() if name == 'fill_color' else self._scene_get_stroke_color()
         return self.__dict__.get(name)
     def set_(self, value):
         if not _from_scene():
@@ -12661,6 +12676,38 @@ rate_functions = types.SimpleNamespace(sigmoid=sigmoid, unit_interval=_unit_inte
 _FAST_NUMBERS = (int, float)
 
 
+def _interpolate_gradient_styles(result, start, end, alpha):
+    """Align vector paint RGBA rows before interpolation, without changing geometry."""
+    if not 0 < alpha < 1 or result.get('type') not in _GRADIENT_TYPES:
+        return
+    for channel in ('fill', 'stroke', 'background_stroke'):
+        color_key, scalar_key, stops_key = channel+'_color', channel+'_opacity', channel+'_opacities'
+        colors = [node.get(color_key, node.get('color', WHITE) if channel != 'background_stroke' else BLACK)
+                  for node in (start,end)]
+        stops = [node.get(stops_key) for node in (start,end)]
+        scalars = [node.get(scalar_key, 1) for node in (start,end)]
+        if not any(isinstance(value,list) for value in colors+stops):
+            continue
+        if colors[0] == colors[1] and stops[0] == stops[1] and scalars[0] == scalars[1]:
+            continue
+        rows = []
+        for color, opacity, scalar in zip(colors,stops,scalars):
+            paint = [BLACK if value is None else value for value in (color if isinstance(color,list) else [color])]
+            alphas = [scalar*v for v in opacity] if opacity else [scalar]
+            paint, alphas = make_even(paint,alphas)
+            rows.append(list(zip(paint,alphas)))
+        first, last = make_even(*rows)
+        result[color_key] = [interpolate(a[0],b[0],alpha) for a,b in zip(first,last)]
+        result[scalar_key] = 1
+        result[stops_key] = [a[1]+(b[1]-a[1])*alpha for a,b in zip(first,last)]
+        if channel == 'background_stroke':
+            width0, width1 = start.get('background_stroke_width',0), end.get('background_stroke_width',0)
+            result['background_stroke_width'] = width0+(width1-width0)*alpha
+        # Newly introduced gradients need the target's inert paint coordinates.
+        if 'gradient_points' not in result and 'gradient_points' in end:
+            result['gradient_points'] = _snapshot_copy(end['gradient_points'])
+
+
 def interpolate(start, end, alpha):
     kind = type(start)
     if kind in _FAST_NUMBERS and type(end) in _FAST_NUMBERS:
@@ -12678,6 +12725,7 @@ def interpolate(start, end, alpha):
     if isinstance(start, dict) and isinstance(end, dict):
         result = {key: interpolate(value, end.get(key, value), alpha)
                   for key, value in start.items()}
+        _interpolate_gradient_styles(result, start, end, alpha)
         # Tip roles identify aligned child slots, rather than animated values.
         if '_tip_role' in end:
             result['_tip_role'] = end['_tip_role']

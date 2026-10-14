@@ -1346,3 +1346,11 @@ Full style dictionaries retain opacity arrays and all background color stops.
 _gradient_paint adds sheen only for a single normalized RGBA row, including
 background strokes; copied explicit gradients must not get duplicate lit stops.
 Stored-RGBA regeneration and sheen-reset edge cases remain open.
+
+
+_interpolate_gradient_styles canonicalizes changing vector paint to color rows,
+scalar opacity 1 and relative stop alpha before interpolation. Align both each
+channel's color/alpha counts and the two endpoints' row counts with make_even.
+Do not scale alpha twice or mutate input snapshots; skip unchanged paint arrays
+so pooling stays effective. Scene opacity getters return the first RGBA alpha;
+internal scalar fields stay separate. Glyph-style and quantization parity remain open.

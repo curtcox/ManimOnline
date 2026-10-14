@@ -533,3 +533,9 @@ raster references and follows Community's unequal-family pairing. Target geometr
 identities, callbacks and saved state stay intact. Background color lists survive
 style round trips and explicit RGBA gradients no longer duplicate sheen colors.
 Exact stored-RGBA regeneration and sheen-reset edge cases remain open.
+
+
+Vector style morphs align RGBA row counts and interpolate colors/alpha continuously;
+new background widths interpolate from zero. Public opacity getters expose the
+first RGBA row. Midpoint frame and browser pixel checks cover solid-to-gradient
+changes. Glyph style morphs and exact stored-RGBA/quantization parity remain open.

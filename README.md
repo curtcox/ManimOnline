@@ -1699,3 +1699,13 @@ Explicit RGBA gradients do not gain duplicated sheen stops during copying.
 Pillow loads automatically for `background_image` style arguments. This extends
 the Lite style representation; exact stored-RGBA regeneration and every Community
 sheen-reset edge case remain parity work.
+
+
+Vector-path style animations now align color/opacity rows before interpolation,
+including solid-to-gradient changes and differing stop counts. Background widths
+start at zero when first introduced. Relative alpha is interpolated once in the
+canonical frame representation; unchanged styles keep their existing form. Scene
+opacity getters read the first RGBA row while internal scalar channels remain
+independent of stops. Browser pixel checks cover the halfway solid-to-gradient
+color transition. Glyph style morphs, exact float-to-hex quantization and sampled
+gradient-bound parity remain open.

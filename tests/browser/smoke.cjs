@@ -111,6 +111,20 @@ const NESTED_GRADIENT = [
   '        self.wait(.2)',
 ].join('\n');
 
+const STYLE_MORPH = [
+  'from manim import *',
+  'config.pixel_width = 80',
+  'config.pixel_height = 40',
+  'config.frame_width = 8',
+  'config.frame_height = 4',
+  'class StyleMorph(Scene):',
+  '    def construct(self):',
+  '        box = Rectangle(width=8,height=4,fill_color=WHITE,fill_opacity=1,stroke_width=0)',
+  '        template = Square(fill_color=[PURE_RED,PURE_BLUE],fill_opacity=1,stroke_width=0,sheen_direction=RIGHT)',
+  '        self.add(box)',
+  '        self.play(box.animate.match_style(template),run_time=2,rate_func=linear)',
+].join('\n');
+
 async function open(browser, source) {
   const page = await browser.newPage();
   const errors = [];
@@ -140,7 +154,7 @@ async function checkManim(browser, source, verifyRaster = false) {
     const failure = document.querySelector('#review.error');
     if (failure) return { error: document.querySelector('#error').textContent.slice(0, 500) };
     const seek = document.querySelector('[aria-label="Animation position"]');
-    seek.value = verifyRaster === 'fade' ? Math.floor(Number(seek.max)/2) : seek.max;
+    seek.value = ['fade','morph'].includes(verifyRaster) ? Math.floor(Number(seek.max)/2) : seek.max;
     seek.dispatchEvent(new Event('input', { bubbles: true }));
     await new Promise(resolve => setTimeout(resolve, 500));
     const preview = document.querySelector('svg[aria-label="Manim animation preview"]');
@@ -168,7 +182,7 @@ async function checkManim(browser, source, verifyRaster = false) {
         const canvas=document.createElement('canvas');
         canvas.width=Number(preview.getAttribute('width'));canvas.height=Number(preview.getAttribute('height'));
         const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0);
-        rasterPixels=(verifyRaster === 'nested' ? [[40,24],[40,56]] : verifyRaster === 'fade' ? [[40,20]] : [[10,5],[70,5],[10,35],[70,35]]).flatMap(([x,y])=>[...ctx.getImageData(x,y,1,1).data]);
+        rasterPixels=(verifyRaster === 'nested' ? [[40,24],[40,56]] : ['fade','morph'].includes(verifyRaster) ? [[40,20]] : [[10,5],[70,5],[10,35],[70,35]]).flatMap(([x,y])=>[...ctx.getImageData(x,y,1,1).data]);
       } finally { URL.revokeObjectURL(url); }
     }
     return { rasterPixels, images: preview ? preview.querySelectorAll('image').length : 0, frames: Number(seek.max) + 1, paths: preview ? preview.querySelectorAll('path, circle, ellipse, polygon, polyline, rect, line').length : 0, codecs };
@@ -198,11 +212,14 @@ async function checkManim(browser, source, verifyRaster = false) {
       const nested = await checkManim(browser, NESTED_GRADIENT, 'nested');
       const [r0,g0,b0,a0,r1,g1,b1,a1] = nested.rasterPixels;
       if (!(b0>r0+40 && r1>b1+40 && g0===0 && g1===0 && a0===255 && a1===255)) throw new Error('Nested gradient pixels: '+JSON.stringify(nested.rasterPixels));
+      const morph = await checkManim(browser, STYLE_MORPH, 'morph');
+      const [mr,mg,mb,ma] = morph.rasterPixels;
+      if (!(mr>=188 && mr<=196 && mg>=126 && mg<=130 && mb>=188 && mb<=196 && ma===255)) throw new Error('Style morph pixels: '+JSON.stringify(morph.rasterPixels));
       const depth = await checkManim(browser, THREE_D).catch(error => { throw new Error('3D scene: ' + error.message); });
       console.log(name + ': DOT ok; Manim ' + manim.frames + ' frames, ' + manim.paths +
                   ' shapes; NumPy scene ' + numpy.frames + ' frames, ' + numpy.paths +
                   ' shapes; 3D scene ' + depth.frames + ' frames, ' + depth.paths +
-                  ' shapes; field image ' + fieldImage.frames + ' frames, ' + fieldImage.images + ' image; raster paint/export and halfway gradient-fade and nested gradient pixels ok; video encoders ' + JSON.stringify(manim.codecs));
+                  ' shapes; field image ' + fieldImage.frames + ' frames, ' + fieldImage.images + ' image; raster paint/export and halfway gradient-fade and nested gradient and style-morph pixels ok; video encoders ' + JSON.stringify(manim.codecs));
     } catch (error) {
       failed = true;
       console.log(name + ': FAILED ' + error.message);
