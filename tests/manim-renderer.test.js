@@ -49,6 +49,14 @@ test('formula gradients invert nested glyph coordinates for fill and background 
       const actual = ['x1','y1','x2','y2'].map(k=>Number(gradient.getAttribute(k)));
       [100,3900,100,-4100].forEach((value,index)=>assert.ok(Math.abs(actual[index]-value)<1e-8));
     }
+    path.setAttribute('transform','translate(300,-200) rotate(90) skewX(45)');
+    const turned = renderer.renderMobject({type:'mathtex',text:'x',font_size:48,
+      fill_color:['#FF0000','#0000FF'],gradient_points:[[0,-1],[0,1]]},glyphs).querySelectorAll();
+    const leaf = turned.find(e=>e.tag==='path');
+    const id = leaf.getAttribute('fill').slice(5,-1);
+    const gradient = turned.find(e=>e.getAttribute('id')===id);
+    const actual = ['x1','y1','x2','y2'].map(k=>Number(gradient.getAttribute(k)));
+    [2150,-200,-1850,-200].forEach((value,index)=>assert.ok(Math.abs(actual[index]-value)<1e-8));
     path.setAttribute('transform','translate(1px)');
     assert.throws(()=>renderer.renderMobject({type:'mathtex',text:'x',fill_color:['#FF0000','#0000FF'],
                                             gradient_points:[[0,0],[1,1]]},glyphs),/Invalid glyph transform/);

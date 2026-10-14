@@ -204,7 +204,7 @@ async function renderManim(browser, source, verifyRaster = false) {
     const failure = document.querySelector('#review.error');
     if (failure) return { error: document.querySelector('#error').textContent.slice(0, 500) };
     const seek = document.querySelector('[aria-label="Animation position"]');
-    seek.value = ['fade','morph'].includes(verifyRaster) ? Math.floor(Number(seek.max)/2) : seek.max;
+    seek.value = ['fade','morph','glyph'].includes(verifyRaster) ? Math.floor(Number(seek.max)/2) : seek.max;
     seek.dispatchEvent(new Event('input', { bubbles: true }));
     await new Promise(resolve => setTimeout(resolve, 500));
     const preview = document.querySelector('svg[aria-label="Manim animation preview"]');
@@ -232,10 +232,12 @@ async function renderManim(browser, source, verifyRaster = false) {
         const canvas=document.createElement('canvas');
         canvas.width=Number(preview.getAttribute('width'));canvas.height=Number(preview.getAttribute('height'));
         const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0);
-        rasterPixels=(verifyRaster === 'nested' ? [[40,24],[40,56]] : ['fade','morph'].includes(verifyRaster) ? [[40,20]] : [[10,5],[70,5],[10,35],[70,35]]).flatMap(([x,y])=>[...ctx.getImageData(x,y,1,1).data]);
+        rasterPixels=(verifyRaster === 'nested' ? [[40,24],[40,56]] : ['fade','morph','glyph'].includes(verifyRaster) ? [[40,20]] : [[10,5],[70,5],[10,35],[70,35]]).flatMap(([x,y])=>[...ctx.getImageData(x,y,1,1).data]);
       } finally { URL.revokeObjectURL(url); }
     }
-    return { rasterPixels, images: preview ? preview.querySelectorAll('image').length : 0, frames: Number(seek.max) + 1, paths: preview ? preview.querySelectorAll('path, circle, ellipse, polygon, polyline, rect, line').length : 0, codecs };
+    const paintOpaque = verifyRaster !== 'glyph' || [...preview.querySelectorAll('[opacity],[fill-opacity],[stop-opacity]')].every(e=>
+      ['opacity','fill-opacity','stop-opacity'].every(name=>!e.hasAttribute(name) || Number(e.getAttribute(name))===1));
+    return { rasterPixels, paintOpaque, images: preview ? preview.querySelectorAll('image').length : 0, frames: Number(seek.max) + 1, paths: preview ? preview.querySelectorAll('path, circle, ellipse, polygon, polyline, rect, line').length : 0, codecs };
   }, verifyRaster);
   await page.close();
   if (state.error) throw new Error('Manim render failed: ' + state.error);
@@ -270,9 +272,11 @@ async function renderManim(browser, source, verifyRaster = false) {
       const manual = await checkManim(browser, MANUAL_STYLE_MORPH, 'morph');
       const [cr,cg,cb,ca] = manual.rasterPixels;
       if (!(cr>=188 && cr<=196 && cg>=125 && cg<=129 && cb>=188 && cb<=196 && ca===255)) throw new Error('Manual style interpolation pixels: '+JSON.stringify(manual.rasterPixels));
-      const glyph = await checkManim(browser, GLYPH_STYLE_MORPH, 'morph');
+      const glyph = await checkManim(browser, GLYPH_STYLE_MORPH, 'glyph');
       const [gr,gg,gb,ga] = glyph.rasterPixels;
-      if (!(gr>=188 && gr<=196 && gg>=126 && gg<=130 && gb>=188 && gb<=196 && ga===255)) throw new Error('Glyph style morph pixels: '+JSON.stringify(glyph.rasterPixels));
+      // WebKit rasterizes the opaque diagonal glyph gradient with alpha 254.
+      // Check the SVG's opacity independently so the tolerance cannot hide a fade.
+      if (!(gr>=188 && gr<=196 && gg>=126 && gg<=130 && gb>=188 && gb<=196 && ga>=254 && glyph.paintOpaque)) throw new Error('Glyph style morph pixels: '+JSON.stringify(glyph.rasterPixels));
       const direction = await checkManim(browser, GLYPH_GRADIENT, 'nested');
       const [dr0,dg0,db0,da0,dr1,dg1,db1,da1] = direction.rasterPixels;
       if (!(db0>dr0+40 && dr1>db1+40 && dg0===0 && dg1===0 && da0===255 && da1===255)) throw new Error('Glyph gradient direction pixels: '+JSON.stringify(direction.rasterPixels));
