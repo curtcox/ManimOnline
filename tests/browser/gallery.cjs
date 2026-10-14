@@ -91,19 +91,25 @@ async function ready(page, type) {
       assert.equal(await page.evaluate(() => ace.edit('editor').getValue()), edited);
       await page.goto(new URL('?example=unlisted', base).href);
       await page.waitForFunction(() => document.querySelector('#example-status').textContent.includes('Choose an example'));
-      await page.setViewportSize({ width: 390, height: 844 });
-      await page.goto(new URL('gallery.html', base).href);
-      await page.locator('#sample-search').fill('first animation');
-      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'mobile gallery fits viewport');
-      await page.route('**/gallery/previews/minimal.mp4', route => route.abort());
-      await page.locator('#minimal .play').click();
-      await page.waitForSelector('#minimal .preview-error');
-      assert.equal(await page.locator('#minimal .load').isVisible(), true);
-      await page.unroute('**/gallery/previews/minimal.mp4');
-      await page.locator('#minimal .play').click();
-      await page.waitForFunction(() => document.querySelector('#minimal video').currentTime > .2);
-      assert.equal(await page.locator('#minimal .preview-error').count(), 0);
-      await page.screenshot({ path: `/tmp/manimonline-gallery-${engine}.png` });
+      // Isolate media caches from earlier playback. An explicit missing-file response
+      // produces a media error consistently; browsers may retry an aborted request.
+      const mobileContext = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } });
+      const mobile = await mobileContext.newPage();
+      await mobile.goto(new URL('gallery.html', base).href);
+      await mobile.locator('#sample-search').fill('first animation');
+      assert.ok(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'mobile gallery fits viewport');
+      await mobile.route('**/gallery/previews/minimal.mp4', route => route.fulfill({ status: 404, contentType: 'text/plain', body: 'Missing preview' }));
+      const missingResponse = mobile.waitForResponse(response => response.url().endsWith('/minimal.mp4') && response.status() === 404);
+      await mobile.locator('#minimal .play').click();
+      await missingResponse;
+      await mobile.waitForSelector('#minimal .preview-error');
+      assert.equal(await mobile.locator('#minimal .load').isVisible(), true);
+      await mobile.unroute('**/gallery/previews/minimal.mp4');
+      await mobile.locator('#minimal .play').click();
+      await mobile.waitForFunction(() => document.querySelector('#minimal video').currentTime > .2);
+      assert.equal(await mobile.locator('#minimal .preview-error').count(), 0);
+      await mobile.screenshot({ path: `/tmp/manimonline-gallery-${engine}.png` });
+      await mobileContext.close();
       console.log(`${engine}: gallery covers, playback, filters, editor links, reload, stale loads, and mobile passed`);
     } finally { await browser.close(); }
   }
