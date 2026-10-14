@@ -578,3 +578,15 @@ The browser smoke includes a real MathJax rule and text changing from solid to
 gradient paint, with a halfway SVG-to-canvas pixel check. Glyph gradient endpoints
 (direction, measured family bounds and coordinate conversion) remain open, as do
 stored-RGBA/sheens and Cairo pixel parity.
+
+
+Verification (2026-10-14, glyph paint): the implementation passed all 747 Python
+and 124 JavaScript tests in CI, plus Chromium, Firefox and WebKit smoke tests
+including the new glyph-style halfway pixel. Local Python passed with one Pygments
+skip; a further targeted numeric-glyph rebuild/raster-reference test also passed.
+Local WebKit and a retried Chromium run passed the smoke suite; the initial
+Chromium run timed out without a scene label. Smoke failures now identify their
+scene. The deployed `glyphstyle` gallery drew 38 text leaves, 14 formula paths and
+78 gradient definitions at three seconds, with no error and no glyph geometry at
+the end. Implementation commit 0054a00 passed Pages deployment. Glyph gradient
+endpoints, exact stored-RGBA/sheens and Cairo pixel parity remain open.

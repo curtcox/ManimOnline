@@ -9437,6 +9437,26 @@ self.play(text.animate.set_fill([PURE_RED,PURE_BLUE],opacity=[.2,.8]).set_backgr
                 self.assertEqual(glyph['background_stroke_color'],['#800000','#000080'])
                 self.assertPointAlmostEqual(glyph['background_stroke_opacities'],[.65,.95])
 
+    def test_numeric_glyph_rebuild_and_raster_glyph_references_keep_paint(self):
+        number = lite.DecimalNumber(12).set_color([lite.RED,lite.BLUE]).set_fill(opacity=[.2,.8])
+        number.set_background_stroke(lite.GREEN,width=7,opacity=[.3,.9])
+        number._explode()
+        number.set_value(34)
+        for glyph in number.children:
+            self.assertEqual(glyph.__dict__['fill_color'],[lite.RED,lite.BLUE])
+            self.assertEqual(glyph.fill_opacities,[.2,.8])
+            self.assertEqual(glyph.background_stroke_opacities,[.3,.9])
+        image = [[[255,0,0],[0,0,255]],[[0,255,0],[255,255,0]]]
+        for shape in (lite.Text('AB'),lite.MathTex('a','b')):
+            shape.color_using_background_image(image)
+            uri = shape.to_dict().get('raster_background')
+            lite._glyph_family(shape)
+            glyphs = [member for member in shape.get_family() if member._type in ('text','mathtex')]
+            self.assertTrue(glyphs)
+            for glyph in glyphs:
+                self.assertIs(glyph.get_background_image(),image)
+                self.assertEqual(glyph.to_dict()['raster_background'],uri)
+
     def test_glyph_style_gallery_preserves_creation_paint_and_removes_labels(self):
         result = json.loads(lite.render_scene((ROOT/'examples/glyph_style_scene.py').read_text()))
         self.assertEqual(result['duration'],8)

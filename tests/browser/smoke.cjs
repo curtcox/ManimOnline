@@ -172,6 +172,15 @@ async function checkDot(browser) {
 }
 
 async function checkManim(browser, source, verifyRaster = false) {
+  const name = source.match(/^class\s+(\w+)/m)?.[1] || 'Manim';
+  try {
+    return await renderManim(browser, source, verifyRaster);
+  } catch (error) {
+    throw new Error(name + ': ' + error.message);
+  }
+}
+
+async function renderManim(browser, source, verifyRaster = false) {
   const { page, errors } = await open(browser, source);
   await page.waitForFunction(() => {
     const seek = document.querySelector('[aria-label="Animation position"]');
