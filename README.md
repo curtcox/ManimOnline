@@ -1716,6 +1716,13 @@ stroke RGBA row, both stroke widths and sheen metadata. `align_rgbas` stretches
 the shorter channel by repeating rows, preserving geometry and child identities.
 Interpolation reads endpoint channels before mutation, so the receiver can also
 be an endpoint; unequal rows align without mutating the sources. This is a Lite
-extension to Community's prealigned-array requirement. RGB rows still pass through
-hex storage, and native stored-RGBA/sheen reset parity remains open. The browser
+extension to Community's prealigned-array requirement. Serialized RGB stops still use
+hex colors, and native stored-RGBA/sheen reset parity remains open. The browser
 smoke suite samples an updater-driven manual color interpolation halfway through.
+
+
+Generated sheen stops now clamp their new RGBA row, including alpha, as in
+Community; the original row retains finite out-of-range opacity. Snapshot alpha
+stops preserve that distinction during FadeOut rather than collapsing both rows
+into one scalar. Explicit gradients remain unchanged. Stored-RGBA regeneration
+and sheen-reset parity are still open.

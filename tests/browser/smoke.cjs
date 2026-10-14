@@ -97,6 +97,10 @@ const GRADIENT_FADE = [
   '        self.play(FadeOut(box),run_time=2,rate_func=linear)',
 ].join('\n');
 
+const SHEEN_FADE = GRADIENT_FADE.replace(
+  'fill_color=WHITE,fill_opacity=[.25,.75]',
+  'fill_color=BLACK,fill_opacity=2,sheen_factor=1');
+
 const NESTED_GRADIENT = [
   'from manim import *',
   'config.pixel_width = 80',
@@ -218,6 +222,8 @@ async function checkManim(browser, source, verifyRaster = false) {
       if (JSON.stringify(raster.rasterPixels)!==JSON.stringify([255,0,0,255,0,0,255,255,0,255,0,255,255,255,0,255])) throw new Error('Raster pixels: '+JSON.stringify(raster.rasterPixels));
       const fade = await checkManim(browser, GRADIENT_FADE, 'fade');
       if (fade.rasterPixels.slice(0,3).some(v=>v<63 || v>66) || fade.rasterPixels[3]!==255) throw new Error('Gradient fade pixels: '+JSON.stringify(fade.rasterPixels));
+      const sheen = await checkManim(browser, SHEEN_FADE, 'fade');
+      if (sheen.rasterPixels.slice(0,3).some(v=>v<63 || v>66) || sheen.rasterPixels[3]!==255) throw new Error('Sheen fade pixels: '+JSON.stringify(sheen.rasterPixels));
       const nested = await checkManim(browser, NESTED_GRADIENT, 'nested');
       const [r0,g0,b0,a0,r1,g1,b1,a1] = nested.rasterPixels;
       if (!(b0>r0+40 && r1>b1+40 && g0===0 && g1===0 && a0===255 && a1===255)) throw new Error('Nested gradient pixels: '+JSON.stringify(nested.rasterPixels));
@@ -231,7 +237,7 @@ async function checkManim(browser, source, verifyRaster = false) {
       console.log(name + ': DOT ok; Manim ' + manim.frames + ' frames, ' + manim.paths +
                   ' shapes; NumPy scene ' + numpy.frames + ' frames, ' + numpy.paths +
                   ' shapes; 3D scene ' + depth.frames + ' frames, ' + depth.paths +
-                  ' shapes; field image ' + fieldImage.frames + ' frames, ' + fieldImage.images + ' image; raster paint/export and halfway gradient-fade and nested gradient and style-morph and manual interpolation pixels ok; video encoders ' + JSON.stringify(manim.codecs));
+                  ' shapes; field image ' + fieldImage.frames + ' frames, ' + fieldImage.images + ' image; raster paint/export and halfway gradient-fade and sheen-fade and nested gradient and style-morph and manual interpolation pixels ok; video encoders ' + JSON.stringify(manim.codecs));
     } catch (error) {
       failed = true;
       console.log(name + ': FAILED ' + error.message);

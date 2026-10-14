@@ -9231,6 +9231,26 @@ self.play(FadeOut(shape),run_time=2,rate_func=linear)""")
         self.assertEqual(frame['stroke_color'],lite.GREEN)
         self.assertEqual(frame['stroke_opacities'],[.2,.8])
 
+    def test_generated_sheen_clamps_only_the_new_stop_alpha(self):
+        for opacity, clipped in ((2,1),(-.5,0),(.4,.4)):
+            shape = lite.Square(fill_color=lite.BLUE,fill_opacity=opacity,
+                                stroke_color=lite.RED,stroke_opacity=opacity,sheen_factor=.2)
+            shape.set_background_stroke(lite.GREEN,opacity=opacity,width=8)
+            data = shape.to_dict()
+            for channel in ('fill','stroke','background_stroke'):
+                rows = shape._channel_rgbas(channel)
+                self.assertPointAlmostEqual([row[3] for row in rows],[opacity,clipped])
+                scalar = data[channel+'_opacity']
+                stops = data.get(channel+'_opacities',[1,1])
+                self.assertPointAlmostEqual([scalar*value for value in stops],[opacity,clipped])
+            # FadeOut scales the serialized rows once, after the lit stop was clipped.
+            faded = lite._snapshot_copy(data)
+            lite._fade_node(faded,.5)
+            for channel in ('fill','stroke','background_stroke'):
+                scalar = faded[channel+'_opacity']
+                stops = faded.get(channel+'_opacities',[1,1])
+                self.assertPointAlmostEqual([scalar*value for value in stops],[opacity*.5,clipped*.5])
+
     def test_style_matching_copies_raster_paint_without_geometry_or_source_mutation(self):
         image = [[[255,0,0],[0,0,255]],[[0,255,0],[255,255,0]]]
         source = lite.Square(fill_opacity=1,stroke_width=0).color_using_background_image(image)

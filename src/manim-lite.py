@@ -3774,7 +3774,8 @@ class Mobject:
                                       [0 if o is None else o for o in opacities])
         rgbas = [list(ManimColor(c)._rgba[:3]) + [float(o)] for c, o in zip(colors, opacities)]
         if self.sheen_factor and len(rgbas) == 1:
-            rgbas.append([min(1, max(0, v + self.sheen_factor)) for v in rgbas[0][:3]] + rgbas[0][3:])
+            rgbas.append([min(1, max(0, v + self.sheen_factor)) for v in rgbas[0][:3]] +
+                         [min(1, max(0, rgbas[0][3]))])
         return _number_array(rgbas)
 
     def _channel_rgbas(self, channel):
@@ -4949,6 +4950,12 @@ class Mobject:
                 if len(colors) == len(alphas) == 1:
                     lit = _rgb_color([min(1, max(0, v + self.sheen_factor)) for v in _color_rgb(colors[0])])
                     result[channel + '_color'] = [colors[0], lit]
+                    scalar = result.get(channel + '_opacity', 1)
+                    alpha = scalar * alphas[0] if channel + '_opacities' in result else scalar
+                    clipped = min(1, max(0, alpha))
+                    if clipped != alpha:
+                        result[channel + '_opacity'] = 1
+                        result[channel + '_opacities'] = [alpha, clipped]
         if 'gradient_points' in result:
             return
         if self.shade_in_3d:
