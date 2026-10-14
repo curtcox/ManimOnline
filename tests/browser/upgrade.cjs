@@ -32,8 +32,9 @@ self.addEventListener('message', event => {
 });
 `;
 async function run(engine) {
-  let modern = false, release;
-  const held = new Promise(resolve => { release = resolve; });
+  let modern = false, released = false, resolveUpgrade;
+  const held = new Promise(resolve => { resolveUpgrade = resolve; });
+  const release = () => { released = true; resolveUpgrade(); };
   const server = http.createServer(async (request, response) => {
     try {
       const url = new URL(request.url, 'http://localhost');
@@ -46,8 +47,10 @@ async function run(engine) {
         if (modern) await held;
         console.log(`${engine}: serving ${modern ? 'current' : 'historical'} worker`);
         body = modern ? fs.readFileSync(path.join(root, file)) : legacyWorker;
-      } else if (!modern && file === 'index.html') body = legacyHTML;
-      else if (!modern && file === 'src/examples.js') body = legacyCatalog;
+      // Until activation is allowed, also return old entry points on a cache
+      // miss. Firefox can fetch scripts before the new tab is controlled.
+      } else if (!released && file === 'index.html') body = legacyHTML;
+      else if (!released && file === 'src/examples.js') body = legacyCatalog;
       else if (file === 'offline-assets.js') {
         // This test isolates local-application upgrades; pinned runtime/CDN reuse
         // and readiness failures are covered by tests/offline.test.js.
