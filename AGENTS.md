@@ -122,6 +122,9 @@ the response. Keep remote messages as text and short-link URLs strictly validate
 MP4 previews, search/language filters, all three editor loads, edited-source
 reloads, stale loads and mobile layout. Covers are precached; videos load on
 demand over the network and do not block offline readiness.
+CI runs the three browsers as independent jobs, with gallery, rendering,
+language/HashBin and sharing checks as separate steps. Media error tests use
+a real missing URL because media interception differs across browser builds.
 Playwright's Firefox build may fail to launch on recent macOS ("Could not find profile folder").
 Update the README and these notes when adding test commands or changing the
 runtime. Do not claim full Manim compatibility from a subset implementation.

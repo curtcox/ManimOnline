@@ -91,20 +91,26 @@ async function ready(page, type) {
       assert.equal(await page.evaluate(() => ace.edit('editor').getValue()), edited);
       await page.goto(new URL('?example=unlisted', base).href);
       await page.waitForFunction(() => document.querySelector('#example-status').textContent.includes('Choose an example'));
-      // Isolate media caches from earlier playback. An explicit missing-file response
-      // produces a media error consistently; browsers may retry an aborted request.
+      // Use a real missing URL: media request interception/response events differ
+      // across browser builds. Keep the native src setter and decoder error events.
       const mobileContext = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } });
       const mobile = await mobileContext.newPage();
+      await mobile.addInitScript(() => {
+        window.__missingGalleryPreview = true;
+        const native = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src');
+        Object.defineProperty(HTMLMediaElement.prototype, 'src', { ...native, set(value) {
+          native.set.call(this, window.__missingGalleryPreview && /\/minimal\.mp4$/.test(value)
+            ? value.replace('minimal.mp4', '__missing_preview__.mp4') : value);
+        } });
+      });
       await mobile.goto(new URL('gallery.html', base).href);
       await mobile.locator('#sample-search').fill('first animation');
       assert.ok(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'mobile gallery fits viewport');
-      await mobile.route('**/gallery/previews/minimal.mp4', route => route.fulfill({ status: 404, contentType: 'text/plain', body: 'Missing preview' }));
-      const missingResponse = mobile.waitForResponse(response => response.url().endsWith('/minimal.mp4') && response.status() === 404);
       await mobile.locator('#minimal .play').click();
-      await missingResponse;
       await mobile.waitForSelector('#minimal .preview-error');
+      assert.ok(await mobile.locator('#minimal video').evaluate(video => video.src.endsWith('/__missing_preview__.mp4')));
       assert.equal(await mobile.locator('#minimal .load').isVisible(), true);
-      await mobile.unroute('**/gallery/previews/minimal.mp4');
+      await mobile.evaluate(() => { window.__missingGalleryPreview = false; });
       await mobile.locator('#minimal .play').click();
       await mobile.waitForFunction(() => document.querySelector('#minimal video').currentTime > .2);
       assert.equal(await mobile.locator('#minimal .preview-error').count(), 0);

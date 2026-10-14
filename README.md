@@ -471,6 +471,8 @@ oversized links, unreadable replies, blocked/offline requests, retry success and
 stale errors after editing. It checks the visible cause/recovery message and
 preserved source link without creating real short links.
 
+CI runs Chromium, Firefox, and WebKit as separate jobs, with each browser's
+gallery, rendering, language/HashBin, and sharing checks in separate steps.
 The gallery check verifies every shipped cover, real MP4 playback, filtering,
 editor links for all three languages, edited-source reloads, stale loads, and
 the narrow-screen layout. Gallery covers and sources are included in offline

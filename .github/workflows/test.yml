@@ -44,17 +44,26 @@ jobs:
           node --check tests/browser/gallery.cjs
   browsers:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - run: npm install --no-save playwright
-      - run: npx playwright install --with-deps chromium firefox webkit
-      - run: |
-          python3 -m http.server 8000 &
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Serve site
+        run: |
+          python3 -m http.server 8000 > /tmp/manimonline-http.log 2>&1 &
           sleep 2
-          node tests/browser/smoke.cjs http://localhost:8000/ chromium firefox webkit
-          node tests/browser/languages.cjs http://localhost:8000/ chromium firefox webkit
-          node tests/browser/sharing.cjs http://localhost:8000/ chromium firefox webkit
-          node tests/browser/gallery.cjs http://localhost:8000/ chromium firefox webkit
+      - name: Gallery playback and editor links
+        run: node tests/browser/gallery.cjs http://localhost:8000/ ${{ matrix.browser }}
+      - name: Rendering and exports
+        run: node tests/browser/smoke.cjs http://localhost:8000/ ${{ matrix.browser }}
+      - name: Languages and HashBin
+        run: node tests/browser/languages.cjs http://localhost:8000/ ${{ matrix.browser }}
+      - name: Sharing
+        run: node tests/browser/sharing.cjs http://localhost:8000/ ${{ matrix.browser }}
