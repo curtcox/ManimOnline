@@ -2687,3 +2687,16 @@ cover default and nonuniform viewport fitting. Browser smoke compares foreground
 and background gradient endpoints with native SVG coordinate transforms on tall
 delimiters, independently of the renderer's matrix arithmetic. Percentage viewport
 lengths, exact glyph outlines/bounds and 3D glyph paint remain open.
+
+
+Verification (2026-10-14, glyph gradient coordinates): all 749 Python and 127
+JavaScript tests passed in CI for 76384bd. Bundled local Python passed with one
+Pygments skip. CI Chromium, Firefox and WebKit passed DOT, Manim/exports, glyph
+style/direction pixels and the new native-coordinate check for clipped delimiter
+foreground/background gradients. Local Chromium passed the expanded pixel suite;
+local WebKit passed after its fully opaque diagonal gradient's alpha 254 was
+accepted alongside an independent SVG-opacity check. Vertical pixels were
+[78,0,176,255] and [180,0,74,255] in deployed Chromium; the deployed viewport
+endpoint comparison also passed. Commits 8547a4d, 3649911 and 76384bd passed CI
+and Pages deployment. Exact glyph outlines/bounds, sampled animation bounds, 3D
+glyph paint, stored-RGBA/sheens and Cairo pixel parity remain open.

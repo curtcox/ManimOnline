@@ -1353,7 +1353,7 @@ scalar opacity 1 and relative stop alpha before interpolation. Align both each
 channel's color/alpha counts and the two endpoints' row counts with make_even.
 Do not scale alpha twice or mutate input snapshots; skip unchanged paint arrays
 so pooling stays effective. Scene opacity getters return the first RGBA alpha;
-internal scalar fields stay separate. Glyph-style and quantization parity remain open.
+internal scalar fields stay separate. Stored-RGBA style and quantization parity remain open.
 
 
 Manual style APIs (`align_rgbas`, `interpolate_color`) operate on all three
@@ -1368,8 +1368,8 @@ Read `examples/glyph_style_scene.py` for gradient styles on Text, MathTex and
 DecimalNumber during writing and morphs. `_copy_glyph_paint` transfers all paint
 channels independently after glyph construction; Text constructors accept one
 color, so do not pass a post-construction color list back through them. Glyph
-style morphs share the vector RGBA-row interpolation; glyph gradient endpoints
-and transformed measured-family bounds still need coordinate conversion.
+style morphs share the vector RGBA-row interpolation. Glyph gradient endpoints
+now convert through 2D glyph transforms; exact outline/family bounds remain open.
 
 
 Glyph gradients now use `_gradient_paint` for 2D endpoints. The SVG renderer
@@ -1378,3 +1378,10 @@ for both foreground and cloned background strokes. Glyph matrices apply before
 paint coordinate conversion. Frame coordinates remain in scene units; font
 scaling/ink centering belongs in the renderer. Rectangular glyph bounds, animated
 bounds and 3D glyph gradient/shading parity remain open.
+
+MathJax delimiter viewports contribute x/y offsets and numeric viewBox fitting
+to glyph paint conversion. Keep viewport clipping and preserveAspectRatio on
+copied inert geometry. `GLYPH_VIEWPORT` in the browser smoke compares each
+foreground/background path's gradient with native SVG screen coordinates;
+this catches offsets that transform-attribute checks alone miss. Percentage
+viewport lengths remain unsupported by paint conversion.
