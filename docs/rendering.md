@@ -2557,5 +2557,13 @@ bounds controlling a rotated shape's gradient, descendant bounds extending a
 parent's gradient, and independent background-stroke color/opacity stops. RGBA
 background rows and style round trips preserve every stop. FadeIn/FadeOut multiply
 scalar opacity once, retaining relative stop alpha so exported colors do not
-fade twice. Gradient placement through separately posed ancestors and exact
-animated bounds remain parity work; this is not complete Cairo rendering.
+fade twice. Exact animated gradient bounds remain parity work; this is not complete Cairo rendering.
+
+
+Nested 2D gradients now measure the family through its verified ancestor pose
+and invert that composed frame for local paint. Rotating, translating or negatively
+scaling a parent does not silently rotate a child's world sheen direction. The
+gallery includes a child panel inside a rotated square, and browser export pixel
+checks distinguish its upper/lower colors from the former incorrect direction.
+Shared members with ambiguous parent placement and exact sampled animation bounds
+remain parity work.

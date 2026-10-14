@@ -9154,6 +9154,26 @@ self.play(FadeOut(shape),run_time=2,rate_func=linear)""")
         self.assertEqual(fading['gradient_points'],solid['gradient_points'])
         self.assertEqual(result['frames'][-1]['mobjects'],[])
 
+    def test_nested_parent_pose_does_not_turn_world_gradient_direction(self):
+        child = lite.Rectangle(width=4,height=2,fill_color=[lite.RED,lite.BLUE])
+        parent = lite.Square().add(child).rotate(lite.PI/4).shift(2*lite.RIGHT)
+        data = parent.to_dict()
+        for actual, expected in zip(data['children'][0]['gradient_points'], [(0,-3),(0,3)]):
+            self.assertPointAlmostEqual(actual,expected)
+        before = parent.to_dict()
+        self.assertEqual(parent.to_dict(),before)
+        parent.scale(-2)
+        data = parent.to_dict()
+        ends = [parent._point_to_world(child._point_to_world(lite.Vector(p)))
+                for p in data['children'][0]['gradient_points']]
+        span = 3*math.sqrt(2)
+        for actual, expected in zip(ends, [(2+span,-span,0),(2-span,span,0)]):
+            self.assertPointAlmostEqual(actual,expected)
+        # Parent translation changes neither local gradient endpoints nor geometry.
+        old = data['children'][0]['gradient_points']
+        parent.shift(3*lite.UP)
+        self.assertEqual(parent.to_dict()['children'][0]['gradient_points'],old)
+
     def test_sheen_caps_joints_and_stroke_scaling_reach_frames(self):
         circle = lite.Circle(fill_opacity=1).set_sheen(-0.3, lite.DR)
         data = circle.to_dict()

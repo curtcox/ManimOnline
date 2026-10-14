@@ -1331,3 +1331,9 @@ the same stop-alpha/scalar-opacity representation as fill/stroke. _fade_node mus
 scale scalar channels once; scaling the stop arrays too squares the fade. Keep
 background stop arrays in style copying and member sampling. Separately posed
 ancestor gradients and exact animated gradient bounds remain open.
+
+
+Nested 2D gradient endpoints use _primary_posed_ancestors and _world_frame. Map
+family bounds into world coordinates, keep sheen_direction in that world frame,
+then invert the ancestor and own poses for local paint. Do not modify live geometry
+to measure it. Shared-member ambiguous parents and sampled animation bounds remain open.

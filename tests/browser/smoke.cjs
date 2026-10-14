@@ -96,6 +96,20 @@ const GRADIENT_FADE = [
   '        self.play(FadeOut(box),run_time=2,rate_func=linear)',
 ].join('\n');
 
+const NESTED_GRADIENT = [
+  'from manim import *',
+  'config.pixel_width = 80',
+  'config.pixel_height = 80',
+  'config.frame_width = 5',
+  'config.frame_height = 5',
+  'class NestedGradient(Scene):',
+  '    def construct(self):',
+  '        panel = Rectangle(width=4,height=2,fill_color=[PURE_RED,PURE_BLUE],fill_opacity=1,stroke_width=0)',
+  '        parent = Square(side_length=1,stroke_width=0).add(panel).rotate(PI/4)',
+  '        self.add(parent)',
+  '        self.wait(.2)',
+].join('\n');
+
 async function open(browser, source) {
   const page = await browser.newPage();
   const errors = [];
@@ -151,9 +165,9 @@ async function checkManim(browser, source, verifyRaster = false) {
           image.src=url;
         });
         const canvas=document.createElement('canvas');
-        canvas.width=80;canvas.height=40;
+        canvas.width=Number(preview.getAttribute('width'));canvas.height=Number(preview.getAttribute('height'));
         const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0);
-        rasterPixels=(verifyRaster === 'fade' ? [[40,20]] : [[10,5],[70,5],[10,35],[70,35]]).flatMap(([x,y])=>[...ctx.getImageData(x,y,1,1).data]);
+        rasterPixels=(verifyRaster === 'nested' ? [[40,24],[40,56]] : verifyRaster === 'fade' ? [[40,20]] : [[10,5],[70,5],[10,35],[70,35]]).flatMap(([x,y])=>[...ctx.getImageData(x,y,1,1).data]);
       } finally { URL.revokeObjectURL(url); }
     }
     return { rasterPixels, images: preview ? preview.querySelectorAll('image').length : 0, frames: Number(seek.max) + 1, paths: preview ? preview.querySelectorAll('path, circle, ellipse, polygon, polyline, rect, line').length : 0, codecs };
@@ -180,11 +194,14 @@ async function checkManim(browser, source, verifyRaster = false) {
       if (JSON.stringify(raster.rasterPixels)!==JSON.stringify([255,0,0,255,0,0,255,255,0,255,0,255,255,255,0,255])) throw new Error('Raster pixels: '+JSON.stringify(raster.rasterPixels));
       const fade = await checkManim(browser, GRADIENT_FADE, 'fade');
       if (fade.rasterPixels.slice(0,3).some(v=>v<63 || v>66) || fade.rasterPixels[3]!==255) throw new Error('Gradient fade pixels: '+JSON.stringify(fade.rasterPixels));
+      const nested = await checkManim(browser, NESTED_GRADIENT, 'nested');
+      const [r0,g0,b0,a0,r1,g1,b1,a1] = nested.rasterPixels;
+      if (!(b0>r0+40 && r1>b1+40 && g0===0 && g1===0 && a0===255 && a1===255)) throw new Error('Nested gradient pixels: '+JSON.stringify(nested.rasterPixels));
       const depth = await checkManim(browser, THREE_D).catch(error => { throw new Error('3D scene: ' + error.message); });
       console.log(name + ': DOT ok; Manim ' + manim.frames + ' frames, ' + manim.paths +
                   ' shapes; NumPy scene ' + numpy.frames + ' frames, ' + numpy.paths +
                   ' shapes; 3D scene ' + depth.frames + ' frames, ' + depth.paths +
-                  ' shapes; field image ' + fieldImage.frames + ' frames, ' + fieldImage.images + ' image; raster paint/export and halfway gradient-fade pixels ok; video encoders ' + JSON.stringify(manim.codecs));
+                  ' shapes; field image ' + fieldImage.frames + ' frames, ' + fieldImage.images + ' image; raster paint/export and halfway gradient-fade and nested gradient pixels ok; video encoders ' + JSON.stringify(manim.codecs));
     } catch (error) {
       failed = true;
       console.log(name + ': FAILED ' + error.message);

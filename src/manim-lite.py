@@ -4912,6 +4912,26 @@ class Mobject:
         # the gradient in world directions. Invert only our own pose for SVG paint.
         # This also includes descendants and measured glyph boxes in the bounds.
         endpoints = self.get_gradient_start_and_end_points()
+        ancestors = _primary_posed_ancestors(self)
+        frame = _world_frame(ancestors) if ancestors else None
+        if frame is not None:
+            # Scene code treats sheen directions as world vectors. A parent's
+            # pose affects the outline bounds, but must not turn that direction.
+            scale, angle, origin = frame
+            cos, sin = math.cos(angle), math.sin(angle)
+            points = [Vector((origin[0] + scale*(p[0]*cos - p[1]*sin),
+                              origin[1] + scale*(p[0]*sin + p[1]*cos),
+                              origin[2] + scale*p[2])) for p in self._family_bound_points()]
+            if points:
+                low = [min(p[i] for p in points) for i in range(3)]
+                high = [max(p[i] for p in points) for i in range(3)]
+                center = Vector((a+b)/2 for a,b in zip(low,high))
+                offset = Vector((b-a)/2*d for a,b,d in zip(low,high,self.sheen_direction))
+                ends = [center-offset, center+offset]
+                endpoints = []
+                for point in ends:
+                    x, y, z = (point-origin)/scale
+                    endpoints.append(Vector((x*cos+y*sin, y*cos-x*sin, z)))
         result['gradient_points'] = [list(self._point_from_world(point)[:2]) for point in endpoints]
 
 

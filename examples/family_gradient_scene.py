@@ -13,7 +13,11 @@ class FamilyGradientScene(Scene):
         family.set_stroke([WHITE, GREEN], width=12, opacity=[.2, 1],
                           background=True, family=False)
         family.shift(2 * RIGHT)
-        self.play(FadeIn(tilted), FadeIn(family), run_time=2, rate_func=linear)
+        child = Rectangle(width=2, height=1, fill_color=[GREEN, PURPLE],
+                          fill_opacity=1, stroke_width=0)
+        nested = Square(side_length=1.2, stroke_width=2).add(child)
+        nested.rotate(PI / 4).shift(2.5 * UP)
+        self.play(FadeIn(tilted), FadeIn(family), FadeIn(nested), run_time=2, rate_func=linear)
         self.wait(2)
-        self.play(FadeOut(tilted), FadeOut(family), run_time=2, rate_func=linear)
+        self.play(FadeOut(tilted), FadeOut(family), FadeOut(nested), run_time=2, rate_func=linear)
         self.wait(2)

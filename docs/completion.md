@@ -519,3 +519,10 @@ arrays preserve all stops, and gradient fades no longer square the opacity facto
 A browser SVG-to-canvas halfway-fade pixel check covers the rendered result.
 Separately posed ancestor gradients, exact animated bounds and Cairo pixel parity
 remain open.
+
+
+Verified posed ancestors now contribute to static 2D gradient bounds; their
+composed frame is inverted without mutating live objects or snapshot geometry.
+Negative parent scaling and repeated serialization have regression coverage, and
+browser pixel checks distinguish the nested panel's world color direction.
+Ambiguous shared-member parents and exact sampled animated bounds remain open.
