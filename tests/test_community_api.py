@@ -2155,6 +2155,31 @@ class AnimationApiTests(unittest.TestCase):
             's = S(); s.render(); result = s.out\n'),
             [0.9915, 0.9876, 0.9883])
 
+    def test_standalone_function_graphs_are_searched_by_proportion(self):
+        # Without plot()'s underlying_function, Community binary-searches the world path;
+        # the search's last step depends on point_from_proportion's exact rounding.
+        self.assertEqual(scene_values(
+            'ax = Axes(x_range=[0, 3], y_range=[0, 2], x_length=3, y_length=2)\n'
+            'g = FunctionGraph(lambda x: x / 2)\n'
+            'rs = ax.get_riemann_rectangles(g, x_range=[0, 2], dx=0.5)\n'
+            'result = [[r.get_left()[0], r.get_top()[1]] for r in rs] + [ax.i2gp(1, g)]\n'),
+            [[-1.5009, -0.7504], [-1.0009, -0.5004], [-0.5009, -0.2504], [-0.0009, -0.0004],
+             [-0.5009, -0.2504, 0.0]])
+
+    def test_rotate_and_dashed_endpoints_follow_community_finishes(self):
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = Star(5, outer_radius=1); self.play(Rotate(o, 1), rate_func=wiggle)\n'
+            '        d = DashedLine(LEFT, RIGHT).add_tip()\n'
+            '        p = Polygram([LEFT, UP, RIGHT], [DOWN, DOWN + RIGHT, RIGHT * 2]).shift(RIGHT * 2 + DOWN)\n'
+            '        self.play(CounterclockwiseTransform(d, p))\n'
+            '        e = d.get_end()\n'
+            '        d.put_start_and_end_on(LEFT, UP)\n'
+            '        self.out = [o.get_corner(DL), e, d.get_corner(DL), d.get_corner(UR)]\n'
+            's = S(); s.render(); result = s.out\n'),
+            [[-0.9511, -0.809, 0.0], [2.0, -2.0, 0.0], [-2.0, 0.0, 0.0], [0.0, 3.0, 0.0]])
+
     @unittest.skipUnless(HAS_NUMPY, 'the point map uses NumPy arrays')
     def test_three_d_arrow_rotation_map_and_scale_keep_the_cut_shaft(self):
         self.assertEqual(scene_values(

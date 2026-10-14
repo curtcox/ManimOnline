@@ -75,22 +75,51 @@ def _bounds_query(method):
 def _curves_proportion(curves, alpha):
     """Community's point_from_proportion over cubic curves: sampled lengths choose the
     curve, and the remaining length maps linearly to its parameter."""
+    # Community's arithmetic operation for operation (binary searches over proportions sit
+    # on rounding ties): linspace parameters, its cubic form, row norms, NumPy's pairwise sum
+    # of the nine pieces and an accumulated current length.
+    flat = not any(len(p) > 2 and p[2] for curve in curves for p in curve)
+    bez = _cbez2 if flat else _cbez3
+    step = 1 / 9
     lengths = []
-    # Baked 3D paths keep z; flat paths use the faster XY sampler.
-    bez = _bez3 if any(len(p) > 2 and p[2] for curve in curves for p in curve) else _bez
     for curve in curves:
-        # Community's 10 samples per curve; plain tuples (_bez) keep MoveAlongPath fast.
-        samples = [bez(curve, i / 9) for i in range(10)]
-        lengths.append(sum(math.dist(a, b) for a, b in zip(samples, samples[1:])))
-    total = sum(lengths)
+        samples = [bez(curve, i * step) for i in range(9)] + [bez(curve, 1.0)]
+        if flat:
+            r = [math.sqrt((b[0] - a[0]) * (b[0] - a[0]) + (b[1] - a[1]) * (b[1] - a[1]))
+                 for a, b in zip(samples, samples[1:])]
+        else:
+            r = [math.sqrt((b[0] - a[0]) * (b[0] - a[0]) + (b[1] - a[1]) * (b[1] - a[1]) + (b[2] - a[2]) * (b[2] - a[2]))
+                 for a, b in zip(samples, samples[1:])]
+        lengths.append(((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7])) + r[8])
+    total = 0  # Plain addition: sum() compensates exact floats, not Community's np.float64.
+    for length in lengths:
+        total += length
     if not math.isfinite(total):
         raise ValueError('Path length must be finite')
-    remaining = alpha * total
+    target, current = alpha * total, 0
     for curve, length in zip(curves, lengths):
-        if remaining <= length:
-            return Vector((*bez(curve, remaining / length if length else 0), 0)[:3])
-        remaining -= length
+        if current + length >= target:
+            return Vector((*bez(curve, (target - current) / length if length != 0 else 0), 0)[:3])
+        current += length
     return Vector(curves[-1][-1])
+
+
+def _cbez2(c, t):
+    """Community's cubic_bezier (XY)."""
+    t2 = t * t
+    t3, mt = t2 * t, 1 - t
+    mt2 = mt * mt
+    mt3, b, d = mt2 * mt, 3 * t * mt2, 3 * t2 * mt
+    return (mt3 * c[0][0] + b * c[1][0] + d * c[2][0] + t3 * c[3][0],
+            mt3 * c[0][1] + b * c[1][1] + d * c[2][1] + t3 * c[3][1])
+
+
+def _cbez3(c, t):
+    t2 = t * t
+    t3, mt = t2 * t, 1 - t
+    mt2 = mt * mt
+    mt3, b, d = mt2 * mt, 3 * t * mt2, 3 * t2 * mt
+    return tuple(mt3 * c[0][i] + b * c[1][i] + d * c[2][i] + t3 * c[3][i] for i in range(3))
 
 
 _MAP_IN_PLACE = False
@@ -4809,7 +4838,7 @@ class Mobject:
         center = self._geometry_center()
         result = _snapshot_copy({key: value for key, value in self.__dict__.items()
                                 if (key in _POINT_KEYS and type(value) is list or not _holds_mobject(value) and not callable(value)) and
-                                key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache', '_flow_points', '_name', '_mobject_points', '_scene_keys', '_init_positioning_axis', '_community_values', '_arc_ends') and
+                                key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_scalar_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache', '_flow_points', '_name', '_mobject_points', '_scene_keys', '_init_positioning_axis', '_community_values', '_arc_ends') and
                                 key not in self._frame_excluded})
         result['type'] = result.pop('_type')
         result['geometry_center'] = list(center)
@@ -5687,12 +5716,14 @@ class FunctionGraph(ParametricFunction):
         if not callable(function):
             raise TypeError('FunctionGraph expects a scalar function')
         values = (-config.frame_width/2,config.frame_width/2) if x_range is None else x_range
-        self.underlying_function = function
+        # Community sets underlying_function only in plot(); graph queries on a standalone
+        # FunctionGraph search its world path.
+        self._scalar_function = function
         self.x_range = self._range(values,.01)
         super().__init__(lambda t: (t,function(t),0),t_range=self.x_range,color=color,**kwargs)
 
     def get_function(self):
-        return self.underlying_function
+        return self.__dict__.get('underlying_function', self._scalar_function)
 
     def get_point_from_function(self, x):
         return super().get_point_from_function(x)
@@ -10448,7 +10479,10 @@ class DashedLine(Line,VGroup):
     def get_end(self):
         tip = self._tip()
         if tip is not None:
-            return self._point_to_world(tip.tip_point)
+            # Community: submobjects[-1].get_end(), the closed tip's tip point until a morph
+            # opens its outline.
+            points = tip.get_points() if tip is self.children[-1] else []
+            return self._point_to_world(Vector(points[-1]) if len(points) else tip.tip_point)
         return self._point_to_world(self._local_ends()[1]) if self._dashes() else Line.get_end(self)
 
     def get_first_handle(self):
@@ -11709,7 +11743,7 @@ class Axes(VGroup, CoordinateSystem):
 
     @staticmethod
     def _scalar_graph_function(graph):
-        function = getattr(graph,'underlying_function',None)
+        function = getattr(graph,'underlying_function',None) or getattr(graph,'_scalar_function',None)
         if not isinstance(graph,Mobject) or not callable(function):
             raise TypeError('Graph queries need a scalar plotted function')
         return function
@@ -11787,7 +11821,8 @@ class Axes(VGroup, CoordinateSystem):
                                stroke_width=1, stroke_color=BLACK, fill_opacity=1,
                                color=(BLUE,GREEN), show_signed_area=True, bounded_graph=None,
                                blend=False, width_scale_factor=1.001):
-        self._scalar_graph_function(graph)
+        if not isinstance(graph,Mobject):
+            raise TypeError('Riemann rectangles need a graph mobject')
         if bounded_graph is not None:
             self._scalar_graph_function(bounded_graph)
         NumberLine._real(dx,'Riemann dx',positive=True)
@@ -11799,6 +11834,8 @@ class Axes(VGroup, CoordinateSystem):
         if input_sample_type not in ('left','right','center'):
             raise ValueError('Riemann input_sample_type must be left, right or center')
         if x_range is None:
+            if not isinstance(graph,ParametricFunction):
+                raise TypeError('Riemann rectangles need an x_range for graphs without a parameter range')
             low,high = graph.t_min,graph.t_max
             if bounded_graph is not None:
                 low,high = max(low,bounded_graph.t_min),min(high,bounded_graph.t_max)
@@ -11838,7 +11875,8 @@ class Axes(VGroup, CoordinateSystem):
             NumberLine._real(right,'Rectangle endpoint')
             if right == x or fraction and sample == x:
                 raise ValueError('Riemann dx is too small to change this input')
-            top = self.i2gc(sample,graph)[1]
+            graph_point = Vector(self.i2gp(sample,graph))
+            top = self.p2c(graph_point)[1]
             baseline = (self._origin_shift(self.y_range) if bounded_graph is None else
                         self.i2gc(x,bounded_graph)[1])
             fill = gradient[index]
@@ -11848,7 +11886,7 @@ class Axes(VGroup, CoordinateSystem):
             # Community: Rectangle().replace(points, stretch=True) over the two baseline corners
             # and the graph point, an axis-aligned box even on transformed axes.
             corners = [Vector(self.c2p(x,baseline)),Vector(self.c2p(x+width_scale_factor*dx,baseline)),
-                       Vector(self.i2gp(sample,graph))]
+                       graph_point]
             left_x,right_x = min(p[0] for p in corners),max(p[0] for p in corners)
             low_y,high_y = min(p[1] for p in corners),max(p[1] for p in corners)
             depth = sum(p[2] for p in corners)/3
@@ -14976,11 +15014,16 @@ class Rotate(_PathOptions, Animation):
         return [current.to_dict()]
 
     def finish(self, scene):
+        # Community ends at interpolate(1), i.e. rate_func(1) (0 for wiggle or there_and_back).
+        end = self.rate_func(0 if self.reverse_rate_function else 1)
         morph = self.__dict__.get('_live_morph')
+        if end != 1 and (morph is not None or self.__dict__.get('_custom_plan') is not None):
+            self.mobject.become(_sampled_copy(self.original, self.sample(end)))
+            return
         if morph is not None:
             self.mobject.become(morph.target)
             return
-        final = self.original.copy().rotate(self.angle, self.axis, about_point=self.about_point)
+        final = self.original.copy().rotate(self.angle * end, self.axis, about_point=self.about_point)
         self.mobject.become(final)
 
 

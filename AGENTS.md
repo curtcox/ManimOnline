@@ -1232,3 +1232,11 @@ outlines open by rounding), so Arrow.scale still scales them; straight paths and
 (ClockwiseTransform: a near-exact point reflection) stay exactly closed.
 TransformFromCopy's first frame is the plan's aligned start. ThreeDCamera has Community's
 modified_rgbas/pixel_array_to_cairo_context, and project_points returns arrays with NumPy.
+FunctionGraph keeps its scalar in `_scalar_function`: Community sets underlying_function only in
+plot(), so input_to_graph_point (and Riemann corners/signs) binary-search a standalone graph's
+world path. `_curves_proportion` reproduces Community's point_from_proportion arithmetic exactly
+(linspace parameters, cubic_bezier form, NumPy pairwise sum of nine pieces, plain addition of
+lengths: Python's sum() compensates exact floats but not np.float64), since searches sit on ties.
+Rotate.finish ends at rate_func(1) (wiggle/there_and_back return to the start). A tipped
+DashedLine's get_end is the last tip child's last point (Community's submobjects[-1].get_end()).
+Fuzz generator gen9.py (H suites) covers polygrams, braces, charts, planes and rarer animations.
