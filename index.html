@@ -6,6 +6,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
   <title>ManimOnline</title>
+  <!-- HashBin's Manim Online app. Public ID, no secret; see README for other deployments. -->
+  <meta name="hashbin-client-id" content="app_ea30117c-555b-4759-b01a-e75dc402d177">
   <style type="text/css" media="screen">
     body {
       overflow: hidden;
@@ -209,7 +211,7 @@
       cursor: pointer;
     }
 
-    #options input[type="button"] {
+    #options input[type="button"], #hashbin-save, #hashbin-load {
       padding: 5px 12px;
       border: 1px solid #ced4da;
       border-radius: 4px;
@@ -221,12 +223,12 @@
       transition: all 0.15s ease;
     }
 
-    #options input[type="button"]:hover {
+    #options input[type="button"]:hover, #hashbin-save:hover, #hashbin-load:hover {
       background: #f8f9fa;
       border-color: #adb5bd;
     }
 
-    #options input[type="button"]:active {
+    #options input[type="button"]:active, #hashbin-save:active, #hashbin-load:active {
       background: #e9ecef;
     }
 
@@ -267,6 +269,11 @@
       background: #fff3e0;
       color: #e65100;
     }
+
+    #type-indicator.modl { background: #7550a0; color: white; }
+    #hashbin-cid { min-width: 0; max-width: 100%; padding: 5px; border: 1px solid #ced4da; border-radius: 4px; }
+    #hashbin-dialog { max-width: min(440px, 85vw); border-radius: 8px; }
+    #hashbin-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
 
     #type-indicator.unknown {
       background: #f5f5f5;
@@ -459,6 +466,7 @@ class HelloWorld(Scene):
         <option value="auto">Auto</option>
         <option value="manim">Manim</option>
         <option value="graphviz">Graphviz</option>
+        <option value="modl">modl</option>
       </select>
     </label>
     <span id="pyodide-status" class="hidden" role="status" aria-live="polite">Python loading...</span>
@@ -540,7 +548,20 @@ class HelloWorld(Scene):
     <button type="button" id="shorten-share" hidden>Shorten link</button>
     <span id="share-status" role="status"></span>
 
+    <button type="button" id="hashbin-save">Save to HashBin</button>
+    <input type="text" id="hashbin-cid" placeholder="HashBin CID or saved link" aria-label="HashBin CID or saved link" size="22">
+    <button type="button" id="hashbin-load">Load from HashBin</button>
+    <span id="hashbin-status" role="status" aria-live="polite"></span>
+
   </div>
+  <dialog id="hashbin-dialog" aria-labelledby="hashbin-title">
+    <h2 id="hashbin-title">Save to HashBin</h2>
+    <p id="hashbin-message" style="white-space: pre-wrap" role="status"></p>
+    <p><a href="https://hashbin.org/account.html" target="_blank" rel="noopener noreferrer">Account settings</a></p>
+    <button type="button" id="hashbin-confirm" disabled>Save</button>
+    <button type="button" id="hashbin-disconnect" hidden>Disconnect</button>
+    <button type="button" id="hashbin-close">Close</button>
+  </dialog>
   <div id="review">
     <div id="error"></div>
   </div>
@@ -557,9 +578,12 @@ class HelloWorld(Scene):
     crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script src="viz-global.js"></script>
   <script src="svg-pan-zoom.min.js" type="text/javascript" charset="utf-8"></script>
-  <script src="src/detector.js?v=2"></script>
+  <script src="src/modl.js?v=1"></script>
+  <script src="src/hashbin.js?v=1"></script>
+  <script src="src/hashbin-panel.js?v=1"></script>
+  <script src="src/detector.js?v=3"></script>
   <script src="src/render-scheduler.js?v=1"></script>
-  <script src="src/share-links.js?v=1"></script>
+  <script src="src/share-links.js?v=2"></script>
   <script src="src/manim-renderer.js?v=parts-4"></script>
   <script src="src/manim-client.js"></script>
   <script src="src/manim-player.js?v=mathtex-1"></script>
@@ -718,7 +742,7 @@ class HelloWorld(Scene):
       }
     }
 
-    (function (document) {
+    (async function (document) {
       window.URL = window.URL || window.webkitURL;
       var el_stetus = document.getElementById("status"),
         t_stetus = -1,
@@ -742,6 +766,49 @@ class HelloWorld(Scene):
       }
       let renderRevision = 0;
       let player = null;
+      let modlPreview = null;
+      let modlPositions = Object.create(null);
+      let savedHashbin = null;
+      const storage = kind => { try { return window[kind]; } catch (_) { return null; } };
+      const hashbinStore = new HashBinStore({
+        clientId: document.querySelector('meta[name="hashbin-client-id"]').content,
+        redirectUri: location.origin + location.pathname.replace(/index\.html$/, ''),
+        storage: storage('localStorage'), transactionStorage: storage('sessionStorage')
+      });
+      function sourceSnapshot() {
+        const src = editor.getValue();
+        const type = rendererMode.value === 'auto' ? ContentDetector.detect(src).type : rendererMode.value;
+        return { src, type, scene: sceneNameInput.value, engine: engineEl.value,
+          outputFormat: formatEl.value, pos: modlPositions };
+      }
+      const hashbinPanel = new HashBinPanel({ store: hashbinStore, getSnapshot: sourceSnapshot,
+        getFingerprint: currentShareFingerprint,
+        onLoad: applyLoadedSource,
+        onSaved: (cid, fingerprint, link) => {
+          savedHashbin = { cid, fingerprint };
+          history.pushState(null, '', link);
+          clearShare();
+          shareURLEl.style.display = 'inline';
+          shareURLEl.value = link;
+        }
+      });
+      function applyLoadedSource(snapshot, cid = null) {
+        const url = new URL(location.href);
+        for (const key of ['raw', 'compressed', 'url', 'type', 'scene', 'engine', 'format', 'modlpos']) url.searchParams.delete(key);
+        if (snapshot.type) url.searchParams.set('type', snapshot.type === 'graphviz' ? 'dot' : snapshot.type);
+        url.hash = cid || encodeURIComponent(snapshot.src);
+        history.replaceState(null, '', url);
+        modlPositions = HashBinDocuments.positions(snapshot.pos);
+        sceneNameInput.value = snapshot.scene || '';
+        if (['dot','circo','fdp','nop','nop2','neato','sfdp','twopi','osage','patchwork'].includes(snapshot.engine)) engineEl.value = snapshot.engine;
+        else engineEl.value = 'dot';
+        if (['svg','png','json','xdot','plain','ps'].includes(snapshot.outputFormat)) formatEl.value = snapshot.outputFormat;
+        else formatEl.value = 'svg';
+        editor.setValue(snapshot.src, -1);
+        detectAndUpdateType();
+        savedHashbin = cid ? { cid, fingerprint: currentShareFingerprint() } : null;
+        render();
+      }
       const shareClient = new ShareClient();
       const shortenShare = document.getElementById('shorten-share');
       const shareStatus = document.getElementById('share-status');
@@ -749,7 +816,7 @@ class HelloWorld(Scene):
       let shareFingerprint = '';
       function currentShareFingerprint() {
         return JSON.stringify([editor.getSession().getDocument().getValue(),
-          rendererMode.value, sceneNameInput.value, engineEl.value, formatEl.value]);
+          rendererMode.value, sceneNameInput.value, engineEl.value, formatEl.value, modlPositions]);
       }
       function clearShare() {
         shareClient.cancel();
@@ -889,10 +956,12 @@ class HelloWorld(Scene):
         },
         onError: error => { exampleStatus.textContent = error.message; },
         onLoad: source => {
+          savedHashbin = null;
+          modlPositions = Object.create(null);
           sceneNameInput.value = '';
           // Loading an example opts into automatic detection, even from a typed link.
           const url = new URL(location.href);
-          for (const parameter of ['type', 'scene', 'raw', 'compressed', 'url']) {
+          for (const parameter of ['type', 'scene', 'raw', 'compressed', 'url', 'modlpos']) {
             url.searchParams.delete(parameter);
           }
           history.replaceState(null, '', url);
@@ -904,6 +973,7 @@ class HelloWorld(Scene):
       loadExampleButton.addEventListener('click', () => exampleLoader.load(examplePicker.value));
 
       function invalidateRender() {
+        hashbinPanel.cancelLoad();
         if (shareSnapshot && shareFingerprint !== currentShareFingerprint()) clearShare();
         renderRevision++;
         if (videoExport) videoExport.abort();
@@ -933,7 +1003,7 @@ class HelloWorld(Scene):
         for (const parameter of ['raw', 'compressed', 'url']) url.searchParams.delete(parameter);
         url.hash = encodeURIComponent(editor.getSession().getDocument().getValue());
         if (rendererMode.value === 'auto') url.searchParams.delete('type');
-        else url.searchParams.set('type', rendererMode.value === 'graphviz' ? 'dot' : 'manim');
+        else url.searchParams.set('type', rendererMode.value === 'graphviz' ? 'dot' : rendererMode.value);
         history.replaceState(null, '', url);
         render();
       });
@@ -1003,6 +1073,7 @@ class HelloWorld(Scene):
         shareSnapshot = ShareLinks.build({ url: location.href, code, mode,
           type: mode === 'auto' ? ContentDetector.detect(code).type : mode,
           scene: sceneNameInput.value, engine: engineEl.value, format: formatEl.value,
+          positions: modlPositions,
           compress: typeof LZString === 'undefined' ? null : text => LZString.compressToEncodedURIComponent(text) });
         shareFingerprint = currentShareFingerprint();
         shareURLEl.style.display = 'inline';
@@ -1042,6 +1113,10 @@ class HelloWorld(Scene):
           typeIndicator.textContent = 'Manim';
           graphvizOptions.classList.add('hidden');
           editor.getSession().setMode("ace/mode/python");
+        } else if (type === 'modl') {
+          typeIndicator.textContent = 'modl';
+          graphvizOptions.classList.add('hidden');
+          editor.getSession().setMode("ace/mode/text");
         } else {
           typeIndicator.textContent = 'Unknown';
           graphvizOptions.classList.add('hidden');
@@ -1059,10 +1134,42 @@ class HelloWorld(Scene):
           renderGraphviz();
         } else if (type === 'manim') {
           await renderManim();
+        } else if (type === 'modl') {
+          renderModl();
         } else {
           // Try Graphviz as fallback
           renderGraphviz();
         }
+      }
+
+      function renderModl() {
+        const revision = renderRevision;
+        const saved = savedHashbin?.fingerprint === currentShareFingerprint();
+        try {
+          const preview = Modl.create(editor.getValue(), {
+            positions: modlPositions,
+            onChange: positions => {
+              if (revision !== renderRevision) return;
+              modlPositions = positions;
+              clearShare();
+              updateState();
+            },
+            onFrame: svg => {
+              if (revision !== renderRevision) return;
+              downloadBtn.href = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(svg));
+              downloadBtn.download = 'modl.svg';
+            }
+          });
+          clearReviewContent();
+          modlPreview = preview;
+          modlPositions = preview.positions();
+          if (saved) savedHashbin.fingerprint = currentShareFingerprint();
+          const wrapper = document.createElement('a');
+          wrapper.append(preview.svg);
+          reviewer.append(wrapper);
+          updateState();
+          show_status('done', 500);
+        } catch (error) { show_error(error); }
       }
 
       function renderGraphviz() {
@@ -1245,6 +1352,7 @@ class HelloWorld(Scene):
       }
 
       function clearReviewContent() {
+        if (modlPreview) { modlPreview.destroy(); modlPreview = null; }
         if (player) { player.destroy(); player = null; }
         var text = reviewer.querySelector("#text");
         if (text) {
@@ -1265,9 +1373,10 @@ class HelloWorld(Scene):
 
       function updateState() {
         const updatedUrl = new URL(window.location)
-        for (const parameter of ['raw', 'compressed', 'url']) updatedUrl.searchParams.delete(parameter);
+        for (const parameter of ['raw', 'compressed', 'url', 'modlpos']) updatedUrl.searchParams.delete(parameter);
         const content = encodeURIComponent(editor.getSession().getDocument().getValue());
-        updatedUrl.hash = content
+        updatedUrl.hash = savedHashbin?.fingerprint === currentShareFingerprint() ? savedHashbin.cid : content;
+        if (currentType === 'modl' && Object.keys(modlPositions).length) updatedUrl.searchParams.set('modlpos', JSON.stringify(modlPositions));
         applySceneToURL(updatedUrl);
         if (currentType === 'graphviz') {
           updatedUrl.searchParams.set("engine", engineEl.value)
@@ -1291,6 +1400,9 @@ class HelloWorld(Scene):
           editor.getSession().setValue(decodeURIComponent(event.state.content));
         }
       };
+      window.addEventListener('hashchange', () => {
+        if (HashBinDocuments.isCID(location.hash.slice(1))) hashbinPanel.load(location.hash);
+      });
 
       sceneNameInput.addEventListener('input', () => {
         exampleLoader.cancel();
@@ -1315,7 +1427,18 @@ class HelloWorld(Scene):
       };
 
       // URL parameter parsing
+      const callbackRevision = renderRevision;
+      const callback = await hashbinStore.callback(location.search);
+      if (callback) {
+        const url = new URL(location.href);
+        for (const key of ['code', 'state', 'error', 'error_description']) url.searchParams.delete(key);
+        history.replaceState(null, '', url);
+        if (callbackRevision === renderRevision && callback.snapshot) applyLoadedSource(callback.snapshot);
+        hashbinPanel.status.textContent = callback.error || 'Connected to HashBin. Choose Save to HashBin to review the cost.';
+        if (callback.snapshot) return;
+      }
       const params = new URLSearchParams(location.search.substring(1));
+      try { modlPositions = HashBinDocuments.positions(JSON.parse(params.get('modlpos') || '{}')); } catch (_) { /* Ignore invalid layout. */ }
       sceneNameInput.value = params.get('scene') || '';
 
       if (params.has('engine')) {
@@ -1364,6 +1487,8 @@ class HelloWorld(Scene):
           }).catch(e => {
             if (revision === renderRevision) show_error(e);
           });
+      } else if (HashBinDocuments.isCID(location.hash.slice(1))) {
+        hashbinPanel.load(location.hash);
       } else if (location.hash.length > 1) {
         editor.getSession().setValue(decodeURIComponent(location.hash.substring(1)));
         render();

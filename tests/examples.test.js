@@ -15,9 +15,9 @@ const response = source => ({ ok: true, text: async () => source });
 test('catalog points only to shipped local examples with unique IDs', () => {
   assert.equal(new Set(ExampleCatalog.map(e => e.id)).size, ExampleCatalog.length);
   for (const example of ExampleCatalog) {
-    assert.match(example.path, /^examples\/[a-z_]+\.(py|dot)$/);
+    assert.match(example.path, /^examples\/[a-z_]+\.(py|dot|modl)$/);
     const source = fs.readFileSync(path.join(__dirname, '..', example.path), 'utf8');
-    assert.match(source, example.path.endsWith('.py') ? /class \w+\((?:Scene|MovingCameraScene|ZoomedScene|LinearTransformationScene|ThreeDScene)\)/ : /digraph/);
+    assert.match(source, example.path.endsWith('.py') ? /class \w+\((?:Scene|MovingCameraScene|ZoomedScene|LinearTransformationScene|ThreeDScene)\)/ : example.path.endsWith('.modl') ? /editor -> preview/ : /digraph/);
   }
 });
 

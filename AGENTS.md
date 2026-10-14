@@ -3,7 +3,7 @@
 ## Goal and current state
 
 Build a browser experience for editing Manim source and previewing animations,
-while preserving the existing Graphviz editor. This is a static GitHub Pages
+while preserving the existing Graphviz and modl editors. This is a static GitHub Pages
 site; the established direction is in-browser Pyodide and a limited Manim-lite
 compatibility layer, not a server running full Manim Community.
 
@@ -11,6 +11,13 @@ compatibility layer, not a server running full Manim Community.
 
 1. `README.md` for local serving instructions and public status.
 2. `index.html` for editor setup, rendering integration, and output controls.
+   `src/modl.js` is adapted from curtcox/modl's deployed parser and SVG editor;
+   keep its quoting, vocab, image nodes and stored positions compatible.
+   `src/hashbin.js` handles shared three-language documents, 256t CIDs and OAuth;
+   `src/hashbin-panel.js` owns the load/save controls. Preserve source and options
+   through sign-in, quote before upload, and discard loads after newer edits.
+   The public HashBin client ID is in index.html; the exact production return
+   address https://curtcox.github.io/ManimOnline/ must be registered on HashBin.
 3. `src/manim-lite.py` for the compatibility API and timed frame generation.
 4. `src/unified-worker.js` and `src/manim-client.js` for execution and deadlines.
 5. `src/manim-renderer.js`, `src/manim-player.js`, and `src/detector.js`.
@@ -96,8 +103,12 @@ Serve locally with `python3 -m http.server 8000`. Check both a DOT graph and a
 Manim example in a real browser. Syntax checks or native Python tests do not
 prove Pyodide loading or browser playback. Report which checks actually ran.
 `tests/browser/smoke.cjs` (Playwright; CI job `browsers`) renders DOT and Manim in
-Chromium, Firefox and WebKit; see README for the local command. Playwright's
-Firefox build may fail to launch on recent macOS ("Could not find profile folder").
+Chromium, Firefox and WebKit; see README for the local command.
+`tests/browser/languages.cjs` additionally renders all three languages and checks
+HashBin OAuth/source restoration, quote/upload/reload, legacy/inline CIDs and stale
+loads with a mocked service. Run it with the same URL/browser arguments. These
+checks do not prove live HashBin app registration or spend account funds.
+Playwright's Firefox build may fail to launch on recent macOS ("Could not find profile folder").
 Update the README and these notes when adding test commands or changing the
 runtime. Do not claim full Manim compatibility from a subset implementation.
 

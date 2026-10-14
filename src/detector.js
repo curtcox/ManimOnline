@@ -1,13 +1,13 @@
 /**
  * Content Type Detector for ManimOnline
- * Automatically detects whether input is Graphviz DOT or Manim Python
+ * Automatically detects Graphviz DOT, modl, or Manim Python
  */
 
 const ContentDetector = {
   /**
    * Detect the content type of the given code
    * @param {string} code - The code to analyze
-   * @returns {{ type: 'graphviz' | 'manim' | 'unknown', confidence: number, reason: string }}
+   * @returns {{ type: 'graphviz' | 'modl' | 'manim' | 'unknown', confidence: number, reason: string }}
    */
   detect(code) {
     if (!code || !code.trim()) {
@@ -18,6 +18,16 @@ const ContentDetector = {
     const executable = this.stripLiterals(code);
     const dotScore = this.scoreDot(executable);
     const manimScore = this.scoreManim(executable);
+
+    // modl shares -> with DOT. A graph header/braces or Python syntax takes
+    // precedence; otherwise validate the actual line-based grammar, including quotes.
+    const modl = typeof module !== 'undefined' ? require('./modl.js') : globalThis.Modl;
+    if (modl && !/[{}\[\]=;]/.test(executable) && !/^\s*(?:[rRuUbBfF]*)(?:"""|''')/.test(code) && manimScore.score === 0) {
+      const parsed = modl.parse(code);
+      if (!parsed.errors.length && (parsed.nodes.size || parsed.background)) {
+        return { type: 'modl', confidence: 90, reason: 'modl node/edge syntax' };
+      }
+    }
 
     if (dotScore.score > manimScore.score && dotScore.score > 0) {
       return {
@@ -231,6 +241,7 @@ const ContentDetector = {
     if (type === 'manim' || type === 'python') {
       return 'manim';
     }
+    if (type === 'modl') return 'modl';
     return null;
   }
 };

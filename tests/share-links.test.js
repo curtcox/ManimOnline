@@ -26,6 +26,19 @@ test('Auto clears old overrides and DOT links preserve engine and format', () =>
   assert.equal(new URL(ShareLinks.build({url: links.long, code: 'x', mode: 'graphviz', type: 'graphviz'}).long).searchParams.get('type'), 'dot');
 });
 
+test('modl shares retain its override and copied node positions', () => {
+  const positions = { a: [100,200], b: [300,400] };
+  const links = ShareLinks.build({url:'https://example.test/?type=dot&scene=Old&modlpos=old', code:'a -> b', mode:'modl',type:'modl',positions});
+  const url = new URL(links.long);
+  assert.equal(url.searchParams.get('type'),'modl');
+  assert.equal(url.searchParams.has('scene'),false);
+  assert.deepEqual(JSON.parse(url.searchParams.get('modlpos')),positions);
+  positions.a[0] = 900;
+  assert.equal(JSON.parse(url.searchParams.get('modlpos')).a[0],100);
+  const dot = new URL(ShareLinks.build({url:links.long,code:'digraph{a->b}',type:'graphviz'}).long);
+  assert.equal(dot.searchParams.has('modlpos'),false);
+});
+
 test('unavailable or failed compression still produces a usable source link', () => {
   for (const compress of [undefined, () => null, () => '', () => { throw new Error('Missing compressor'); }]) {
     const links = ShareLinks.build({ url: 'https://example.test/?compressed=old', code: 'π', compress });

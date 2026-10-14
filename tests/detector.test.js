@@ -7,7 +7,7 @@ const { ExampleCatalog } = require('../src/examples.js');
 test('all shipped gallery examples select their intended renderer', () => {
   for (const example of ExampleCatalog) {
     assert.equal(Detector.detect(fs.readFileSync(example.path, 'utf8')).type,
-      example.id === 'dot' ? 'graphviz' : 'manim', example.path);
+      example.id === 'dot' ? 'graphviz' : example.id === 'modl' ? 'modl' : 'manim', example.path);
   }
 });
 
@@ -37,6 +37,7 @@ test('empty and descriptive-only inputs remain unknown, including incomplete lit
 test('URL overrides accept established aliases and ignore invalid values', () => {
   for (const type of ['dot', 'graphviz']) assert.equal(Detector.getTypeFromURL(`?type=${type}`), 'graphviz');
   for (const type of ['manim', 'python']) assert.equal(Detector.getTypeFromURL(`?scene=Demo&type=${type}`), 'manim');
+  assert.equal(Detector.getTypeFromURL('?type=modl'), 'modl');
   for (const type of ['auto', 'unknown', 'MANIM', '']) assert.equal(Detector.getTypeFromURL(`?type=${type}`), null);
 });
 

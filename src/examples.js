@@ -1,5 +1,6 @@
 /** Supported, local examples and a loader that ignores superseded requests. */
 const ExampleCatalog = Object.freeze([
+  { id: 'modl', label: 'modl diagram', path: 'examples/basic_diagram.modl' },
   { id: 'glyphstyle', label: 'Gradient styles on text and formulas', path: 'examples/glyph_style_scene.py' },
   { id: 'stylecopy', label: 'Copy styles across different shapes', path: 'examples/style_copy_scene.py' },
   { id: 'familygradient', label: 'Rotated and family color gradients', path: 'examples/family_gradient_scene.py' },

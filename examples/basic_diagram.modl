@@ -1,0 +1,9 @@
+# Nodes: id [size] [shape] [color] [url] [text...]
+editor square blue Edit source
+preview circle green Preview diagram
+saved diamond purple Save to HashBin
+
+# Edges: from -> to [size] [style] [color] [url] [text...]
+editor -> preview solid teal Render
+preview -> saved dashed purple Save
+saved -> editor dotted orange Load

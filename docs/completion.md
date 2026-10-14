@@ -1,5 +1,30 @@
 # Completion evidence and remaining gates
 
+## Three-language editor and HashBin (2026-10-14)
+
+The editor now supports Graphviz, modl and Manim. modl uses the deployed
+curtcox/modl parser and SVG editor, including node dragging, pan/zoom, image/link
+nodes and retained positions. HashBin documents preserve the source, language,
+scene/Graphviz settings and modl positions; legacy modl documents and plain-source
+inline/remote CIDs load too. Loads have deadlines, size bounds and stale-edit guards.
+OAuth restores source before returning to the save-cost review.
+
+The registered **Manim Online** client is `app_ea30117c-555b-4759-b01a-e75dc402d177`.
+A live read-only authorization request accepted
+`https://curtcox.github.io/ManimOnline/` and displayed the correct application name.
+No live uploads or charges were performed.
+
+Verification: 138 Node tests passed; the bundled Python runtime ran 749 tests
+successfully with one Pygments skip. The default system Python lacks Pillow and
+initially produced six dependency errors, resolved by using the bundled runtime.
+Chromium and WebKit passed `tests/browser/languages.cjs` with real language
+rendering and mocked HashBin authentication/pricing/uploads/loads. These checks
+include saved settings and positions, legacy modl and inline CIDs, and stale loads.
+The existing full Chromium playback/export smoke also passed. Playwright Firefox
+could not launch on this macOS host ("Could not find profile folder"); the new
+language check is included in the Ubuntu CI browser matrix. Live authenticated
+upload/reload and deployment remain unverified by these local checks.
+
 The active request is to continue implementation until Manim support is fully
 implemented. Current work is substantive progress, not proof of completion.
 The documented architecture remains static browser execution. Whether the final

@@ -3,8 +3,14 @@
 ## Current architecture
 
 ManimOnline is a static editor deployed through `.github/workflows/deploy.yml`.
-`index.html` integrates ACE, DOT detection, Graphviz rendering, and a Pyodide
-Manim-lite path. `src/manim-lite.py` implements a compatibility subset and generates timed frames.
+`index.html` integrates ACE, three-language detection, Graphviz rendering, modl
+SVG editing, and a Pyodide Manim-lite path. `src/modl.js` adapts the deployed
+curtcox/modl parser/rendering into an isolated preview with draggable nodes,
+pan/zoom, image/link nodes, and SVG export. Shared HashBin controls in
+`src/hashbin.js` and `src/hashbin-panel.js` save source plus language-specific
+settings, load new and existing modl CID documents, preserve sign-in source,
+and ignore stale loads. OAuth needs the site's exact return URI registered with
+HashBin; see README. `src/manim-lite.py` implements a compatibility subset and generates timed frames.
 `src/unified-worker.js` loads it into Pyodide; `src/manim-client.js` enforces the
 90-second deadline and terminates active work on edits or Cancel render. The
 Render animation control starts immediately and supports retry after failure.

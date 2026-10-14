@@ -1,14 +1,16 @@
 # [ManimOnline](https://curtcox.github.io/ManimOnline)
 
-A web-based editor that supports both Graphviz DOT language diagrams and Manim Python animations, with automatic detection and appropriate rendering.
+A web-based editor for Graphviz DOT diagrams, modl diagrams, and Manim Python animations, with automatic detection and appropriate rendering.
 
 ## Features
 
 - **Graphviz DOT Support**: Full support for Graphviz DOT language diagrams
+- **modl Support**: Line-based diagrams with draggable nodes, shapes, colors, links, image nodes, and SVG download
 - **Manim-lite animations**: In-browser Python execution with SVG frame playback, play/pause, replay, and seeking
 - **Examples**: Load supported animation examples or a Graphviz diagram directly into the editor
-- **Auto-Detection**: Automatically detects whether input is DOT or Manim Python
-- **Renderer selection**: Choose Auto, Manim, or Graphviz when detection is ambiguous
+- **Auto-Detection**: Automatically detects DOT, modl, or Manim Python
+- **Renderer selection**: Choose Auto, Manim, Graphviz, or modl when detection is ambiguous
+- **HashBin**: Load and save all three languages by CID, retaining scene/Graphviz settings and modl node positions
 - **URL Sharing**: Share diagrams via URL parameters
 - **Export**: Download diagrams as SVG or PNG
 
@@ -16,6 +18,7 @@ A web-based editor that supports both Graphviz DOT language diagrams and Manim P
 
 Visit the deployed site and start typing:
 - For Graphviz: Write DOT language code (e.g., `digraph { a -> b }`)
+- For modl: Write nodes and edges on separate lines (e.g., `a square blue Start`, `b circle green Finish`, then `a -> b dashed purple Next`). See the [modl language documentation](https://curtcox.github.io/modl/docs/).
 - For Manim: Write a `Scene` subclass with `from manim import *` (see the supported subset below).
 
 Choose an **Example**, then select **Load example** to replace the editor source
@@ -27,7 +30,7 @@ it does not imply support for every Manim API in the broader example documents.
 
 The **Renderer** selector defaults to Auto. It ignores strings and comments when
 detecting source, so diagram labels and Python docstrings do not choose the
-renderer. Choose Manim or Graphviz to override detection; the choice stays in the
+renderer. Choose Manim, Graphviz, or modl to override detection; the choice stays in the
 URL and shared links. Choose Auto to remove the override. Loading an example
 also restores Auto. Detection updates after 300 ms of quiet; rendering starts
 after one second. Changing the renderer or pressing Enter in the scene field
@@ -47,6 +50,16 @@ editor visibility, and switching to DOT; native mobile keyboard/device testing
 is still needed.
 
 ## Development
+
+### HashBin loading and saving
+
+Paste a CID, a `https://256t.us/<cid>` link, or a saved editor URL into **HashBin CID or saved link**, then choose **Load from HashBin**. Opening this site's `#<cid>` URL loads the same source automatically. Existing modl-only `hashbin-diagram` documents (including node positions) and plain source files also load. Content up to 64 bytes is decoded directly from the CID; larger files load from `256t.us`. Loads are limited to 5 MiB and 20 seconds, and edits discard older load results. A failed load leaves the editor source intact.
+
+**Save to HashBin** captures the source and relevant preview settings. First connect your HashBin account; the editor preserves the source through the sign-in redirect. Choose Save again after returning to review the quoted cost, balance, and account-default retention period, then confirm. Successful saves put the CID in the URL and provide a saved-source link. Editing produces a source link again; it does not update the previously saved document. Saving requires internet access and sufficient HashBin balance. HashBin calls do not block offline rendering.
+
+**Deployment configuration:** the registered **Manim Online** HashBin app uses public client ID `app_ea30117c-555b-4759-b01a-e75dc402d177` in the `hashbin-client-id` meta tag in `index.html`. Its production OAuth return address is `https://curtcox.github.io/ManimOnline/` (with the trailing slash, without `index.html`). No client secret belongs in the site. For another deployment or a local OAuth check, register its exact origin/path in [HashBin developer settings](https://hashbin.org/developers), or register a separate app and replace the public client ID. Source rendering and public CID loading do not require registration.
+
+Saved JSON uses `format: "hashbin-diagram"`, `version: 1`, `src`, and `type` (`graphviz`, `modl`, or `manim`). modl adds `pos`; Manim adds `scene`; Graphviz adds `graphviz: {engine, format}`. The modl-only editor can still read the `src`/`pos` fields of modl saves. Local Share links also retain modl positions. modl supports the deployed language parser and SVG editor; it has its own layout rather than using a Graphviz engine. Unbraced `a -> b` is detected as modl; use a DOT graph header or force Graphviz for DOT fragments.
 
 This is a static site that can be served directly. To run locally:
 
@@ -432,7 +445,10 @@ offers. CI runs it on every push; locally:
 npm install --no-save playwright && npx playwright install chromium firefox webkit
 python3 -m http.server 8000 &
 node tests/browser/smoke.cjs http://localhost:8000/ chromium firefox webkit
+node tests/browser/languages.cjs http://localhost:8000/ chromium firefox webkit
 ```
+
+The language check runs real Graphviz, modl and Pyodide/Manim previews, plus HashBin OAuth return, quote, save, reload, legacy modl/inline CID loading, and stale-load protection against a mocked service. It spends no account funds and does not prove live HashBin registration or service availability. Playwright's Firefox build may fail to launch on recent macOS with “Could not find profile folder”; CI runs the browser matrix on Ubuntu.
 
 ## Credits
 
@@ -441,6 +457,7 @@ node tests/browser/smoke.cjs http://localhost:8000/ chromium firefox webkit
 - Uses [Pyodide](https://pyodide.org/) for browser Python execution
 - Uses [ACE Editor](https://ace.c9.io/) for code editing
 - Uses [svg-pan-zoom](https://github.com/ariutta/svg-pan-zoom) for SVG interaction
+- modl parser and SVG editing adapted from [curtcox/modl](https://github.com/curtcox/modl); HashBin integration follows its [OAuth editor](https://github.com/curtcox/modl/blob/main/index.html)
 
 ## License
 
