@@ -1220,3 +1220,15 @@ play_internal) and inert interaction hooks; CoordinateSystem borrows the Axes he
 `_transform_plan` copies snapshots shallowly (as_group, expand, family own nodes): plans only
 replace top-level keys, so never mutate a nested list of a plan input. Gallery equality checks
 should compare sorted-key JSON (`/tmp/dbg/eq.py`); node key order may change harmlessly.
+Foreign members: a plain group that holds members still linked to another (posed) family
+(Group(*rotated_shape), ShowSubmobjectsOneByOne's group) is recorded in `_FOREIGN_HOLDERS`.
+Scene calls and leaf prepare/complete place those members in world coordinates
+(`_with_foreign_world`), `_mark_shared` re-poses them for drawing, and copies of a holder move
+their copies into the world (`_globalize_foreign_copies`). The vgroup branch of `_transform_plan`
+pushes a tipped line's leaf as its cut shaft. `_fit_curve_endpoints` and `_cut_shaft` handle 3D and
+curved shafts like Community's put_start_and_end_on; 3D bakes freeze tipped shafts first.
+A non-straight Transform marks tipped members `_arc_ends` (Community's path_arc leaves closed
+outlines open by rounding), so Arrow.scale still scales them; straight paths and ±π half turns
+(ClockwiseTransform: a near-exact point reflection) stay exactly closed.
+TransformFromCopy's first frame is the plan's aligned start. ThreeDCamera has Community's
+modified_rgbas/pixel_array_to_cairo_context, and project_points returns arrays with NumPy.

@@ -6959,7 +6959,10 @@ class Demo(Scene):
         middle = scene.frames[15]['mobjects']
         self.assertEqual(middle[0], original)
         self.assertEqual(middle[1]['position'], [0, 0, 0])
-        self.assertEqual(scene.frames[0]['mobjects'], [original, original])
+        # The first frame is the plan's aligned start (Community's interpolate(0)), whose
+        # interpolated colors are lowercase hex.
+        lower = lambda value: json.loads(json.dumps(value).lower())
+        self.assertEqual(lower(scene.frames[0]['mobjects']), lower([original, original]))
         self.assertEqual(source.to_dict(), original)
         self.assertEqual(target.to_dict(), destination)
         self.assertEqual(scene.mobjects, [source, target])

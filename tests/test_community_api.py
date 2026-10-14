@@ -2095,6 +2095,96 @@ class AnimationApiTests(unittest.TestCase):
         self.assertEqual(frames[-1]['camera']['frame_center'], [2, 0, 0])
         self.assertEqual(scene_values('result = Scene().camera.frame_center\n'), [0.0, 0.0, 0.0])
 
+    def test_groups_of_posed_family_members_see_world_coordinates(self):
+        self.assertEqual(scene_values(
+            's = Square().add(Circle(radius=0.3).shift(RIGHT)).rotate(1).shift(UP * 2)\n'
+            'g = Group(*s.submobjects)\n'
+            'd = DashedVMobject(Circle(), num_dashes=4).rotate(1).shift(UP * 2)\n'
+            'result = [g.get_center(), g.copy().shift(RIGHT).get_center(), VGroup(*d).get_center(),'
+            ' s.submobjects[0].get_center()]\n'),
+            [[0.6093, 2.7153, 0.0], [1.6093, 2.7153, 0.0], [0.0, 2.0, 0.0], [0.6093, 2.7153, 0.0]])
+
+    def test_show_submobjects_of_a_swapped_dashed_circle(self):
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = DashedVMobject(Circle(), num_dashes=12); p = Square().shift(RIGHT * 2 + DOWN)\n'
+            '        self.play(Rotate(VGroup(o, p), PI / 3)); self.play(Swap(o, p))\n'
+            '        a = ShowSubmobjectsOneByOne(o); self.out = []\n'
+            '        self.add_updater(lambda dt: self.out.append(a.mobject.get_center()))\n'
+            '        self.play(a, run_time=0.2)\n'
+            's = S(); s.render(); result = s.out[-1]\n'),
+            [1.933, 0.116, 0.0])
+
+    def test_transform_pushes_a_tipped_line_as_its_cut_shaft(self):
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = Line(LEFT, RIGHT).add_tip(tip_shape=StealthTip); p = Cross(Circle()).shift(RIGHT * 2 + DOWN)\n'
+            '        self.add(o, p); self.out = []\n'
+            '        self.add_updater(lambda dt: self.out.append([round(float(m.get_critical_point(RIGHT)[0]), 3)'
+            ' for m in o.get_family()[1:]]))\n'
+            '        self.play(Transform(o, p, path_arc=PI / 2), run_time=0.2)\n'
+            's = S(); s.render(); result = s.out\n'),
+            [[1.0, 0.781], [1.058, 0.6], [2.52, 2.462]])
+
+    def test_curved_transform_leaves_closed_arrows_scalable(self):
+        # Community's path_arc ends a closed outline only up to rounding, so Arrow.scale(0)
+        # collapses it; a straight Transform (or ClockwiseTransform's near-exact half turn)
+        # closes it exactly and scale returns early.
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = DoubleArrow(LEFT, RIGHT); p = Circle().shift(RIGHT * 2 + DOWN)\n'
+            '        self.play(Transform(o, p, path_arc=PI / 2))\n'
+            '        q = DoubleArrow(LEFT, RIGHT); self.play(Transform(q, Circle()))\n'
+            '        r = DoubleArrow(LEFT * 2, RIGHT); self.play(ClockwiseTransform(r, Square()))\n'
+            '        self.out = [o.copy().scale(0).get_width(), q.copy().scale(0).get_width(),'
+            ' r.copy().scale(0.5).get_width()]\n'
+            's = S(); s.render(); result = s.out\n'),
+            [0.0, 2.0, 2.0])
+
+    def test_transform_from_copy_starts_from_the_aligned_source(self):
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = RegularPolygon(24); p = Circle().rotate(PI / 8).shift(DOWN * 2)\n'
+            '        self.add(o, p); self.out = []\n'
+            '        self.add_updater(lambda dt: self.out.append(o.get_critical_point(RIGHT)[0]))\n'
+            '        self.play(TransformFromCopy(p, o), run_time=0.2)\n'
+            's = S(); s.render(); result = s.out\n'),
+            [0.9915, 0.9876, 0.9883])
+
+    @unittest.skipUnless(HAS_NUMPY, 'the point map uses NumPy arrays')
+    def test_three_d_arrow_rotation_map_and_scale_keep_the_cut_shaft(self):
+        self.assertEqual(scene_values(
+            'import numpy as np\n'
+            'o = Arrow(LEFT, RIGHT)\n'
+            'o.rotate(1, axis=[1, 1, 0])\n'
+            'a = o.points[-1]\n'
+            'o.apply_function(lambda q: q + np.array([0, 0, 0.3 * q[0]]))\n'
+            'o.scale(0.6)\n'
+            'result = [a, o.points[0], o.points[-1], o.tip.get_center()]\n'),
+            [[0.3081, 0.0919, -0.238], [-0.3466, -0.1034, 0.1638], [0.069, 0.0206, -0.0486],
+             [0.1872, 0.0346, -0.042]])
+
+    @unittest.skipUnless(HAS_NUMPY, 'Community passes NumPy color and point arrays')
+    def test_three_d_camera_cairo_hooks_and_array_projection(self):
+        self.assertEqual(scene_values(
+            'import numpy as np\n'
+            'c = ThreeDCamera()\n'
+            's = Square(fill_opacity=1); s.shade_in_3d = True\n'
+            'r = c.modified_rgbas(s, np.array([[1.0, 0.0, 0.0, 1.0]]))\n'
+            'c.set_phi(60 * DEGREES)\n'
+            'c.reset_rotation_matrix()\n'
+            'p = c.project_points(np.array([[1.0, 2.0, 3.0], [0.0, -1.0, 0.5]]))\n'
+            'result = [c.pixel_array_to_cairo_context, r, type(p).__name__, p,'
+            ' c.project_point(np.array([1.0, 2.0, 3.0])),'
+            ' c.modified_rgbas(Square(), np.array([[0.5, 0.5, 0.5, 1.0]]))]\n'),
+            [{}, [[1.1166, 0.1166, 0.1166, 1.0], [1.163, 0.163, 0.163, 1.0]], 'ndarray',
+             [[0.9885, 3.5568, -0.2321], [0.0, -0.0709, 1.116]], [0.9885, 3.5568, -0.2321],
+             [[0.5, 0.5, 0.5, 1.0]]])
+
     def test_buff_equal_to_half_the_length_collapses_lines_and_arrows(self):
         self.assertEqual(scene_values(
             'a = Arrow(ORIGIN, RIGHT * 0.5)\n'

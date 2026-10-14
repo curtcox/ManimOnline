@@ -130,6 +130,8 @@ _OTHER_PARENTS = weakref.WeakKeyDictionary()  # child -> weak references to plai
 _IN_WORLD = set()  # ids of members currently placed in world coordinates
 _WORLD_TOKENS = {}  # id(member) -> _enter_world token, while the member is in world coordinates
 _PINS = {}  # id(parent) -> [parent, count]: posed parents with a fixed pivot
+# Plain groups holding members that stay linked to another family (e.g. Group(*shape)).
+_FOREIGN_HOLDERS = weakref.WeakSet()
 
 
 def _link_children(parent, children):
@@ -146,6 +148,7 @@ def _link_children(parent, children):
                 if type(old) not in (Group, VGroup, Mobject):
                     # Kept for when the linked family is collected (e.g. a temporary group).
                     _OTHER_PARENTS[child] = others + [ref]
+                    _FOREIGN_HOLDERS.add(parent)
                     continue
                 # Between plain groups the latest wins; the other stays a fallback (e.g. a
                 # Table entry kept in an attribute group and in its drawn elements group).
@@ -381,12 +384,34 @@ def _localize_copy(source, duplicate, memo):
         duplicate.__dict__.pop('_sampled_geometry_center', None)
 
 
+def _globalize_foreign_copies(source, duplicate, memo):
+    """A copied holder owns its foreign members' copies (see _foreign_members), so they move
+    from the other family's frame into the copy's, which is the world for unposed groups.
+    Members whose posed family is copied along keep that family's frame."""
+    if source.angle or source.geometry_scale != 1 or any(source.position) or _posed_ancestors(source):
+        return
+    for child, copied in zip(source.children, duplicate.children):
+        if _parent_of(child) is source or id(child) in _IN_WORLD or _parent_of(copied) is not duplicate:
+            continue
+        chain = _posed_ancestors(child)
+        if chain and not any(id(parent) in memo for parent in chain):
+            frame = _world_frame(chain)
+            if frame is not None:
+                _place(copied, frame)
+
+
 def _leaf_local(animation, method, *args):
     """Run a leaf animation's prepare/_complete with the members of its mobject that play()
     animates in world coordinates (by other animations) back in their parents' frames, so
     its copies and its completion use one frame for the whole family."""
     mobject = animation.__dict__.get('mobject') if _is_a(animation, Animation) else None
-    if (not _WORLD_TOKENS or not isinstance(mobject, Mobject) or isinstance(animation, AnimationGroup)):
+    if not isinstance(mobject, Mobject) or isinstance(animation, AnimationGroup):
+        return method(*args)
+    if _FOREIGN_HOLDERS:
+        if not _WORLD_TOKENS:
+            return _with_foreign_world(mobject, method, *args)
+        return _with_local_members(mobject, _with_foreign_world, mobject, method, *args)
+    if not _WORLD_TOKENS:
         return method(*args)
     return _with_local_members(mobject, method, *args)
 
@@ -410,6 +435,44 @@ def _exit_world(token):
     if _BOUNDS_MEMO:
         _BOUNDS_MEMO.clear()
     _unpin(pinned)
+
+
+def _foreign_members(mobject):
+    """Members of mobject's family held by an unposed plain group but stored in another
+    posed family's frame (Group(*rotated_shape)): Community's group sees them in world
+    coordinates, which are that group's frame."""
+    if not _FOREIGN_HOLDERS:
+        return []
+    found, family = [], None
+    for holder in list(_FOREIGN_HOLDERS):
+        if holder is not mobject and mobject not in _parent_chain(holder):
+            continue
+        if holder.angle or holder.geometry_scale != 1 or any(holder.position) or _posed_ancestors(holder):
+            continue
+        for child in holder.children:
+            if _parent_of(child) is holder or id(child) in _IN_WORLD:
+                continue
+            chain = _posed_ancestors(child)
+            if not chain:
+                continue
+            if family is None:
+                family = {id(member) for member in mobject.get_family()}
+            if not any(id(parent) in family for parent in chain):
+                found.append(child)
+    return found
+
+
+def _with_foreign_world(mobject, function, *args, **kwargs):
+    """function(...) with mobject's foreign members (see _foreign_members) in world coordinates."""
+    members = _foreign_members(mobject)
+    if not members:
+        return function(*args, **kwargs)
+    tokens = [token for member in members if (token := _enter_world(member)) is not None]
+    try:
+        return function(*args, **kwargs)
+    finally:
+        for token in reversed(tokens):
+            _exit_world(token)
 
 
 def _world_copy(mobject):
@@ -444,6 +507,8 @@ def _in_world(mobject, function, *args, **kwargs):
                 # A zero-scale ancestor cannot be undone: queries read a collapsed world copy.
                 return function(_place(mobject.copy(), frame), *args, **kwargs)
     try:
+        if _FOREIGN_HOLDERS:
+            return _with_foreign_world(mobject, function, mobject, *args, **kwargs)
         return function(mobject, *args, **kwargs)
     finally:
         if token is not None:
@@ -1302,6 +1367,11 @@ config = PreviewConfig()
 
 class Camera(PreviewConfig):
     """Community's Camera: a scene's frame and background settings in the preview."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Community's Cairo context cache; the preview draws no pixels, so it stays empty.
+        object.__setattr__(self, 'pixel_array_to_cairo_context', {})
 
     def set_background(self, pixel_array, convert_from_floats=False):
         """Community's background pixel array: drawn stretched over the frame, behind every
@@ -2353,6 +2423,8 @@ class Mobject:
             # receiver's factor; Mobject.apply_function (Group) maps handles directly.
             eps = (getattr(self, 'pre_function_handle_to_anchor_scale_factor', 0.01)
                    if isinstance(self, VMobject) else 1)
+        if isinstance(self, TipableVMobject) and self._tips_by_role():
+            self._freeze_shaft()  # Community maps the shaft as cut at its tips.
         # Children of a posed parent are stored parent-locally; release them into
         # world coordinates first, so each member's own pose spans its geometry.
         if self.children and (self.angle or self.geometry_scale != 1 or any(self.position)):
@@ -3880,6 +3952,8 @@ class Mobject:
         result.__setstate__(state)
         if _PINS:
             _localize_copy(self, result, memo)
+        if _FOREIGN_HOLDERS and self in _FOREIGN_HOLDERS:
+            _globalize_foreign_copies(self, result, memo)
         return result
 
     def __setstate__(self, state):
@@ -4735,7 +4809,7 @@ class Mobject:
         center = self._geometry_center()
         result = _snapshot_copy({key: value for key, value in self.__dict__.items()
                                 if (key in _POINT_KEYS and type(value) is list or not _holds_mobject(value) and not callable(value)) and
-                                key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache', '_flow_points', '_name', '_mobject_points', '_scene_keys', '_init_positioning_axis', '_community_values') and
+                                key not in ('_saved_state', 'children', 'updaters', 'updating_suspended', '_sampled_geometry_center', 'traced_point_func', '_parametric_function', 'underlying_function', '_coordinate_labels', '_angle_lines', '_family_pivot_cache', '_flow_points', '_name', '_mobject_points', '_scene_keys', '_init_positioning_axis', '_community_values', '_arc_ends') and
                                 key not in self._frame_excluded})
         result['type'] = result.pop('_type')
         result['geometry_center'] = list(center)
@@ -6044,13 +6118,19 @@ class TipableVMobject(VMobject):
     def _cut_shaft(self):
         """Re-attaching tips cuts a straight shaft at their length-weighted bases; asymmetric
         (stretched) tips keep that cut rather than the refit's array midpoint."""
-        if self.__dict__.get('_shaft_fixed') or self._type not in ('line', 'arrow'):
+        curved = self.__dict__.get('_curved_tip_path') and self.curves
+        if self.__dict__.get('_shaft_fixed') or not (curved or self._type in ('line', 'arrow')):
             return
         tips = self._tips_by_role()
         bases = {role: self._tip_base(tip, current=True) for role, tip in tips.items()}
         if any(point is not None and math.dist(point, self._tip_base(tips[role])) > 1e-9
                for role, point in bases.items()):
-            self._set_own_ends({role: point for role, point in bases.items() if point is not None})
+            if curved:
+                curves = self.curves
+                self._set_own_ends({}, _fit_curve_endpoints(
+                    curves, bases.get('start') or curves[0][0], bases.get('end') or curves[-1][-1]))
+            else:
+                self._set_own_ends({role: point for role, point in bases.items() if point is not None})
             self._shaft_fixed = True
 
     def _unfreeze_shaft(self, orient=True):
@@ -7145,7 +7225,10 @@ class Arrow(Line):
         if not isinstance(scale_tips,bool):
             raise ValueError('scale_tips must be a boolean')
         # Community's collapsed arrows have exactly coincident ends; Lite's tip pose adds noise.
-        if self.get_length() <= 1e-12:
+        # A closed outline left by a curved Transform ends only roughly where it starts, so it scales.
+        if self.get_length() <= 1e-12 and not (
+                self.__dict__.get('_arc_ends') and self._type not in ('line', 'arrow') and max(
+                    (math.dist(p, q) for p in self.get_points()[:1] for q in self.get_points()), default=0) > 1e-12):
             return self
         if scale_tips or not self.get_tips().children:
             super().scale(factor,**kwargs)
@@ -12551,6 +12634,19 @@ def _fit_curve_endpoints(curves, start, end):
     length = math.hypot(*old)
     if not length:
         return copy.deepcopy(curves)
+    if old[2] or new[2] or any(len(p) > 2 and p[2] != first[2] for curve in curves for p in curve):
+        # Community's VMobject.put_start_and_end_on: scale about the start, then the minimal
+        # rotation (about the cross product, OUT when parallel) and a shift.
+        factor = _norm(new)/length
+        axis = Vector((old[1]*new[2]-old[2]*new[1], old[2]*new[0]-old[0]*new[2], old[0]*new[1]-old[1]*new[0]))
+        norm = _norm(axis)
+        angle = math.atan2(norm, sum(a*b for a, b in zip(old, new)))
+        axis = axis*(1/norm) if norm else Vector(OUT)
+        rows = rotation_matrix(angle, axis)
+        def point(value):
+            offset = (Vector(value)-first)*factor
+            return list(start+Vector(sum(r*v for r, v in zip(row, offset)) for row in rows))
+        return [[point(value) for value in curve] for curve in curves]
     unit = Vector(value/length for value in old)
     real = new[0]*unit[0]+new[1]*unit[1]
     imag = new[1]*unit[0]-new[0]*unit[1]
@@ -13055,6 +13151,16 @@ def _transform_plan(start, target, origins=None, lagged=False):
             leaf = dict(snapshot)
             members = leaf.pop('children', None) or []
             leaf['children'] = []
+            if not snapshot.get('_shaft_fixed') and any(m.get('_tip_role') in ('start', 'end') for m in members):
+                # Without its tips the leaf is not refit: Community's own points are the cut shaft.
+                drawn = _refresh_tip_shafts(_snapshot_copy(snapshot))
+                if leaf['type'] in ('line', 'arrow'):
+                    leaf['start'] = drawn.get('shaft_start', leaf['start'])
+                    leaf['end'] = drawn.get('shaft_end', leaf['end'])
+                    leaf['_shaft_fixed'] = True
+                elif leaf.get('_curved_tip_path') and 'shaft_curves' in drawn:
+                    leaf['curves'] = drawn['shaft_curves']
+                    leaf.pop('_curved_tip_path')
             if members and 'position' in snapshot:
                 members = [_pose_snapshot(member, _snapshot_frame(snapshot), False) for member in members]
             group['children'] = members + [leaf]
@@ -13511,7 +13617,8 @@ def _mark_shared(mobject, data):
         for child, child_node in zip(member.children, node['children']):
             walk(child, child_node, member)
     walk(mobject, data)
-    if len({entry[0] for entry in occurrences}) == len(occurrences):
+    if len({entry[0] for entry in occurrences}) == len(occurrences) and not (
+            _FOREIGN_HOLDERS and any(parent in _FOREIGN_HOLDERS for _, _, _, parent in occurrences if parent is not None)):
         return data
     last = {entry[0]: index for index, entry in enumerate(occurrences)}
     for index, (key, node, member, parent) in enumerate(occurrences):
@@ -13526,6 +13633,8 @@ def _mark_shared(mobject, data):
         # The member's state is in its own parent's frame; the drawn occurrence sits under
         # another parent, so pose it through the world into that parent's frame.
         frames = [_world_frame([owner, *_posed_ancestors(owner)], collapsed=True) for owner in (home, parent)]
+        if id(member) in _IN_WORLD:
+            frames[0] = (1, 0, Vector(ORIGIN))
         if frames[1][0]:
             node.update(_pose_snapshot(_pose_snapshot(node, frames[0], inverse=False), frames[1]))
     return data
@@ -14681,6 +14790,13 @@ class Transform(_PathOptions, Animation):
                     # style (.animate's _MethodAnimation.finish reapplies the methods instead).
                     target.match_style(self.mobject, family=False)
             self.mobject.become(target)
+            if self._path and not (isinstance(self._path, _REAL) and abs(self._path) == math.pi):
+                # Community ends a curved path at the target only up to rounding, so a closed
+                # outline's ends no longer coincide exactly (see Arrow.scale). A half turn
+                # (ClockwiseTransform) is a near-exact point reflection that usually closes it.
+                for member in self.mobject.get_family():
+                    if isinstance(member, TipableVMobject):
+                        member.__dict__['_arc_ends'] = True
         if self.replace_mobject_with_target_in_scene:
             # Community: the target takes the mobject's place in the scene (inside its parent
             # group when nested).
@@ -14720,11 +14836,6 @@ class TransformFromCopy(Transform):
         self.__dict__.pop('_path_target', None)
         self._split_for(source)
         self.start = self._plan_snapshot(source)
-
-    def sample(self, alpha):
-        if alpha == 0:
-            return [_snapshot_copy(self.start)]
-        return super().sample(alpha)
 
     def finish(self, scene):
         # Community ends at interpolate(0): the target's starting copy, which align_data
@@ -18440,7 +18551,8 @@ class ThreeDCamera(Camera):
         return _camera_rotation_matrix(self.get_phi(), self.get_theta(), self.get_gamma())
 
     def project_points(self, points):
-        """Community's rotate-then-perspective project; returns plain lists."""
+        """Community's rotate-then-perspective project: an (n, 3) array with NumPy loaded,
+        otherwise plain lists."""
         frame_center = Vector(self.frame_center)
         focal_distance, zoom = self.get_focal_distance(), self.get_zoom()
         rot = self.get_rotation_matrix()
@@ -18454,10 +18566,23 @@ class ThreeDCamera(Camera):
                 factor = (1e6 if focal_distance - rotated[2] < 0
                           else focal_distance / (focal_distance - rotated[2]))
             result.append([rotated[0] * factor * zoom, rotated[1] * factor * zoom, rotated[2]])
-        return result
+        return sys.modules['numpy'].array(result, dtype=float).reshape(-1, 3) if 'numpy' in sys.modules else result
 
     def project_point(self, point):
         return self.project_points([point])[0]
+
+    def modified_rgbas(self, vmobject, rgbas):
+        """Community's Cairo shading hook. The preview shades 3D leaves in the renderer and
+        never calls it, so replacing it does not change the drawing."""
+        if not self.should_apply_shading or not vmobject.shade_in_3d or not vmobject.get_num_points():
+            return rgbas
+        light = self.light_source.get_center()
+        rows = [list(row) for row in (rgbas.tolist() if hasattr(rgbas, 'tolist') else rgbas)]
+        rows = [list(row) for row in (rows * 2)[:2]]
+        for row, corner, normal in ((rows[0], get_3d_vmob_start_corner, get_3d_vmob_start_corner_unit_normal),
+                                    (rows[1], get_3d_vmob_end_corner, get_3d_vmob_end_corner_unit_normal)):
+            row[:3] = get_shaded_rgb(row[:3], corner(vmobject), normal(vmobject), light)
+        return _numpy_for('modified_rgbas').array(rows) if hasattr(rgbas, 'tolist') else rows
 
     def add_fixed_orientation_mobjects(self, *mobjects, use_static_center_func=False, center_func=None):
         if center_func is not None and not callable(center_func):
