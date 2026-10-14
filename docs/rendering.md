@@ -2492,8 +2492,8 @@ inert local filter definitions; one filter/image is shared per raster and view.
 Frame pooling also stores each raster string once across changing stream paths.
 
 Flat colored StreamLines now use Community's sampled background image instead
-of the previous gradient along each line's chord. Spatial streams retain the
-existing per-anchor gradient. Pillow loads automatically for StreamLines, raster
+of the previous gradient along each line's chord. Spatial streams sample every path anchor and use the standard sheen-direction
+gradient, matching Community’s Cairo color construction. Pillow loads automatically for StreamLines, raster
 paint methods, factory references and explicit imports. Pixel-camera APIs, exact
 Cairo antialiasing/transparent-raster arithmetic and complete spatial-stream color
 parity remain unfinished; this does not implement Mobject.get_image.
@@ -2506,3 +2506,10 @@ pixel checks; local Firefox has the documented profile-folder launch failure.
 Local Pyodide gallery playback showed the moving image-colored ring and flowing
 strokes, then no filters or shape geometry at eight seconds. Switching to DOT
 rendered three nodes. Pixel-camera APIs and exact Cairo raster parity remain open.
+
+
+`VectorField.get_vectorized_rgba_gradient_function` returns a NumPy array with
+one RGBA row per input, including an empty `(0, 4)` result. Inputs are clipped to
+the gradient bounds, descending ranges work, and opacity occupies the fourth
+column. NumPy loads automatically for calls or references to this method. Inputs
+must be finite one-dimensional sequences, limited to 100000 samples.

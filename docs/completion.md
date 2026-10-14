@@ -491,3 +491,10 @@ checks source/style preservation, failure atomicity, transformed geometry,
 per-frame image sharing, animation cleanup and exported pixel colors. Pixel cameras,
 exact Cairo antialiasing/transparent-raster arithmetic and complete spatial-stream
 color parity remain open.
+
+
+Vectorized field gradients now return NumPy RGBA arrays and load the browser
+package on demand. Spatial StreamLines sample all cubic anchors rather than eight
+positions along a chord, and use the ordinary sheen-direction gradient. This
+matches Cairo's color construction; projected spatial gradients and exact Cairo
+pixel arithmetic still require parity work.

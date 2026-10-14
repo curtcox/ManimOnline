@@ -24732,17 +24732,26 @@ class VectorField(VGroup):
         return Image.frombytes('RGB', (width, height), bytes(data))
 
     def get_vectorized_rgba_gradient_function(self, start, end, colors):
-        rgbs = [color_to_rgb(c) for c in colors]
-        if not rgbs or start == end:
+        NumberLine._real(start, 'start')
+        NumberLine._real(end, 'end')
+        np = _numpy_for('get_vectorized_rgba_gradient_function')
+        rgbs = np.array([color_to_rgb(c) for c in colors], dtype=float)
+        if not len(rgbs) or start == end:
             raise ValueError('Gradient functions need colors and distinct bounds')
         def func(values, opacity=1.0):
-            result = []
-            for value in values:
-                alpha = max(0, min(1, (value - start) / (end - start))) * (len(rgbs) - 1)
-                index = int(alpha)
-                following = min(index + 1, len(rgbs) - 1)
-                result.append([a + (b - a) * (alpha % 1) for a, b in zip(rgbs[index], rgbs[following])] + [opacity])
-            return result
+            NumberLine._real(opacity, 'opacity')
+            if len(values) > 100000:
+                raise ValueError('Gradient functions are limited to 100000 samples')
+            values = np.asarray(values, dtype=float)
+            if values.ndim != 1 or not np.isfinite(values).all():
+                raise ValueError('Gradient values must be a finite one-dimensional sequence')
+            alphas = np.clip((values - start) / (end - start), 0, 1)
+            scaled = alphas * (len(rgbs) - 1)
+            indices = scaled.astype(int)
+            following = np.minimum(indices + 1, len(rgbs) - 1)
+            weights = (scaled % 1)[:, None]
+            rgb = rgbs[indices] + (rgbs[following] - rgbs[indices]) * weights
+            return np.concatenate((rgb, np.full((len(values), 1), opacity)), axis=1)
         return func
 
 
@@ -24849,10 +24858,10 @@ class StreamLines(VectorField):
                 line.raster_background = raster
                 line.set_stroke(color=WHITE, width=stroke_width, opacity=opacity)
             else:
-                # Spatial streams retain their per-anchor color gradient.
-                samples = [points[min(len(points) - 1, round(i * (len(points) - 1) / 7))] for i in range(8)]
-                line.set_stroke(color=[self.pos_to_color(p) for p in samples], width=stroke_width, opacity=opacity)
-                line.gradient_points = [[points[0][0], points[0][1]], [points[-1][0], points[-1][1]]]
+                # Cairo samples every path anchor, including shared curve endpoints.
+                # The standard sheen direction defines the gradient, not the chord.
+                line.set_stroke(color=[self.pos_to_color(p) for p in line.get_anchors()],
+                                width=stroke_width, opacity=opacity)
             lines.append(line)
         self.add(*lines)  # One family update; adding lines one at a time is quadratic.
 

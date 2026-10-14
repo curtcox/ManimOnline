@@ -1,3 +1,8 @@
+/** Explicit array use and APIs whose public result requires NumPy. */
+function requiresNumpy(source) {
+  return /\b(?:np|numpy|get_vectorized_rgba_gradient_function)\b|\.points\b|\bget_points\s*\(/.test(source);
+}
+
 /** Package required by explicit PIL use or the field image factory. */
 function requiresPillow(source) {
   return /\b(?:PIL|StreamLines|get_colored_background_image|color_using_background_image|match_background_image)\b/.test(source);
@@ -79,7 +84,7 @@ function expandPooledScene(scene) {
   }
   return rest;
 }
-if (typeof module !== 'undefined') module.exports = { expandPooledScene, requiresPillow };
+if (typeof module !== 'undefined') module.exports = { expandPooledScene, requiresPillow, requiresNumpy };
 
 // Serialize requests even during loading; Python cannot execute concurrently.
 let queue = Promise.resolve();
@@ -90,7 +95,7 @@ self.onmessage = event => {
       if (type !== 'render-manim') throw new Error(`Unknown message type: ${type}`);
       const { runtime, source } = await initPyodide();
       // `from manim import *` exports np; load NumPy only for sources that use it.
-      if (/\b(?:np|numpy)\b|\.points\b|\bget_points\s*\(/.test(code)) {
+      if (requiresNumpy(code)) {
         self.postMessage({ id, type: 'numpy-loading' });
         await runtime.loadPackage('numpy');
       }

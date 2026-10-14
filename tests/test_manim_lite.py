@@ -662,6 +662,45 @@ class Demo(Scene):
         self.assertEqual(len(stream.stream_lines),18)
         with self.assertRaises(ValueError): lite.ArrowVectorField(lambda p: (math.nan,0,0),x_range=[0,1],y_range=[0,1])
 
+    @unittest.skipUnless(HAS_NUMPY, 'NumPy is required for array gradient results')
+    def test_vectorized_field_gradient_array_shape_clipping_and_reversal(self):
+        import numpy as np
+        field = lite.VectorField(lambda p: p, color=lite.WHITE)
+        gradient = field.get_vectorized_rgba_gradient_function(0, 2, ['#000000', '#FF0000', '#FFFFFF'])
+        result = gradient([-1, 0, .5, 1, 1.5, 2, 3], opacity=.25)
+        self.assertIsInstance(result, np.ndarray)
+        np.testing.assert_allclose(result, [[0,0,0,.25], [0,0,0,.25], [.5,0,0,.25],
+                                           [1,0,0,.25], [1,.5,.5,.25], [1,1,1,.25], [1,1,1,.25]])
+        self.assertEqual(gradient([]).shape, (0, 4))
+        reverse = field.get_vectorized_rgba_gradient_function(2, 0, ['#000000', '#FFFFFF'])
+        np.testing.assert_allclose(reverse(np.array([3, 1, -1])), [[0,0,0,1], [.5,.5,.5,1], [1,1,1,1]])
+        single = field.get_vectorized_rgba_gradient_function(0, 1, [lite.BLUE])
+        np.testing.assert_allclose(single([0, .5, 1])[:, :3], [lite.color_to_rgb(lite.BLUE)] * 3)
+        for values in ([math.nan], [math.inf], [[0, 1]], [0] * 100001):
+            with self.assertRaises(ValueError): gradient(values)
+        with self.assertRaises(ValueError): gradient([0], opacity=math.nan)
+        for start, end, colors in ((0, 0, [lite.BLUE]), (math.nan, 1, [lite.BLUE]), (0, 1, [])):
+            with self.assertRaises(ValueError): field.get_vectorized_rgba_gradient_function(start, end, colors)
+
+    def test_spatial_stream_colors_sample_all_anchors_and_native_gradient_direction(self):
+        field = lite.StreamLines(lambda p: (1, p[0], .2), x_range=[0, 0, 1], y_range=[0, 0, 1],
+                                 z_range=[0, 1, 1], noise_factor=0, dt=.1, virtual_time=1,
+                                 color_scheme=lambda v: v[1], min_color_scheme_value=0,
+                                 max_color_scheme_value=1, colors=['#000000', '#FFFFFF'])
+        line = field.stream_lines[0]
+        expected = [field.pos_to_color(p) for p in line.get_anchors()]
+        self.assertGreater(len(expected), 8)
+        self.assertEqual(list(line.get_stroke_colors()), expected)
+        self.assertNotIn('gradient_points', line.__dict__)
+        data = line.to_dict()
+        left, bottom, right, top = line._own_local_bounds()
+        self.assertEqual(data['gradient_points'], [[right, bottom], [left, top]])
+        self.assertEqual(data['stroke_color'], expected)
+        self.assertNotIn('raster_background', data)
+        field.start_animation(warm_up=False)
+        self.assertEqual(list(line.get_stroke_colors()), expected)
+        self.assertEqual(list(line._flow_source.get_stroke_colors()), expected)
+
     def test_stream_lines_trace_noisy_starts_and_flow(self):
         func=lambda pos: math.sin(pos[0]/2)*lite.UR+math.cos(pos[1]/2)*lite.LEFT
         stream=lite.StreamLines(func,stroke_width=2,max_anchors_per_line=30)

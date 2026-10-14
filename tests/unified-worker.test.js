@@ -99,3 +99,15 @@ test('vector paint raster references expand to a shared string',()=>{
   assert.equal(scene.frames[0].mobjects[0].raster_background,href);
   assert.equal(scene.frames[0].mobjects[1].raster_background,href);
 });
+
+
+test('array gradient APIs load NumPy including detached method references', () => {
+  const { requiresNumpy } = require('../src/unified-worker.js');
+  for (const source of ['from numpy import array', 'np.array([1])', 'shape.points += RIGHT',
+                        'shape.get_points()', 'field.get_vectorized_rgba_gradient_function(0,1,[RED,BLUE])',
+                        'factory = field.get_vectorized_rgba_gradient_function']) {
+    assert.equal(requiresNumpy(source), true);
+  }
+  assert.equal(requiresNumpy('VectorField(lambda p: p)'), false);
+  assert.equal(requiresNumpy('Circle().get_center()'), false);
+});
