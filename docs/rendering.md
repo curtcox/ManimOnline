@@ -2631,3 +2631,14 @@ Community; the original row retains finite out-of-range opacity. Snapshot alpha
 stops preserve that distinction during FadeOut rather than collapsing both rows
 into one scalar. Explicit gradients remain unchanged. Stored-RGBA regeneration
 and sheen-reset parity are still open.
+
+
+Verification (2026-10-14, manual paint and sheen fades): all 744 Python and
+124 JavaScript tests passed in CI. Local Python passed with one Pygments skip.
+Local Chromium and WebKit and CI Chromium, Firefox and WebKit passed the expanded
+smoke suite, including DOT, manual interpolation and the new halfway sheen-fade
+SVG-to-canvas pixel check. The sheen pixel is [64,64,64,255] both locally and on
+the deployed site; deployed Chromium also passed the full manual-interpolation
+suite. Implementation commits 9c73665 and 79fc1bd passed CI and Pages deployment.
+Native persisted RGBA/sheens, glyph style morphs, sampled gradient-bound parity
+and pixel cameras remain unfinished.
