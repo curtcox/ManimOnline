@@ -753,6 +753,7 @@ UL, UR, DL, DR = UP + LEFT, UP + RIGHT, DOWN + LEFT, DOWN + RIGHT
 
 _GRADIENT_TYPES = frozenset(('circle', 'arc', 'ellipse', 'square', 'rectangle', 'triangle', 'polygon',
                              'polyline', 'bezierpath', 'annulus', 'line', 'arrow'))
+_STYLE_MORPH_TYPES = _GRADIENT_TYPES | {'text', 'mathtex'}
 
 
 def _glyph_matrix(state):
@@ -8046,8 +8047,6 @@ class Text(Mobject):
             return  # Glyphs are leaves, like Community's glyph VMobjects.
         layout = _text_layout(self.__dict__)
         em = layout['em'] / 1000
-        style = {key: self.__dict__[key] for key in ('color', 'fill_color', 'stroke_color', 'fill_opacity',
-                                                    'stroke_opacity', 'stroke_width', 'z_index')}
         options = {key: self.__dict__[key] for key in ('font', 'slant', 'weight') if key in self.__dict__}
         if '_line_spacing' in self.__dict__:
             options['line_spacing'] = self.__dict__['_line_spacing']
@@ -8061,7 +8060,7 @@ class Text(Mobject):
                 _, x0, x1, y0, y1 = _glyph_box(char, _glyph_table(self.__dict__.get('font'), face))
                 x = line['x'] + (pens[k] - pens[0]) * em
                 if not char.isspace() and (x1 > x0 or y1 > y0):
-                    glyph = Text(char, font_size=self.__dict__['font_size'], **options, **style)
+                    glyph = _copy_glyph_paint(self, Text(char, font_size=self.__dict__['font_size'], **options))
                     (a, b), (c, d) = _glyph_matrix(self.__dict__)
                     cx, cy = x + (x0 + x1) / 2 * em, line['y'] + (y0 + y1) / 2 * em
                     center = Vector((a * cx + b * cy, c * cx + d * cy, 0))
@@ -8361,11 +8360,9 @@ class DecimalNumber(Text):
         left, right = min(b[0] for b in boxes), max(b[1] for b in boxes)
         bottom, top = min(b[2] for b in boxes), max(b[3] for b in boxes)
         cx, cy = (left + right) / 2, (bottom + top) / 2
-        style = {key: self.__dict__[key] for key in ('color', 'fill_color', 'stroke_color', 'fill_opacity',
-                                                    'stroke_opacity', 'stroke_width', 'z_index')}
         glyphs = []
         for index, (char, box) in enumerate(zip(text, boxes)):
-            glyph = _NumberGlyph(char, font_size=self.__dict__['font_size'], **style)
+            glyph = _copy_glyph_paint(self, _NumberGlyph(char, font_size=self.__dict__['font_size']))
             glyph._tex_glyph = True
             center = Vector(((box[0] + box[1]) / 2 - cx, (box[2] + box[3]) / 2 - cy, 0))
             glyph.position = list(self._point_to_world(center))
@@ -8689,6 +8686,15 @@ def _has_glyphs(mobject):
     return any('glyph' in member.__dict__ or '_char_index' in member.__dict__ for member in mobject.get_family())
 
 
+def _copy_glyph_paint(source, glyph):
+    """Copy complete paint independently, without the Text constructor's single-color restriction."""
+    keys = _STYLE_KEYS + ('sheen_factor', 'sheen_direction', 'shade_in_3d', 'z_index', 'raster_background')
+    glyph.__dict__.update({key: _snapshot_copy(source.__dict__[key]) for key in keys if key in source.__dict__})
+    if 'background_image' in source.__dict__:
+        glyph.background_image = source.background_image
+    return glyph
+
+
 def _explode_math(leaf):
     """Split a formula leaf (a whole single-string formula or one part) into glyph leaves
     placed by the browser-measured (or, before measurement, estimated) glyph boxes."""
@@ -8702,13 +8708,11 @@ def _explode_math(leaf):
     else:
         px = py = 0
         members = list(enumerate(glyphs))
-    style = {key: leaf.__dict__[key] for key in ('color', 'fill_color', 'stroke_color', 'fill_opacity',
-                                                'stroke_opacity', 'stroke_width', 'z_index')}
     (a, b), (c, d) = _glyph_matrix(leaf.__dict__)
     children = []
     for index, (cx, cy, _, _, _, sub) in members:
         x, y = cx - px, cy - py
-        glyph = _MathTexGlyph(leaf.text, index, leaf.__dict__['font_size'], part_strings, **style)
+        glyph = _copy_glyph_paint(leaf, _MathTexGlyph(leaf.text, index, leaf.__dict__['font_size'], part_strings))
         if sub >= 0:
             glyph.sub = sub
         glyph.position = list(leaf._point_to_world(Vector((a * x + b * y, c * x + d * y, 0))))
@@ -8895,11 +8899,9 @@ class MathTex(Text):
             super().__init__(classed, font_size=font_size, **kwargs)
             self._type = 'vgroup'
             self.tex_string, self.tex_strings = arg_separator.join(parts), parts
-            style = {key: kwargs[key] for key in kwargs
-                     if key in ('color', 'fill_color', 'stroke_color', 'fill_opacity', 'stroke_width', 'stroke_opacity', 'z_index')}
             members = []
             for index, (cx, cy, _, _) in enumerate(_math_parts(classed, typeset, font_size)):
-                member = _MathTexPart(classed, index, typeset, font_size, **style)
+                member = _copy_glyph_paint(self, _MathTexPart(classed, index, typeset, font_size))
                 member.tex_string = parts[index]
                 members.append(member.move_to((cx, cy, 0)))
             self.add(*members)
@@ -8967,9 +8969,7 @@ class MathTex(Text):
         """Community's MathTex holds its string as a part: give the formula that part."""
         if self._type != 'mathtex':
             return
-        style = {key: self.__dict__[key] for key in ('color', 'fill_color', 'stroke_color', 'fill_opacity',
-                                                    'stroke_opacity', 'stroke_width', 'z_index')}
-        part = _MathTexPart(self.text, None, None, self.__dict__['font_size'], **style)
+        part = _copy_glyph_paint(self, _MathTexPart(self.text, None, None, self.__dict__['font_size']))
         part.tex_string = self.tex_string
         for key in ('position', 'angle', 'geometry_scale', 'opacity', 'glyph_stretch', 'glyph_matrix'):
             if key in self.__dict__:
@@ -12717,7 +12717,7 @@ _FAST_NUMBERS = (int, float)
 
 def _interpolate_gradient_styles(result, start, end, alpha):
     """Align vector paint RGBA rows before interpolation, without changing geometry."""
-    if not 0 < alpha < 1 or result.get('type') not in _GRADIENT_TYPES:
+    if not 0 < alpha < 1 or result.get('type') not in _STYLE_MORPH_TYPES:
         return
     for channel in ('fill', 'stroke', 'background_stroke'):
         color_key, scalar_key, stops_key = channel+'_color', channel+'_opacity', channel+'_opacities'

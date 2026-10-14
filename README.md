@@ -1726,3 +1726,14 @@ Community; the original row retains finite out-of-range opacity. Snapshot alpha
 stops preserve that distinction during FadeOut rather than collapsing both rows
 into one scalar. Explicit gradients remain unchanged. Stored-RGBA regeneration
 and sheen-reset parity are still open.
+
+
+Text, formula and numeric glyph construction now preserves all fill/stroke/background
+color and alpha stops, widths, sheen and raster references through indexing and
+creation animations. Glyph paints have independent lists. Style morphs interpolate
+these glyph channels with the same RGBA-row alignment used for vector paths. The
+`glyphstyle` gallery demonstrates styled writing, paint changes and final removal.
+The browser smoke includes a real MathJax rule and text changing from solid to
+gradient paint, with a halfway SVG-to-canvas pixel check. Glyph gradient endpoints
+(direction, measured family bounds and coordinate conversion) remain open, as do
+stored-RGBA/sheens and Cairo pixel parity.

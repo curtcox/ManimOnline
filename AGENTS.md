@@ -1362,3 +1362,11 @@ channels before writing when the receiver is also an endpoint. Keep relative
 opacity stops independent of scalar fade factors; exact persisted float RGBA
 and native sheen regeneration still require work. Browser smoke covers the
 manual updater-driven halfway gradient pixel in addition to style animations.
+
+
+Read `examples/glyph_style_scene.py` for gradient styles on Text, MathTex and
+DecimalNumber during writing and morphs. `_copy_glyph_paint` transfers all paint
+channels independently after glyph construction; Text constructors accept one
+color, so do not pass a post-construction color list back through them. Glyph
+style morphs share the vector RGBA-row interpolation; glyph gradient endpoints
+and transformed measured-family bounds still need coordinate conversion.

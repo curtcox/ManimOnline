@@ -2642,3 +2642,14 @@ the deployed site; deployed Chromium also passed the full manual-interpolation
 suite. Implementation commits 9c73665 and 79fc1bd passed CI and Pages deployment.
 Native persisted RGBA/sheens, glyph style morphs, sampled gradient-bound parity
 and pixel cameras remain unfinished.
+
+
+Text, formula and numeric glyph construction now preserves all fill/stroke/background
+color and alpha stops, widths, sheen and raster references through indexing and
+creation animations. Glyph paints have independent lists. Style morphs interpolate
+these glyph channels with the same RGBA-row alignment used for vector paths. The
+`glyphstyle` gallery demonstrates styled writing, paint changes and final removal.
+The browser smoke includes a real MathJax rule and text changing from solid to
+gradient paint, with a halfway SVG-to-canvas pixel check. Glyph gradient endpoints
+(direction, measured family bounds and coordinate conversion) remain open, as do
+stored-RGBA/sheens and Cairo pixel parity.

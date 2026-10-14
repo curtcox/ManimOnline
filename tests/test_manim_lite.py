@@ -9389,6 +9389,72 @@ self.play(value.animate.set_value(1),run_time=2,rate_func=linear)""")
         self.assertEqual(middle['fill_opacities'],[1,1])
         self.assertEqual(result['frames'][-1]['mobjects'][0]['fill_color'],[lite.PURE_RED,lite.PURE_BLUE])
 
+    def test_glyph_splitting_preserves_all_paint_channels_independently(self):
+        for make in (lambda: lite.Text('AB'),lambda: lite.DecimalNumber(12),
+                     lambda: lite.MathTex('ab'),lambda: lite.SingleStringMathTex('ab'),
+                     lambda: lite.MathTex('a','b')):
+            shape = make().set_color([lite.RED,lite.BLUE]).set_fill(opacity=[.2,.8])
+            shape.set_stroke([lite.GREEN,lite.WHITE],width=3,opacity=[.4,.9])
+            shape.set_background_stroke([lite.YELLOW,lite.PURPLE],width=8,opacity=[.3,.7])
+            shape.set_sheen(.2,direction=lite.RIGHT).shift(2*lite.UP).rotate(lite.PI/5)
+            control = make().shift(2*lite.UP).rotate(lite.PI/5)
+            lite._glyph_family(control)
+            before = (control.get_center(),control.get_width(),control.get_height())
+            lite._glyph_family(shape)
+            glyphs = [member for member in shape.get_family() if member._type in ('text','mathtex')]
+            self.assertGreaterEqual(len(glyphs),2)
+            for glyph in glyphs:
+                self.assertEqual(glyph.__dict__['fill_color'],[lite.RED,lite.BLUE])
+                self.assertEqual(glyph.fill_opacities,[.2,.8])
+                self.assertEqual(glyph.stroke_opacities,[.4,.9])
+                self.assertEqual(glyph.background_stroke_opacities,[.3,.7])
+                self.assertEqual(glyph.background_stroke_width,8)
+                self.assertEqual(glyph.sheen_factor,.2)
+                self.assertEqual(glyph.sheen_direction,lite.RIGHT)
+            glyphs[0].fill_opacities[0] = .6
+            self.assertEqual(glyphs[1].fill_opacities,[.2,.8])
+            self.assertEqual(shape.fill_opacities,[.2,.8])
+            self.assertPointAlmostEqual(shape.get_center(),before[0])
+            self.assertAlmostEqual(shape.get_width(),before[1])
+            self.assertAlmostEqual(shape.get_height(),before[2])
+
+    def test_text_and_formula_gradient_style_morphs_interpolate_all_rows(self):
+        result = render("""text = Text('AB').shift(UP)
+formula = MathTex('ab').shift(DOWN)
+self.add(text,formula)
+self.play(text.animate.set_fill([PURE_RED,PURE_BLUE],opacity=[.2,.8]).set_background_stroke([PURE_RED,PURE_BLUE],width=10,opacity=[.3,.9]),
+          formula.animate.set_fill([PURE_RED,PURE_BLUE],opacity=[.2,.8]).set_background_stroke([PURE_RED,PURE_BLUE],width=10,opacity=[.3,.9]),
+          run_time=2,rate_func=linear)""")
+        def leaves(node):
+            return ([node] if node['type'] in ('text','mathtex') else []) + [leaf for child in node['children'] for leaf in leaves(child)]
+        for root in result['frames'][15]['mobjects']:
+            glyphs = leaves(root)
+            self.assertTrue(glyphs)
+            for glyph in glyphs:
+                self.assertEqual(glyph['fill_color'],['#ff8080','#8080ff'])
+                self.assertPointAlmostEqual(glyph['fill_opacities'],[.6,.9])
+                self.assertEqual(glyph['background_stroke_width'],5)
+                self.assertEqual(glyph['background_stroke_color'],['#800000','#000080'])
+                self.assertPointAlmostEqual(glyph['background_stroke_opacities'],[.65,.95])
+
+    def test_glyph_style_gallery_preserves_creation_paint_and_removes_labels(self):
+        result = json.loads(lite.render_scene((ROOT/'examples/glyph_style_scene.py').read_text()))
+        self.assertEqual(result['duration'],8)
+        def glyphs(node):
+            return ([node] if node['type'] in ('text','mathtex') else []) + [leaf for child in node['children'] for leaf in glyphs(child)]
+        created = [leaf for root in result['frames'][30]['mobjects'] for leaf in glyphs(root)]
+        self.assertGreater(len(created),10)
+        for leaf in created:
+            self.assertEqual([color.upper() for color in leaf['fill_color']],[lite.BLUE,lite.GREEN])
+            self.assertPointAlmostEqual(leaf['fill_opacities'],[.35,1])
+            self.assertEqual([color.upper() for color in leaf['background_stroke_color']],[lite.PURPLE,lite.WHITE])
+            self.assertPointAlmostEqual(leaf['background_stroke_opacities'],[.2,.7])
+        final_paint = [leaf for root in result['frames'][60]['mobjects'] for leaf in glyphs(root)]
+        for leaf in final_paint:
+            self.assertEqual([color.upper() for color in leaf['fill_color']],[lite.RED,lite.YELLOW])
+            self.assertPointAlmostEqual(leaf['fill_opacities'],[1,.4])
+        self.assertEqual(result['frames'][-1]['mobjects'],[])
+
     def test_gradient_opacity_getters_expose_first_rgba_row_to_scene_code(self):
         shape = lite.Square(fill_opacity=[.2,.8],stroke_opacity=[.4,.9])
         shape.set_background_stroke(lite.BLUE,opacity=[.3,.7])
