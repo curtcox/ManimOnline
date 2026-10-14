@@ -4929,7 +4929,7 @@ class Mobject:
         result['type'] = result.pop('_type')
         result['geometry_center'] = list(center)
         result['children'] = [child.to_dict() for child in self.children]
-        if result['type'] in _GRADIENT_TYPES and (self.sheen_factor or isinstance(self.fill_color, list) or
+        if result['type'] in _STYLE_MORPH_TYPES and (self.sheen_factor or isinstance(self.fill_color, list) or
                                                   isinstance(self.stroke_color, list) or isinstance(result.get('background_stroke_color'), list) or
                                                   any(key in result for key in ('fill_opacities', 'stroke_opacities',
                                                                                 'background_stroke_opacities'))):

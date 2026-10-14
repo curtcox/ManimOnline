@@ -10,6 +10,7 @@ class GlyphStyles(Scene):
         labels.set_fill([BLUE, GREEN], opacity=[.35, 1])
         labels.set_stroke(WHITE, width=.7, opacity=[.3, .8])
         labels.set_background_stroke([PURPLE, WHITE], width=8, opacity=[.2, .7])
+        labels.set_sheen_direction(UP)
         self.play(Write(title), Write(formula), Write(number), run_time=2)
         self.play(
             labels.animate.set_fill([RED, YELLOW], opacity=[1, .4])

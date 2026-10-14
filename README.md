@@ -1737,3 +1737,15 @@ The browser smoke includes a real MathJax rule and text changing from solid to
 gradient paint, with a halfway SVG-to-canvas pixel check. Glyph gradient endpoints
 (direction, measured family bounds and coordinate conversion) remain open, as do
 stored-RGBA/sheens and Cairo pixel parity.
+
+
+2D text, formula and numeric glyphs now serialize sheen/gradient endpoints from
+the current family bounds. SVG painting inverts the glyph's local transforms,
+including Text's Y flip, MathJax font scaling/ink centering, nested SVG transforms
+and general glyph matrices. Each formula primitive receives paint in its own
+coordinate system, and background strokes reuse the same conversion. Singular
+glyph maps fall back to object-bounding-box paint; collapsed geometry stays
+collapsed. The glyph-style gallery now uses vertical gradients, and the browser
+smoke checks a vertical MathJax rule with top/bottom exported pixels. Bounds still
+use rectangular glyph boxes, and sampled animation bounds, 3D glyph gradients,
+stored-RGBA/sheens and exact Cairo pixel parity remain open.

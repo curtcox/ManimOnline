@@ -9457,6 +9457,20 @@ self.play(text.animate.set_fill([PURE_RED,PURE_BLUE],opacity=[.2,.8]).set_backgr
                 self.assertIs(glyph.get_background_image(),image)
                 self.assertEqual(glyph.to_dict()['raster_background'],uri)
 
+    def test_glyph_gradient_endpoints_follow_rotated_measured_bounds(self):
+        for shape in (lite.Text('AB'),lite.MathTex('ab'),lite.DecimalNumber(12)):
+            shape.set_fill([lite.RED,lite.BLUE],1).set_sheen_direction(lite.UP)
+            shape.shift(2*lite.RIGHT).rotate(lite.PI/4)
+            points = point_list(shape) if shape.has_points() else None
+            data = shape.to_dict()
+            ends = [shape._point_to_world(lite.Vector(point)) for point in data['gradient_points']]
+            center = shape.get_center()
+            half = shape.get_height()/2
+            self.assertPointAlmostEqual(ends[0],center-half*lite.UP)
+            self.assertPointAlmostEqual(ends[1],center+half*lite.UP)
+            self.assertEqual(shape.to_dict(),data)
+            if points is not None: self.assertEqual(point_list(shape),points)
+
     def test_glyph_style_gallery_preserves_creation_paint_and_removes_labels(self):
         result = json.loads(lite.render_scene((ROOT/'examples/glyph_style_scene.py').read_text()))
         self.assertEqual(result['duration'],8)

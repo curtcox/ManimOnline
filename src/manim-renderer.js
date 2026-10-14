@@ -3,6 +3,62 @@
  * Converts Manim scene output to SVG
  */
 
+function multiplyPaintMatrices(a, b) {
+  return [a[0]*b[0]+a[2]*b[1], a[1]*b[0]+a[3]*b[1],
+          a[0]*b[2]+a[2]*b[3], a[1]*b[2]+a[3]*b[3],
+          a[0]*b[4]+a[2]*b[5]+a[4], a[1]*b[4]+a[3]*b[5]+a[5]];
+}
+
+function svgPaintMatrix(value) {
+  let matrix = [1,0,0,1,0,0];
+  if (!value) return matrix;
+  const functions = /([a-zA-Z]+)\s*\(([^)]*)\)/g;
+  const number = /[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/gi;
+  let match, end = 0;
+  while ((match = functions.exec(value))) {
+    if (value.slice(end,match.index).replace(/[\s,]/g,'')) throw new Error('Invalid glyph transform');
+    const raw = match[2], args = (raw.match(number) || []).map(Number);
+    if (raw.replace(number,'').replace(/[\s,]/g,'') || !args.every(Number.isFinite)) throw new Error('Invalid glyph transform');
+    let part;
+    const [x,y] = args;
+    if (match[1] === 'matrix' && args.length === 6) part = args;
+    else if (match[1] === 'translate' && [1,2].includes(args.length)) part = [1,0,0,1,x,y ?? 0];
+    else if (match[1] === 'scale' && [1,2].includes(args.length)) part = [x,0,0,y ?? x,0,0];
+    else if (match[1] === 'rotate' && [1,3].includes(args.length)) {
+      const angle = (x % 360)*Math.PI/180, c = Math.cos(angle), s = Math.sin(angle);
+      part = [c,s,-s,c,0,0];
+      if (args.length === 3) part = multiplyPaintMatrices(multiplyPaintMatrices([1,0,0,1,y,args[2]],part),[1,0,0,1,-y,-args[2]]);
+    } else if (['skewX','skewY'].includes(match[1]) && args.length === 1) {
+      const slope = Math.tan((x % 180)*Math.PI/180);
+      part = match[1] === 'skewX' ? [1,0,slope,1,0,0] : [1,slope,0,1,0,0];
+    } else throw new Error('Unsupported glyph transform');
+    matrix = multiplyPaintMatrices(matrix,part);
+    if (!matrix.every(Number.isFinite)) throw new Error('Nonfinite glyph transform');
+    end = functions.lastIndex;
+  }
+  if (value.slice(end).replace(/[\s,]/g,'')) throw new Error('Invalid glyph transform');
+  return matrix;
+}
+
+function glyphPaintPoints(root, points, unitScale) {
+  const frames = new Map();
+  function visit(node, parent) {
+    const m = multiplyPaintMatrices(parent,svgPaintMatrix(node.getAttribute('transform')));
+    const determinant = m[0]*m[3]-m[1]*m[2];
+    if (determinant && Number.isFinite(determinant)) {
+      const local = points.map(([x,y]) => {
+        const dx = x*unitScale-m[4], dy = y*unitScale-m[5];
+        return [(m[3]*dx-m[2]*dy)/determinant/unitScale,
+                (m[0]*dy-m[1]*dx)/determinant/unitScale];
+      });
+      if (local.every(p=>p.every(Number.isFinite))) frames.set(node,local);
+    }
+    for (const child of node.children) visit(child,m);
+  }
+  visit(root,[1,0,0,1,0,0]);
+  return frames;
+}
+
 const ManimRenderer = {
   // SVG namespace
   SVG_NS: 'http://www.w3.org/2000/svg',
@@ -462,8 +518,24 @@ const ManimRenderer = {
         return null;
     }
 
+    if (element && (type === 'text' || type === 'mathtex') && Array.isArray(mobject.glyph_matrix) &&
+        mobject.glyph_matrix.length === 4 && mobject.glyph_matrix.every(Number.isFinite)) {
+      // A general local glyph map [[a, b], [c, d]] in the y-up scene frame (e.g. ApplyMatrix).
+      const [a, b, c, d] = mobject.glyph_matrix;
+      element.setAttribute('transform', `matrix(${a}, ${c}, ${b}, ${d}, 0, 0) ${element.getAttribute('transform') || ''}`.trim());
+    } else if (element && (type === 'text' || type === 'mathtex') && Array.isArray(mobject.glyph_stretch)) {
+      // Axis-aligned glyph stretching happens in the glyph's own frame.
+      const [sx, sy] = mobject.glyph_stretch;
+      if (Number.isFinite(sx) && Number.isFinite(sy)) {
+        element.setAttribute('transform', `scale(${sx}, ${sy}) ${element.getAttribute('transform') || ''}`.trim());
+      }
+    }
+
     let paintDefs = null;
-    const paint = (color, opacities) => {
+    const glyphPaint = element && ['text','mathtex'].includes(type) && Array.isArray(mobject.gradient_points) &&
+      mobject.gradient_points.length === 2 && mobject.gradient_points.every(p=>Array.isArray(p) && p.slice(0,2).length === 2 && p.slice(0,2).every(Number.isFinite))
+      ? glyphPaintPoints(element,mobject.gradient_points,this.UNIT_SCALE) : null;
+    const paint = (color, opacities, points = mobject.gradient_points) => {
       // Community draws color and opacity lists as gradients; make_even pairs their stops.
       const alphas = Array.isArray(opacities) && opacities.length > 1 && opacities.length <= 64 &&
         opacities.every(Number.isFinite) ? opacities : null;
@@ -486,7 +558,7 @@ const ManimRenderer = {
       const gradient = document.createElementNS(this.SVG_NS, 'linearGradient');
       const id = `manim-gradient-${this._gradientSerial = (this._gradientSerial || 0) + 1}`;
       gradient.setAttribute('id', id);
-      const ends = mobject.gradient_points;
+      const ends = points;
       if (Array.isArray(ends) && ends.length === 2 && ends.every(point => Array.isArray(point) &&
           Number.isFinite(point[0]) && Number.isFinite(point[1])) &&
           (ends[0][0] !== ends[1][0] || ends[0][1] !== ends[1][1])) {
@@ -516,14 +588,16 @@ const ManimRenderer = {
       element.setAttribute('opacity', mobject.opacity ?? 1);
       // Group styles live on each child, avoiding compounded group opacity.
       if (type !== 'vgroup') {
-        const fill = paint(mobject.fill_color ?? mobject.color ?? '#FFFFFF', mobject.fill_opacities);
-        const stroke = paint(mobject.stroke_color ?? mobject.color ?? '#FFFFFF', mobject.stroke_opacities);
+        const fill = glyphPaint ? null : paint(mobject.fill_color ?? mobject.color ?? '#FFFFFF', mobject.fill_opacities);
+        const stroke = glyphPaint ? null : paint(mobject.stroke_color ?? mobject.color ?? '#FFFFFF', mobject.stroke_opacities);
         for (const leaf of [element, ...element.querySelectorAll('*')]) {
-          if (leaf.getAttribute('fill') && leaf.getAttribute('fill') !== 'none') {
-            leaf.setAttribute('fill', fill);
+          const mathLeaf = glyphPaint && type === 'mathtex' && ['path','rect','line','polygon','polyline','circle','ellipse','text'].includes(leaf.localName);
+          const points = glyphPaint ? glyphPaint.get(leaf) || null : mobject.gradient_points;
+          if (mathLeaf || leaf.getAttribute('fill') && leaf.getAttribute('fill') !== 'none') {
+            leaf.setAttribute('fill', glyphPaint ? paint(mobject.fill_color ?? mobject.color ?? '#FFFFFF', mobject.fill_opacities, points) : fill);
           }
-          if (leaf.getAttribute('stroke')) {
-            leaf.setAttribute('stroke', stroke);
+          if (mathLeaf || leaf.getAttribute('stroke')) {
+            leaf.setAttribute('stroke', glyphPaint ? paint(mobject.stroke_color ?? mobject.color ?? '#FFFFFF', mobject.stroke_opacities, points) : stroke);
             leaf.setAttribute('stroke-opacity', mobject.stroke_opacity ?? 1);
             // Community's CapStyleType/LineJointType; AUTO (0) keeps the butt/miter defaults.
             const cap = { 1: 'round', 2: 'butt', 3: 'square' }[mobject.cap_style];
@@ -549,18 +623,6 @@ const ManimRenderer = {
       }
     }
 
-    if (element && (type === 'text' || type === 'mathtex') && Array.isArray(mobject.glyph_matrix) &&
-        mobject.glyph_matrix.length === 4 && mobject.glyph_matrix.every(Number.isFinite)) {
-      // A general local glyph map [[a, b], [c, d]] in the y-up scene frame (e.g. ApplyMatrix).
-      const [a, b, c, d] = mobject.glyph_matrix;
-      element.setAttribute('transform', `matrix(${a}, ${c}, ${b}, ${d}, 0, 0) ${element.getAttribute('transform') || ''}`.trim());
-    } else if (element && (type === 'text' || type === 'mathtex') && Array.isArray(mobject.glyph_stretch)) {
-      // Axis-aligned glyph stretching happens in the glyph's own frame.
-      const [sx, sy] = mobject.glyph_stretch;
-      if (Number.isFinite(sx) && Number.isFinite(sy)) {
-        element.setAttribute('transform', `scale(${sx}, ${sy}) ${element.getAttribute('transform') || ''}`.trim());
-      }
-    }
 
     if (element && mobject.draw_progress !== undefined) {
       const progress = Math.max(0, Math.min(1, mobject.draw_progress));
@@ -577,7 +639,8 @@ const ManimRenderer = {
     if (element && type !== 'vgroup' && mobject.background_stroke_width > 0) {
       // Community's background stroke is painted behind the fill: a stroke-only copy first.
       const back = element.cloneNode(true);
-      const backPaint = paint(mobject.background_stroke_color || '#000000', mobject.background_stroke_opacities);
+      const backPoints = glyphPaint ? glyphPaintPoints(back,mobject.gradient_points,this.UNIT_SCALE) : null;
+      const backPaint = backPoints ? null : paint(mobject.background_stroke_color || '#000000', mobject.background_stroke_opacities);
       const scale = this._strokeUnit === undefined ? 1 : Math.abs(inheritedScale * (mobject.geometry_scale ?? 1)) *
         (type === 'mathtex' ? (mobject.font_size || 48) / 96 * this.UNIT_SCALE / 1000 : 1);
       const width = this._strokeUnit === undefined ? mobject.background_stroke_width :
@@ -585,7 +648,8 @@ const ManimRenderer = {
       for (const leaf of [back, ...back.querySelectorAll('*')]) {
         if (leaf.localName === 'g' || leaf.localName === 'defs') continue;
         leaf.setAttribute('fill', 'none');
-        leaf.setAttribute('stroke', backPaint);
+        leaf.setAttribute('stroke', backPoints ? paint(mobject.background_stroke_color || '#000000', mobject.background_stroke_opacities,
+                                                      backPoints.get(leaf) || null) : backPaint);
         leaf.setAttribute('stroke-width', width);
         leaf.setAttribute('stroke-opacity', mobject.background_stroke_opacity ?? 1);
         leaf.setAttribute('stroke-linejoin', 'round');

@@ -1370,3 +1370,11 @@ channels independently after glyph construction; Text constructors accept one
 color, so do not pass a post-construction color list back through them. Glyph
 style morphs share the vector RGBA-row interpolation; glyph gradient endpoints
 and transformed measured-family bounds still need coordinate conversion.
+
+
+Glyph gradients now use `_gradient_paint` for 2D endpoints. The SVG renderer
+inverts all own/nested glyph transforms for each paint primitive; preserve this
+for both foreground and cloned background strokes. Glyph matrices apply before
+paint coordinate conversion. Frame coordinates remain in scene units; font
+scaling/ink centering belongs in the renderer. Rectangular glyph bounds, animated
+bounds and 3D glyph gradient/shading parity remain open.

@@ -18,6 +18,43 @@ class Element {
 }
 global.document = { createElementNS: (_namespace, tag) => new Element(tag) };
 
+test('text gradients undo glyph flips and linear maps before painting', () => {
+  const data = {type:'text',text:'AB',fill_color:['#FF0000','#0000FF'],stroke_width:0,
+                gradient_points:[[0,-1],[0,1]]};
+  const gradient = renderer.renderMobject(data).querySelectorAll().find(e=>e.tag==='linearGradient');
+  assert.deepEqual(['x1','y1','x2','y2'].map(k=>Number(gradient.getAttribute(k))),[0,50,0,-50]);
+  const mapped = renderer.renderMobject({...data,glyph_matrix:[2,1,0,1]}).querySelectorAll().find(e=>e.tag==='linearGradient');
+  assert.deepEqual(['x1','y1','x2','y2'].map(k=>Number(mapped.getAttribute(k))),[25,50,-25,-50]);
+  const collapsed = renderer.renderMobject({...data,glyph_stretch:[0,1]}).querySelectorAll().find(e=>e.tag==='linearGradient');
+  assert.equal(collapsed.getAttribute('gradientUnits'),null);
+});
+
+test('formula gradients invert nested glyph coordinates for fill and background stroke', () => {
+  const path = new Element('path');
+  path.setAttribute('d','M 0 0 L 1000 0');
+  path.setAttribute('transform','translate(300,-200) scale(2,.5)');
+  path.hasAttribute = name=>path.getAttribute(name)!==null;
+  global.DOMParser = class { parseFromString() { return {documentElement:{children:[path]}}; } };
+  try {
+    const glyphs = new Map([['x',{svg:'<svg/>',viewBox:[0,-700,1000,900]}]]);
+    const element = renderer.renderMobject({type:'mathtex',text:'x',font_size:48,
+      fill_color:['#FF0000','#0000FF'],stroke_width:0,gradient_points:[[0,-1],[0,1]],
+      background_stroke_color:['#00FF00','#FFFFFF'],background_stroke_width:5},glyphs);
+    const nodes = element.querySelectorAll();
+    const paths = nodes.filter(e=>e.tag==='path');
+    const server = paint=>nodes.find(e=>e.getAttribute('id')===paint.slice(5,-1));
+    const foreground = paths.find(e=>e.getAttribute('fill')!=='none');
+    const background = paths.find(e=>e.getAttribute('fill')==='none');
+    for (const gradient of [server(foreground.getAttribute('fill')),server(background.getAttribute('stroke'))]) {
+      const actual = ['x1','y1','x2','y2'].map(k=>Number(gradient.getAttribute(k)));
+      [100,3900,100,-4100].forEach((value,index)=>assert.ok(Math.abs(actual[index]-value)<1e-8));
+    }
+    path.setAttribute('transform','translate(1px)');
+    assert.throws(()=>renderer.renderMobject({type:'mathtex',text:'x',fill_color:['#FF0000','#0000FF'],
+                                            gradient_points:[[0,0],[1,1]]},glyphs),/Invalid glyph transform/);
+  } finally { delete global.DOMParser; }
+});
+
 test('disconnected cubic contours use separate moves and close individually', () => {
   const path = renderer.renderMobject({type:'bezierpath',curves:[
     [[0,0],[1,0],[1,1],[0,0]],

@@ -590,3 +590,15 @@ scene. The deployed `glyphstyle` gallery drew 38 text leaves, 14 formula paths a
 78 gradient definitions at three seconds, with no error and no glyph geometry at
 the end. Implementation commit 0054a00 passed Pages deployment. Glyph gradient
 endpoints, exact stored-RGBA/sheens and Cairo pixel parity remain open.
+
+
+2D text, formula and numeric glyphs now serialize sheen/gradient endpoints from
+the current family bounds. SVG painting inverts the glyph's local transforms,
+including Text's Y flip, MathJax font scaling/ink centering, nested SVG transforms
+and general glyph matrices. Each formula primitive receives paint in its own
+coordinate system, and background strokes reuse the same conversion. Singular
+glyph maps fall back to object-bounding-box paint; collapsed geometry stays
+collapsed. The glyph-style gallery now uses vertical gradients, and the browser
+smoke checks a vertical MathJax rule with top/bottom exported pixels. Bounds still
+use rectangular glyph boxes, and sampled animation bounds, 3D glyph gradients,
+stored-RGBA/sheens and exact Cairo pixel parity remain open.

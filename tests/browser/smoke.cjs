@@ -152,6 +152,20 @@ const GLYPH_STYLE_MORPH = [
   '        self.play(formula.animate.set_fill([PURE_RED,PURE_BLUE],1),text.animate.set_fill([PURE_RED,PURE_BLUE],1),run_time=2,rate_func=linear)',
 ].join('\n');
 
+const GLYPH_GRADIENT = [
+  'from manim import *',
+  'config.pixel_width = 80',
+  'config.pixel_height = 80',
+  'config.frame_width = 8',
+  'config.frame_height = 8',
+  'class GlyphGradient(Scene):',
+  '    def construct(self):',
+  '        formula = MathTex(r"\\rule{8em}{8em}",font_size=96)',
+  '        formula.set_fill([PURE_RED,PURE_BLUE],1).set_sheen_direction(UP)',
+  '        self.add(formula)',
+  '        self.wait(.2)',
+].join('\n');
+
 async function open(browser, source) {
   const page = await browser.newPage();
   const errors = [];
@@ -259,11 +273,14 @@ async function renderManim(browser, source, verifyRaster = false) {
       const glyph = await checkManim(browser, GLYPH_STYLE_MORPH, 'morph');
       const [gr,gg,gb,ga] = glyph.rasterPixels;
       if (!(gr>=188 && gr<=196 && gg>=126 && gg<=130 && gb>=188 && gb<=196 && ga===255)) throw new Error('Glyph style morph pixels: '+JSON.stringify(glyph.rasterPixels));
+      const direction = await checkManim(browser, GLYPH_GRADIENT, 'nested');
+      const [dr0,dg0,db0,da0,dr1,dg1,db1,da1] = direction.rasterPixels;
+      if (!(db0>dr0+40 && dr1>db1+40 && dg0===0 && dg1===0 && da0===255 && da1===255)) throw new Error('Glyph gradient direction pixels: '+JSON.stringify(direction.rasterPixels));
       const depth = await checkManim(browser, THREE_D).catch(error => { throw new Error('3D scene: ' + error.message); });
       console.log(name + ': DOT ok; Manim ' + manim.frames + ' frames, ' + manim.paths +
                   ' shapes; NumPy scene ' + numpy.frames + ' frames, ' + numpy.paths +
                   ' shapes; 3D scene ' + depth.frames + ' frames, ' + depth.paths +
-                  ' shapes; field image ' + fieldImage.frames + ' frames, ' + fieldImage.images + ' image; raster paint/export and halfway gradient-fade and sheen-fade and nested gradient and style-morph and manual interpolation and glyph-style pixels ok; video encoders ' + JSON.stringify(manim.codecs));
+                  ' shapes; field image ' + fieldImage.frames + ' frames, ' + fieldImage.images + ' image; raster paint/export and halfway gradient-fade and sheen-fade and nested gradient and style-morph and manual interpolation and glyph-style and glyph-direction pixels ok; video encoders ' + JSON.stringify(manim.codecs));
     } catch (error) {
       failed = true;
       console.log(name + ': FAILED ' + error.message);
