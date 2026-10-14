@@ -2539,3 +2539,14 @@ longer gradients retain their first two normalized rows. Fill, stroke and
 background-stroke opacity remain independent. Cube face shading is checked against
 the Python camera's independent lighting calculation. Exact Cairo antialiasing
 and byte-level raster arithmetic remain open.
+
+
+Verification (2026-10-14, spatial projection and two-corner lighting): all 726
+Python tests and 124 JavaScript tests passed in CI. The bundled local Python
+suite passed with one Pygments skip. Local Chromium and WebKit passed the first
+spatial-gradient smoke checks; WebKit passed the subsequent two-corner update.
+CI passed DOT, Manim, NumPy, 3D and raster export checks in all three engines.
+The published eight-second gallery showed both gradient panels at four seconds,
+removed all path geometry at the end, and switched to a three-node DOT graph.
+A separate published scene also displayed a valid shaded background-stroke
+paint server. SVG rasterization returned a colored pixel inside the panel.
