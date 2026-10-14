@@ -2273,6 +2273,14 @@ class AnimationApiTests(unittest.TestCase):
             's = S(); s.render(); result = s.out\n'),
             [[2.0, -1.85, 0.0], [2.0, -1.85, 0.0]])
 
+    def test_vectorized_points_fit_by_their_points_but_report_artificial_sizes(self):
+        self.assertEqual(scene_values(
+            'v = VectorizedPoint(); v.set_points_as_corners([LEFT, UP, RIGHT])\n'
+            'v.replace(Square().shift(RIGHT * 3), dim_to_match=1)\n'
+            'w = VectorizedPoint(UP).scale_to_fit_height(2)\n'
+            'result = [v.get_corner(DL), v.get_corner(UR), w.get_center(), v.height, v.length_over_dim(1)]\n'),
+            [[1.0, -1.0, 0.0], [5.0, 1.0, 0.0], [0.0, 1.0, 0.0], 0.01, 2.0])
+
     def test_scaling_a_family_moves_its_collapsed_members(self):
         self.assertEqual(scene_values(
             'o = Circle().add(Line(ORIGIN, RIGHT).scale(0)); o.scale(0.3)\n'

@@ -1272,3 +1272,6 @@ align_data pads that copy, as in Community; the target itself is then left uncha
 TransformMatching root that is itself a matched piece hosts the other pieces' samples (empty path).
 The childless scale(0) bake only runs on the collapsing call itself; later scales of collapsed
 members keep their pose.
+VectorizedPoint reports Community's artificial width/height, but length_over_dim (rescale_to_fit,
+replace, FadeTransformPieces ghosts) measures its points, as Community does. `_transform_plan`
+reads missing snapshot `children` as empty.

@@ -18548,6 +18548,11 @@ class VectorizedPoint(VMobject):
     def get_height(self):
         return self.artificial_height
 
+    def length_over_dim(self, dim):
+        # Community measures the points here (rescale_to_fit, replace); only width/height are artificial.
+        self._fit_dimension(dim)
+        return VMobject.get_width(self) if dim == 0 else VMobject.get_height(self) if dim == 1 else self.get_depth()
+
     def get_location(self):
         return self.get_center()
 
