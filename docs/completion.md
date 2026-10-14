@@ -539,3 +539,13 @@ Vector style morphs align RGBA row counts and interpolate colors/alpha continuou
 new background widths interpolate from zero. Public opacity getters expose the
 first RGBA row. Midpoint frame and browser pixel checks cover solid-to-gradient
 changes. Glyph style morphs and exact stored-RGBA/quantization parity remain open.
+
+
+Manual VMobject `interpolate_color` now blends every fill, stroke and background
+stroke RGBA row, both stroke widths and sheen metadata. `align_rgbas` stretches
+the shorter channel by repeating rows, preserving geometry and child identities.
+Interpolation reads endpoint channels before mutation, so the receiver can also
+be an endpoint; unequal rows align without mutating the sources. This is a Lite
+extension to Community's prealigned-array requirement. RGB rows still pass through
+hex storage, and native stored-RGBA/sheen reset parity remains open. The browser
+smoke suite samples an updater-driven manual color interpolation halfway through.

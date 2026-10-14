@@ -125,6 +125,15 @@ const STYLE_MORPH = [
   '        self.play(box.animate.match_style(template),run_time=2,rate_func=linear)',
 ].join('\n');
 
+const MANUAL_STYLE_MORPH = STYLE_MORPH.replace(
+  '        self.play(box.animate.match_style(template),run_time=2,rate_func=linear)',
+  [
+    '        start = box.copy().set_sheen_direction(RIGHT)',
+    '        value = ValueTracker(0)',
+    '        box.add_updater(lambda mob: mob.interpolate_color(start,template,value.get_value()))',
+    '        self.play(value.animate.set_value(1),run_time=2,rate_func=linear)',
+  ].join('\n'));
+
 async function open(browser, source) {
   const page = await browser.newPage();
   const errors = [];
@@ -215,11 +224,14 @@ async function checkManim(browser, source, verifyRaster = false) {
       const morph = await checkManim(browser, STYLE_MORPH, 'morph');
       const [mr,mg,mb,ma] = morph.rasterPixels;
       if (!(mr>=188 && mr<=196 && mg>=126 && mg<=130 && mb>=188 && mb<=196 && ma===255)) throw new Error('Style morph pixels: '+JSON.stringify(morph.rasterPixels));
+      const manual = await checkManim(browser, MANUAL_STYLE_MORPH, 'morph');
+      const [cr,cg,cb,ca] = manual.rasterPixels;
+      if (!(cr>=188 && cr<=196 && cg>=125 && cg<=129 && cb>=188 && cb<=196 && ca===255)) throw new Error('Manual style interpolation pixels: '+JSON.stringify(manual.rasterPixels));
       const depth = await checkManim(browser, THREE_D).catch(error => { throw new Error('3D scene: ' + error.message); });
       console.log(name + ': DOT ok; Manim ' + manim.frames + ' frames, ' + manim.paths +
                   ' shapes; NumPy scene ' + numpy.frames + ' frames, ' + numpy.paths +
                   ' shapes; 3D scene ' + depth.frames + ' frames, ' + depth.paths +
-                  ' shapes; field image ' + fieldImage.frames + ' frames, ' + fieldImage.images + ' image; raster paint/export and halfway gradient-fade and nested gradient and style-morph pixels ok; video encoders ' + JSON.stringify(manim.codecs));
+                  ' shapes; field image ' + fieldImage.frames + ' frames, ' + fieldImage.images + ' image; raster paint/export and halfway gradient-fade and nested gradient and style-morph and manual interpolation pixels ok; video encoders ' + JSON.stringify(manim.codecs));
     } catch (error) {
       failed = true;
       console.log(name + ': FAILED ' + error.message);

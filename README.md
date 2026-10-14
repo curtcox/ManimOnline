@@ -1709,3 +1709,13 @@ opacity getters read the first RGBA row while internal scalar channels remain
 independent of stops. Browser pixel checks cover the halfway solid-to-gradient
 color transition. Glyph style morphs, exact float-to-hex quantization and sampled
 gradient-bound parity remain open.
+
+
+Manual VMobject `interpolate_color` now blends every fill, stroke and background
+stroke RGBA row, both stroke widths and sheen metadata. `align_rgbas` stretches
+the shorter channel by repeating rows, preserving geometry and child identities.
+Interpolation reads endpoint channels before mutation, so the receiver can also
+be an endpoint; unequal rows align without mutating the sources. This is a Lite
+extension to Community's prealigned-array requirement. RGB rows still pass through
+hex storage, and native stored-RGBA/sheen reset parity remains open. The browser
+smoke suite samples an updater-driven manual color interpolation halfway through.

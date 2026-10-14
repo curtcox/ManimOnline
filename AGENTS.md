@@ -1354,3 +1354,11 @@ channel's color/alpha counts and the two endpoints' row counts with make_even.
 Do not scale alpha twice or mutate input snapshots; skip unchanged paint arrays
 so pooling stays effective. Scene opacity getters return the first RGBA alpha;
 internal scalar fields stay separate. Glyph-style and quantization parity remain open.
+
+
+Manual style APIs (`align_rgbas`, `interpolate_color`) operate on all three
+RGBA paint channels without world-coordinate pose conversion. Read all source
+channels before writing when the receiver is also an endpoint. Keep relative
+opacity stops independent of scalar fade factors; exact persisted float RGBA
+and native sheen regeneration still require work. Browser smoke covers the
+manual updater-driven halfway gradient pixel in addition to style animations.

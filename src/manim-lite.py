@@ -3768,7 +3768,8 @@ class Mobject:
     def generate_rgbas_array(self, color, opacity):
         """Community's RGBA rows for a color/opacity (or gradient) pair, with a sheen stop."""
         colors = [c for c in (color if isinstance(color, (list, tuple)) and not isinstance(color, str) else [color])]
-        opacities = list(opacity) if isinstance(opacity, (list, tuple)) or hasattr(opacity, 'tolist') else [opacity]
+        opacity = opacity.tolist() if hasattr(opacity, 'tolist') else opacity
+        opacities = list(opacity) if isinstance(opacity, (list, tuple)) else [opacity]
         colors, opacities = make_even([BLACK if c is None else c for c in colors],
                                       [0 if o is None else o for o in opacities])
         rgbas = [list(ManimColor(c)._rgba[:3]) + [float(o)] for c, o in zip(colors, opacities)]
@@ -3835,6 +3836,14 @@ class Mobject:
         return self
 
     def align_rgbas(self, vmobject):
+        if not isinstance(vmobject, VMobject):
+            raise TypeError('align_rgbas expects a VMobject')
+        for channel in ('fill', 'stroke', 'background_stroke'):
+            first, second = self._channel_rgbas(channel), vmobject._channel_rgbas(channel)
+            if len(first) < len(second):
+                self._set_channel_rgbas(channel, stretch_array_to_length(first, len(second)))
+            elif len(second) < len(first):
+                vmobject._set_channel_rgbas(channel, stretch_array_to_length(second, len(first)))
         return self
 
     def get_style(self, simple=False):
@@ -4743,6 +4752,29 @@ class Mobject:
         return self.interpolate_color(mobject1, mobject2, alpha)
 
     def interpolate_color(self, mobject1, mobject2, alpha):
+        NumberLine._real(alpha, 'Interpolation alpha')
+        if not isinstance(mobject1, Mobject) or not isinstance(mobject2, Mobject):
+            raise TypeError('interpolate_color expects two mobjects')
+        if isinstance(self, VMobject) and isinstance(mobject1, VMobject) and isinstance(mobject2, VMobject):
+            # Read every channel before writing: the receiver may also be an endpoint.
+            channels = {}
+            for channel in ('fill', 'stroke', 'background_stroke'):
+                if alpha == 1:
+                    channels[channel] = [[float(v) for v in row] for row in mobject2._channel_rgbas(channel)]
+                    continue
+                first, second = make_even(mobject1._channel_rgbas(channel), mobject2._channel_rgbas(channel))
+                channels[channel] = [[float(a)+(float(b)-float(a))*alpha for a,b in zip(left,right)]
+                                     for left,right in zip(first,second)]
+            values = {}
+            for name, default in (('stroke_width',4), ('background_stroke_width',0), ('sheen_factor',0)):
+                first, second = getattr(mobject1,name,default), getattr(mobject2,name,default)
+                values[name] = first+(second-first)*alpha
+            values['sheen_direction'] = interpolate(list(mobject1.sheen_direction), list(mobject2.sheen_direction), alpha)
+            self.__dict__.update(values)
+            for channel, rows in channels.items():
+                self._set_channel_rgbas(channel, rows)
+            self.color = self.fill_color if any(row[3] for row in channels['fill']) else self.stroke_color
+            return self
         def first(color):
             return color[0] if isinstance(color, list) else color
         def mix(name):
@@ -27603,7 +27635,8 @@ def register_font(font_file):
 
 
 _STYLE_PREFIXES = ('set_color', 'set_fill', 'set_stroke', 'set_opacity', 'set_style', 'set_sheen',
-                   'get_color', 'get_fill', 'get_stroke', 'get_opacity', 'match_style', 'set_z_index')
+                   'get_color', 'get_fill', 'get_stroke', 'get_opacity', 'match_style', 'set_z_index',
+                   'align_rgbas', 'interpolate_color')
 # Scene calls that edit a path's own points: a tipped path's shaft is frozen at its cut first.
 _OWN_POINT_EDITS = frozenset(('add_line_to', 'add_points_as_corners', 'add_quadratic_bezier_curve_to',
                               'add_cubic_bezier_curve_to', 'add_cubic_bezier_curves', 'add_smooth_curve_to',

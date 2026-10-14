@@ -9294,6 +9294,81 @@ self.play(shape.animate.match_style(target),run_time=2,rate_func=linear)""")
         colored.pop('fill_opacities')
         self.assertEqual(lite.interpolate(empty_color,colored,.5)['fill_color'],['#800000','#000080'])
 
+    def test_align_rgbas_repeats_rows_without_changing_geometry_or_children(self):
+        first = lite.Square(fill_color=[lite.RED,lite.BLUE],fill_opacity=[.2,.8])
+        second = lite.Circle(fill_color=[lite.GREEN,lite.WHITE,lite.YELLOW],fill_opacity=[.1,.5,1])
+        first.set_background_stroke(lite.RED,opacity=.4)
+        second.set_background_stroke([lite.BLUE,lite.WHITE],opacity=[.3,.9])
+        points = [point_list(first),point_list(second)]
+        children = [first.children[:],second.children[:]]
+        expected = [list(first.fill_rgbas[0]),list(first.fill_rgbas[0]),list(first.fill_rgbas[1])]
+        self.assertIs(first.align_rgbas(second),first)
+        for row, target in zip(first.fill_rgbas,expected): self.assertPointAlmostEqual(row,target)
+        self.assertEqual(len(first.background_stroke_rgbas),2)
+        self.assertEqual([point_list(first),point_list(second)],points)
+        self.assertEqual([first.children,second.children],children)
+        before = [first.to_dict(),second.to_dict()]
+        first.align_rgbas(second)
+        self.assertEqual([first.to_dict(),second.to_dict()],before)
+        with self.assertRaises(TypeError): first.align_rgbas(lite.Mobject())
+
+    @unittest.skipUnless(HAS_NUMPY, 'NumPy unavailable')
+    def test_rgba_generation_accepts_numpy_scalar_opacity(self):
+        import numpy as np
+        shape = lite.Square(fill_opacity=np.float64(.4))
+        self.assertAlmostEqual(shape.get_fill_opacity(),.4)
+        rows = shape.generate_rgbas_array(lite.PURE_RED,np.array(.6))
+        self.assertPointAlmostEqual(rows[0],[1,0,0,.6])
+
+    def test_manual_color_interpolation_preserves_gradient_and_background_channels(self):
+        first = lite.Square(fill_color=[lite.PURE_RED,lite.PURE_BLUE],fill_opacity=[.2,.8],
+                            stroke_color=lite.BLACK,stroke_width=2,sheen_direction=lite.RIGHT)
+        second = lite.Circle(fill_color=[lite.BLACK,lite.WHITE,lite.PURE_GREEN],fill_opacity=[.1,.5,1],
+                             stroke_color=lite.WHITE,stroke_width=8,sheen_direction=lite.UP)
+        first.set_background_stroke(lite.PURE_RED,width=4,opacity=.2)
+        second.set_background_stroke([lite.PURE_BLUE,lite.WHITE],width=12,opacity=[.4,1])
+        receiver = lite.Triangle().shift(2*lite.LEFT)
+        points, sources = point_list(receiver), [first.to_dict(),second.to_dict()]
+        receiver.interpolate_color(first,second,.5)
+        self.assertEqual(list(receiver.get_fill_colors()), ['#7F0000','#FF7F7F','#007F7F'])
+        self.assertPointAlmostEqual(receiver.get_fill_opacities(),[.15,.35,.9])
+        self.assertEqual(list(receiver.get_stroke_colors(background=True)),['#7F007F','#FF7F7F'])
+        self.assertPointAlmostEqual(receiver.get_stroke_opacities(True),[.3,.6])
+        self.assertEqual((receiver.stroke_width,receiver.background_stroke_width),(5,8))
+        self.assertPointAlmostEqual(receiver.sheen_direction,[.5,.5,0])
+        self.assertEqual(point_list(receiver),points)
+        self.assertEqual([first.to_dict(),second.to_dict()],sources)
+        receiver.interpolate_color(first,second,1)
+        for channel in ('fill','stroke','background_stroke'):
+            for row,target in zip(receiver._channel_rgbas(channel),second._channel_rgbas(channel)):
+                self.assertPointAlmostEqual(row,target)
+        # Reading all channels first keeps in-place interpolation consistent.
+        first.interpolate_color(first,second,.5)
+        self.assertEqual(list(first.get_fill_colors()),['#7F0000','#FF7F7F','#007F7F'])
+        solid = lite.Circle(fill_color=lite.PURE_BLUE,fill_opacity=.7)
+        receiver.interpolate_color(first,solid,1)
+        self.assertEqual(len(receiver.fill_rgbas),1)
+        self.assertPointAlmostEqual(receiver.fill_rgbas[0],[0,0,1,.7])
+        solid.set_fill(lite.PURE_RED)
+        self.assertEqual(list(receiver.get_fill_colors()),[lite.PURE_BLUE])
+        before = receiver.to_dict()
+        with self.assertRaises(ValueError): receiver.interpolate_color(first,second,float('nan'))
+        self.assertEqual(receiver.to_dict(),before)
+
+    def test_manual_color_interpolation_runs_during_sampled_updaters(self):
+        result = render("""start = Rectangle(width=8,height=4,fill_color=WHITE,fill_opacity=1,stroke_width=0)
+end = start.copy().set_fill([PURE_RED,PURE_BLUE],1).set_sheen_direction(RIGHT)
+start.set_sheen_direction(RIGHT)
+box = start.copy()
+value = ValueTracker(0)
+box.add_updater(lambda mob: mob.interpolate_color(start,end,value.get_value()))
+self.add(box)
+self.play(value.animate.set_value(1),run_time=2,rate_func=linear)""")
+        middle = result['frames'][15]['mobjects'][0]
+        self.assertEqual(middle['fill_color'],['#FF7F7F','#7F7FFF'])
+        self.assertEqual(middle['fill_opacities'],[1,1])
+        self.assertEqual(result['frames'][-1]['mobjects'][0]['fill_color'],[lite.PURE_RED,lite.PURE_BLUE])
+
     def test_gradient_opacity_getters_expose_first_rgba_row_to_scene_code(self):
         shape = lite.Square(fill_opacity=[.2,.8],stroke_opacity=[.4,.9])
         shape.set_background_stroke(lite.BLUE,opacity=[.3,.7])
