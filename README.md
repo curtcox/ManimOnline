@@ -1591,7 +1591,7 @@ The **3D axes, surfaces and solids** example covers `ThreeDScene` (`set_camera_o
 `move_camera`, ambient rotation, fixed-in-frame titles), `ThreeDAxes` with `plot_surface`
 colorscales and 3D `plot_parametric_curve`, and the solids `Sphere`, `Cube`, `Torus`,
 `Cylinder`, `Cone`, `Line3D` and `Arrow3D`. `Rotate` accepts any axis. Frames carry
-world-space geometry and the renderer applies Community's projection, start-corner shading
+world-space geometry and the renderer applies Community's projection, two-corner shading
 and depth sorting, so camera moves are cheap; text is a planar object turned and foreshortened by the camera, as in Community (fixed-in-frame and fixed-orientation text face the camera).
 
 `MathTex` and `Tex` now follow Manim 0.22's part rules: parts are the string
@@ -1663,3 +1663,11 @@ and fixed-orientation handling. Endpoints stay independent of pooled `rigid3d`
 geometry, so animation cannot apply the same pose twice. Sheen direction setters
 accept finite XYZ vectors and rotation supports any nonzero finite axis. Gradient
 bounds include vector-family anchors; text-child bounds remain approximate.
+
+
+Shaded 3D paths now receive separate start/end lighting colors, using Community's
+corner normals and two-row RGBA rule. A single color produces two shaded stops;
+longer gradients retain their first two normalized rows. Fill, stroke and
+background-stroke opacity remain independent. Cube face shading is checked against
+the Python camera's independent lighting calculation. Exact Cairo antialiasing
+and byte-level raster arithmetic remain open.

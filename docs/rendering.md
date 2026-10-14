@@ -2531,3 +2531,11 @@ and fixed-orientation handling. Endpoints stay independent of pooled `rigid3d`
 geometry, so animation cannot apply the same pose twice. Sheen direction setters
 accept finite XYZ vectors and rotation supports any nonzero finite axis. Gradient
 bounds include vector-family anchors; text-child bounds remain approximate.
+
+
+Shaded 3D paths now receive separate start/end lighting colors, using Community's
+corner normals and two-row RGBA rule. A single color produces two shaded stops;
+longer gradients retain their first two normalized rows. Fill, stroke and
+background-stroke opacity remain independent. Cube face shading is checked against
+the Python camera's independent lighting calculation. Exact Cairo antialiasing
+and byte-level raster arithmetic remain open.

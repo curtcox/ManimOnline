@@ -20,13 +20,13 @@ test('square anchors project like Community ThreeDCamera.project_points', () => 
   leaf.curves.slice(0, 4).forEach((curve, i) => close(curve[0], expected[i]));
 });
 
-test('shaded leaves sort by rotated depth and take start-corner shading', () => {
+test('shaded leaves sort by rotated depth and shade both corners', () => {
   const leaves = project('depth_shading');
   // Manim 0.22: at phi=0 the OUT square's depth key is larger, so it paints last.
-  assert.equal(leaves[1].fill_color, '#70DCF5');
+  assert.deepEqual(leaves[1].fill_color, ['#70DCF5','#7AE6FF']);
   assert.deepEqual(leaves.map(leaf => leaf.z_index), [0, 1]);
   // phi=180 views from below: the OUT square now paints first.
-  assert.equal(project('depth_flipped')[0].fill_color, '#70DCF5');
+  assert.deepEqual(project('depth_flipped')[0].fill_color, ['#70DCF5','#7AE6FF']);
 });
 
 test('cube faces paint in Community order with Community shading', () => {
@@ -34,7 +34,8 @@ test('cube faces paint in Community order with Community shading', () => {
   // Manim 0.22: get_mobjects_to_display order is LEFT, UP, IN, OUT, DOWN, RIGHT
   // and camera.get_fill_rgbas(face)[0] gives these shaded hexes.
   assert.deepEqual(leaves.map(leaf => leaf.fill_color),
-    ['#54C0D9', '#76E2FB', '#8BF7FF', '#49B5CE', '#4AB6CF', '#69D5EE']);
+    [['#54C0D9','#52BED7'], ['#76E2FB','#76E2FB'], ['#8BF7FF','#7DE9FF'],
+     ['#49B5CE','#49B5CE'], ['#4AB6CF','#4EBAD3'], ['#69D5EE','#67D3EC']]);
   assert.deepEqual(leaves.map(leaf => leaf.z_index), [0, 1, 2, 3, 4, 5]);
 });
 
@@ -123,4 +124,21 @@ test('world gradient endpoints follow perspective, fixed orientation and rigid g
   const [rigid] = renderer.projectThreeD([{...leaf,rigid3d:[1,0,0,0,1,0,0,0,1,4,0,0]}],three);
   assert.deepEqual(rigid.gradient_points,out.gradient_points);
   assert.notDeepEqual(rigid.curves,out.curves);
+});
+
+
+test('shading keeps only two native RGBA rows and preserves alpha channels', () => {
+  const frame = frames.depth_shading;
+  const source = {...frame.mobjects[0], fill_color:['#000000','#FFFFFF','#FF0000'],
+    fill_opacities:[.2,.6,.9], stroke_color:'#FFFFFF'};
+  const before = JSON.stringify(source);
+  const [leaf] = renderer.projectThreeD([source],frame.camera.three_d);
+  assert.equal(leaf.fill_color.length,2);
+  assert.deepEqual(leaf.fill_opacities,[.2,.6]);
+  assert.equal(leaf.stroke_color.length,2);
+  assert.equal(JSON.stringify(source),before);
+  const [disabled] = renderer.projectThreeD([source],{...frame.camera.three_d,shading:false});
+  assert.deepEqual(disabled.fill_color,source.fill_color);
+  const [fixed] = renderer.projectThreeD([{...source,_fixed_in_frame:true}],frame.camera.three_d);
+  assert.deepEqual(fixed.fill_color,leaf.fill_color);
 });

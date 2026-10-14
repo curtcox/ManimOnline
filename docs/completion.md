@@ -505,3 +505,9 @@ projection, including depth-directed sheen and shaded corner rules. Projected
 color placement has regression coverage for ordinary, fixed and pooled rigid
 geometry. Exact shading at both corners, glyph-family gradient bounds and Cairo
 pixel parity remain open.
+
+
+The renderer now shades both native corners and uses the native two-row RGBA
+selection for fill/stroke/background strokes. Solid shaded shapes also carry
+corner gradient endpoints. Cube lighting colors agree with the independent Python
+camera hook. Glyph-family bounds and exact Cairo pixel parity remain open.

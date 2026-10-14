@@ -175,16 +175,17 @@ const ManimRenderer = {
       const n = norm(cp);
       return cp.map(c => c / n);
     };
-    const shade = (color, points) => {
-      if (Array.isArray(color)) return color.map(item => shade(item, points));
+    const shade = (color, points, index) => {
       if (typeof color !== 'string' || !/^#[0-9a-f]{6}$/i.test(color)) return color;
       const count = points.length;
       let normal = [0, 1, 0];
       if (!(2 * Math.floor(count / 4) <= 2 || count < 4)) {
-        normal = unitNormal(sub(points[3], points[0]), sub(points[count - 4], points[0]));
+        const before = index > 2 ? index - 3 : count - 4;
+        const after = index < count - 3 ? index + 3 : 3;
+        normal = unitNormal(sub(points[after], points[index]), sub(points[before], points[index]));
         if (norm(normal) === 0) normal = [0, 1, 0];
       }
-      const toSun = normalize(sub(three.light_source, points[0]));
+      const toSun = normalize(sub(three.light_source, points[index]));
       const unit = normalize(normal);
       let light = 0.5 * (unit[0] * toSun[0] + unit[1] * toSun[1] + unit[2] * toSun[2]) ** 3;
       if (light < 0) light *= 0.5;
@@ -258,9 +259,19 @@ const ManimRenderer = {
           for (const key of ['start', 'end', 'shaft_start', 'shaft_end']) {
             if (point3(leaf[key])) out[key] = map(leaf[key]);
           }
-          if (three.shading && leaf.shade_in_3d && world.length) {
-            out.fill_color = shade(leaf.fill_color, world);
-            out.stroke_color = shade(leaf.stroke_color, world);
+        }
+        if (three.shading && leaf.shade_in_3d && world.length) {
+          const end = Math.floor((world.length - 1) / 6) * 3;
+          for (const channel of ['fill', 'stroke', 'background_stroke']) {
+            const color = leaf[`${channel}_color`];
+            if (!color) continue;
+            const colors = Array.isArray(color) ? color : [color];
+            const alphas = leaf[`${channel}_opacities`];
+            const count = Math.max(colors.length, Array.isArray(alphas) ? alphas.length : 1);
+            const selected = [0, count < 2 ? 0 : 1];
+            out[`${channel}_color`] = selected.map((i, j) =>
+              shade(colors[Math.floor(i * colors.length / count)], world, j ? end : 0));
+            if (Array.isArray(alphas)) out[`${channel}_opacities`] = selected.map(i => alphas[Math.floor(i * alphas.length / count)]);
           }
         }
         world = world.concat(leaf.vertices || []);
@@ -566,6 +577,7 @@ const ManimRenderer = {
     if (element && type !== 'vgroup' && mobject.background_stroke_width > 0) {
       // Community's background stroke is painted behind the fill: a stroke-only copy first.
       const back = element.cloneNode(true);
+      const backPaint = paint(mobject.background_stroke_color || '#000000', mobject.background_stroke_opacities);
       const scale = this._strokeUnit === undefined ? 1 : Math.abs(inheritedScale * (mobject.geometry_scale ?? 1)) *
         (type === 'mathtex' ? (mobject.font_size || 48) / 96 * this.UNIT_SCALE / 1000 : 1);
       const width = this._strokeUnit === undefined ? mobject.background_stroke_width :
@@ -573,7 +585,7 @@ const ManimRenderer = {
       for (const leaf of [back, ...back.querySelectorAll('*')]) {
         if (leaf.localName === 'g' || leaf.localName === 'defs') continue;
         leaf.setAttribute('fill', 'none');
-        leaf.setAttribute('stroke', mobject.background_stroke_color || '#000000');
+        leaf.setAttribute('stroke', backPaint);
         leaf.setAttribute('stroke-width', width);
         leaf.setAttribute('stroke-opacity', mobject.background_stroke_opacity ?? 1);
         leaf.setAttribute('stroke-linejoin', 'round');

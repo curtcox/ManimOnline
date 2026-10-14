@@ -1316,3 +1316,9 @@ corner gradients and camera motion. ThreeDScene path gradient_points are sampled
 world XYZ coordinates, independent of rigid3d base geometry; project them once
 with the same fixed/orientation policy as the path. Ordinary 2D snapshots retain
 local XY gradient endpoints. Glyph-child gradient bounds remain approximate.
+
+
+3D shading emits two corner-lit color stops, matching ThreeDCamera.modified_rgbas.
+Normalize color/opacity row counts before selecting the first two rows, retain
+alpha, and use corner-specific normals. Solid shaded paths need gradient endpoints
+too. Do not replace background-stroke paint servers with comma-joined color arrays.

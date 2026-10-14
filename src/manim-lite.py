@@ -19083,7 +19083,7 @@ class ThreeDScene(Scene):
                     spans.append(walk(child, world_map, node_opacity, group, map_key))
             else:
                 emit_leaf(node, world_map, node_opacity, group)
-            if kind in _PATH_TYPES and (node.get('sheen_factor') or
+            if kind in _PATH_TYPES and (node.get('shade_in_3d') or node.get('sheen_factor') or
                     any(isinstance(node.get(key), list) for key in ('fill_color', 'stroke_color')) or
                     'fill_opacities' in node or 'stroke_opacities' in node):
                 own = group[start]

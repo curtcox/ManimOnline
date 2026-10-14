@@ -3,11 +3,18 @@ const assert = require('node:assert/strict');
 const renderer = require('../src/manim-renderer.js');
 
 class Element {
-  constructor(tag) { this.tag = tag; this.attributes = {}; this.children = []; this.style = {}; }
+  constructor(tag) { this.tag = tag; this.localName = tag; this.attributes = {}; this.children = []; this.style = {}; }
   setAttribute(name, value) { this.attributes[name] = String(value); }
   getAttribute(name) { return this.attributes[name] ?? null; }
   appendChild(child) { this.children.push(child); }
   querySelectorAll() { return this.children.flatMap(child => [child, ...child.querySelectorAll()]); }
+  cloneNode(deep) {
+    const copy = new Element(this.tag);
+    copy.attributes = {...this.attributes};
+    copy.style = {...this.style};
+    if (deep) copy.children = this.children.map(child => child.cloneNode(true));
+    return copy;
+  }
 }
 global.document = { createElementNS: (_namespace, tag) => new Element(tag) };
 
@@ -595,4 +602,20 @@ test('raster path paint shares one screen-space filter and preserves posed geome
   for(const href of ['https://example.com/image.png','data:image/svg+xml,<svg/>','data:image/png;base64,!']) {
     assert.throws(()=>renderer.render({mobjects:[{type:'circle',radius:1,raster_background:href}]}),/background image/);
   }
+});
+
+
+test('background stroke gradients retain local paint definitions and alpha stops', () => {
+  const node = renderer.renderMobject({type:'bezierpath', curves:[[[0,0],[1,0],[1,1],[0,1]]],
+    fill_color:'#FFFFFF',fill_opacity:1,stroke_color:'#FFFFFF',stroke_width:1,
+    background_stroke_width:5,background_stroke_color:['#FF0000','#0000FF'],
+    background_stroke_opacities:[.2,.8],background_stroke_opacity:1,
+    gradient_points:[[0,0],[0,1]]});
+  const all = node.querySelectorAll();
+  const gradient = all.find(e=>e.tag==='linearGradient');
+  assert.deepEqual(gradient.children.map(e=>e.getAttribute('stop-opacity')),['0.2','0.8']);
+  const back = all.find(e=>e.tag==='path' && e.getAttribute('fill')==='none');
+  assert.equal(back.getAttribute('stroke'),`url(#${gradient.getAttribute('id')})`);
+  assert.equal(back.getAttribute('fill'),'none');
+  assert.equal(all.filter(e=>e.tag==='path').length,2);
 });
