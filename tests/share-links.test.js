@@ -5,12 +5,12 @@ const snapshot = ShareLinks.build({ url: 'https://example.test/ManimOnline/', co
 
 test('links preserve latest Unicode source, selected scene, and renderer without stale input parameters', () => {
   const code = 'from manim import *\n# π + λ\nclass Second(Scene): pass';
-  const links = ShareLinks.build({ url: 'https://example.test/ManimOnline/?raw=old&compressed=older&url=external&type=dot&scene=First&engine=neato&format=png#old', code, mode: 'manim', type: 'manim', scene: ' Second ', compress: text => { assert.equal(text, code); return 'encoded+text'; } });
+  const links = ShareLinks.build({ url: 'https://example.test/ManimOnline/?example=minimal&raw=old&compressed=older&url=external&type=dot&scene=First&engine=neato&format=png#old', code, mode: 'manim', type: 'manim', scene: ' Second ', compress: text => { assert.equal(text, code); return 'encoded+text'; } });
   const long = new URL(links.long), fallback = new URL(links.fallback);
   assert.equal(decodeURIComponent(long.hash.slice(1)), code);
   assert.equal(long.searchParams.get('scene'), 'Second');
   assert.equal(long.searchParams.get('type'), 'manim');
-  for (const key of ['raw', 'compressed', 'url', 'engine', 'format']) assert.equal(long.searchParams.has(key), false, key);
+  for (const key of ['example', 'raw', 'compressed', 'url', 'engine', 'format']) assert.equal(long.searchParams.has(key), false, key);
   assert.equal(fallback.searchParams.get('compressed'), 'encoded+text');
   assert.equal(fallback.hash, '');
   assert.ok(Object.isFrozen(links));

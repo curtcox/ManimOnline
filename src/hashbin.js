@@ -56,7 +56,7 @@ const HashBinDocuments = {
   link(url, cid) {
     if (!this.isCID(cid)) throw new Error('HashBin returned an invalid CID.');
     const link = new URL(url);
-    for (const key of ['raw', 'compressed', 'url', 'modlpos', 'code', 'state', 'error', 'error_description']) link.searchParams.delete(key);
+    for (const key of ['example', 'raw', 'compressed', 'url', 'modlpos', 'code', 'state', 'error', 'error_description']) link.searchParams.delete(key);
     link.hash = cid;
     return link.href;
   }

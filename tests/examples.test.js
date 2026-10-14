@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { createHash } = require('node:crypto');
 const { ExampleCatalog, ExampleLoader } = require('../src/examples.js');
 
 function deferred() {
@@ -18,6 +19,25 @@ test('catalog points only to shipped local examples with unique IDs', () => {
     assert.match(example.path, /^examples\/[a-z_]+\.(py|dot|modl)$/);
     const source = fs.readFileSync(path.join(__dirname, '..', example.path), 'utf8');
     assert.match(source, example.path.endsWith('.py') ? /class \w+\((?:Scene|MovingCameraScene|ZoomedScene|LinearTransformationScene|ThreeDScene)\)/ : example.path.endsWith('.modl') ? /editor -> preview/ : /digraph/);
+  }
+});
+
+test('every gallery sample has a current pre-rendered cover, animation media, and a safe editor link', () => {
+  const root = path.join(__dirname, '..');
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'gallery/previews/manifest.json')));
+  for (const example of ExampleCatalog) {
+    const cover = fs.readFileSync(path.join(root, example.cover));
+    assert.equal(cover.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', example.id);
+    assert.equal(manifest[example.id].source, createHash('sha256').update(fs.readFileSync(path.join(root, example.path))).digest('hex'), example.id);
+    const url = new URL(example.editorURL, 'https://example.test/ManimOnline/');
+    assert.equal(url.pathname, '/ManimOnline/');
+    assert.equal(url.searchParams.get('example'), example.id);
+    if (example.type === 'manim') {
+      const video = fs.readFileSync(path.join(root, example.video));
+      assert.equal(video.subarray(4, 8).toString(), 'ftyp', example.id);
+      assert.ok(video.indexOf(Buffer.from('moov')) < video.indexOf(Buffer.from('mdat')), example.id);
+      assert.ok(manifest[example.id].duration > 0, example.id);
+    } else assert.equal(example.video, null);
   }
 });
 

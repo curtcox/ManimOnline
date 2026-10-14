@@ -45,7 +45,11 @@ function harness() {
 
 test('offline manifest covers gallery, editor dependencies, and every local script', () => {
   for (const file of Assets.local) assert.ok(fs.existsSync(file), file);
-  for (const example of ExampleCatalog) assert.ok(Assets.local.includes(example.path));
+  for (const example of ExampleCatalog) {
+    assert.ok(Assets.local.includes(example.path));
+    assert.ok(Assets.local.includes(example.cover));
+  }
+  for (const file of ['gallery.html', 'src/gallery.js', 'src/gallery.css']) assert.ok(Assets.local.includes(file));
   const html = fs.readFileSync('index.html', 'utf8');
   for (const [, path] of html.matchAll(/<script src="([^"?]+)(?:\?[^" ]*)?"/g)) {
     assert.ok((path.startsWith('https:') ? Assets.remote : Assets.local).includes(path), path);

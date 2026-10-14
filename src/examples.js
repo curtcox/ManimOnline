@@ -105,7 +105,12 @@ const ExampleCatalog = Object.freeze([
   { id: 'copy', label: 'Transform a copy', path: 'examples/copy_scene.py' },
   { id: 'connector', label: 'Move connector endpoints', path: 'examples/connector_scene.py' },
   { id: 'dot', label: 'Graphviz diagram', path: 'examples/basic_graph.dot' }
-].map(example => Object.freeze(example)));
+].map(example => Object.freeze({ ...example,
+  type: example.path.endsWith('.py') ? 'manim' : example.path.endsWith('.dot') ? 'graphviz' : 'modl',
+  cover: `gallery/previews/${example.id}.png`,
+  video: example.path.endsWith('.py') ? `gallery/previews/${example.id}.mp4` : null,
+  editorURL: `./?example=${encodeURIComponent(example.id)}`
+})));
 
 class ExampleLoader {
   constructor({ fetchSource = url => fetch(url), onLoad, onStatus = () => {}, onError = () => {} }) {
@@ -148,6 +153,6 @@ class ExampleLoader {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { ExampleCatalog, ExampleLoader };
 } else {
-  window.ExampleCatalog = ExampleCatalog;
-  window.ExampleLoader = ExampleLoader;
+  globalThis.ExampleCatalog = ExampleCatalog;
+  globalThis.ExampleLoader = ExampleLoader;
 }

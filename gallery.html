@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Browse playable Manim animation samples and diagram previews, then load any sample into ManimOnline.">
+  <title>Sample gallery · ManimOnline</title>
+  <link rel="stylesheet" href="src/gallery.css">
+  <script defer src="src/examples.js"></script>
+  <script defer src="src/gallery.js"></script>
+</head>
+<body>
+  <header>
+    <a class="brand" href="./">ManimOnline</a>
+    <a class="back" href="./">Open editor →</a>
+  </header>
+  <main>
+    <div class="intro">
+      <p class="eyebrow">EXPLORE &amp; CREATE</p>
+      <h1>Start with a sample.</h1>
+      <p>Watch an animation, explore a diagram, then make it your own in the editor.</p>
+      <p class="note">Pre-rendered previews need no Python startup. These samples use the supported browser Manim-lite subset.</p>
+    </div>
+    <form class="filters" role="search" onsubmit="return false">
+      <div class="search"><label for="sample-search">Find a sample</label><input id="sample-search" type="search" placeholder="Try camera, curves, gradients…" autocomplete="off"></div>
+      <div><label for="sample-type">Language</label><select id="sample-type"><option value="all">All languages</option><option value="manim">Manim animations</option><option value="graphviz">Graphviz DOT</option><option value="modl">modl diagrams</option></select></div>
+    </form>
+    <p id="sample-count" role="status" aria-live="polite"></p>
+    <div id="sample-grid" class="grid"></div>
+    <p id="no-samples" hidden>No samples match. Try a different search or language.</p>
+    <noscript>Enable JavaScript to browse the gallery. You can still <a href="./">open the editor</a>.</noscript>
+  </main>
+  <footer>Built for experimenting. Load a sample to edit its source, render, and export.</footer>
+</body>
+</html>

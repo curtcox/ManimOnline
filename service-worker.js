@@ -1,4 +1,4 @@
-importScripts('offline-assets.js');
+importScripts('src/examples.js', 'offline-assets.js');
 const CACHE = OfflineAssets.VERSION;
 const scope = self.registration.scope;
 const assets = OfflineAssets.urls(scope);

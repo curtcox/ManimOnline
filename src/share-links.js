@@ -2,7 +2,7 @@
 const ShareLinks = {
   build({ url, code, mode = 'auto', type, scene = '', engine = 'dot', format = 'svg', positions = {}, compress }) {
     const link = new URL(url);
-    for (const parameter of ['raw', 'compressed', 'url', 'type', 'scene', 'engine', 'format', 'modlpos']) link.searchParams.delete(parameter);
+    for (const parameter of ['example', 'raw', 'compressed', 'url', 'type', 'scene', 'engine', 'format', 'modlpos']) link.searchParams.delete(parameter);
     if (mode !== 'auto') link.searchParams.set('type', mode === 'graphviz' ? 'dot' : mode);
     if (type === 'modl' && Object.keys(positions).length) link.searchParams.set('modlpos', JSON.stringify(positions));
     if (type === 'manim' && scene.trim()) link.searchParams.set('scene', scene.trim());

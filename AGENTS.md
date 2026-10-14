@@ -25,6 +25,12 @@ compatibility layer, not a server running full Manim Community.
    `src/share-links.js` snapshots local share links and bounds optional shortening.
 6. `docs/rendering.md` for current gaps and next milestones.
    `src/examples.js` contains the editor gallery catalog and stale-load protection.
+   `gallery.html` and `src/gallery.js`/`src/gallery.css` provide searchable cards,
+   pre-rendered covers/videos and `?example=<id>` editor links. Gallery media in
+   `gallery/previews/` are intentional shipped assets. Rebuild with
+   `node scripts/render-gallery.cjs http://localhost:8000/ [example IDs ...]`;
+   source/runtime fingerprints skip unchanged assets. Keep lazy video loading,
+   source persistence after loading, and stale-load protection on newer edits.
    `src/manim-math.js` prepares vector formula glyphs for playback and SVG export.
    `src/manim-export.js` rasterizes current-frame PNG snapshots with bounded loading.
  `src/manim-video.js` encodes all frames with WebCodecs and muxes MP4/WebM in memory;
@@ -112,6 +118,10 @@ checks do not prove live HashBin app registration or spend account funds.
 shortening diagnostics, source-link fallback, retry and discarded stale errors
 with a mocked proxy. Do not guess HTTP statuses when browser restrictions hide
 the response. Keep remote messages as text and short-link URLs strictly validated.
+`tests/browser/gallery.cjs` uses the same arguments to verify covers, playable
+MP4 previews, search/language filters, all three editor loads, edited-source
+reloads, stale loads and mobile layout. Covers are precached; videos load on
+demand over the network and do not block offline readiness.
 Playwright's Firefox build may fail to launch on recent macOS ("Could not find profile folder").
 Update the README and these notes when adding test commands or changing the
 runtime. Do not claim full Manim compatibility from a subset implementation.

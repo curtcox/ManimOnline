@@ -174,7 +174,7 @@
       left: 0 !important;
     }
 
-    #example-picker { max-width: 190px; }
+    #sample-gallery { color: #175ca4; font-weight: 600; padding: 6px 0; }
     #example-status { color: #495057; font-size: 12px; }
 
     #options label {
@@ -475,12 +475,7 @@ class HelloWorld(Scene):
       <button id="cancel-render" type="button" hidden>Cancel render</button>
     </span>
 
-    <label>Example:
-      <select id="example-picker" aria-label="Example">
-        <option value="">Choose an example</option>
-      </select>
-    </label>
-    <input type="button" id="load-example" value="Load example" disabled>
+    <a id="sample-gallery" href="gallery.html" target="_blank" rel="noopener">Sample gallery ↗</a>
     <span id="example-status" role="status" aria-live="polite"></span>
 
     <label class="manim-options" id="scene-option">
@@ -794,7 +789,7 @@ class HelloWorld(Scene):
       });
       function applyLoadedSource(snapshot, cid = null) {
         const url = new URL(location.href);
-        for (const key of ['raw', 'compressed', 'url', 'type', 'scene', 'engine', 'format', 'modlpos']) url.searchParams.delete(key);
+        for (const key of ['example', 'raw', 'compressed', 'url', 'type', 'scene', 'engine', 'format', 'modlpos']) url.searchParams.delete(key);
         if (snapshot.type) url.searchParams.set('type', snapshot.type === 'graphviz' ? 'dot' : snapshot.type);
         url.hash = cid || encodeURIComponent(snapshot.src);
         history.replaceState(null, '', url);
@@ -845,7 +840,7 @@ class HelloWorld(Scene):
       const exportStatus = document.getElementById('export-status');
       window.addEventListener('offline-before-reload', () => {
         const url = new URL(location.href);
-        for (const parameter of ['raw', 'compressed', 'url']) url.searchParams.delete(parameter);
+        for (const parameter of ['example', 'raw', 'compressed', 'url']) url.searchParams.delete(parameter);
         url.hash = encodeURIComponent(editor.getSession().getDocument().getValue());
         applySceneToURL(url);
         history.replaceState(null, '', url);
@@ -940,20 +935,9 @@ class HelloWorld(Scene):
         pyodideStatus.className = 'loading';
       }});
 
-      const examplePicker = document.getElementById('example-picker');
-      const loadExampleButton = document.getElementById('load-example');
       const exampleStatus = document.getElementById('example-status');
-      for (const example of ExampleCatalog) {
-        const option = document.createElement('option');
-        option.value = example.id;
-        option.textContent = example.label;
-        examplePicker.appendChild(option);
-      }
       const exampleLoader = new ExampleLoader({
-        onStatus: (message, loading) => {
-          exampleStatus.textContent = message;
-          loadExampleButton.disabled = loading || !examplePicker.value;
-        },
+        onStatus: message => { exampleStatus.textContent = message; },
         onError: error => { exampleStatus.textContent = error.message; },
         onLoad: source => {
           savedHashbin = null;
@@ -961,16 +945,15 @@ class HelloWorld(Scene):
           sceneNameInput.value = '';
           // Loading an example opts into automatic detection, even from a typed link.
           const url = new URL(location.href);
-          for (const parameter of ['type', 'scene', 'raw', 'compressed', 'url', 'modlpos']) {
+          for (const parameter of ['example', 'type', 'scene', 'raw', 'compressed', 'url', 'modlpos']) {
             url.searchParams.delete(parameter);
           }
+          url.hash = encodeURIComponent(source);
           history.replaceState(null, '', url);
           editor.getSession().setValue(source);
           render();
         }
       });
-      examplePicker.addEventListener('change', () => exampleLoader.cancel());
-      loadExampleButton.addEventListener('click', () => exampleLoader.load(examplePicker.value));
 
       function invalidateRender() {
         hashbinPanel.cancelLoad();
@@ -1000,7 +983,7 @@ class HelloWorld(Scene):
         exampleLoader.cancel();
         const url = new URL(location.href);
         // Preserve the latest edits even when the previous render failed.
-        for (const parameter of ['raw', 'compressed', 'url']) url.searchParams.delete(parameter);
+        for (const parameter of ['example', 'raw', 'compressed', 'url']) url.searchParams.delete(parameter);
         url.hash = encodeURIComponent(editor.getSession().getDocument().getValue());
         if (rendererMode.value === 'auto') url.searchParams.delete('type');
         else url.searchParams.set('type', rendererMode.value === 'graphviz' ? 'dot' : rendererMode.value);
@@ -1373,7 +1356,7 @@ class HelloWorld(Scene):
 
       function updateState() {
         const updatedUrl = new URL(window.location)
-        for (const parameter of ['raw', 'compressed', 'url', 'modlpos']) updatedUrl.searchParams.delete(parameter);
+        for (const parameter of ['example', 'raw', 'compressed', 'url', 'modlpos']) updatedUrl.searchParams.delete(parameter);
         const content = encodeURIComponent(editor.getSession().getDocument().getValue());
         updatedUrl.hash = savedHashbin?.fingerprint === currentShareFingerprint() ? savedHashbin.cid : content;
         if (currentType === 'modl' && Object.keys(modlPositions).length) updatedUrl.searchParams.set('modlpos', JSON.stringify(modlPositions));
@@ -1461,7 +1444,9 @@ class HelloWorld(Scene):
         document.body.classList.add("presentation");
       }
 
-      if (params.has('raw')) {
+      if (params.has('example')) {
+        await exampleLoader.load(params.get('example'));
+      } else if (params.has('raw')) {
         editor.getSession().setValue(params.get('raw'));
         render();
       } else if (params.has('compressed')) {

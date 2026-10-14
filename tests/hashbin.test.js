@@ -9,6 +9,14 @@ const cidFor = source => {
 };
 const response = data => ({ ok: true, json: async () => data });
 
+test('saved source links discard gallery selections so reloading loads the saved document', () => {
+  const cid = cidFor('digraph { fresh -> saved }');
+  const link = new URL(Docs.link('https://example.test/ManimOnline/?example=minimal&raw=old#old', cid));
+  assert.equal(link.searchParams.has('example'), false);
+  assert.equal(link.searchParams.has('raw'), false);
+  assert.equal(link.hash, '#' + cid);
+});
+
 test('CID recognition matches 256t inline and SHA-512 formats without swallowing source', () => {
   for (const code of ['', 'a -> b', 'π → λ', 'x'.repeat(64), 'x'.repeat(65), 'x'.repeat(1000)]) assert.ok(Docs.isCID(cidFor(code)), code);
   for (const cid of ['digraph', 'a->b', 'AAAAAAAAx', 'AAAAAAAA'.repeat(12), cidFor('a') + 'x']) assert.equal(Docs.isCID(cid), false, cid);

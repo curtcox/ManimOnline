@@ -7,7 +7,7 @@ A web-based editor for Graphviz DOT diagrams, modl diagrams, and Manim Python an
 - **Graphviz DOT Support**: Full support for Graphviz DOT language diagrams
 - **modl Support**: Line-based diagrams with draggable nodes, shapes, colors, links, image nodes, and SVG download
 - **Manim-lite animations**: In-browser Python execution with SVG frame playback, play/pause, replay, and seeking
-- **Examples**: Load supported animation examples or a Graphviz diagram directly into the editor
+- **Sample gallery**: Browse searchable pre-rendered animation previews and diagram covers, then load any sample into the editor
 - **Auto-Detection**: Automatically detects DOT, modl, or Manim Python
 - **Renderer selection**: Choose Auto, Manim, Graphviz, or modl when detection is ambiguous
 - **HashBin**: Load and save all three languages by CID, retaining scene/Graphviz settings and modl node positions
@@ -21,9 +21,17 @@ Visit the deployed site and start typing:
 - For modl: Write nodes and edges on separate lines (e.g., `a square blue Start`, `b circle green Finish`, then `a -> b dashed purple Next`). See the [modl language documentation](https://curtcox.github.io/modl/docs/).
 - For Manim: Write a `Scene` subclass with `from manim import *` (see the supported subset below).
 
-Choose an **Example**, then select **Load example** to replace the editor source
-and preview it. You can edit the loaded code, select a scene, seek, and export
-as usual. Loading clears any earlier scene selection and URL input override.
+Choose **Sample gallery** to open the gallery in a new tab, keeping your current
+editor open. Search by title or filter by language. Each sample has a pre-rendered
+cover; animation samples also have a **Play preview** control and native video
+controls for seeking and replay. Videos load only when requested, and playing a
+second preview pauses the first. Browsing needs no Python execution.
+
+Choose **Load in editor** on any card to open its source and render it. You can
+edit the loaded code, select a scene, seek, and export as usual. Direct
+`?example=minimal` links also work. Loading clears any earlier scene selection
+and URL input override, then stores the loaded source in the URL so reloading
+preserves edits instead of reloading the original sample.
 If you edit while an example is loading, your newer edits are kept. Loading
 errors leave the current code intact. The gallery uses bundled supported scenes;
 it does not imply support for every Manim API in the broader example documents.
@@ -453,6 +461,7 @@ python3 -m http.server 8000 &
 node tests/browser/smoke.cjs http://localhost:8000/ chromium firefox webkit
 node tests/browser/languages.cjs http://localhost:8000/ chromium firefox webkit
 node tests/browser/sharing.cjs http://localhost:8000/ chromium firefox webkit
+node tests/browser/gallery.cjs http://localhost:8000/ chromium firefox webkit
 ```
 
 The language check runs real Graphviz, modl and Pyodide/Manim previews, plus HashBin OAuth return, quote, save, reload, legacy modl/inline CID loading, and stale-load protection against a mocked service. It spends no account funds and does not prove live HashBin registration or service availability. Playwright's Firefox build may fail to launch on recent macOS with “Could not find profile folder”; CI runs the browser matrix on Ubuntu.
@@ -461,6 +470,21 @@ The sharing check simulates shortening-service HTTP failures, rate limits,
 oversized links, unreadable replies, blocked/offline requests, retry success and
 stale errors after editing. It checks the visible cause/recovery message and
 preserved source link without creating real short links.
+
+The gallery check verifies every shipped cover, real MP4 playback, filtering,
+editor links for all three languages, edited-source reloads, stale loads, and
+the narrow-screen layout. Gallery covers and sources are included in offline
+setup; video previews need a connection and are not downloaded during setup.
+
+To refresh gallery media after changing a sample or the rendering runtime, serve
+the checkout and run `node scripts/render-gallery.cjs http://localhost:8000/`.
+This uses real Pyodide, measured formulas, SVG rendering, and Chromium's H.264
+encoder to build 10 fps previews up to 480 × 270, preserving custom canvas ratios.
+Add example IDs after the URL to force a selected rebuild. The source/runtime
+fingerprints in `gallery/previews/manifest.json` skip unchanged media. The PNG
+and MP4 files in that directory are intentional site assets; keep temporary
+test screenshots and other generated output outside Git. Bump the offline
+version when refreshing covers or gallery code.
 
 ## Credits
 
