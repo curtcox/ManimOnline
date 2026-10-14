@@ -1257,3 +1257,13 @@ so the tip morphs into that member while the cut shaft interpolates its own poin
 play() freezes the owner's shaft for every (nested) animation whose mobject is a tip, before
 `_enter_world_members` places it in world coordinates (freezing a world-placed tip writes world
 points into the parent frame); Rotate/Transform/ScaleInPlace of a tip leave Community's cut shaft.
+TransformMatchingShapes keys follow Community's get_mobject_key: a world copy of the part's whole
+family is centered and resized (Arrow.scale keeps tip sizes), then its own scene-view points are
+rounded without merging -0.0 and 0.0 (Community hashes the bytes). Building the animation also
+replays the hashing's side effect (`_hash_reorder`): an Arrow part's members are reordered with the
+tips last and each takes the geometry/style of the member that held its new slot (aligned like
+restore's become); tip roles stay with their objects, as Community's tip attributes do. Scene
+become freezes a receiver's shaft with the target's tip roles (length-weighted bases when the
+target's tips were subdivided). Arrow.scale(0) with non-tip members collapses them at the pivot in
+the arrow's frame. scale(0) also bakes a childless outline whose collapsed pose misses the pivot by
+rounding, so zero-width checks (match_width) stay exact.

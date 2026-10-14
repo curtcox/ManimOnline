@@ -3430,11 +3430,13 @@ class Mobject:
             center = self._pivot_point()
             self.shift((center - pivot) * (scale_factor - 1))
         self.geometry_scale *= scale_factor
-        if (not self.geometry_scale and self.children and _is_a(self, VMobject) and
+        if (not self.geometry_scale and _is_a(self, VMobject) and
                 not isinstance(self, (NumberLine, CoordinateSystem)) and
                 not (isinstance(self, TipableVMobject) and self._tips_by_role())):
             # A collapsed pose has no inverse: collapse the members themselves, as Community's points.
             pivot = list(Vector(about_point) if about_point is not None else self._pivot_point())
+            if not self.children and all(list(p) == pivot for p in self.get_points()):
+                return self  # Already exactly the pivot (pose-only collapse).
             if self._type == 'vgroup' or not self.get_points():
                 self._clear_pose()
             else:
@@ -4267,7 +4269,12 @@ class Mobject:
                     child.__dict__.get('_tip_role') in ('start', 'end') and
                     child.__dict__.get('_tip_role') != roles.get(id(child)) for child in children):
                 # The receiver's points are the target's drawn shaft, cut at the target's tips.
-                source._freeze_shaft()
+                for child, other in zip(children, replacement.children):
+                    child.__dict__.pop('_tip_role', None)
+                    if other.__dict__.get('_tip_role') is not None:
+                        child._tip_role = other.__dict__['_tip_role']
+                source._freeze_shaft(current=any(other.__dict__.get('_subdivided_tip')
+                                                 for other in replacement.children))
                 for child in children:
                     role = roles.get(id(child))
                     if role is None:
@@ -6150,9 +6157,10 @@ class TipableVMobject(VMobject):
         return {child._tip_role: child for child in self.children
                 if child.__dict__.get('_tip_role') in ('start', 'end')}
 
-    def _freeze_shaft(self):
+    def _freeze_shaft(self, current=False):
         """Community cuts the shaft once, when a tip is attached: moving, editing or
-        removing tips afterwards leaves it in place (Lite otherwise refits it to the tips)."""
+        removing tips afterwards leaves it in place (Lite otherwise refits it to the tips).
+        `current` cuts at the length-weighted bases (tips subdivided by alignment)."""
         curved = self.__dict__.get('_curved_tip_path')
         if self.__dict__.get('_shaft_fixed') or not (curved or self._type in ('line', 'arrow')):
             return
@@ -6162,7 +6170,7 @@ class TipableVMobject(VMobject):
         if curved:
             self._set_own_ends({}, self._tip_shaft_curves())
         else:
-            bases = {role: self._tip_base(tip) for role, tip in tips.items()}
+            bases = {role: self._tip_base(tip, current=current) for role, tip in tips.items()}
             self._set_own_ends({role: point for role, point in bases.items() if point is not None})
         self._shaft_fixed = True
 
@@ -7313,8 +7321,10 @@ class Arrow(Line):
             # Collapse the points (not the pose), so the tips can be re-added at the point.
             pivot = (Vector(about_point) if about_point is not None else
                      self.get_critical_point(Vector(about_edge)) if about_edge is not None else self.get_center())
+            # Members are stored in the arrow's frame.
+            local = self._point_from_world(pivot) if self.geometry_scale else pivot
             for member in list(self.children):
-                member.scale(0, about_point=pivot)
+                member.scale(0, about_point=local)
             if self._type in _PATH_TYPES and self.get_points():
                 VMobject.set_points(self, [pivot] * 4)
         else:
@@ -15356,6 +15366,36 @@ class TransformMatchingShapes(_TransformMatching):
         # Community's get_mobject_key saves (and restores) every part when the animation is built.
         for part in mobject.family_members_with_points() + target_mobject.family_members_with_points():
             part.save_state()
+            if isinstance(part, Arrow):
+                self._hash_reorder(part)
+
+    @staticmethod
+    def _hash_reorder(arrow):
+        """Community's key hashing scales the part (set(height=1)): Arrow.scale re-adds the tips
+        last, then restore()'s become copies the saved members by index, so each member takes
+        the geometry and style of the one that held its new slot (tip attributes keep naming
+        the original tip objects)."""
+        tips = arrow._tips_by_role()
+        if not tips or arrow.get_length() <= 1e-12:
+            return
+        order = ([c for c in arrow.children if c.__dict__.get('_tip_role') not in ('start', 'end')]
+                 + [tips[role] for role in ('end', 'start') if role in tips])
+        if 'end' not in tips:
+            raise IndexError('list index out of range')
+        if all(a is b for a, b in zip(order, arrow.children)):
+            return
+        arrow._freeze_shaft()
+        sources = [child.copy() for child in arrow.children]
+        for member, source in zip(order, sources):
+            role = member.__dict__.get('_tip_role')
+            # restore()'s align_data subdivides the member with fewer curves.
+            member.become(member._aligned_target(source, root_points=True)
+                          if member._alignable(True) and source._alignable(True) else source)
+            member.__dict__.pop('_tip_role', None)
+            if role is not None:
+                member._tip_role = role
+        arrow.children = order
+        _link_children(arrow, order)
 
     @staticmethod
     def get_mobject_parts(mobject):
@@ -15366,12 +15406,15 @@ class TransformMatchingShapes(_TransformMatching):
         # Shape identity up to position and size, like Community's normalized point hash.
         if mobject._type in ('text', 'mathtex'):
             return (mobject._type, mobject.text, getattr(mobject, 'part', None))
-        probe = _world_view(mobject).copy()  # Community hashes world points.
-        probe.children = []
-        probe.center()
-        if probe.get_height():
-            probe.scale_to_fit_height(1)
-        return tuple(tuple(round(v, 3) + 0.0 for v in point[:2]) for point in probe.get_points())
+        # Community centers and resizes the part's whole family (Arrow.scale keeps tip sizes),
+        # then hashes its own world points.
+        probe = _world_view(mobject).copy()
+        _call_as_scene(probe.center)
+        if _call_as_scene(probe.get_height):
+            _call_as_scene(probe.scale_to_fit_height, 1)
+        points = _call_as_scene(probe.get_points)
+        # Community hashes the bytes of np.round(points, 3): -0.0 and 0.0 differ.
+        return tuple(tuple(round(float(v), 3) for v in point[:2]) for point in points)
 
 
 class ClockwiseTransform(Transform):

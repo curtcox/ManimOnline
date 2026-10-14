@@ -2219,6 +2219,33 @@ class AnimationApiTests(unittest.TestCase):
             's = S(); s.render(); result = s.out\n'),
             [[-0.5, -1.504, 0.0], [0.15, 0.15, 0.0], [0.7525, -0.7525, 0.0]])
 
+    def test_collapsing_a_rotated_arrow_collapses_its_members_at_its_center(self):
+        self.assertEqual(scene_values(
+            'a = Arrow(LEFT, RIGHT).add(Dot(UP)).rotate(1).shift(RIGHT)\n'
+            'result = [m.get_center() for m in a.copy().scale(0).get_family()]\n'),
+            [[1.2203, 0.3918, 0.0], [1.0453, 0.3918, 0.0], [1.2203, 0.3918, 0.0]])
+
+    def test_shape_matching_keys_reorder_arrow_members_like_community(self):
+        # Hashing scales each part (Arrow.scale re-adds the tip last); restore copies by index.
+        self.assertEqual(scene_values(
+            'p = Arrow(LEFT, RIGHT).add(Dot())\n'
+            'TransformMatchingShapes(Square(), p)\n'
+            'result = [[type(m).__name__ for m in p.submobjects], p.submobjects[0].width,\n'
+            '          p.tip is p.submobjects[1], p.get_end()]\n'),
+            [['Dot', 'ArrowTriangleFilledTip'], 0.35, True, [0.08, 0.0, 0.0]])
+
+    def test_shrunk_families_collapse_exactly_so_zero_widths_do_not_rescale(self):
+        self.assertEqual(scene_values(
+            'class S(Scene):\n'
+            '    def construct(self):\n'
+            '        o = VGroup(Triangle(), Square().scale(0.5)).arrange(RIGHT).rotate(0.4)\n'
+            '        p = Arrow(LEFT, RIGHT).add(Dot()).shift(RIGHT * 2 + DOWN)\n'
+            '        o.move_to(p.get_center() + UP); o.become(p.copy(), match_center=True)\n'
+            '        self.play(ShrinkToCenter(o)); self.add(o); o.match_width(p)\n'
+            '        self.out = [o.get_corner(DL), o.width == 0]\n'
+            's = S(); s.render(); result = s.out\n'),
+            [[2.0, 0.0, 0.0], True])
+
     def test_rotate_and_dashed_endpoints_follow_community_finishes(self):
         self.assertEqual(scene_values(
             'class S(Scene):\n'
