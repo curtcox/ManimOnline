@@ -1301,3 +1301,11 @@ strings across frame nodes. Inset cameras use source-frame bounds. Browser smoke
 checks four corner colors after SVG-to-canvas export, so orientation/actual paint
 are proven beyond inspecting filter DOM. Transparent raster/Cairo rounding parity
 and pixel cameras remain open.
+
+
+VectorField.get_vectorized_rgba_gradient_function returns NumPy RGBA arrays,
+including empty shape (0, 4); the worker loads NumPy for direct calls and method
+references. Keep finite one-dimensional validation and the 100000-sample cap.
+Spatial StreamLines use every cubic anchor (including repeated endpoints) and
+the normal sheen-direction gradient; flat lines retain shared screen rasters.
+Projected spatial-gradient parity remains open.

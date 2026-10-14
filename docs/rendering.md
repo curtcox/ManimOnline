@@ -2513,3 +2513,12 @@ one RGBA row per input, including an empty `(0, 4)` result. Inputs are clipped t
 the gradient bounds, descending ranges work, and opacity occupies the fourth
 column. NumPy loads automatically for calls or references to this method. Inputs
 must be finite one-dimensional sequences, limited to 100000 samples.
+
+
+Verification (2026-10-14, array/anchor gradients): 723 Python tests passed with
+one local Pygments skip; all 121 JavaScript tests passed. CI passed all tests
+and DOT/Manim, array-gradient, spatial-stream, 3D and raster export checks in
+Chromium, Firefox and WebKit. Local WebKit passed the smoke suite; local Chromium
+timed out loading the separate 3D scene. The deployed gradient scene showed
+three colored dots and 44 spatial gradient stops, and switching to DOT showed
+three nodes without an error.
