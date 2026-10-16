@@ -121,6 +121,15 @@ Chromium, Firefox and WebKit; see README for the local command.
 HashBin OAuth/source restoration, quote/upload/reload, legacy/inline CIDs and stale
 loads with a mocked service. Run it with the same URL/browser arguments. These
 checks do not prove live HashBin app registration or spend account funds.
+`tests/browser/modl-zoom.cjs` uses the same URL/browser arguments for deep zoom,
+fractional dragging, background/middle panning, pointer cancellation, wheel modes,
+image loads and rasterized SVG exports. Optional `--benchmark` measures dense
+diagrams; `MODL_STANDALONE_HTML=/path/to/patched/index.html` also checks the modl
+port. See `docs/modl-deep-zoom.md` and `patches/modl-deep-zoom.patch`. Keep cursor
+anchors and fractional saved positions; the bounded camera is separate from
+source/layout. Do not infer arbitrary-coordinate or infinite-canvas support from
+the 0.001×–1000× range; distant origins need renderer rebasing, and dense graphs
+still rebuild the full SVG during dragging.
 `tests/browser/sharing.cjs` uses the same URL/browser arguments to check visible
 shortening diagnostics, source-link fallback, retry and discarded stale errors
 with a mocked proxy. Do not guess HTTP statuses when browser restrictions hide

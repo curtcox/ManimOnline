@@ -21,6 +21,15 @@ Visit the deployed site and start typing:
 - For modl: Write nodes and edges on separate lines (e.g., `a square blue Start`, `b circle green Finish`, then `a -> b dashed purple Next`). See the [modl language documentation](https://curtcox.github.io/modl/docs/).
 - For Manim: Write a `Scene` subclass with `from manim import *` (see the supported subset below).
 
+modl's deep-zoom prototype supports **0.001×–1000×** (six orders of magnitude).
+Use the wheel to zoom under the cursor, drag the background to pan, or middle-drag
+anywhere to pan when a node fills the view. Drag nodes to edit their positions;
+**−**, **+** and **Reset view** provide centered zoom and recovery. SVG download
+captures the current viewport and retains all diagram geometry. Node positions,
+including fractional positions, remain compatible with existing links and saves;
+the camera resets when source is re-rendered. Large coordinate origins and dense
+diagrams still have limits: see the [measurements and standalone modl patch](docs/modl-deep-zoom.md).
+
 Choose **Sample gallery** to open the gallery in a new tab, keeping your current
 editor open. Search by title or filter by language. Each sample has a pre-rendered
 cover; animation samples also have a **Play preview** control and native video
@@ -467,12 +476,19 @@ npm install --no-save playwright && npx playwright install chromium firefox webk
 python3 -m http.server 8000 &
 node tests/browser/smoke.cjs http://localhost:8000/ chromium firefox webkit
 node tests/browser/languages.cjs http://localhost:8000/ chromium firefox webkit
+node tests/browser/modl-zoom.cjs http://localhost:8000/ chromium firefox webkit
 node tests/browser/sharing.cjs http://localhost:8000/ chromium firefox webkit
 node tests/browser/gallery.cjs http://localhost:8000/ chromium firefox webkit
 node tests/browser/upgrade.cjs chromium firefox webkit
 ```
 
 The language check runs real Graphviz, modl and Pyodide/Manim previews, plus HashBin OAuth return, quote, save, reload, legacy modl/inline CID loading, and stale-load protection against a mocked service. It spends no account funds and does not prove live HashBin registration or service availability. Playwright's Firefox build may fail to launch on recent macOS with “Could not find profile folder”; CI runs the browser matrix on Ubuntu.
+
+The modl zoom check uses real SVG painting, pointer gestures, wheel input, image
+loads and SVG-to-canvas exports without CDN dependencies. Add `--benchmark` to
+measure 100/1,000/5,000-node zoom and drag workloads; timings are diagnostics,
+not fixed CI performance assertions. The deep-zoom report explains how to run
+the same check against the optional standalone editor patch.
 
 The sharing check simulates shortening-service HTTP failures, rate limits,
 oversized links, unreadable replies, blocked/offline requests, retry success and

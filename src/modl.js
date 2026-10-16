@@ -255,6 +255,23 @@ const Modl = (() => {
     return result;
   }
 
+  // Screen = translation + scale * world. Keep the camera out of saved positions.
+  const ZOOM_MIN = 0.001;
+  const ZOOM_MAX = 1000;
+
+  function zoomViewport(viewport, factor, centerX, centerY) {
+    if (![factor, centerX, centerY].every(Number.isFinite) || factor <= 0) return false;
+    const nextScale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, viewport.scale * factor));
+    if (nextScale === viewport.scale) return false;
+    const worldX = (centerX - viewport.tx) / viewport.scale;
+    const worldY = (centerY - viewport.ty) / viewport.scale;
+    const tx = centerX - worldX * nextScale;
+    const ty = centerY - worldY * nextScale;
+    if (![tx, ty].every(Number.isFinite)) return false;
+    Object.assign(viewport, { scale: nextScale, tx, ty });
+    return true;
+  }
+
   function create(source, { positions = {}, onChange = () => {}, onFrame = () => {} } = {}) {
     const parsed = parseSource(source);
     if (parsed.errors.length) throw new Error(parsed.errors.join('\n'));
@@ -272,7 +289,7 @@ const Modl = (() => {
       ensurePositions(diagram);
       prunePositions(diagram);
       render(diagram);
-      onFrame($svg);
+      onFrame($svg, { ...viewport });
     }
   const NODE_W = 110;
   const NODE_H = 64;
@@ -334,35 +351,20 @@ const Modl = (() => {
     }
   }
 
-  const ZOOM_MIN = 0.4;
-  const ZOOM_MAX = 2.5;
-  const ZOOM_STEP = 1.2;
   let viewport = { scale: 1, tx: 0, ty: 0 };
   let viewportGroup = null;
-
-  function clamp(n, min, max) {
-    return Math.min(max, Math.max(min, n));
-  }
 
   function applyViewportTransform() {
     if (!viewportGroup) return;
     viewportGroup.setAttribute("transform", `translate(${viewport.tx} ${viewport.ty}) scale(${viewport.scale})`);
+    // Giant blur regions are costly when node dragging rebuilds the SVG.
+    $svg.toggleAttribute('data-modl-simple', viewport.scale < 0.1 || viewport.scale > 8);
   }
 
   function zoomAt(factor, centerX, centerY) {
-    const nextScale = clamp(viewport.scale * factor, ZOOM_MIN, ZOOM_MAX);
-    if (nextScale === viewport.scale) return;
-    const worldX = (centerX - viewport.tx) / viewport.scale;
-    const worldY = (centerY - viewport.ty) / viewport.scale;
-    viewport.scale = nextScale;
-    viewport.tx = centerX - worldX * viewport.scale;
-    viewport.ty = centerY - worldY * viewport.scale;
+    if (destroyed || dragging || panning || !zoomViewport(viewport, factor, centerX, centerY)) return;
     applyViewportTransform();
-  }
-
-  function zoomFromCenter(factor) {
-    const rect = ({ width: 800, height: 450 });
-    zoomAt(factor, Math.max(0, rect.width) / 2, Math.max(0, rect.height) / 2);
+    onFrame($svg, { ...viewport });
   }
 
   function prunePositions(diagram) {
@@ -381,14 +383,6 @@ const Modl = (() => {
     const inv = ctm.inverse();
     const p = pt.matrixTransform(inv);
     return { x: p.x, y: p.y };
-  }
-
-  function diagramPointFromEvent(evt) {
-    const p = svgPointFromEvent(evt);
-    return {
-      x: (p.x - viewport.tx) / viewport.scale,
-      y: (p.y - viewport.ty) / viewport.scale,
-    };
   }
 
   function applyEdgeStyle(style, colorName) {
@@ -592,6 +586,9 @@ const Modl = (() => {
 
     const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
     buildMarkers(defs);
+    const detailStyle = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+    detailStyle.textContent = 'svg[data-modl-simple] [filter] { filter: none; }';
+    defs.appendChild(detailStyle);
     $svg.appendChild(defs);
 
     // Keep the native dark canvas unless the source chooses a background color.
@@ -963,29 +960,31 @@ const Modl = (() => {
     if (ev.button !== 0) return;
     ev.preventDefault();
     ev.stopPropagation();
-    const p = diagramPointFromEvent(ev);
-    const cur = state.pos[id] || [p.x, p.y];
+    if (dragging || panning) return;
+    const p = svgPointFromEvent(ev);
+    const cur = state.pos[id];
     dragging = {
       id,
-      dx: cur[0] - p.x,
-      dy: cur[1] - p.y,
+      x: cur[0], y: cur[1],
+      startX: p.x, startY: p.y,
+      clientX: ev.clientX, clientY: ev.clientY,
       pointerId: ev.pointerId
     };
     dragMoved = false;
     $svg.setPointerCapture(ev.pointerId);
-    // Move immediately on down feels better
-    moveDrag(ev);
   }
 
   function moveDrag(ev) {
-    if (!dragging) return;
-    const p = diagramPointFromEvent(ev);
-    const nx = Math.round(p.x + dragging.dx);
-    const ny = Math.round(p.y + dragging.dy);
+    if (!dragging || ev.pointerId !== dragging.pointerId) return;
+    // Fractional world positions matter: rounding at 1000x causes 1000px jumps.
+    // Use deltas to avoid subtracting two large world-space coordinates.
+    const p = svgPointFromEvent(ev);
+    const nx = dragging.x + (p.x - dragging.startX) / viewport.scale;
+    const ny = dragging.y + (p.y - dragging.startY) / viewport.scale;
+    if (![nx, ny].every(Number.isFinite)) return;
     const id = dragging.id;
-
-    const prev = state.pos[id] || [0,0];
-    if (prev[0] !== nx || prev[1] !== ny) dragMoved = true;
+    if (Math.hypot(ev.clientX - dragging.clientX, ev.clientY - dragging.clientY) >= 3) dragMoved = true;
+    if (!dragMoved) return;
 
     state.pos[id] = [nx, ny];
 
@@ -1003,7 +1002,7 @@ const Modl = (() => {
   }
 
   function startPan(ev) {
-    if (ev.button !== 0 || dragging) return;
+    if (![0, 1].includes(ev.button) || dragging || panning) return;
     ev.preventDefault();
     const p = svgPointFromEvent(ev);
     panning = {
@@ -1018,69 +1017,89 @@ const Modl = (() => {
   }
 
   function movePan(ev) {
-    if (!panning) return;
+    if (!panning || ev.pointerId !== panning.pointerId) return;
     const p = svgPointFromEvent(ev);
     viewport.tx = panning.tx + (p.x - panning.startX);
     viewport.ty = panning.ty + (p.y - panning.startY);
     applyViewportTransform();
-    onFrame($svg);
+    onFrame($svg, { ...viewport });
   }
 
   function endPan() {
     if (!panning) return;
-    try { $svg.releasePointerCapture(panning.pointerId); } catch {}
+    const pointerId = panning.pointerId;
     panning = null;
+    try { $svg.releasePointerCapture(pointerId); } catch {}
     $svg.classList.remove("panning");
   }
 
   function endDrag(ev) {
-    if (!dragging) return;
+    if (!dragging || ev.pointerId !== dragging.pointerId) return;
     const finishedId = dragging.id;
     const finishedMoved = dragMoved;
-    try { $svg.releasePointerCapture(dragging.pointerId); } catch {}
+    const pointerId = dragging.pointerId;
     dragging = null;
+    clearTimeout(dragHashTimer);
+    try { $svg.releasePointerCapture(pointerId); } catch {}
     if (finishedMoved) {
       onChange(copyPositions(state.pos));
-    } else {
+    } else if (ev.type === 'pointerup') {
       const n = diagram && diagram.nodes ? diagram.nodes.get(finishedId) : null;
       if (n && n.url) openUrl(n.url);
     }
   }
 
+  // Middle drag can pan even when a deeply zoomed node covers the whole canvas.
+  $svg.addEventListener('pointerdown', ev => { if (ev.button === 1) startPan(ev); }, true);
   $svg.addEventListener("pointermove", (ev) => {
     moveDrag(ev);
     movePan(ev);
   });
   $svg.addEventListener("pointerup", (ev) => {
     endDrag(ev);
-    endPan();
+    if (panning?.pointerId === ev.pointerId) endPan();
   });
   $svg.addEventListener("pointercancel", (ev) => {
     endDrag(ev);
-    endPan();
+    if (panning?.pointerId === ev.pointerId) endPan();
+  });
+  $svg.addEventListener('lostpointercapture', ev => {
+    endDrag(ev);
+    if (panning?.pointerId === ev.pointerId) endPan();
   });
 
 
     $svg.addEventListener('wheel', event => {
       event.preventDefault();
+      if (!event.deltaY) return;
       const p = svgPointFromEvent(event);
-      zoomAt(event.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP, p.x, p.y);
-      onFrame($svg);
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 450 : 1;
+      zoomAt(Math.exp(Math.max(-2, Math.min(2, -event.deltaY * unit * 0.002))), p.x, p.y);
     }, { passive: false });
     renderAll();
     return {
       svg: $svg,
       positions: () => copyPositions(state.pos),
+      viewport: () => ({ ...viewport }),
+      zoom: (factor, x = 400, y = 225) => zoomAt(factor, x, y),
+      resetView() {
+        if (destroyed || dragging || panning) return;
+        viewport = { scale: 1, tx: 0, ty: 0 };
+        applyViewportTransform();
+        onFrame($svg, { ...viewport });
+      },
       destroy() {
         destroyed = true;
         cancelAnimationFrame(dragRaf);
         cancelAnimationFrame(imageRenderRaf);
         clearTimeout(dragHashTimer);
+        dragging = null;
+        panning = null;
         $svg.remove();
       }
     };
   }
-  return { parse: parseSource, lexLine, create, copyPositions };
+  return { parse: parseSource, lexLine, create, copyPositions, zoomViewport, ZOOM_MIN, ZOOM_MAX };
 })();
 if (typeof module !== 'undefined') module.exports = Modl;
 else globalThis.Modl = Modl;

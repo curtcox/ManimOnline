@@ -239,6 +239,7 @@
     }
 
     #options .graphviz-options.hidden,
+    #options .modl-options.hidden,
     #options .manim-options.hidden {
       display: none;
     }
@@ -473,6 +474,13 @@ class HelloWorld(Scene):
     <span class="manim-options">
       <button id="render-animation" type="button">Render animation</button>
       <button id="cancel-render" type="button" hidden>Cancel render</button>
+    </span>
+
+    <span class="modl-options hidden" aria-label="modl viewport">
+      <button id="modl-zoom-out" type="button" aria-label="Zoom out">−</button>
+      <button id="modl-zoom-in" type="button" aria-label="Zoom in">+</button>
+      <button id="modl-reset-view" type="button">Reset view</button>
+      <output id="modl-zoom" aria-label="Zoom scale">1×</output>
     </span>
 
     <a id="sample-gallery" href="gallery.html" target="_blank" rel="noopener">Sample gallery ↗</a>
@@ -898,6 +906,7 @@ class HelloWorld(Scene):
         }
       }
       downloadBtn.addEventListener('click', async event => {
+        if (currentType === 'modl') { refreshModlDownload(); return; }
         if (currentType !== 'manim' || frameFormat.value === 'svg') return;
         event.preventDefault();
         if (frameFormat.value !== 'png') return exportVideo(frameFormat.value);
@@ -929,6 +938,17 @@ class HelloWorld(Scene):
           if (revision !== renderRevision) exportStatus.textContent = '';
         }
       });
+      // Serialize only when exporting, rather than walking the whole SVG on every pan/zoom.
+      function refreshModlDownload() {
+        if (currentType !== 'modl' || !modlPreview) return;
+        downloadBtn.href = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(modlPreview.svg));
+        downloadBtn.download = 'modl.svg';
+      }
+      downloadBtn.addEventListener('contextmenu', refreshModlDownload);
+      downloadBtn.addEventListener('auxclick', refreshModlDownload);
+      document.getElementById('modl-zoom-out').addEventListener('click', () => modlPreview?.zoom(1 / 1.2));
+      document.getElementById('modl-zoom-in').addEventListener('click', () => modlPreview?.zoom(1.2));
+      document.getElementById('modl-reset-view').addEventListener('click', () => modlPreview?.resetView());
       frameFormat.addEventListener('change', () => { exportStatus.textContent = ''; });
       const manimClient = new ManimClient({ onStatus: text => {
         pyodideStatus.textContent = text;
@@ -1085,6 +1105,7 @@ class HelloWorld(Scene):
 
       function updateTypeIndicator(type) {
         document.querySelectorAll('.manim-options').forEach(option => option.classList.toggle('hidden', type !== 'manim'));
+        document.querySelectorAll('.modl-options').forEach(option => option.classList.toggle('hidden', type !== 'modl'));
         currentType = type;
         typeIndicator.className = type;
 
@@ -1137,14 +1158,14 @@ class HelloWorld(Scene):
               clearShare();
               updateState();
             },
-            onFrame: svg => {
+            onFrame: (svg, viewport) => {
               if (revision !== renderRevision) return;
-              downloadBtn.href = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(svg));
-              downloadBtn.download = 'modl.svg';
+              document.getElementById('modl-zoom').textContent = `${Number(viewport.scale.toPrecision(4))}×`;
             }
           });
           clearReviewContent();
           modlPreview = preview;
+          refreshModlDownload();
           modlPositions = preview.positions();
           if (saved) savedHashbin.fingerprint = currentShareFingerprint();
           const wrapper = document.createElement('a');

@@ -110,6 +110,17 @@ async function run(engine) {
         await page.locator('#share').click();
         assert.ok(new URL(await page.locator('#shareurl').inputValue()).searchParams.has('modlpos'));
         assert.equal(await page.locator('#download').getAttribute('download'),'modl.svg');
+        await page.locator('#modl-zoom-in').click();
+        assert.equal(await page.locator('#modl-zoom').textContent(),'1.2×');
+        // Lazy export must include the latest camera even without another render.
+        const downloadEvent = page.waitForEvent('download');
+        await page.locator('#download').click();
+        await downloadEvent;
+        const exported = decodeURIComponent((await page.locator('#download').getAttribute('href')).split(',').slice(1).join(','));
+        assert.ok(exported.includes('scale(1.2)'));
+        assert.ok(exported.includes('data-node-id="a"'));
+        await page.locator('#modl-reset-view').click();
+        assert.equal(await page.locator('#modl-zoom').textContent(),'1×');
       }
       await page.locator('#hashbin-save').click();
       await page.locator('#hashbin-confirm:not([disabled])').waitFor();

@@ -42,6 +42,7 @@ jobs:
           node --check service-worker.js
           node --check tests/browser/smoke.cjs
           node --check tests/browser/sharing.cjs
+          node --check tests/browser/modl-zoom.cjs
           node --check tests/browser/gallery.cjs
           node --check tests/browser/upgrade.cjs
   browsers:
@@ -69,5 +70,7 @@ jobs:
         run: node tests/browser/smoke.cjs http://localhost:8000/ ${{ matrix.browser }}
       - name: Languages and HashBin
         run: node tests/browser/languages.cjs http://localhost:8000/ ${{ matrix.browser }}
+      - name: modl deep zoom
+        run: node tests/browser/modl-zoom.cjs http://localhost:8000/ ${{ matrix.browser }}
       - name: Sharing
         run: node tests/browser/sharing.cjs http://localhost:8000/ ${{ matrix.browser }}
