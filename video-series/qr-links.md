@@ -45,7 +45,7 @@ to HashBin before publishing (see README.md, "QR codes"), then run the tool with
 | q07-04 | 7 | Area with a moving bound | 1000 | yes | https://curtcox.github.io/ManimOnline/#AAAAAAPoJ3tDRLnooNaNpVLEUDKOPwYwd3Mh4KwpF12Jis2reKOO36PHpj5p8Tftmc_PvHlBfNnJLESvDTAGLy1oiSBkZw |
 | q07-05 | 7 | Bend the grid | 546 | yes | https://curtcox.github.io/ManimOnline/#AAAAAAIiVvUfrrF06jWkPfnkqr61VwZs6ZI7SKsTaj_cymiezxlQlzX7Cd7Zmzs0r0n7LJ6-JRSTnLsBj5-4rD7ZFHDAkg |
 | q08-01 | 8 | Zooming the camera | 735 | yes | https://curtcox.github.io/ManimOnline/#AAAAAALfewodV9LpFUCwa-2vlHZGo-C74QTknghHHUVGLA3uQGmZkeBnCqhRYIt9J5-D7kuzCj_1_GpcPC26hlaInwsBTw |
-| q08-02 | 8 | A magnified inset | 971 | yes | https://curtcox.github.io/ManimOnline/#AAAAAAPL4MmaK8H0hg2Znw-H5n3s3tGlQiXl8ziSlhaRXY7LKNKxH1Ik8u6A8MZy-3a6P7q8sd35-Gb3i3Zq1TC6mCCAiA |
+| q08-02 | 8 | A magnified inset | 1014 | yes | https://curtcox.github.io/ManimOnline/#AAAAAAP2fsUWDj5p7r2-uWSPYYEWi2V6C3elYB7_H7NBHnsioL8XLg8rwFS29SUuMAss_Gjf-UKN9QW7SazBnUf9rLSAww |
 | q08-03 | 8 | A surface in 3D | 861 | yes | https://curtcox.github.io/ManimOnline/#AAAAAANdRDH5i7gOWJpXMcyjd7eQjpRBi5EOUF8vclAzxgjq5bNKVBvGQK2nwaMnANflrllB9ipAwZSC-OflBHX9wFWpKw |
 | q08-04 | 8 | Solids | 717 | yes | https://curtcox.github.io/ManimOnline/#AAAAAALNcHiB1p7DSmj-REuDqWM8RtUx0gL-dmus7jFKROeI1Lys3AMU7UUsFct7Jl8QpzV_MBe16eFqsxM-xhP26LvUcQ |
 | q08-05 | 8 | A helix from three angles | 1035 | yes | https://curtcox.github.io/ManimOnline/#AAAAAAQLbVAATgXZui23cARqetcHPPuqHfntZPw6-PLjnxvi87-RKUMUZCSr3gjHar0mLBIeWThtavbR6uBpA7j6z3_uGg |

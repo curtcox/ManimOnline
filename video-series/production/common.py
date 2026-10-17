@@ -116,7 +116,14 @@ class Segment(Scene):
             label = Text(f'{self.SEGMENT}', font_size=18, color=DIM).to_corner(UL, buff=0.15)
             clock = DecimalNumber(0, num_decimal_places=1, font_size=18, color=DIM).next_to(label, RIGHT)
             clock.add_updater(lambda m: m.set_value(self.renderer.time))
-            self.add_foreground_mobjects(label, clock)
+            if isinstance(self, ThreeDScene):
+                self.add_fixed_in_frame_mobjects(label, clock)
+            else:
+                self.add_foreground_mobjects(label, clock)
+        # Last, so a scene type mixed in after Segment (ZoomedScene, LinearTransformationScene...)
+        # sets itself up; LinearTransformationScene then empties foreground_mobjects, which its
+        # apply_matrix animates, so the review clock is never animated with them.
+        super().setup()
 
     def hold_until(self, fraction):
         """Wait until the given fraction of the narration has been spoken."""

@@ -13,7 +13,8 @@ class ZoomedInset(ZoomedScene):
         self.add(ruler, dot)
         frame = self.zoomed_camera.frame
         frame.move_to(dot).set_color(YELLOW)
-        self.zoomed_display.to_corner(UR).set_color(YELLOW)
+        self.zoomed_display.to_corner(UR)
+        self.zoomed_display.display_frame.set_color(YELLOW)
         frame.add_updater(lambda m: m.move_to(dot))
         self.activate_zooming(animate=True)
         self.play(dot.animate.move_to(ruler.get_right()), run_time=5, rate_func=linear)

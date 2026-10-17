@@ -4,7 +4,7 @@ Manim Community scenes for the series' visuals, one file per episode
 (`epNN.py`) and one Scene class per script segment (`Segment_1_5` is segment 1.5).
 Shot ids in comments (`[V1.5b]`) match the **Visual.** notes in `../episodes/`.
 
-Episodes 1–7 are complete and narrated (see Narration); episode 1 is the template for
+Episodes 1–8 are complete and narrated (see Narration); episode 1 is the template for
 the others.
 
 ## Requirements
@@ -144,6 +144,22 @@ the second time; 7.9 holds its repeat for 8 s past the narration instead.
 - 5.6 replays the second step in slow motion, labelling the unmatched + and the new −.
 - 5.7 moves the lines under the first equals sign; the red guides slide with them and merge.
 - 5.9 uses the q05-05 figure (sides 2.4 and 1.6, so the hypotenuse square stays in frame).
+
+## Episode 8 notes
+
+- Segments mix `Segment` with the scene type they show (`Segment_8_3(Segment, ZoomedScene)`);
+  `Segment.setup` calls `super().setup()` last, so the mixed-in scene sets itself up.
+- 8.2 draws the camera frame as a rectangle in a pulled-back view; `on_screen` places captions, code
+  and the QR card in screen coordinates for wherever the frame stands.
+- 8.1's message is laid out at 48 points and scaled to the snippet's 8: Pango spaces 8-point glyphs
+  unevenly, which the zoom makes obvious.
+- 8.4 moves the real camera to phi = 0 and 90° rather than drawing a second view.
+- 8.8's episode 6 wave is drawn at the helix's scale: from phi 88°, theta 0 the helix is
+  x = sin t, y = t / 4 on screen, so the two curves line up.
+- 8.9 shows four camera positions at once with one camera looking straight down: each copy of the
+  surface is turned by the rotation `ThreeDCamera` would apply for its phi and theta (`view_matrix`).
+- q08-02 colours `zoomed_display.display_frame`: Manim Community's zoomed display is an image, and
+  `set_color` on it raises NotImplementedError (manim-lite accepted the earlier form).
 
 ## Episode 7 notes
 

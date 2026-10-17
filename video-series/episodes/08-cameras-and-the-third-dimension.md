@@ -36,8 +36,8 @@ camera drifts to the next dot, then pulls back out to the full grid.
 
 **Visual.** [V8.2a] Pull far back from the grid scene to show the scene "world"
 extending beyond the frame. The camera frame appears as a white rectangle, 8 units
-tall. [V8.2b] The rectangle shrinks and slides toward the centre dot; a picture-in-
-picture shows what the camera sees, which fills the screen. [V8.2c] Code beats
+tall. [V8.2b] The rectangle shrinks and slides toward the centre dot; then the real
+camera moves into the rectangle, so what it holds fills the screen. [V8.2c] Code beats
 highlighted in sequence: `save_state()`, `frame.animate.scale(0.15).move_to(dots[12])`,
 `Restore(frame)`. [V8.2d] Close-up comparison: a line drawn at normal zoom, then at
 6.7× zoom, where it looks proportionally thicker. Caption: "stroke widths are in
@@ -100,7 +100,8 @@ transparent sphere surrounds the axes. A small camera icon sits on the sphere. T
 angle arcs: `phi` measured down from the top of the z-axis to the camera, and `theta`
 measured around the equator from the x-axis. [V8.4c] The camera icon moves: phi = 0
 (looking straight down, the scene looks flat), phi = 90° (looking from the side),
-theta sweeping around. A small monitor in the corner shows the view from the icon.
+theta sweeping around. For phi = 0 and 90° the real camera moves there, so the viewer
+sees that view directly.
 [V8.4d] `self.set_camera_orientation(phi=70 * DEGREES, theta=-50 * DEGREES)` is written
 beneath, with phi and theta coloured to match their arcs.
 
@@ -181,9 +182,9 @@ flat across the top-left of the screen. A yellow helix grows around the vertical
 [V8.8b] The camera rises to look straight down (phi ≈ 10°): the helix appears as a
 circle. [V8.8c] The camera swings to the side (phi ≈ 88°, theta = 0): the helix
 appears as a wave, rising and falling. The title stays perfectly flat throughout.
-[V8.8d] A split screen: on the left, the circle-to-sine scene from episode 6; on the
-right, the side view of the helix, turned a quarter turn so it runs left to right.
-The two waves line up.
+[V8.8d] Beside the side view of the helix, the circle-to-sine scene from episode 6,
+turned upright and drawn at the helix's scale: its wave traces the same curve, level
+with the helix.
 
 **On screen**
 
@@ -233,7 +234,7 @@ rest hold a small rotation matrix. Caption: "rigid motion: send the shape once".
 **Visual.** [V8.11a] Summary board: the camera rectangle; the inset with connecting
 lines; the globe with phi and theta; a surface patch grid; a cube with sorted faces;
 the helix casting a circle and a wave. [V8.11b] QR wall: q08-01 to q08-05 for 10 seconds.
-[V8.11c] Teaser: a cursor clicking Export → MP4 (episode 9).
+[V8.11c] Teaser: a strip of frames becomes an MP4 file (episode 9).
 
 > The camera is a mobject too, so you can move it, zoom it, save it and restore it. A zoomed scene adds a magnifying inset. In three dimensions, phi and theta place the camera on a globe, surfaces and solids are made of flat shaded faces, and fixed-in-frame text stays readable while the world turns.
 >

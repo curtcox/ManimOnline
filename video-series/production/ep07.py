@@ -796,12 +796,6 @@ class Segment_7_9(Segment, LinearTransformationScene):
     def __init__(self, **kwargs):
         LinearTransformationScene.__init__(self, show_coordinates=True, leave_ghost_vectors=True, **kwargs)
 
-    def setup(self):
-        # Segment first: LinearTransformationScene.setup then empties foreground_mobjects, which
-        # apply_matrix animates, so a review clock (SEGMENT_LABELS) is never animated with them.
-        Segment.setup(self)
-        LinearTransformationScene.setup(self)
-
     def apply_matrix(self, matrix, **kwargs):
         # Scene.play overwrites self.moving_mobjects (LinearTransformationScene's list of extra
         # mobjects to move) with whatever the last play animated; this scene adds none.
