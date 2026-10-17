@@ -13,7 +13,7 @@
 - Write time-based updaters with `dt` that are independent of frame rate.
 - Drive several objects from one `ValueTracker`, and display it with `DecimalNumber`.
 - Rebuild objects every frame with `always_redraw`, and trace paths with `TracedPath`.
-- Avoid common updater surprises: suspended updaters and update order.
+- Avoid common updater surprises: updaters that override animations, and update order.
 - Choose between updaters, trackers, `always_redraw`, `become` and plain animations.
 
 ## Script
@@ -172,16 +172,17 @@ rate_func=linear)` is highlighted in yellow, and a bracket links it to every mov
 
 ### 6.8 Two surprises worth knowing · ≈ 1:20
 
-**Visual.** [V6.8a] A spinning wheel with a dt updater. `wheel.animate.shift(RIGHT
-* 4)` is played; the wheel glides right without spinning, then resumes spinning when
-the glide ends. A pause icon flickers over the gear during the glide. [V6.8b] Two
-objects with updaters, A reading from B. A frame-by-frame diagram shows A using B's
-position from before B's updater ran: A lags one frame behind. Caption: "order
-matters".
+**Visual.** [V6.8a] A spinning wheel with a dt updater. `wheel.animate.shift(RIGHT * 4)`
+is played; the wheel glides right and keeps spinning, and a gear icon beside it keeps
+turning: "updaters keep running during animations". [V6.8b] The dot and its label from
+q06-01. `label.animate.shift(DOWN * 2)` is played and the label doesn't budge; a red "✗".
+`label.animate.set_color(RED)` turns it red; a green "✓". [V6.8c] Two objects with
+updaters, A reading from B. A frame-by-frame diagram shows A using B's position from
+before B's updater ran: A lags one frame behind. Caption: "order matters".
 
 > Two things tend to surprise people.
 >
-> First: when you animate an object that has updaters, Manim pauses that object's updaters for the length of the animation, so the two don't fight over it. That's why the spinning wheels in the earlier example were never asked to move at the same time. If you need both, move a parent group instead, or build the motion into the updater.
+> First: updaters keep running while an animation plays. Manim even applies them to the animation's starting and ending copies, so a spinning wheel keeps spinning while it glides across the screen. But if an updater decides where an object is, animating its position does nothing: the updater puts it back, every frame. Animating its colour works, because the updater never touches colour. To move a follower, move what it follows, or clear its updater first.
 >
 > Second: updaters run in order. If one object's updater reads another object that hasn't been updated yet this frame, it sees last frame's position, and lags one frame behind. Usually that's invisible. When it isn't, have both read the same value tracker directly, rather than reading each other.
 
