@@ -4,7 +4,7 @@ Manim Community scenes for the series' visuals, one file per episode
 (`epNN.py`) and one Scene class per script segment (`Segment_1_5` is segment 1.5).
 Shot ids in comments (`[V1.5b]`) match the **Visual.** notes in `../episodes/`.
 
-Episodes 1–5 are complete; episode 1 is the template for the others. Episode 1 is
+Episodes 1–6 are complete; episode 1 is the template for the others. Episode 1 is
 narrated (see Narration).
 
 ## Requirements
@@ -67,6 +67,7 @@ stay up at least 8 s.
   `check_qr.py --wall N` decodes each code on episode N's rendered closing wall.
   Long QR titles wrap onto two lines (`wrapped_text`) rather than shrinking.
 - `anchors_and_handles` (common.py) marks every cubic of a VMobject, letters and formulas included.
+  `chars`/`find_chars` pick a Text's glyphs by source position; `fit` shrinks a line to the frame.
 - **Screen recordings** are `footage_card` placeholders listing the shots to capture.
   Never draw an imitation of the ManimOnline interface; replace the card with real
   footage in the edit. Error and code panels (as in 1.9) are diagrams, not UI mock-ups.
@@ -136,3 +137,15 @@ stay up at least 8 s.
 - 5.6 replays the second step in slow motion, labelling the unmatched + and the new −.
 - 5.7 moves the lines under the first equals sign; the red guides slide with them and merge.
 - 5.9 uses the q05-05 figure (sides 2.4 and 1.6, so the hypotenuse square stays in frame).
+
+## Episode 6 notes
+
+- Manim Community runs a mobject's updaters on an animation's start and end copies, so updaters
+  keep working during animations (a spinning wheel spins while it glides) and an updater that
+  sets position defeats `.animate.shift`. 6.8 shows both; the script was corrected to match.
+- `Unroll` draws the q06-05 scene at any scale and offset from one tracker (6.1 full screen,
+  6.7 beside its code). Parts are frozen with `clear_updaters()` and replaced by live copies to resume.
+- 6.4's 15 fps and 60 fps wheels turn in whole frame steps (`floor(s * fps) / fps`) under one
+  playhead tracker, so both visibly reach the same quarter turn.
+- 6.8's update-order lag was measured in Community: A added before B lags one frame (1/15 unit
+  at 1 unit per second, 15 fps); added after B, none.

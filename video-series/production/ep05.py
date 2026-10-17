@@ -25,21 +25,6 @@ def solve_steps(font_size=72):
     ]
 
 
-def chars(text, source, start, end=None):
-    """Glyphs of a Text for source[start:end]: Text has no glyphs for whitespace."""
-    end = len(source) if end is None else end
-    index = len(re.sub(r'\s', '', source[:start]))
-    count = len(re.sub(r'\s', '', source[start:end]))
-    return VGroup(*text[index:index + count])
-
-
-def find_chars(text, source, needle, occurrence=0):
-    start = -1
-    for _ in range(occurrence + 1):
-        start = source.index(needle, start + 1)
-    return chars(text, source, start, start + len(needle))
-
-
 def isolated(formula, tex):
     """Every glyph group MathTex isolated for `tex` (tex_to_color_map/substrings_to_isolate)."""
     return VGroup(*[formula.id_to_vgroup_dict[i] for t, i in formula.matched_strings_and_ids
@@ -55,11 +40,6 @@ def tag(name, color, font_size=22):
 
 def index_tag(i, color=GREY_A, font_size=26):
     return code_text(f'[{i}]', font_size, color)
-
-
-def fit(mob, width=13.0):
-    """Shrink a line that would run off the frame."""
-    return mob.scale_to_fit_width(width) if mob.width > width else mob
 
 
 def outlined(mob, width=1.5, color=WHITE):

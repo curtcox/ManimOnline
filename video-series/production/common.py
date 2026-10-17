@@ -198,6 +198,26 @@ def code_text(source, font_size=26, color=GREY_A):
     return Text(source, font=MONO, font_size=font_size, color=color)
 
 
+def chars(text, source, start, end=None):
+    """Glyphs of a Text for source[start:end]: Text has no glyphs for whitespace."""
+    end = len(source) if end is None else end
+    index = len(re.sub(r'\s', '', source[:start]))
+    count = len(re.sub(r'\s', '', source[start:end]))
+    return VGroup(*text[index:index + count])
+
+
+def find_chars(text, source, needle, occurrence=0):
+    start = -1
+    for _ in range(occurrence + 1):
+        start = source.index(needle, start + 1)
+    return chars(text, source, start, start + len(needle))
+
+
+def fit(mob, width=13.0):
+    """Shrink a line that would run off the frame."""
+    return mob.scale_to_fit_width(width) if mob.width > width else mob
+
+
 def code_panel(source, font_size=24, line_numbers=True):
     """Syntax-highlighted code on a dark rounded panel (Manim's Code mobject)."""
     return Code(code_string=source.strip('\n'), language='python', formatter_style='monokai',
