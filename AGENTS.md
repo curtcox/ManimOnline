@@ -170,7 +170,8 @@ independent target geometry. As in Community, the always_redraw callback rebuild
 original object (a closure), even when run on a copy, so animation copies keep their shape.
 
 Read `examples/numeric_scene.py` for DecimalNumber/Integer tracker labels,
-formatted intermediate animation values and restoration. Numeric labels are one
+glyph morphs (`.animate.set_value` morphs outlines, as Community; only ChangeDecimalToValue
+and updaters count) and restoration. Numeric labels are one
 centered SVG Text leaf until indexed/iterated; then `_explode` builds Community's
 per-character glyphs (`_NumberGlyph`, presented as MathTex, `_tex_glyph` serif layout
 from `_numeric_boxes`) and set_value rebuilds them (`_number_exploded` keeps the leaf pose). Keep formatting options

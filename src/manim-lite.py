@@ -15678,8 +15678,19 @@ class Transform(_PathOptions, Animation):
                 self.start, self._canonical = start, canonical
 
     def _split_for(self, source):
+        def maps(mobject):
+            # Glyph maps (stretch, apply_matrix) of text leaves: their points move linearly in
+            # Community, which a lerp of pose and map separately does not reproduce.
+            return [(m.__dict__.get('glyph_matrix'), m.__dict__.get('glyph_stretch'), m.angle if
+                     m.__dict__.get('glyph_matrix') or m.__dict__.get('glyph_stretch') else 0)
+                    for m in mobject.get_family() if m._type == 'text']
+        def numbers(mobject):
+            # Community morphs a number's glyph outlines; it never counts through values.
+            return [_number_text(m.number, m._number_format) for m in mobject.get_family()
+                    if m._type == 'text' and '_number_format' in m.__dict__]
         self._split_glyphs = (_has_glyphs(source) != _has_glyphs(self.target)
-                              or _texts(source) != _texts(self.target))
+                              or _texts(source) != _texts(self.target) or maps(source) != maps(self.target)
+                              or numbers(source) != numbers(self.target))
         if self._split_glyphs:
             self.start = self._plan_snapshot(source)
 
@@ -16351,6 +16362,9 @@ class Swap(CyclicReplace):
 class FadeTransform(Transform):
     """Crossfade while the source moves onto the target and the target grows from the source."""
     def __init__(self, mobject, target_mobject, stretch=True, dim_to_match=1, **kwargs):
+        # Community morphs glyph outlines: split text before the target is copied.
+        _glyph_family(mobject)
+        _glyph_family(target_mobject)
         super().__init__(mobject, target_mobject, **kwargs)
         if not isinstance(stretch, bool):
             raise ValueError('stretch must be a boolean')

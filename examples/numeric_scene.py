@@ -1,4 +1,4 @@
-"""Display sampled tracker values and animate a number directly."""
+"""Display sampled tracker values; animating set_value morphs the glyphs, as in Manim."""
 from manim import *
 
 

@@ -5771,9 +5771,13 @@ self.play(number.animate.set_value(4), run_time=2, rate_func=linear)
 self.play(number.animate.increment_value(1))
 self.play(number.animate.increment_value(1))
 self.play(Restore(number), run_time=2, rate_func=linear)""")
-        self.assertEqual(result['frames'][15]['mobjects'][0]['text'], '2.00')
+        # Community morphs the glyph outlines of 0.00 into those of 4.00 (it never counts).
+        glyphs = lambda frame: [child['curves'] for child in result['frames'][frame]['mobjects'][0]['children']]
+        self.assertEqual(len(glyphs(15)), 4)
+        self.assertNotEqual(glyphs(15)[0], glyphs(0)[0] if result['frames'][0]['mobjects'][0].get('children') else None)
+        self.assertNotEqual(glyphs(15)[0], glyphs(30)[0])
+        self.assertEqual(result['frames'][30]['mobjects'][0]['text'], '4.00')
         self.assertEqual(result['frames'][60]['mobjects'][0]['text'], '6.00')
-        self.assertEqual(result['frames'][75]['mobjects'][0]['text'], '3.00')
         self.assertEqual(result['frames'][-1]['mobjects'][0]['text'], '0.00')
 
     def test_numeric_labels_can_become_plain_text_or_geometry(self):
@@ -5798,8 +5802,10 @@ self.wait(1)""")
         self.assertEqual(middle[1]['text'], '+1.00')
         self.assertEqual(middle[1]['position'], [1, 1, 0])
         self.assertEqual(middle[2]['text'], '1')
-        self.assertEqual(result['frames'][75]['mobjects'][3]['text'], '1,750')
-        self.assertEqual(result['frames'][75]['mobjects'][3]['children'][0]['text'], ' points')
+        # total.animate.set_value morphs 1,000's glyphs into 2,500's, as Community does.
+        self.assertEqual([child['type'] for child in result['frames'][75]['mobjects'][3]['children']],
+                         ['bezierpath'] * 5 + ['vgroup'])
+        self.assertEqual(result['frames'][90]['mobjects'][3]['text'], '2,500')
         self.assertEqual(result['frames'][-1]['mobjects'][3]['text'], '1,000')
         self.assertEqual(result['frames'][0]['mobjects'][1]['text'], '-2.00')
 
