@@ -175,6 +175,22 @@ def qr_wall(qr_ids, height=2.0):
     return cards
 
 
+# ---------------------------------------------------------------- outlines
+
+def anchors_and_handles(mob, anchor_color=FOCUS, handle_color=GREY_B, anchor_radius=0.08):
+    """Every cubic of a VMobject: anchor dots, handle dots and the lines joining them."""
+    points = mob.get_points()
+    anchors, handles = VGroup(), VGroup()
+    for i in range(0, len(points), 4):
+        for j in (i, i + 3):
+            if not any(np.allclose(points[j], d.get_center()) for d in anchors):
+                anchors.add(Dot(points[j], radius=anchor_radius, color=anchor_color))
+        handles.add(Line(points[i], points[i + 1], color=handle_color, stroke_width=2),
+                    Line(points[i + 3], points[i + 2], color=handle_color, stroke_width=2),
+                    Dot(points[i + 1], radius=0.045, color=handle_color), Dot(points[i + 2], radius=0.045, color=handle_color))
+    return anchors, handles
+
+
 # ---------------------------------------------------------------- code and footage
 
 def code_text(source, font_size=26, color=GREY_A):

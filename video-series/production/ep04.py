@@ -63,20 +63,6 @@ def handle_sticks(points, color=GREY_B):
                   Dot(points[0], color=FOCUS, radius=0.09), Dot(points[3], color=FOCUS, radius=0.09))
 
 
-def anchors_and_handles(mob, anchor_color=FOCUS, handle_color=GREY_B, anchor_radius=0.08):
-    """Every cubic of a VMobject: anchor dots, handle dots and the lines joining them."""
-    points = mob.get_points()
-    anchors, handles = VGroup(), VGroup()
-    for i in range(0, len(points), 4):
-        for j in (i, i + 3):
-            if not any(np.allclose(points[j], d.get_center()) for d in anchors):
-                anchors.add(Dot(points[j], radius=anchor_radius, color=anchor_color))
-        handles.add(Line(points[i], points[i + 1], color=handle_color, stroke_width=2),
-                    Line(points[i + 3], points[i + 2], color=handle_color, stroke_width=2),
-                    Dot(points[i + 1], radius=0.045, color=handle_color), Dot(points[i + 2], radius=0.045, color=handle_color))
-    return anchors, handles
-
-
 class Segment_4_1(Segment):
     """Cold open: how do you store a circle?"""
     EPISODE, SEGMENT = 4, '4.1'

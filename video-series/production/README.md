@@ -4,7 +4,7 @@ Manim Community scenes for the series' visuals, one file per episode
 (`epNN.py`) and one Scene class per script segment (`Segment_1_5` is segment 1.5).
 Shot ids in comments (`[V1.5b]`) match the **Visual.** notes in `../episodes/`.
 
-Episodes 1–4 are complete; episode 1 is the template for the others. Episode 1 is
+Episodes 1–5 are complete; episode 1 is the template for the others. Episode 1 is
 narrated (see Narration).
 
 ## Requirements
@@ -66,6 +66,7 @@ stay up at least 8 s.
   `python video-series/production/check_qr.py` renders every card at 1080p and decodes it;
   `check_qr.py --wall N` decodes each code on episode N's rendered closing wall.
   Long QR titles wrap onto two lines (`wrapped_text`) rather than shrinking.
+- `anchors_and_handles` (common.py) marks every cubic of a VMobject, letters and formulas included.
 - **Screen recordings** are `footage_card` placeholders listing the shots to capture.
   Never draw an imitation of the ManimOnline interface; replace the card with real
   footage in the edit. Error and code panels (as in 1.9) are diagrams, not UI mock-ups.
@@ -121,3 +122,17 @@ stay up at least 8 s.
   q04-03 square so the new anchors are Manim's own.
 - 4.7's dashed tracks sample `path_along_arc` directly, the same function `path_arc` uses.
   Its pairing demo reverses one circle: halfway through, the outline flattens.
+
+## Episode 5 notes
+
+- Formulas come from Manim's own TeX pipeline, so production needs TeX (see Requirements).
+- `chars`/`find_chars` pick a Text's glyphs by source position (Text has no glyphs for
+  spaces), for colouring parts of code lines; `isolated` returns the glyphs that
+  `tex_to_color_map`/`substrings_to_isolate` isolated. In Manim 0.21 an isolated substring
+  doesn't split the formula into parts: it is a glyph group in `id_to_vgroup_dict`.
+- `TERM_COLORS` gives each term of the q05-03 working one colour everywhere: the code chips,
+  their match lines (5.6), the full-screen steps and the recap.
+- 5.1 traces 2x and = with trails beneath the formula while TransformMatchingTex glides them.
+- 5.6 replays the second step in slow motion, labelling the unmatched + and the new −.
+- 5.7 moves the lines under the first equals sign; the red guides slide with them and merge.
+- 5.9 uses the q05-05 figure (sides 2.4 and 1.6, so the hypotenuse square stays in frame).
