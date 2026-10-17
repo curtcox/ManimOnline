@@ -424,3 +424,199 @@ class Segment_1_7(Segment):
         rename = Text('shape: a name that stays true', font_size=30, color=FOCUS).next_to(after, DOWN, buff=0.3).align_to(after, LEFT)
         self.play(FadeOut(qr), ReplacementTransform(marks[2], VGroup(line_highlight(after, 5, color=FOCUS), rename)))
         self.finish()
+
+
+def snippet_lines(path, first, last):
+    """Lines first..last (1-based, inclusive) of a snippet, dedented, for an excerpt panel."""
+    import textwrap
+    lines = snippet_source(path).splitlines()[first - 1:last]
+    return textwrap.dedent('\n'.join(lines))
+
+
+class Segment_1_8(Segment):
+    """Time is something you write down."""
+    EPISODE, SEGMENT = 1, '1.8'
+
+    def construct(self):
+        code = code_panel(snippet_lines('ep01/03-timeline.py', 7, 11), font_size=22, line_numbers=False)
+        code.scale_to_fit_width(13).to_edge(UP, buff=0.35)
+        axis = NumberLine(x_range=[0, 6, 1], length=11, include_numbers=True, font_size=26).to_edge(DOWN, buff=0.7)
+        unit = Text('seconds', font_size=22, color=SCAFFOLD).next_to(axis, RIGHT, buff=0.15)
+        track = Line(LEFT * 4, RIGHT * 4, color=GREY_D).shift(DOWN * 0.4)
+        dot = Dot(track.get_start(), color=FOCUS, radius=0.14)
+        self.play(FadeIn(code), Create(axis), FadeIn(unit), Create(track))
+        self.hold_until(0.12)
+
+        def block(t0, t1, color, words):
+            rect = Rectangle(width=axis.n2p(t1)[0] - axis.n2p(t0)[0], height=0.42)
+            rect.set_fill(color, 0.75).set_stroke(width=0)
+            rect.next_to(axis.n2p(t0), UP, buff=0.12, aligned_edge=LEFT)
+            label = Text(words, font_size=20).move_to(rect).set_z_index(1)
+            if label.width > rect.width - 0.1:
+                label.next_to(rect, UP, buff=0.08)
+            return rect, label
+
+        # self.add: instant, a zero-width tick
+        box = line_highlight(code, 0)
+        tick = Line(UP * 0.3, DOWN * 0.3, color=FOCUS, stroke_width=6).move_to(axis.n2p(0) + UP * 0.35)
+        self.play(Create(box), FadeIn(dot, scale=2), Create(tick))
+        self.hold_until(0.2)
+
+        # each play/wait grows its block for exactly as long as it lasts
+        plan = [(1, 0, 1, OBJECT, 'play: 1 s', lambda: dot.animate.move_to(ORIGIN + DOWN * 0.4)),
+                (2, 1, 2, GREY_D, 'wait: 1 s', None),
+                (3, 2, 5, OBJECT, 'play, run_time=3: 3 s', lambda: dot.animate.move_to(track.get_end())),
+                (4, 5, 5.5, GREY_D, 'wait', None)]
+        for line, t0, t1, color, words, motion in plan:
+            rect, label = block(t0, t1, color, words)
+            grow = GrowFromEdge(rect, LEFT)
+            animations = [grow] + ([motion()] if motion else [])
+            self.play(Transform(box, line_highlight(code, line)), run_time=0.4)
+            self.play(*animations, run_time=t1 - t0, rate_func=linear if not motion else smooth)
+            self.play(FadeIn(label), run_time=0.3)
+            if line == 2:
+                self.hold_until(0.4)
+
+        # [V1.8c] the total
+        total = BraceBetweenPoints(axis.n2p(0) + UP * 0.8, axis.n2p(5.5) + UP * 0.8, direction=UP)
+        sum_text = Text('5.5 s', font_size=32, color=FOCUS).next_to(total, UP, buff=0.1)
+        self.play(FadeOut(box), GrowFromCenter(total), Write(sum_text))
+        qr = qr_card('q01-03', height=1.7, corner=UR).shift(DOWN * 2.6)
+        self.play(FadeIn(qr))
+        self.hold_until(0.66)
+
+        # matching animations to narration
+        self.play(FadeOut(qr))
+        voice = VMobject(color=GREEN_B, stroke_width=2)
+        xs = np.linspace(axis.n2p(0)[0], axis.n2p(5.5)[0], 160)
+        voice.set_points_as_corners([[x, 0.3 * np.sin(9 * x) * np.sin(1.3 * x) ** 2 + 0.35, 0] for x in xs])
+        voice.shift(DOWN * 1.2)
+        caption = Text('narration', font_size=20, color=GREEN_B).next_to(voice, LEFT, buff=0.2)
+        self.play(Create(voice), FadeIn(caption), run_time=2)
+        self.finish()
+
+
+class Segment_1_9(Segment):
+    """When things go wrong."""
+    EPISODE, SEGMENT = 1, '1.9'
+
+    def construct(self):
+        broken = snippet_source('ep01/04-fix-the-typo.py')
+        code = code_panel(broken, font_size=22)
+        code.scale_to_fit_width(12.5).to_edge(UP, buff=0.35)
+        self.play(FadeIn(code))
+        self.hold_until(0.18)
+
+        # [V1.9a] the traceback's last two lines
+        qr = qr_card('q01-04', height=1.7)
+        where = Text('File "<scene>", line 7, in construct', font='Menlo', font_size=22, color=GREY_A)
+        parts = VGroup(*[Text(t, font='Menlo', font_size=22, color=c) for t, c in (
+            ("NameError: name", WARNING), ("'Circel'", FOCUS), ("is not defined.", WARNING))])
+        parts.arrange(RIGHT, buff=0.2)
+        hint = VGroup(*[Text(t, font='Menlo', font_size=22, color=c) for t, c in (
+            ("Did you mean:", GREY_A), ("'Circle'", AFTER), ("?", GREY_A))])
+        hint[1].next_to(hint[0], RIGHT, buff=0.2)
+        hint[2].next_to(hint[1], RIGHT, buff=0.05)
+        message = VGroup(where, parts, hint).arrange(DOWN, aligned_edge=LEFT, buff=0.18)
+        panel = SurroundingRectangle(message, color=WARNING, buff=0.3, corner_radius=0.1).set_fill('#2a1213', 1)
+        error = VGroup(panel, message).next_to(code, DOWN, buff=0.35).align_to(code, LEFT)
+        self.play(FadeIn(error, shift=UP * 0.2), FadeIn(qr))
+        self.hold_until(0.36)
+
+        # [V1.9b] the named word, and the line it names
+        underline = Underline(parts[1], color=FOCUS)
+        error.add(underline)
+        self.play(Create(underline))
+        self.hold_until(0.45)
+        self.play(Indicate(hint[1], color=AFTER))
+        bad_line = line_highlight(code, 6, color=WARNING)
+        self.play(Create(bad_line), Indicate(where, color=WARNING))
+        self.hold_until(0.6)
+
+        # [V1.9c] fix the spelling; it renders
+        fixed = code_panel(broken.replace('Circel', 'Circle')
+                           .replace('  # This line has a typo. Read the error, then fix it.', ''), font_size=22)
+        fixed.scale_to_fit_height(code.height)
+        fixed.align_to(code, UL)
+        good_line = line_highlight(fixed, 6, color=AFTER)
+        self.play(FadeOut(qr), FadeOut(error), FadeTransform(code, fixed), ReplacementTransform(bad_line, good_line))
+        square = Square(color=BLUE).scale(0.7).move_to(DOWN * 2.2)
+        self.play(Create(square))
+        self.play(Transform(square, Circle(color=YELLOW).scale(0.7).move_to(square)))
+        works = Text('it works', font_size=30, color=AFTER).next_to(square, RIGHT, buff=0.6)
+        self.play(FadeIn(works))
+        self.hold_until(0.78)
+
+        # read the last line first
+        self.play(FadeOut(VGroup(square, works)), FadeOut(good_line))
+        tips = VGroup(*[Text(t, font_size=28) for t in
+                        ('a misspelled name', 'a missing parenthesis', 'a missing import')])
+        tips.arrange(RIGHT, buff=0.8).move_to(DOWN * 1.6)
+        rule = Text('Read the last line first.', font_size=34, color=FOCUS).next_to(tips, DOWN, buff=0.5)
+        self.play(LaggedStart(*[FadeIn(t, shift=UP * 0.2) for t in tips], lag_ratio=0.3))
+        self.play(Write(rule))
+        self.finish()
+
+
+def traffic_light():
+    housing = RoundedRectangle(width=2, height=5, corner_radius=0.4, color=GREY)
+    lamps = VGroup(*[Circle(radius=0.6, color=DARK_GREY, fill_opacity=1) for _ in range(3)]).arrange(DOWN, buff=0.3)
+    return VGroup(housing, lamps)
+
+
+class Segment_1_10(Segment):
+    """Recap and challenge."""
+    EPISODE, SEGMENT = 1, '1.10'
+
+    def construct(self):
+        # [V1.10a] the grammar, with today's examples attached
+        words = VGroup(*[Text(w, font_size=36, color=c) for w, c in (
+            ('Scene', GREY_A), ('Mobject', OBJECT), ('Animation', AFTER), ('play', FOCUS), ('frames', SCAFFOLD))])
+        words.arrange(RIGHT, buff=0.9).shift(UP * 1.2)
+        arrows = VGroup(*[Arrow(a.get_right(), b.get_left(), buff=0.15, color=GREY_D) for a, b in zip(words[2:], words[3:])])
+        icons = VGroup(stage(width=2).scale(0.4), VGroup(Square(color=BLUE), Circle(color=YELLOW)).scale(0.3).arrange(RIGHT),
+                       CurvedArrow(LEFT * 0.5, RIGHT * 0.5, angle=-PI / 2, color=AFTER), clock_icon(0.3),
+                       VGroup(*[Rectangle(width=0.3, height=0.3, color=GREY_D) for _ in range(4)]).arrange(RIGHT, buff=0.05))
+        for icon, word in zip(icons, words):
+            icon.next_to(word, DOWN, buff=0.35)
+        sentence = Text('a precise description of change is a program', font_size=30, color=FOCUS).shift(DOWN * 1.4)
+        self.play(LaggedStart(*[FadeIn(VGroup(w, i), shift=UP * 0.2) for w, i in zip(words, icons)], lag_ratio=0.2),
+                  LaggedStart(*[GrowArrow(a) for a in arrows], lag_ratio=0.3), run_time=3)
+        self.play(Write(sentence))
+        self.hold_until(0.36)
+
+        # [V1.10b] the challenge: finish the traffic light
+        light = traffic_light().scale(0.75).move_to(LEFT * 3)
+        housing, lamps = light
+        red, yellow, green = lamps
+        self.play(FadeOut(VGroup(words, arrows, icons, sentence)), FadeIn(light))
+        self.play(green.animate.set_fill(GREEN))
+        marks = VGroup()
+        for lamp in (yellow, red):
+            ring = DashedVMobject(Circle(radius=lamp.width / 2 + 0.08), num_dashes=20).set_stroke(FOCUS, 3).move_to(lamp)
+            marks.add(VGroup(ring, Text('?', font_size=40, color=FOCUS).move_to(lamp)))
+        steps = VGroup(*[Text(t, font_size=28) for t in
+                         ('1. green off', '2. yellow on', '3. wait', '4. red on')]).arrange(DOWN, aligned_edge=LEFT, buff=0.3)
+        steps.next_to(light, RIGHT, buff=1.2)
+        qr = qr_card('q01-05')
+        self.play(LaggedStart(*[Create(m) for m in marks], lag_ratio=0.4), FadeIn(qr))
+        self.play(LaggedStart(*[FadeIn(s, shift=RIGHT * 0.2) for s in steps], lag_ratio=0.25))
+        self.hold_until(0.62)
+
+        # [V1.10c] the QR wall, 10 seconds
+        wall = qr_wall([f'q01-0{i}' for i in range(1, 6)])
+        heading = Text('Episode 1 · scan to open each scene', font_size=26, color=SCAFFOLD).to_corner(UL, buff=0.3)
+        self.play(FadeOut(VGroup(light, marks, steps, qr)), FadeIn(wall), FadeIn(heading))
+        self.wait(10)
+
+        # [V1.10d] teaser: shapes snap into a grid (episode 2)
+        shapes = VGroup(*[m(color=c).scale(0.35) for m, c in zip(
+            [Square, Circle, Triangle, Star, RegularPolygon, Square, Circle, Triangle],
+            [BLUE, YELLOW, RED, GREEN, PURPLE, TEAL, ORANGE, PINK])])
+        for i, shape in enumerate(shapes):
+            shape.move_to([np.cos(i * 2.4) * 4.5, np.sin(i * 1.7) * 2.5, 0]).rotate(i)
+        self.play(FadeOut(VGroup(wall, heading)), LaggedStart(*[FadeIn(s) for s in shapes], lag_ratio=0.1))
+        self.play(shapes.animate.arrange_in_grid(rows=2, buff=0.6), run_time=1.5)
+        nxt = Text('Next: Mobjects, the nouns', font_size=34).to_edge(DOWN, buff=0.8)
+        self.play(Write(nxt))
+        self.finish()

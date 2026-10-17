@@ -141,8 +141,8 @@ def qr_card(qr_id, height=QR_HEIGHT, corner=DR):
     return card.to_corner(corner, buff=0.3)
 
 
-def qr_wall(qr_ids, height=1.7):
-    """All of an episode's codes in a row, captions underneath, for the closing wall."""
+def qr_wall(qr_ids, height=2.0):
+    """All of an episode's codes, captions underneath, for the closing wall (rows of three)."""
     cards = VGroup()
     for qr_id in qr_ids:
         code = qr_code(qr_id, height)
@@ -151,9 +151,15 @@ def qr_wall(qr_ids, height=1.7):
         if title.width > height + 0.6:
             title.scale_to_fit_width(height + 0.6)
         cards.add(VGroup(code, caption, title))
-    cards.arrange(RIGHT, buff=0.45)
+    if len(cards) <= 4:
+        cards.arrange(RIGHT, buff=0.6)
+    else:
+        rows = [VGroup(*cards[i:i + 3]).arrange(RIGHT, buff=0.9) for i in range(0, len(cards), 3)]
+        VGroup(*rows).arrange(DOWN, buff=0.35)
     if cards.width > 13.2:
         cards.scale_to_fit_width(13.2)
+    if cards.height > 7.0:
+        cards.scale_to_fit_height(7.0)
     return cards
 
 
