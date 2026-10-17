@@ -504,3 +504,155 @@ class Segment_2_7(Segment):
         self.play(dots.animate.scale(1.5).rotate(PI / 6), run_time=2)
         self.play(dots.animate.arrange(DOWN, buff=0.2).to_edge(LEFT), run_time=2)
         self.finish()
+
+
+def sticky_note(letter):
+    paper = Square(0.6).set_fill('#f3d564', 1).set_stroke(width=0).rotate(0.08)
+    return VGroup(paper, Text(letter, font=MONO, font_size=32, color=BLACK).move_to(paper))
+
+
+def attach(note, target, corner):
+    """Keep a note beside a corner of its object, tied on with a string."""
+    note.add_updater(lambda m: m.move_to(target.get_corner(corner) + corner * 0.75))
+    string = always_redraw(lambda: Line(note.get_center(), target.get_corner(corner), color=GREY_B, stroke_width=2))
+    return string
+
+
+class Segment_2_8(Segment):
+    """The copy trap."""
+    EPISODE, SEGMENT = 2, '2.8'
+
+    def construct(self):
+        lines = VGroup(*[code_text(t, 28) for t in
+                         ('a = Square(color=BLUE)', 'b = a', 'b.animate.set_color(RED)', 'c = a.copy()')])
+        lines.arrange(DOWN, aligned_edge=LEFT, buff=0.2).to_corner(UL, buff=0.4)
+
+        # [V2.8a] a square called a
+        square = Square(1.8, color=BLUE).move_to(LEFT * 1 + DOWN * 0.8)
+        note_a = sticky_note('a')
+        string_a = attach(note_a, square, UL)
+        self.play(Write(lines[0]), Create(square))
+        self.play(FadeIn(note_a, shift=DOWN * 0.2), FadeIn(string_a))
+        question = Text('How many squares?', font_size=34, color=FOCUS).to_edge(RIGHT, buff=0.8).shift(UP * 1.5)
+        self.hold_until(0.12)
+        self.play(Write(lines[1]))
+        self.play(Write(question))
+        self.hold_until(0.2)
+
+        # [V2.8b] b = a: a second note on the same square
+        note_b = sticky_note('b')
+        string_b = attach(note_b, square, UR)
+        self.play(FadeIn(note_b, shift=DOWN * 0.2), FadeIn(string_b))
+        answer = Text('one', font_size=40, color=AFTER).next_to(question, DOWN, buff=0.3)
+        self.play(Write(answer))
+        self.hold_until(0.47)
+
+        # [V2.8d] turning b red turns a red: one object, two names
+        qr = qr_card('q02-05')
+        self.play(Write(lines[2]), FadeIn(qr))
+        self.play(square.animate.set_color(RED), run_time=1.5)
+        self.play(Wiggle(note_a), Wiggle(note_b))
+        self.hold_until(0.72)
+
+        # [V2.8c] c = a.copy(): a genuinely new square
+        self.play(Write(lines[3]), FadeOut(VGroup(question, answer)))
+        twin = square.copy().clear_updaters()
+        note_c = sticky_note('c')
+        string_c = attach(note_c, twin, UR)
+        self.add(twin)
+        self.play(twin.animate.shift(RIGHT * 4).set_color(GREEN), FadeIn(note_c), FadeIn(string_c), run_time=2)
+        independent = Text('separate objects', font_size=30, color=AFTER).next_to(VGroup(square, twin), DOWN, buff=0.5)
+        self.play(FadeIn(independent))
+        self.finish()
+
+
+def sheet(color, y, x=1.6):
+    shape = Polygon([-1.6, -0.35, 0], [1.2, -0.35, 0], [1.8, 0.35, 0], [-1.0, 0.35, 0])
+    return shape.set_fill(color, 0.35).set_stroke(color, 3).move_to([x, y, 0])
+
+
+class Segment_2_9(Segment):
+    """Who is on top?"""
+    EPISODE, SEGMENT = 2, '2.9'
+
+    def construct(self):
+        back = Circle(radius=1.5, color=BLUE, fill_opacity=1).shift(LEFT)
+        middle = Square(2.5, color=GREEN, fill_opacity=1)
+        front = Triangle(color=RED, fill_opacity=1).scale(1.5).shift(RIGHT)
+        shapes = VGroup(back, middle, front)
+        shapes.scale(0.8).move_to(LEFT * 4)
+        self.play(LaggedStart(*[FadeIn(s) for s in shapes], lag_ratio=0.4))
+        front_label = Text('front view', font_size=26, color=SCAFFOLD).next_to(shapes, DOWN, buff=0.5)
+
+        # [V2.9a] side view: one sheet per object, in drawing order (first at the bottom)
+        slots = [-1.3, -0.2, 0.9]
+        sheets = [sheet(BLUE, slots[0]), sheet(GREEN, slots[1]), sheet(RED, slots[2])]
+        side_label = Text('side view', font_size=26, color=SCAFFOLD).move_to([1.6, -2.5, 0])
+        first = Text('drawn first', font_size=22, color=SCAFFOLD).next_to(sheets[0], LEFT, buff=0.35)
+        last = Text('drawn last', font_size=22, color=SCAFFOLD).next_to(sheets[2], LEFT, buff=0.35)
+        qr = qr_card('q02-06')
+        self.play(FadeIn(front_label), FadeIn(side_label), LaggedStart(*[FadeIn(s, shift=UP * 0.3) for s in sheets], lag_ratio=0.3),
+                  FadeIn(first), FadeIn(last))
+        self.play(FadeIn(qr))
+        self.hold_until(0.3)
+
+        def restack(order):
+            return [s.animate.move_to([1.6, slots[k], 0]) for k, s in enumerate(order)]
+
+        # [V2.9b] the circle's z_index becomes 1: it is drawn last
+        z1 = code_text('back.set_z_index(1)', 28, BLUE).move_to([1.6, 2.6, 0])
+        self.play(Write(z1))
+        self.play(*restack([sheets[1], sheets[2], sheets[0]]), back.animate.set_z_index(1), run_time=2)
+        self.hold_until(0.62)
+
+        # [V2.9c] the triangle's z_index becomes 2
+        z2 = code_text('front.set_z_index(2)', 28, RED).move_to(z1)
+        self.play(FadeOut(qr), ReplacementTransform(z1, z2))
+        self.play(*restack([sheets[1], sheets[0], sheets[2]]), front.animate.set_z_index(2), run_time=2)
+        self.finish()
+
+
+class Segment_2_10(Segment):
+    """Recap."""
+    EPISODE, SEGMENT = 2, '2.10'
+
+    def construct(self):
+        # [V2.10a] one tile per idea
+        grid = NumberPlane(x_range=[-2, 2], y_range=[-1, 1], x_length=3, y_length=1.6,
+                           background_line_style={'stroke_opacity': 0.4})
+        grid.add(Arrow(ORIGIN, RIGHT * 0.75, buff=0, color=AFTER), Arrow(ORIGIN, UP * 0.75, buff=0, color=AFTER))
+        paint = Circle(radius=0.75).set_stroke(WHITE, 6).set_fill(BLUE, 0.6)
+        verbs = VGroup(*[code_text(v, 22) for v in ('shift', 'move_to', 'next_to', 'to_corner', 'align_to')]).arrange(DOWN, buff=0.08)
+        group = VGroup(*[Dot(radius=0.1, color=interpolate_color(BLUE, YELLOW, i / 11)) for i in range(12)]).arrange_in_grid(rows=3, buff=0.25)
+        group = VGroup(group, dashed_box(group).set_stroke(AFTER))
+        one = Square(0.9, color=RED)
+        notes = VGroup(sticky_note('a').scale(0.6).next_to(one, UL, buff=0.05), sticky_note('b').scale(0.6).next_to(one, UR, buff=0.05))
+        names = VGroup(one, notes)
+        layers = VGroup(*[sheet(c, 0).scale(0.55).shift(UP * 0.35 * k) for k, c in enumerate((BLUE, GREEN, RED))])
+        tiles = VGroup()
+        for art, words in ((grid, 'positions are vectors'), (paint, 'stroke and fill'), (verbs, 'place by offset, point or relation'),
+                           (group, 'groups act as one'), (names, 'names are sticky notes'), (layers, 'z_index decides who is on top')):
+            art.move_to(ORIGIN)
+            caption = Text(words, font_size=22, color=SCAFFOLD).next_to(art, DOWN, buff=0.25)
+            tiles.add(VGroup(art, caption))
+        for k, tile in enumerate(tiles):
+            tile.move_to([(-4.6, 0, 4.6)[k % 3], (1.7, -1.9)[k // 3], 0])
+        self.play(LaggedStart(*[FadeIn(t, shift=UP * 0.2) for t in tiles], lag_ratio=0.35), run_time=5)
+        self.hold_until(0.6)
+
+        # [V2.10b] the QR wall, 10 seconds
+        wall = qr_wall([f'q02-0{i}' for i in range(1, 7)])
+        heading = Text('Episode 2 · scan to open each scene', font_size=26, color=SCAFFOLD).to_corner(UL, buff=0.3)
+        self.play(FadeOut(tiles), FadeIn(wall), FadeIn(heading))
+        self.wait(10)
+
+        # [V2.10c] teaser: five dots racing at different speeds (episode 3)
+        self.play(FadeOut(VGroup(wall, heading)))
+        racers = VGroup(*[Dot(LEFT * 5 + UP * (1.6 - 0.8 * k), color=FOCUS) for k in range(5)])
+        lanes = VGroup(*[Line(LEFT * 5, RIGHT * 5, color=GREY_D).move_to(UP * (1.6 - 0.8 * k)) for k in range(5)])
+        self.play(FadeIn(lanes), FadeIn(racers))
+        self.play(*[r.animate(rate_func=f).shift(RIGHT * 10) for r, f in
+                    zip(racers, (linear, smooth, rush_into, rush_from, there_and_back))], run_time=3)
+        nxt = Text('Next: Animations, the verbs', font_size=34).to_edge(DOWN, buff=0.8)
+        self.play(Write(nxt))
+        self.finish()

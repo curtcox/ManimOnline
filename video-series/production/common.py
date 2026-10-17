@@ -130,18 +130,23 @@ def qr_title(qr_id):
     return _QR[qr_id]['title']
 
 
+def wrapped_text(words, max_width, font_size=20, skip=0, **kwargs):
+    """Text no wider than max_width: wraps once at the comma or space nearest the middle
+    (ignoring the first `skip` characters) before falling back to shrinking."""
+    text = Text(words, font_size=font_size, **kwargs)
+    if text.width <= max_width:
+        return text
+    breaks = [i for i, ch in enumerate(words) if ch in ', ' and i > skip]
+    cut = min(breaks, key=lambda i: abs(i - len(words) / 2)) if breaks else len(words) // 2
+    text = Text(words[:cut + 1].rstrip() + '\n' + words[cut + 1:].strip(), font_size=font_size,
+                line_spacing=0.8, **kwargs)
+    return text.scale_to_fit_width(max_width) if text.width > max_width else text
+
+
 def qr_card(qr_id, height=QR_HEIGHT, corner=DR):
     """QR code with its caption above it, placed in a corner of the frame."""
     code = qr_code(qr_id, height)
-    words = f'{qr_id} · {qr_title(qr_id)}'
-    caption = Text(words, font_size=20)
-    if caption.width > 4.2:
-        # Wrap long titles at the comma or space nearest the middle rather than shrinking them.
-        breaks = [i for i, ch in enumerate(words) if ch in ', ' and i > len(qr_id) + 3]
-        cut = min(breaks, key=lambda i: abs(i - len(words) / 2)) if breaks else len(words) // 2
-        caption = Text(words[:cut + 1].rstrip() + '\n' + words[cut + 1:].strip(), font_size=20, line_spacing=0.8)
-        if caption.width > 4.2:
-            caption.scale_to_fit_width(4.2)
+    caption = wrapped_text(f'{qr_id} · {qr_title(qr_id)}', 4.2, font_size=20, skip=len(qr_id) + 3)
     caption.next_to(code, UP, buff=0.12)
     caption.align_to(code, RIGHT if corner[0] > 0 else LEFT)
     card = VGroup(BackgroundRectangle(caption, fill_opacity=0.85, buff=0.06), caption, code)
@@ -154,15 +159,14 @@ def qr_wall(qr_ids, height=2.0):
     for qr_id in qr_ids:
         code = qr_code(qr_id, height)
         caption = Text(qr_id, font_size=22).next_to(code, DOWN, buff=0.15)
-        title = Text(qr_title(qr_id), font_size=16, color=SCAFFOLD).next_to(caption, DOWN, buff=0.08)
-        if title.width > height + 0.6:
-            title.scale_to_fit_width(height + 0.6)
+        title = wrapped_text(qr_title(qr_id), height + 0.6, font_size=18, color=SCAFFOLD).next_to(caption, DOWN, buff=0.08)
         cards.add(VGroup(code, caption, title))
     if len(cards) <= 4:
-        cards.arrange(RIGHT, buff=0.6)
+        cards.arrange(RIGHT, buff=0.6, aligned_edge=UP)
     else:
-        rows = [VGroup(*cards[i:i + 3]).arrange(RIGHT, buff=0.9) for i in range(0, len(cards), 3)]
+        rows = [VGroup(*cards[i:i + 3]).arrange(RIGHT, buff=0.9, aligned_edge=UP) for i in range(0, len(cards), 3)]
         VGroup(*rows).arrange(DOWN, buff=0.35)
+        cards.move_to(ORIGIN)
     if cards.width > 13.2:
         cards.scale_to_fit_width(13.2)
     if cards.height > 7.0:
