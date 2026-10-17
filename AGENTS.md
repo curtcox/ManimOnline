@@ -681,6 +681,8 @@ Read `examples/zoomed_scene.py` for ZoomedScene. The display is a pure container
 syncs the zoomed frame to the display's whole-pixel aspect and writes `camera.views`.
 The renderer draws views as clipped, transformed re-renders (no pixels). Assigning
 `width`/`height` rescales (Community); write analytical dimensions via `__dict__`.
+AbstractImageMobject.set_color raises NotImplementedError (also through a parent's family
+set_color), as Community's does; only ImageMobject recolors, and `color` assignment just stores.
 
 Read `examples/linear_transformation_scene.py` for LinearTransformationScene. path_arc
 is per point in `_arc_geometry` (parent frame, then inverse sampled pose). Scene

@@ -18076,6 +18076,17 @@ class _ZoomedCamera:
 
 class AbstractImageMobject(Mobject):
     """Community's common base of ImageMobject and ImageMobjectFromCamera."""
+    # Community's color is a plain attribute here: assigning it restyles nothing.
+    color = _style_property('color', lambda mobject, value: mobject.__dict__.__setitem__('color', _paint(value)))
+
+    def get_pixel_array(self):
+        raise NotImplementedError(f'{type(self).__name__} has no pixel array in the preview, '
+                                  'which draws camera views as vectors')
+
+    def set_color(self, color=YELLOW_C, alpha=None, family=True):
+        # As in Community, only ImageMobject can be recolored, so a camera display (or a group
+        # holding one) cannot; color its display_frame instead.
+        raise NotImplementedError(f'{type(self).__name__} cannot be recolored')
 
 
 class ImageMobjectFromCamera(AbstractImageMobject):
@@ -23812,6 +23823,8 @@ class ImageMobject(AbstractImageMobject):
             raise ValueError('Unknown resampling algorithm')
         self.resampling_algorithm = value
         return self
+
+    set_color = Mobject.set_color
 
     def set_opacity(self, alpha, family=True):
         self._validate_opacity(alpha)

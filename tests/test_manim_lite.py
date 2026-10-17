@@ -210,6 +210,27 @@ class Demo(ZoomedScene):
 """
         lite.render_scene(source)
 
+    def test_camera_displays_cannot_be_recolored_like_community(self):
+        source = """from manim import *
+class Demo(ZoomedScene):
+    def construct(self):
+        display = self.zoomed_display
+        # Manim 0.22: AbstractImageMobject.set_color raises, and only ImageMobject overrides it.
+        for recolor in (lambda: display.set_color(YELLOW), lambda: Group(Dot(), display).set_color(RED)):
+            try:
+                recolor()
+            except NotImplementedError:
+                pass
+            else:
+                raise AssertionError('recolored a camera display')
+        display.display_frame.set_color(YELLOW)
+        display.color = RED  # A plain attribute in Community: nothing is restyled.
+        assert display.display_frame.color == YELLOW and display.color == RED
+        image = ImageMobject([[0, 100], [255, 30]]).set_color(BLUE)
+        assert image.color == BLUE
+"""
+        lite.render_scene(source)
+
     def test_zoomed_scene_matches_community_frame_and_display_geometry(self):
         source = """from manim import *
 class Demo(ZoomedScene):
