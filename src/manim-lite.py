@@ -17545,6 +17545,12 @@ class AddTextLetterByLetter(Animation):
             return [result]
         layout = _text_layout(result)
         shown = self._shown(progress, sum(1 for char in result['text'] if not char.isspace()))
+        if layout.get('outline_glyphs') is not None:
+            # Draw the first glyph outlines, as Community's revealed submobjects.
+            count = sum(entry[1] for entry in layout['outline_glyphs'][:shown])
+            result['glyph_curves'] = layout['outline'][:count]
+            layout.pop('outline', None)
+            layout.pop('outline_glyphs', None)
         em = layout['em'] / 1000
         for line in layout['lines']:
             kept = ''
