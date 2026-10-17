@@ -183,13 +183,14 @@ def footage_card(title, shots, height=6.0):
     frame = RoundedRectangle(width=height * 16 / 9, height=height, corner_radius=0.2)
     frame.set_stroke(SCAFFOLD, width=2).set_fill('#101418', 1)
     dashes = DashedVMobject(frame.copy().set_fill(opacity=0), num_dashes=80).set_stroke(SCAFFOLD, 2)
-    tag = Text('SCREEN RECORDING', font_size=22, weight=BOLD, color=WARNING)
-    heading = Text(title, font_size=34)
-    items = VGroup(*[Text(f'• {shot}', font_size=22, color=GREY_A) for shot in shots])
-    items.arrange(DOWN, aligned_edge=LEFT, buff=0.18)
-    body = VGroup(tag, heading, items).arrange(DOWN, aligned_edge=LEFT, buff=0.3)
-    if body.width > frame.width - 1:
-        body.scale_to_fit_width(frame.width - 1)
+    tag = Text('SCREEN RECORDING', font_size=26, weight=BOLD, color=WARNING)
+    heading = Text(title, font_size=44)
+    items = VGroup(*[Text(f'• {shot}', font_size=28, color=GREY_A) for shot in shots])
+    items.arrange(DOWN, aligned_edge=LEFT, buff=0.28)
+    body = VGroup(tag, heading, items).arrange(DOWN, aligned_edge=LEFT, buff=0.4)
+    body.scale_to_fit_width(frame.width - 1.2)
+    if body.height > frame.height - 1:
+        body.scale_to_fit_height(frame.height - 1)
     body.move_to(frame)
     return VGroup(frame, dashes, body)
 
