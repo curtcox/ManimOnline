@@ -37,6 +37,7 @@ QR_HEIGHT = 2.0             # 25 % of the 8-unit frame (README asks for at least
 # One sans-serif face for every Text; Pango otherwise falls back to a serif. Avenir Next
 # ships with macOS; set SERIES_FONT to another installed family on other systems.
 FONT = os.environ.get('SERIES_FONT', 'Avenir Next')
+MONO = 'Menlo'
 Text.set_default(font=FONT)
 MarkupText.set_default(font=FONT)
 
@@ -176,12 +177,17 @@ def qr_wall(qr_ids, height=2.0):
 
 # ---------------------------------------------------------------- code and footage
 
+def code_text(source, font_size=26, color=GREY_A):
+    """A single line of code in the code font, without a panel."""
+    return Text(source, font=MONO, font_size=font_size, color=color)
+
+
 def code_panel(source, font_size=24, line_numbers=True):
     """Syntax-highlighted code on a dark rounded panel (Manim's Code mobject)."""
     return Code(code_string=source.strip('\n'), language='python', formatter_style='monokai',
                 add_line_numbers=line_numbers, background='rectangle',
                 background_config={'fill_color': '#1e1f1c', 'stroke_color': GREY_D, 'stroke_width': 1},
-                paragraph_config={'font_size': font_size, 'font': 'Menlo'})
+                paragraph_config={'font_size': font_size, 'font': MONO})
 
 
 def code_line(code, index):
@@ -244,3 +250,17 @@ def clock_icon(radius=0.45):
     face = Circle(radius=radius, color=GREY_A, stroke_width=3)
     hand = Line(ORIGIN, UP * radius * 0.8, color=FOCUS, stroke_width=4)
     return VGroup(face, hand)
+
+
+# ---------------------------------------------------------------- names
+
+def sticky_note(letter):
+    paper = Square(0.6).set_fill('#f3d564', 1).set_stroke(width=0).rotate(0.08)
+    return VGroup(paper, Text(letter, font=MONO, font_size=32, color=BLACK).move_to(paper))
+
+
+def attach(note, target, corner):
+    """Keep a note beside a corner of its object, tied on with a string."""
+    note.add_updater(lambda m: m.move_to(target.get_corner(corner) + corner * 0.75))
+    string = always_redraw(lambda: Line(note.get_center(), target.get_corner(corner), color=GREY_B, stroke_width=2))
+    return string

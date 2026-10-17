@@ -4,7 +4,7 @@ Manim Community scenes for the series' visuals, one file per episode
 (`epNN.py`) and one Scene class per script segment (`Segment_1_5` is segment 1.5).
 Shot ids in comments (`[V1.5b]`) match the **Visual.** notes in `../episodes/`.
 
-Episodes 1 and 2 are complete; episode 1 is the template for the others.
+Episodes 1–3 are complete; episode 1 is the template for the others.
 
 ## Requirements
 
@@ -85,3 +85,16 @@ small drifts within a segment are expected; adjust a `hold_until` if a beat land
   a `next_to` label that follows its shape while a `move_to` label stays behind.
 - 2.8 ties sticky-note names to squares with updaters; 2.9 shows drawing order as a
   side-view stack of sheets that re-stacks as `z_index` changes.
+
+## Episode 3 notes
+
+- 3.1 and 3.5 freeze `.animate.rotate` halfway with a `Transform` whose rate function stops at
+  0.5 (`halfway()`), then finish it with a second `Transform` to the same target. That second
+  half is exactly the rest of the straight-line path.
+- 3.2 and 3.5 draw the interpolated shapes from a `ValueTracker` alpha (corner lerps), so
+  each corner's dashed track and the 71 % midway square are exact, not illustrated.
+- 3.3 rides each rate function's dot on its own lane while a matching dot traces its graph;
+  the closing race reproduces the q03-01 layout, moved up for the QR card.
+- 3.4, 3.6 and 3.7 replay their snippets' own animations, captioned by their source lines.
+- 3.6's timing bars are drawn to scale (2.1 units per second) with a playhead that sweeps
+  in step with the real `AnimationGroup`, `LaggedStart` and `Succession` calls.

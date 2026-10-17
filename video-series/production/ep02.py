@@ -10,14 +10,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import *  # noqa: E402,F403
 
-MONO = 'Menlo'
-
-
-def code_text(source, font_size=26, color=GREY_A):
-    """A single line of code in the code font, without a panel."""
-    return Text(source, font=MONO, font_size=font_size, color=color)
-
-
 def ruler(length, ticks, vertical=False):
     line = Line(LEFT * length / 2, RIGHT * length / 2, color=GREY_B, stroke_width=3)
     marks = VGroup(*[Line(UP * 0.12, DOWN * 0.12, color=GREY_B, stroke_width=2).move_to(line.point_from_proportion(k / ticks))
@@ -504,18 +496,6 @@ class Segment_2_7(Segment):
         self.play(dots.animate.scale(1.5).rotate(PI / 6), run_time=2)
         self.play(dots.animate.arrange(DOWN, buff=0.2).to_edge(LEFT), run_time=2)
         self.finish()
-
-
-def sticky_note(letter):
-    paper = Square(0.6).set_fill('#f3d564', 1).set_stroke(width=0).rotate(0.08)
-    return VGroup(paper, Text(letter, font=MONO, font_size=32, color=BLACK).move_to(paper))
-
-
-def attach(note, target, corner):
-    """Keep a note beside a corner of its object, tied on with a string."""
-    note.add_updater(lambda m: m.move_to(target.get_corner(corner) + corner * 0.75))
-    string = always_redraw(lambda: Line(note.get_center(), target.get_corner(corner), color=GREY_B, stroke_width=2))
-    return string
 
 
 class Segment_2_8(Segment):
