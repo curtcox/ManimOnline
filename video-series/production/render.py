@@ -76,12 +76,14 @@ def compose(episode, name, videos):
         if 'end' in slot:
             fades += f",fade=t=out:st={end}:d={slot['fade_out']}:alpha=1"
         opacity = f",colorchannelmixer=aa={slot['opacity']}" if 'opacity' in slot else ''
-        chains.append(f'[{inputs.count("-i") - 1}:v]{crop}scale={w}:{h}:flags=lanczos,format=yuva420p,'
+        chains.append(f'[{inputs.count("-i") - 1}:v]{crop}scale={w}:{h}:flags=lanczos:out_range=tv,format=yuva420p,'
                       f'{fades}{opacity}[clip{k}]')
         chains.append(f'[{last}][clip{k}]overlay=x={round(x)}:y={round(y)}:eof_action=pass[bg{k + 1}]')
         last = f'bg{k + 1}'
     chains.append(f'[{last}][0:v]overlay=format=auto,format=yuv420p[out]')
     # Manim's own encoder settings (libx264, crf 23, yuv420p): stitched segments share one stream layout.
+    # Recordings decode as full-range (JPEG) video; out_range=tv above keeps every segment limited-range,
+    # since the stitch copies the first segment's range flag onto the whole episode.
     subprocess.run(['ffmpeg', '-v', 'error', '-y', *inputs, '-filter_complex', ';'.join(chains), '-map', '[out]',
                     '-t', f'{length}', '-r', rate, '-c:v', 'libx264', '-crf', '23', '-pix_fmt', 'yuv420p',
                     '-movflags', '+faststart', str(output)], check=True)

@@ -47,6 +47,23 @@ local speech recogniser. Spot checks (transcribing the stitched audio at a cue's
    captured from the deployed site on 17 October 2026; re-record them (`tools/record_footage.cjs`)
    if the editor's interface has changed since.
 
+## Uploading with Claude in Chrome
+
+```bash
+python3 video-series/tools/youtube_upload.py
+```
+
+This stages everything in `build/youtube-upload/`: `videos/` (all 13, selectable at once in YouTube's
+upload dialog), `thumbnails/`, `captions/`, and `chrome-prompt.md`, a prompt for the Claude in Chrome
+extension with every title, description and tag list embedded. Paste the prompt into the extension
+while signed in to YouTube Studio. The extension's file tool cannot attach files over 10 MB, so you
+choose the videos in YouTube's file dialog when it asks; it then fills in each draft (details,
+thumbnail, playlist, tags, captions), saves it as Private and reports back. Re-run the script after
+any re-render: the staged videos are hard links to the renders of that moment.
+
+Screen recordings decode as full-range video; `production/render.py` converts them to limited range
+when composing, because the stitch copies the first segment's range flag onto the whole episode.
+
 ## Settings for every video
 
 - **Playlist:** create one with the `playlist_title` and `playlist_description` from `episodes.json`,

@@ -199,7 +199,7 @@ class Take {
     fs.mkdirSync(FOOTAGE, { recursive: true });
     const output = path.join(FOOTAGE, `${this.clip}.mp4`);
     execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', list,
-      '-vf', `fps=${FPS},scale=1920:1080:flags=lanczos,format=yuv420p`, '-t', `${end - start}`,
+      '-vf', `fps=${FPS},scale=1920:1080:flags=lanczos:out_range=tv,format=yuv420p`, '-t', `${end - start}`,
       '-c:v', 'libx264', '-crf', '14', '-preset', 'slow', output]);
     const meta = { clip: this.clip, start, end, frames: kept.length, site: SITE, recorded: new Date().toISOString(), ...extra };
     fs.writeFileSync(path.join(FOOTAGE, `${this.clip}.json`), JSON.stringify(meta, null, 1) + '\n');
