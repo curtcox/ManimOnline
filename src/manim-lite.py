@@ -2098,6 +2098,7 @@ class Mobject:
             return self.position[2], self.position[2]
         return min(zs), max(zs)
 
+    @_bounds_query
     def _critical_point(self, direction):
         global _BOUNDS_WITH_HANDLES
         if self._all_points_boundary() and not _BOUNDS_WITH_HANDLES:
@@ -2618,14 +2619,16 @@ class Mobject:
         index = index_of_submobject_to_align
         if isinstance(mobject_or_point, Mobject):
             aligner = mobject_or_point if index is None else _world_view(mobject_or_point[index])
-            target = aligner._critical_point(aligned_edge + direction)
+            # Nothing moves until the final shift: share one bounds memo across both edges.
+            memo = {}
+            target = _memo_query(memo, aligner._critical_point, aligned_edge + direction)
         else:
-            target = Vector(mobject_or_point)
+            memo, target = {}, Vector(mobject_or_point)
         if not all(math.isfinite(v) for v in target):
             raise ValueError('Layout target must be finite')
         aligner = (submobject_to_align if submobject_to_align is not None
                    else self if index is None else self[index])
-        anchor = (self._critical_point(aligned_edge - direction) if aligner is self
+        anchor = (_memo_query(memo, self._critical_point, aligned_edge - direction) if aligner is self
                   else _world_view(aligner)._critical_point(aligned_edge - direction))
         offset = target - anchor + direction * buff
         return self.shift(Vector(tuple(a * b for a, b in zip(offset, mask))))
