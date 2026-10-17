@@ -4,8 +4,8 @@ Manim Community scenes for the series' visuals, one file per episode
 (`epNN.py`) and one Scene class per script segment (`Segment_1_5` is segment 1.5).
 Shot ids in comments (`[V1.5b]`) match the **Visual.** notes in `../episodes/`.
 
-Episodes 1–6 are complete; episode 1 is the template for the others. Episode 1 is
-narrated (see Narration).
+Episodes 1–6 are complete and narrated (see Narration); episode 1 is the template for
+the others.
 
 ## Requirements
 
@@ -50,7 +50,8 @@ and the stitched file carries the soundtrack: each segment's audio starts with i
 and is padded with silence to the scene's length (scenes run 0.8 s past their audio, more
 when a fixed beat such as the 10-second QR wall needs it). Because the voice is faster than
 the 145 wpm estimate, re-check QR card times after narrating an episode: each card should
-stay up at least 8 s.
+stay up at least 8 s. A card shown again later in a segment (2.2, 3.4, 4.8) may be shorter
+the second time.
 
 ## Conventions
 
