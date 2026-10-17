@@ -1453,3 +1453,19 @@ keep the metric layout and browser text. The worker writes the JSON to
 manimpango.register_font in the Community venv and pass font='Liberation Sans' /
 'DejaVu Sans Mono' (corpus harness: LIBERATION=1). Pango markup sizes, rise, sub/sup and
 underline/strikethrough paths are not modelled yet.
+
+Formula outlines: `ManimMath.glyphLeaves` also converts each MathJax glyph leaf (path, rect,
+line, polygon; not clipped delimiter viewports or text) into cubic curves (`pathOutline`:
+quadratics raised, lines at thirds, Manim's closing line), and `metrics()` appends them to
+each glyph entry as flat em pairs around the ink center (y up, 0.001 em, 40000-number
+budget per formula). `_set_math_metrics` stores them in `_MATH_OUTLINES`; `_explode_math`
+then builds `_MathTexPathGlyph` paths (placed by `_outline_glyphs(..., index_key='glyph')`),
+so Create/Write/Transform act on outlines like Community's dvisvgm paths. Glyphs without
+outlines stay `mathtex` leaves drawn from the MathJax asset. Outlines are MathJax's TeX
+fonts, not Computer Modern, so points are close to but not equal to Community's.
+DecimalNumber glyphs use real Computer Modern outlines (`tex` in text-outlines.json,
+`_number_outline_layout` reproduces DecimalNumber's arrange/minus/comma steps exactly).
+Bump the `?v=` query on index.html script tags when a page script changes (browsers cache).
+Compact frames send partially drawn bezier outlines as the pooled whole outline plus
+`partial` (renderer `partialCurves` = `_partial_cubics(points, 0, progress)`); keep both in
+sync. Pose/progress keys (`_FRAME_VOLATILE_KEYS`) stay out of pooled bases.

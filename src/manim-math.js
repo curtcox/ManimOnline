@@ -1,4 +1,85 @@
 /** Compile formulas once per render; playback/export use self-contained SVG paths. */
+/**
+ * Cubic outline curves [[x, y] x 4, ...] of SVG path data under the affine map m (a DOMMatrix-like
+ * {a, b, c, d, e, f}), the way Manim's SVGMobject reads paths: quadratics are raised to
+ * cubics, lines get handles at thirds and a closing line is added when the end is not the
+ * start. Returns null for unsupported data (arcs).
+ */
+function pathOutline(data, m) {
+  const tokens = String(data).match(/[a-zA-Z]|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/g) || [];
+  const map = ([x, y]) => [m.a * x + m.c * y + m.e, m.b * x + m.d * y + m.f];
+  const curves = [];
+  let i = 0, command = null, current = [0, 0], start = [0, 0], control = null, previous = null;
+  const number = () => {
+    const value = Number(tokens[i++]);
+    if (!Number.isFinite(value)) throw new Error('bad path');
+    return value;
+  };
+  const line = (a, b) => curves.push([a, [(2 * a[0] + b[0]) / 3, (2 * a[1] + b[1]) / 3],
+    [(a[0] + 2 * b[0]) / 3, (a[1] + 2 * b[1]) / 3], b]);
+  const cubic = (c1, c2, end) => curves.push([current, c1, c2, end]);
+  const close = () => {
+    if (Math.hypot(current[0] - start[0], current[1] - start[1]) > 1e-9) line(current, start);
+    current = start;
+  };
+  try {
+    while (i < tokens.length) {
+      if (/[a-zA-Z]/.test(tokens[i])) command = tokens[i++];
+      else if (command === null) return null;
+      const relative = command === command.toLowerCase();
+      const base = relative ? current : [0, 0];
+      const point = () => { const x = number(), y = number(); return [base[0] + x, base[1] + y]; };
+      let next = null;
+      switch (command.toUpperCase()) {
+        case 'M': current = start = point(); command = relative ? 'l' : 'L'; break;
+        case 'L': next = point(); line(current, next); current = next; break;
+        case 'H': next = [(relative ? current[0] : 0) + number(), current[1]]; line(current, next); current = next; break;
+        case 'V': next = [current[0], (relative ? current[1] : 0) + number()]; line(current, next); current = next; break;
+        case 'C': { const c1 = point(), c2 = point(); next = point(); cubic(c1, c2, next); control = c2; current = next; break; }
+        case 'S': {
+          const c1 = previous === 'C' ? [2 * current[0] - control[0], 2 * current[1] - control[1]] : current;
+          const c2 = point(); next = point(); cubic(c1, c2, next); control = c2; current = next; break;
+        }
+        case 'Q': case 'T': {
+          const q = command.toUpperCase() === 'Q' ? point() :
+            previous === 'Q' ? [2 * current[0] - control[0], 2 * current[1] - control[1]] : current;
+          next = point();
+          cubic([current[0] + 2 / 3 * (q[0] - current[0]), current[1] + 2 / 3 * (q[1] - current[1])],
+            [next[0] + 2 / 3 * (q[0] - next[0]), next[1] + 2 / 3 * (q[1] - next[1])], next);
+          control = q; current = next; previous = 'Q'; continue;
+        }
+        case 'Z': close(); break;
+        default: return null;
+      }
+      previous = command.toUpperCase() === 'C' || command.toUpperCase() === 'S' ? 'C' : null;
+    }
+  } catch (error) {
+    return null;
+  }
+  if (curves.length && Math.hypot(current[0] - start[0], current[1] - start[1]) > 1e-9) close();
+  return curves.map(curve => curve.map(map));
+}
+
+/** Outline curves of one drawable element under m, or null (text, clipped viewports, arcs). */
+function elementOutline(node, m) {
+  const number = name => Number(node.getAttribute(name)) || 0;
+  switch (node.localName) {
+    case 'path': return pathOutline(node.getAttribute('d') || '', m);
+    case 'rect': {
+      const x = number('x'), y = number('y'), w = number('width'), h = number('height');
+      return pathOutline(`M${x} ${y}H${x + w}V${y + h}H${x}Z`, m);
+    }
+    case 'line':
+      return pathOutline(`M${number('x1')} ${number('y1')}L${number('x2')} ${number('y2')}`, m);
+    case 'polygon': case 'polyline': {
+      const values = (node.getAttribute('points') || '').trim().split(/[\s,]+/).map(Number);
+      if (values.length < 4 || values.some(v => !Number.isFinite(v))) return null;
+      return pathOutline('M' + values.join(' ') + (node.localName === 'polygon' ? 'Z' : ''), m);
+    }
+    default: return null;
+  }
+}
+
 const ManimMath = {
   loading: null,
   cache: new Map(),
@@ -36,7 +117,19 @@ const ManimMath = {
         // Glyph submobjects, in TeX's order, tagged with their part (-1 for single strings)
         // and the isolated substring holding them (-1 for none).
         if (!parts) size.push(null);
-        size.push(asset.glyphs.map(glyph => [...relative(glyph.bbox), glyph.part, glyph.sub ?? -1]));
+        // Outlines travel as flat x, y pairs in em, relative to the ink center with y up.
+        const cx = x + width / 2, cy = y + height / 2;
+        const round = v => Math.round(v * 1000) / 1000;
+        let budget = 40000;
+        size.push(asset.glyphs.map(glyph => {
+          const entry = [...relative(glyph.bbox), glyph.part, glyph.sub ?? -1];
+          const points = glyph.outline ? glyph.outline.flat() : null;
+          if (points && points.length * 2 <= budget) {
+            budget -= points.length * 2;
+            entry.push(points.flatMap(([px, py]) => [round((px - cx) / 1000), round(-(py - cy) / 1000)]));
+          }
+          return entry;
+        }));
       }
       result[expression] = size;
     }
@@ -105,8 +198,10 @@ const ManimMath = {
           clone = group;
         }
         clone.setAttribute('transform', `matrix(${m.a} ${m.b} ${m.c} ${m.d} ${m.e} ${m.f})`);
+        // Community's glyphs are outline paths: send them (formula units) for Python's points.
+        const outline = viewport ? null : elementOutline(leaf, m);
         result.push({ svg: `<svg xmlns="http://www.w3.org/2000/svg">${clone.outerHTML}</svg>`, bbox,
-          part: tag('part'), sub: tag('sub') });
+          part: tag('part'), sub: tag('sub'), ...(outline && outline.length ? { outline } : {}) });
       }
       return result;
     } finally {
@@ -295,6 +390,8 @@ const ManimMath = {
     return glyphs;
   }
 };
+
+ManimMath.pathOutline = pathOutline;
 
 if (typeof module !== 'undefined' && module.exports) module.exports = ManimMath;
 else window.ManimMath = ManimMath;

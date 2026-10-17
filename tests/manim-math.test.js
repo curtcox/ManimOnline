@@ -124,3 +124,20 @@ test('fractions are laid out without MathJax\'s extra 0.1em sides', () => {
   math.patchFractions(mathjax);
   assert.equal(Mfrac.prototype.texFractions, true);
 });
+
+test('glyph outlines follow Manim SVG path handling', () => {
+  const math = require('../src/manim-math.js');
+  const identity = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+  // A quadratic is raised to a cubic; T reflects its control; Z adds the closing line.
+  assert.deepEqual(math.pathOutline('M0 0Q30 30 60 0T120 0Z', identity), [
+    [[0, 0], [20, 20], [40, 20], [60, 0]],
+    [[60, 0], [80, -20], [100, -20], [120, 0]],
+    [[120, 0], [80, 0], [40, 0], [0, 0]]]);
+  // Relative H/V lines get handles at thirds; a closed path needs no extra line.
+  assert.deepEqual(math.pathOutline('m3 3h3v3H3z', { a: 2, b: 0, c: 0, d: -1, e: 1, f: 0 }), [
+    [[7, -3], [9, -3], [11, -3], [13, -3]],
+    [[13, -3], [13, -4], [13, -5], [13, -6]],
+    [[13, -6], [11, -6], [9, -6], [7, -6]],
+    [[7, -6], [7, -5], [7, -4], [7, -3]]]);
+  assert.equal(math.pathOutline('M0 0A5 5 0 0 1 10 0', identity), null);
+});

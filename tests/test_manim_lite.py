@@ -1937,6 +1937,31 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertAlmostEqual(turned.get_height(),2.0850207,delta=1e-6)
         self.assertAlmostEqual(lite.Text('Hello World').apply_matrix([[1,.5],[0,1]]).get_width(),3.5749512,delta=1e-6)
 
+    def test_browser_formula_outlines_make_glyph_paths(self):
+        # The browser sends each MathJax glyph's outline (flat em pairs around the ink center,
+        # y up); exploded formula glyphs become Community-style paths with those points.
+        square = [-.4,-.2, -.4,-.0667, -.4,.0667, -.4,.2,  -.4,.2, -.1333,.2, .1333,.2, .4,.2,
+                  .4,.2, .4,.0667, .4,-.0667, .4,-.2,  .4,-.2, .1333,-.2, -.1333,-.2, -.4,-.2]
+        square = [v - .2 if k % 2 == 0 else v for k, v in enumerate(square)]
+        metrics = {'x^2': [1.2, .6, None, [[-.2, 0, .8, .4, -1, -1, square], [.45, .1, .3, .3, -1, -1]]]}
+        lite._set_math_metrics(metrics)
+        try:
+            formula = lite.MathTex('x^2').shift(lite.RIGHT)
+            glyph, other = formula[0]
+            self.assertEqual(type(glyph).__name__, '_MathTexPathGlyph')
+            self.assertTrue(glyph.has_points())
+            points = point_list(glyph)
+            self.assertEqual(len(points), 16)
+            # em = font_size / 96 = 0.5 scene units.
+            self.assertPointAlmostEqual(points[0], (1 - .3, -.1, 0))
+            self.assertPointAlmostEqual(glyph.get_center(), (1 - .1, 0, 0))
+            self.assertEqual(other._type, 'mathtex')  # No outline: the browser draws it.
+            self.assertEqual(len(formula.family_members_with_points()), 2)
+            with self.assertRaises(ValueError):
+                lite._set_math_metrics({'x': [1, 1, None, [[0, 0, 1, 1, -1, -1, [0, 0, 1]]]]})
+        finally:
+            lite._set_math_metrics(None)
+
     def test_text_faces_and_kerning_match_community(self):
         # Manim Community 0.22 with Liberation Sans registered: Bold for SEMIBOLD and heavier,
         # Italic for ITALIC and OBLIQUE, HarfBuzz kerning within each face.

@@ -8555,7 +8555,7 @@ class Text(Mobject):
 
     def _scene_has_points(self):
         # Community's glyphs are outline paths (the Text itself has none).
-        return '_char_index' in self.__dict__ or self.__dict__.get('_type') == 'mathtex' and 'glyph' in self.__dict__
+        return '_char_index' in self.__dict__ or 'glyph' in self.__dict__
 
     @property
     def submobjects(self):
@@ -8580,7 +8580,7 @@ class Text(Mobject):
         return len(self.split())
 
 
-def _outline_glyphs(leaf, layout, make):
+def _outline_glyphs(leaf, layout, make, index_key='_char_index'):
     """Community's glyphs are outline paths: one per layout glyph, made by make(char index),
     placed under the leaf's pose and glyph map."""
     (a, b), (c, d) = _glyph_matrix(leaf.__dict__)
@@ -8597,7 +8597,7 @@ def _outline_glyphs(leaf, layout, make):
                         for curve in glyph.curves]
         glyph.position = list(leaf._point_to_world(center))
         glyph.angle, glyph.geometry_scale, glyph.opacity = leaf.angle, leaf.geometry_scale, leaf.opacity
-        glyph._char_index = char_index
+        setattr(glyph, index_key, char_index)
         glyphs.append(glyph)
     return glyphs
 
@@ -9140,6 +9140,12 @@ class _MathTexGlyph(Text):
         pass
 
 
+class _MathTexPathGlyph(_MathTexGlyph, VMobject):
+    """A formula glyph with its browser-measured outline: Community's path submobject."""
+    def __init__(self, text, glyph, font_size, part_strings=None, **kwargs):
+        super().__init__(text, glyph, font_size, part_strings, **kwargs)
+
+
 def _glyph_family(mobject):
     """Give text and formula leaves their glyph submobjects, as Community's families have:
     creation animations count and lag over glyphs."""
@@ -9194,6 +9200,17 @@ def _explode_math(leaf):
     children = []
     for index, (cx, cy, _, _, _, sub) in members:
         x, y = cx - px, cy - py
+        outline = _math_outline(leaf.text, index, leaf.__dict__['font_size'])
+        if outline is not None:
+            # Community's glyph is an outline path: place it like a text glyph.
+            local = [[[p[0] - px, p[1] - py, 0.0] for p in curve] for curve in outline]
+            glyph = _outline_glyphs(leaf, {'outline': local, 'outline_glyphs': [(index, len(local))]},
+                                    lambda index: _MathTexPathGlyph(leaf.text, index, leaf.__dict__['font_size'],
+                                                                    part_strings), index_key='glyph')[0]
+            if sub >= 0:
+                glyph.sub = sub
+            children.append(glyph)
+            continue
         glyph = _copy_glyph_paint(leaf, _MathTexGlyph(leaf.text, index, leaf.__dict__['font_size'], part_strings))
         if sub >= 0:
             glyph.sub = sub
@@ -28561,20 +28578,46 @@ def _set_math_metrics(math_metrics):
                     (parts is not None and (len(parts) > 256 or
                      any(len(part) != 4 or not finite(part) or not finite(part[2:], 0) for part in parts))) or
                     (len(size) == 4 and (glyphs is None or len(glyphs) > 2000 or
-                     any(len(glyph) not in (5, 6) or not finite(glyph[:4]) or not finite(glyph[2:4], 0) or
+                     any(len(glyph) not in (5, 6, 7) or not finite(glyph[:4]) or not finite(glyph[2:4], 0) or
                          any(isinstance(v, bool) or not isinstance(v, _REAL) or v != int(v) or not -1 <= v <= 4096
-                             for v in glyph[4:]) or glyph[4] > 256 for glyph in glyphs)))):
+                             for v in glyph[4:6]) or glyph[4] > 256 or
+                         len(glyph) == 7 and (not isinstance(glyph[6], (list, tuple)) or len(glyph[6]) % 8 or
+                                              len(glyph[6]) > 40000 or not finite(glyph[6]))
+                         for glyph in glyphs)) or
+                     glyphs is not None and sum(len(glyph[6]) for glyph in glyphs if len(glyph) == 7) > 40000)):
                 raise ValueError('Math metrics must map expressions to finite [width, height(, parts(, glyphs))] in em')
             metrics[text] = (float(size[0]), float(size[1]),
                              None if parts is None else [tuple(float(v) for v in part) for part in parts],
                              None if glyphs is None else [tuple(float(v) for v in glyph[:4]) + (int(glyph[4]),)
                                                           + (int(glyph[5]) if len(glyph) > 5 else -1,)
                                                           for glyph in glyphs])
+            if glyphs is not None and any(len(glyph) == 7 for glyph in glyphs):
+                # Outline curves (flat x, y pairs in em around the ink center, y up).
+                _MATH_OUTLINES_NEXT[text] = [tuple(float(v) for v in glyph[6]) if len(glyph) == 7 else None
+                                             for glyph in glyphs]
             if len(metrics) > 1024:
                 raise ValueError('At most 1024 math metrics may be supplied')
     _MATH_METRICS.clear()
     _MATH_METRICS.update(metrics)
+    _MATH_OUTLINES.clear()
+    _MATH_OUTLINES.update(_MATH_OUTLINES_NEXT)
+    _MATH_OUTLINES_NEXT.clear()
     _MATH_ESTIMATED.clear()
+
+
+_MATH_OUTLINES = {}  # expression -> per-glyph outline (flat em pairs) or None, from the browser
+_MATH_OUTLINES_NEXT = {}
+
+
+def _math_outline(text, index, font_size):
+    """Browser-measured outline curves of one formula glyph in scene units around the
+    formula's ink center, or None (before measurement, or text/clipped pieces)."""
+    outlines = _MATH_OUTLINES.get(text)
+    if not outlines or not 0 <= index < len(outlines) or not outlines[index]:
+        return None
+    em, flat = font_size * TEX_EM_PER_POINT, outlines[index]
+    points = [(flat[k] * em, flat[k + 1] * em, 0.0) for k in range(0, len(flat), 2)]
+    return [points[k:k + 4] for k in range(0, len(points), 4)]
 
 
 def render_scene(source, scene_name=None, math_metrics=None, compact=False, typst_svgs=None):
