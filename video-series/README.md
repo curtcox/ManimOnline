@@ -199,8 +199,11 @@ Workflow:
    an extra QR code: viewers can then open the very animation they are watching.
 3. **Timing.** The scenes read `durations.json`, so rendering after step 1 fits each scene
    to its audio, and `production/render.py` lays the narration under the stitched video.
-4. **Assembly.** Combine graphics, editor footage, narration and QR overlays in an
-   editor; keep the segment ids as markers.
+4. **Editor footage.** `tools/record_footage.cjs` records the screen recordings from the deployed
+   site, timed to the narration, and `render.py` composes them into their segments (see
+   production/README.md). The stitched files in `build/episodes/` are then complete.
+5. **Publishing.** `tools/youtube.py` writes each episode's YouTube files (title, description with
+   chapters and QR links, tags, captions, thumbnail) to `youtube/`; see `youtube/README.md`.
 
 ## Keeping it accurate
 
@@ -218,6 +221,7 @@ snippet checks after any ManimOnline release.
 - `qr-manifest.json` – QR id, title, file, type and saved scene for each snippet.
 - `qr-links.md`, `qr-links.json` – generated CIDs and final URLs.
 - `pronunciations.pls` – ElevenLabs pronunciation dictionary.
-- `tools/` – snippet checks, link generation, narration extraction and QR images.
+- `tools/` – snippet checks, link generation, narration, caption timing, editor recordings and YouTube files.
+- `youtube/` – per-episode upload files (title, description, tags, captions, thumbnail); see its README.
 - `production/` – Manim Community scenes for the graphics, one Scene per segment.
   `production/credits.py` is the closing credits card shared by every episode.

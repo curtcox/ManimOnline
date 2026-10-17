@@ -1,0 +1,751 @@
+1
+00:00:00,000 --> 00:00:03,181
+This QR code doesn't point to
+a program stored somewhere.
+
+2
+00:00:03,181 --> 00:00:04,528
+It is the program.
+
+3
+00:00:04,528 --> 00:00:06,920
+Scan it, and the address
+it holds contains,
+
+4
+00:00:06,920 --> 00:00:08,789
+spelled out in a compact alphabet,
+
+5
+00:00:08,789 --> 00:00:10,565
+a tiny Graphviz diagram:
+
+6
+00:00:10,565 --> 00:00:13,096
+scan, load, edit, render, share,
+
+7
+00:00:13,096 --> 00:00:15,871
+and back to scan. No server
+needed to look it up,
+
+8
+00:00:15,871 --> 00:00:17,647
+because there's nothing to look up.
+
+9
+00:00:17,647 --> 00:00:21,049
+Most programs are far too big to
+fit inside an address like that.
+
+10
+00:00:21,049 --> 00:00:24,404
+But this little one shows the
+destination of this final episode:
+
+11
+00:00:24,404 --> 00:00:27,492
+how a static website, with
+no database of its own,
+
+12
+00:00:27,492 --> 00:00:30,348
+lets you share code
+through links and QR codes,
+
+13
+00:00:30,348 --> 00:00:33,533
+and why those links can be trusted.
+
+14
+00:00:33,533 --> 00:00:36,003
+When you click Share,
+where does your code go?
+
+15
+00:00:36,003 --> 00:00:39,698
+ManimOnline has no server
+of its own and no database.
+
+16
+00:00:39,698 --> 00:00:42,600
+It's just files. So it has two options.
+
+17
+00:00:42,600 --> 00:00:45,631
+Option one: put the code
+inside the link itself.
+
+18
+00:00:45,631 --> 00:00:47,906
+Option two: store the code somewhere,
+
+19
+00:00:47,906 --> 00:00:49,776
+and put a name for it in the link.
+
+20
+00:00:49,776 --> 00:00:52,341
+Both are used, and each
+solves a different problem.
+
+21
+00:00:52,341 --> 00:00:55,639
+And option two hides a
+really interesting question:
+
+22
+00:00:55,639 --> 00:00:57,917
+who gets to choose the name?
+
+23
+00:00:57,917 --> 00:00:59,508
+The first option sounds easy.
+
+24
+00:00:59,508 --> 00:01:02,770
+Take the source code, and put it
+in the address after a hash sign,
+
+25
+00:01:02,770 --> 00:01:05,487
+the part of a link that
+browsers never send to a server.
+
+26
+00:01:05,487 --> 00:01:07,066
+But addresses have rules:
+
+27
+00:01:07,066 --> 00:01:11,222
+spaces, new lines, colons and equals
+signs aren't allowed as they are,
+
+28
+00:01:11,222 --> 00:01:14,392
+so each one gets replaced
+by a three-character code.
+
+29
+00:01:14,392 --> 00:01:17,747
+Our little scene grows from two hundred
+and forty nine characters to three
+
+30
+00:01:17,747 --> 00:01:19,245
+hundred and ninety one.
+
+31
+00:01:19,245 --> 00:01:20,939
+Real scenes get long fast.
+
+32
+00:01:20,939 --> 00:01:22,112
+Look at the code again, though.
+
+33
+00:01:22,112 --> 00:01:23,169
+It repeats itself.
+
+34
+00:01:23,169 --> 00:01:24,585
+Self dot play, twice.
+
+35
+00:01:24,585 --> 00:01:26,292
+Indentation, over and over.
+
+36
+00:01:26,292 --> 00:01:27,592
+Colour equals, twice.
+
+37
+00:01:27,592 --> 00:01:32,700
+Code is full of repetition, and repetition
+is exactly what compression feeds on.
+
+38
+00:01:32,700 --> 00:01:36,427
+Here's the core idea of a whole
+family of compression methods,
+
+39
+00:01:36,427 --> 00:01:41,500
+first described by Abraham Lempel and
+Jacob Ziv in the late nineteen seventies.
+
+40
+00:01:41,500 --> 00:01:43,579
+Read the text from left to right.
+
+41
+00:01:43,579 --> 00:01:46,295
+Whenever the next few
+characters have appeared before,
+
+42
+00:01:46,295 --> 00:01:47,630
+don't write them out again.
+
+43
+00:01:47,630 --> 00:01:49,256
+Write a note instead:
+
+44
+00:01:49,256 --> 00:01:52,437
+go back this many characters,
+and copy this many.
+
+45
+00:01:52,437 --> 00:01:55,862
+At first everything is new, so
+letters are copied as they are.
+
+46
+00:01:55,862 --> 00:02:00,099
+But "at space", in "sat",
+already appeared in "cat",
+
+47
+00:02:00,099 --> 00:02:01,319
+four characters back.
+
+48
+00:02:01,319 --> 00:02:03,931
+So we write: back four, copy three.
+
+49
+00:02:03,931 --> 00:02:07,425
+Later, "the" reappears,
+fifteen characters back.
+
+50
+00:02:07,425 --> 00:02:11,396
+And "cat sat" at the end can be copied
+in one go from twenty four characters
+
+51
+00:02:11,396 --> 00:02:11,884
+back.
+
+52
+00:02:11,884 --> 00:02:15,587
+Thirty five characters became
+sixteen letters and four references.
+
+53
+00:02:15,587 --> 00:02:18,153
+On a short sentence
+that's a modest saving.
+
+54
+00:02:18,153 --> 00:02:20,336
+On source code, where whole lines repeat,
+
+55
+00:02:20,336 --> 00:02:23,564
+it's dramatic, and decompressing
+is just following the notes.
+
+56
+00:02:23,564 --> 00:02:28,195
+ManimOnline's Share button uses
+a library called lz-string,
+
+57
+00:02:28,195 --> 00:02:29,356
+from the same family.
+
+58
+00:02:29,356 --> 00:02:32,259
+It builds a dictionary of
+phrases it has already seen,
+
+59
+00:02:32,259 --> 00:02:37,117
+and writes its output in characters that
+are safe to put straight into a link.
+
+60
+00:02:37,117 --> 00:02:39,067
+Compressed links are wonderful:
+
+61
+00:02:39,067 --> 00:02:41,459
+nothing to store, nothing to expire,
+
+62
+00:02:41,459 --> 00:02:43,502
+and the code travels with the link.
+
+63
+00:02:43,502 --> 00:02:45,546
+But they still grow with the code.
+
+64
+00:02:45,546 --> 00:02:49,598
+And a QR code's size grows with
+the length of what it holds.
+
+65
+00:02:49,598 --> 00:02:53,313
+A compressed link to a full
+scene makes a dense code,
+
+66
+00:02:53,313 --> 00:02:58,398
+with dots too small to scan comfortably
+from a video in the corner of a screen.
+
+67
+00:02:58,398 --> 00:03:00,465
+For this series, we wanted short,
+
+68
+00:03:00,465 --> 00:03:04,075
+fixed-length links that
+point to code of any size.
+
+69
+00:03:04,075 --> 00:03:06,750
+That needs option two.
+
+70
+00:03:06,750 --> 00:03:09,606
+Option two needs a name
+for each piece of code.
+
+71
+00:03:09,606 --> 00:03:11,313
+And here's the elegant answer:
+
+72
+00:03:11,313 --> 00:03:12,880
+let the code name itself.
+
+73
+00:03:12,880 --> 00:03:16,131
+A cryptographic hash function is
+a machine that takes any data,
+
+74
+00:03:16,131 --> 00:03:20,589
+a word or a whole library, and
+produces a fixed-size fingerprint.
+
+75
+00:03:20,589 --> 00:03:23,085
+The one used here, called SHA five twelve,
+
+76
+00:03:23,085 --> 00:03:25,326
+produces five hundred and twelve bits,
+
+77
+00:03:25,326 --> 00:03:27,288
+shown here as a grid of squares.
+
+78
+00:03:27,288 --> 00:03:29,227
+It has three properties that matter.
+
+79
+00:03:29,227 --> 00:03:31,061
+First, it's deterministic:
+
+80
+00:03:31,061 --> 00:03:33,615
+the same input always
+gives the same fingerprint,
+
+81
+00:03:33,615 --> 00:03:35,380
+on any computer, forever.
+
+82
+00:03:35,380 --> 00:03:37,203
+Second, the avalanche effect.
+
+83
+00:03:37,203 --> 00:03:39,327
+Change one letter, Manim to Manin,
+
+84
+00:03:39,327 --> 00:03:41,150
+and about half of the bits flip:
+
+85
+00:03:41,150 --> 00:03:44,795
+two hundred and sixty six of five
+hundred and twelve in this case,
+
+86
+00:03:44,795 --> 00:03:47,013
+scattered with no visible pattern.
+
+87
+00:03:47,013 --> 00:03:50,263
+A small change to the code doesn't
+give a similar fingerprint.
+
+88
+00:03:50,263 --> 00:03:52,167
+It gives an unrelated one.
+
+89
+00:03:52,167 --> 00:03:55,720
+Third, nobody knows any
+practical way to work backwards,
+
+90
+00:03:55,720 --> 00:03:59,331
+or to find two different inputs
+with the same fingerprint.
+
+91
+00:03:59,331 --> 00:04:03,441
+So in practice, a fingerprint stands
+for exactly one piece of data.
+
+92
+00:04:03,441 --> 00:04:06,077
+Scan this one and change either message.
+
+93
+00:04:06,077 --> 00:04:09,117
+Every edit reshuffles the grid.
+
+94
+00:04:09,117 --> 00:04:12,670
+HashBin, the storage service
+ManimOnline saves to,
+
+95
+00:04:12,670 --> 00:04:14,260
+names everything this way.
+
+96
+00:04:14,260 --> 00:04:16,768
+Its addresses are called
+content identifiers,
+
+97
+00:04:16,768 --> 00:04:19,601
+or C I Ds, and they have two parts.
+
+98
+00:04:19,601 --> 00:04:23,293
+The first eight characters encode
+the content's length in bytes.
+
+99
+00:04:23,293 --> 00:04:24,999
+The rest depends on the size.
+
+100
+00:04:24,999 --> 00:04:27,484
+If the content is sixty
+four bytes or less,
+
+101
+00:04:27,484 --> 00:04:29,585
+the rest is simply the content itself,
+
+102
+00:04:29,585 --> 00:04:31,373
+written in a link-safe alphabet.
+
+103
+00:04:31,373 --> 00:04:33,649
+That's what our opening QR code was:
+
+104
+00:04:33,649 --> 00:04:35,901
+an address that contains its own content,
+
+105
+00:04:35,901 --> 00:04:37,689
+so nothing needs to be fetched at all.
+
+106
+00:04:37,689 --> 00:04:42,077
+For anything longer, the rest is the
+content's SHA five twelve fingerprint.
+
+107
+00:04:42,077 --> 00:04:46,339
+To load it, the editor asks HashBin's
+server for the content with that name.
+
+108
+00:04:46,339 --> 00:04:47,732
+Now think about what this means.
+
+109
+00:04:47,732 --> 00:04:49,915
+The name isn't chosen by anyone.
+
+110
+00:04:49,915 --> 00:04:51,946
+It's calculated from the content.
+
+111
+00:04:51,946 --> 00:04:54,919
+If someone changed a single
+character of a stored scene,
+
+112
+00:04:54,919 --> 00:04:56,381
+it would have a different fingerprint,
+
+113
+00:04:56,381 --> 00:04:57,739
+and so a different name.
+
+114
+00:04:57,739 --> 00:05:01,083
+The old address can only
+ever mean the original bytes.
+
+115
+00:05:01,083 --> 00:05:02,813
+And because the recipe is public,
+
+116
+00:05:02,813 --> 00:05:04,624
+anyone can download the content,
+
+117
+00:05:04,624 --> 00:05:08,050
+recompute its fingerprint,
+and check that it matches.
+
+118
+00:05:08,050 --> 00:05:11,777
+So every QR code in this series
+encodes the ManimOnline address,
+
+119
+00:05:11,777 --> 00:05:14,029
+a hash sign, and a C I D.
+
+120
+00:05:14,029 --> 00:05:16,072
+That's about a hundred
+and thirty characters,
+
+121
+00:05:16,072 --> 00:05:18,766
+whether the scene behind it is
+five lines long or a hundred.
+
+122
+00:05:18,766 --> 00:05:22,818
+Short, fixed-length links make QR
+codes with comfortably large dots.
+
+123
+00:05:22,818 --> 00:05:24,838
+QR codes also carry error correction:
+
+124
+00:05:24,838 --> 00:05:26,556
+a portion of each code is redundant,
+
+125
+00:05:26,556 --> 00:05:30,167
+so it still scans if part of it is blurred
+by video compression or hidden behind
+
+126
+00:05:30,167 --> 00:05:30,643
+your thumb.
+
+127
+00:05:30,643 --> 00:05:33,301
+And because the addresses
+are computed from the code,
+
+128
+00:05:33,301 --> 00:05:36,680
+we knew every QR code's address
+before anything was uploaded.
+
+129
+00:05:36,680 --> 00:05:40,140
+Saving the exact same bytes
+always produces the same name.
+
+130
+00:05:40,140 --> 00:05:41,812
+There is one honest caveat.
+
+131
+00:05:41,812 --> 00:05:44,610
+A content address guarantees
+what the content is,
+
+132
+00:05:44,610 --> 00:05:46,359
+not that someone is still storing it.
+
+133
+00:05:46,359 --> 00:05:50,519
+HashBin keeps content for a retention
+period that's paid for in advance.
+
+134
+00:05:50,519 --> 00:05:53,305
+If that lapses, the address
+still means the same code,
+
+135
+00:05:53,305 --> 00:05:54,954
+but nobody is serving it any more.
+
+136
+00:05:54,954 --> 00:05:56,893
+Inline addresses, like the opening one,
+
+137
+00:05:56,893 --> 00:06:00,583
+can never expire, because
+there's nothing to serve.
+
+138
+00:06:00,583 --> 00:06:03,091
+One last piece completes the picture.
+
+139
+00:06:03,091 --> 00:06:05,564
+The editor itself is just files too,
+
+140
+00:06:05,564 --> 00:06:08,884
+and the same care about exact
+content applies to them.
+
+141
+00:06:08,884 --> 00:06:12,785
+A service worker, a small script
+that browsers let a site install,
+
+142
+00:06:12,785 --> 00:06:15,699
+keeps a complete local copy of an exact,
+
+143
+00:06:15,699 --> 00:06:17,952
+versioned list of the editor's files,
+
+144
+00:06:17,952 --> 00:06:19,902
+including the Python runtime.
+
+145
+00:06:19,902 --> 00:06:24,593
+Only when every file is safely stored
+does the editor say Ready offline.
+
+146
+00:06:24,593 --> 00:06:26,102
+When a new version is released,
+
+147
+00:06:26,102 --> 00:06:30,049
+the new set is downloaded in full
+before it replaces the old one,
+
+148
+00:06:30,049 --> 00:06:33,927
+so you never end up running half
+of one version and half of another.
+
+149
+00:06:33,927 --> 00:06:38,900
+And unsaved code in an open tab
+is preserved through the switch.
+
+150
+00:06:38,900 --> 00:06:41,315
+Links can carry code in two ways.
+
+151
+00:06:41,315 --> 00:06:45,169
+They can contain it, compressed by
+noticing what's been said before.
+
+152
+00:06:45,169 --> 00:06:47,642
+Or they can name it,
+by its own fingerprint,
+
+153
+00:06:47,642 --> 00:06:50,824
+so that the name can never
+be pointed at anything else.
+
+154
+00:06:50,824 --> 00:06:52,646
+And that brings us full circle.
+
+155
+00:06:52,646 --> 00:06:56,420
+We started by noticing that an
+animation is a stack of frames,
+
+156
+00:06:56,420 --> 00:06:59,670
+and that a precise description
+of change is a program.
+
+157
+00:06:59,670 --> 00:07:01,981
+We gave that program nouns and verbs,
+
+158
+00:07:01,981 --> 00:07:04,349
+curves and equations, things that change,
+
+159
+00:07:04,349 --> 00:07:05,719
+graphs and cameras.
+
+160
+00:07:05,719 --> 00:07:07,298
+Then we looked underneath:
+
+161
+00:07:07,298 --> 00:07:09,702
+Python running inside a browser tab,
+
+162
+00:07:09,702 --> 00:07:12,778
+an engine rebuilt and
+measured until it matches,
+
+163
+00:07:12,778 --> 00:07:15,112
+and links that carry the code you write.
+
+164
+00:07:15,112 --> 00:07:18,293
+Every scene in this
+series is one scan away,
+
+165
+00:07:18,293 --> 00:07:19,674
+ready for you to change.
+
+166
+00:07:19,674 --> 00:07:22,878
+The best way to understand
+any of it is to break it,
+
+167
+00:07:22,878 --> 00:07:25,456
+fix it, and make it your own.
+
+168
+00:07:25,456 --> 00:07:27,058
+So go and make something.

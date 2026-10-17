@@ -1,0 +1,28 @@
+A dot becomes a line, a circle, a square, a star, and every frame of it is a few lines of Python. This is Manim, the library behind a whole genre of animated math explanations, and ManimOnline, which runs a Manim-compatible engine inside your web browser: no install, no server.
+
+Thirteen episodes take you from your first scene to cameras, 3D, graphs and formulas, then under the hood of the editor itself. Scan the code at the end to edit this trailer's final scene.
+
+Open the code from this video in your browser (the QR codes on screen):
+q00-01 · Manim, in your browser: https://curtcox.github.io/ManimOnline/#AAAAAAQLegkGsyTekW7Sm14j8LKq1RtNSnaLyoYzn2pdJZ5gxPMP7uVsdFo00gMHFiz2WpRngHIUqeWyyI4V2bBbjX7bBg
+
+Chapters
+0:00 Hook
+0:16 The reveal
+0:34 What the series covers
+1:02 Call to action
+
+This is the trailer of Drawing with Code.
+ManimOnline, the editor: https://curtcox.github.io/ManimOnline/
+Sample gallery: https://curtcox.github.io/ManimOnline/gallery.html
+Manim Community, the Python library: https://www.manim.community/
+
+This series is independent. It is not affiliated with 3Blue1Brown or Manim Community.
+
+How this series was made
+Animation: Manim Community, from Python code in the series repository.
+Scripts, animation code and production tooling: Claude Opus 5.5, an AI model by Anthropic.
+Direction: Curt Cox.
+Narration: ElevenLabs text-to-speech, from a model of Curt Cox's voice.
+Source: https://github.com/curtcox/ManimOnline/tree/main/video-series
+
+Text-to-speech reads names from code and terms from math as ordinary English words, so the words you hear in these videos may be pronounced differently than programmers or mathematicians would say them.

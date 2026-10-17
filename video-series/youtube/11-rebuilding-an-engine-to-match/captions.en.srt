@@ -1,0 +1,880 @@
+1
+00:00:00,000 --> 00:00:02,577
+On the left: Manim
+Community, the real thing,
+
+2
+00:00:02,577 --> 00:00:03,947
+installed on a computer.
+
+3
+00:00:03,947 --> 00:00:06,711
+On the right: ManimOnline,
+in a browser tab.
+
+4
+00:00:06,711 --> 00:00:08,545
+Same code, frame for frame.
+
+5
+00:00:08,545 --> 00:00:12,283
+Including this. The square that collapses
+to a point when you rotate it with
+
+6
+00:00:12,283 --> 00:00:14,559
+animate. We met it in episode three,
+
+7
+00:00:14,559 --> 00:00:16,544
+and it's arguably a surprising behaviour.
+
+8
+00:00:16,544 --> 00:00:19,540
+But it's Manim's behaviour,
+and so ManimOnline does it too,
+
+9
+00:00:19,540 --> 00:00:20,445
+deliberately.
+
+10
+00:00:20,445 --> 00:00:23,742
+Last episode, we saw that the real
+Manim can't run in the browser,
+
+11
+00:00:23,742 --> 00:00:25,937
+so ManimOnline brings its own engine.
+
+12
+00:00:25,937 --> 00:00:27,678
+This episode is about that engine,
+
+13
+00:00:27,678 --> 00:00:29,849
+and about a harder question
+than how to build it:
+
+14
+00:00:29,849 --> 00:00:32,000
+how do you know it's right?
+
+15
+00:00:32,000 --> 00:00:34,241
+Manim stands on a lot of other software.
+
+16
+00:00:34,241 --> 00:00:36,795
+It draws with a graphics
+library called Cairo,
+
+17
+00:00:36,795 --> 00:00:39,059
+lays out text with another called Pango,
+
+18
+00:00:39,059 --> 00:00:41,114
+encodes video with FFmpeg,
+
+19
+00:00:41,114 --> 00:00:44,725
+and calls out to a separately
+installed LaTeX for formulas.
+
+20
+00:00:44,725 --> 00:00:47,418
+Several of those are
+large compiled libraries,
+
+21
+00:00:47,418 --> 00:00:51,436
+and running them inside a web page is
+either impossible today or would mean an
+
+22
+00:00:51,436 --> 00:00:52,620
+enormous download.
+
+23
+00:00:52,620 --> 00:00:54,954
+So ManimOnline took a different approach.
+
+24
+00:00:54,954 --> 00:00:57,171
+Keep the parts people actually type:
+
+25
+00:00:57,171 --> 00:00:58,901
+the class names, the method names,
+
+26
+00:00:58,901 --> 00:01:00,573
+their arguments and their results.
+
+27
+00:01:00,573 --> 00:01:02,709
+And reimplement everything underneath,
+
+28
+00:01:02,709 --> 00:01:06,297
+in plain Python that runs
+comfortably in Pyodide.
+
+29
+00:01:06,297 --> 00:01:10,105
+Instead of pixels, it produces the
+frame snapshots we saw last episode,
+
+30
+00:01:10,105 --> 00:01:11,324
+and the page draws them.
+
+31
+00:01:11,324 --> 00:01:13,217
+That engine is called manim-lite.
+
+32
+00:01:13,217 --> 00:01:16,874
+It's a single Python file, about
+twenty eight thousand lines long.
+
+33
+00:01:16,874 --> 00:01:19,579
+And its goal is simple to
+state and hard to achieve:
+
+34
+00:01:19,579 --> 00:01:20,891
+for everything it supports,
+
+35
+00:01:20,891 --> 00:01:25,217
+the same code should produce the
+same animation as Manim Community.
+
+36
+00:01:25,217 --> 00:01:27,945
+What does "the same" actually mean?
+
+37
+00:01:27,945 --> 00:01:30,309
+Not that the code looks similar inside.
+
+38
+00:01:30,309 --> 00:01:33,216
+manim-lite is written
+completely differently.
+
+39
+00:01:33,216 --> 00:01:36,328
+It means that everything
+you can observe agrees:
+
+40
+00:01:36,328 --> 00:01:39,543
+the shapes and their
+exact sizes and positions,
+
+41
+00:01:39,543 --> 00:01:42,237
+the colours, how long
+each animation takes,
+
+42
+00:01:42,237 --> 00:01:45,464
+how it moves, and which
+objects exist at each moment.
+
+43
+00:01:45,464 --> 00:01:48,181
+That definition has an
+important consequence.
+
+44
+00:01:48,181 --> 00:01:50,282
+You can't confirm it by reading code,
+
+45
+00:01:50,282 --> 00:01:51,328
+however carefully.
+
+46
+00:01:51,328 --> 00:01:55,972
+Manim is a large library with years'
+worth of accumulated decisions in its
+
+47
+00:01:55,972 --> 00:02:00,140
+design, and many of them only show
+up when you actually run something.
+
+48
+00:02:00,140 --> 00:02:03,809
+The only way to know whether two
+engines agree is to run both,
+
+49
+00:02:03,809 --> 00:02:05,767
+and compare.
+
+50
+00:02:05,767 --> 00:02:07,276
+So that's what happens.
+
+51
+00:02:07,276 --> 00:02:09,447
+First, a set of reference snippets:
+
+52
+00:02:09,447 --> 00:02:13,279
+small pieces of code chosen
+to pin down tricky geometry,
+
+53
+00:02:13,279 --> 00:02:18,097
+layout and sizes. Their results were
+measured once with Manim Community,
+
+54
+00:02:18,097 --> 00:02:20,035
+version zero point twenty two,
+
+55
+00:02:20,035 --> 00:02:22,497
+and saved. Whenever manim-lite changes,
+
+56
+00:02:22,497 --> 00:02:26,398
+its answers are checked against
+those measurements automatically.
+
+57
+00:02:26,398 --> 00:02:30,136
+If a change moves a shape by
+even a tiny fraction of a unit,
+
+58
+00:02:30,136 --> 00:02:31,367
+the check fails.
+
+59
+00:02:31,367 --> 00:02:33,091
+Second, and much bigger:
+
+60
+00:02:33,091 --> 00:02:36,046
+Manim's documentation is
+full of example scenes,
+
+61
+00:02:36,046 --> 00:02:38,310
+each written to show off some feature.
+
+62
+00:02:38,310 --> 00:02:42,210
+Every one of those examples is
+extracted and run through both engines,
+
+63
+00:02:42,210 --> 00:02:45,879
+and the final positions, sizes
+and durations are compared.
+
+64
+00:02:45,879 --> 00:02:47,992
+Not every difference is a bug.
+
+65
+00:02:47,992 --> 00:02:52,183
+Text, for example, is measured using
+the fonts installed on the machine,
+
+66
+00:02:52,183 --> 00:02:57,245
+so a laptop and a Linux server can
+disagree slightly about how wide a word is,
+
+67
+00:02:57,245 --> 00:02:59,277
+even with the real Manim.
+
+68
+00:02:59,277 --> 00:03:03,967
+Part of the work is sorting differences
+into "manim-lite is wrong" and "this
+
+69
+00:03:03,967 --> 00:03:08,833
+comparison isn't fair", and only
+trusting the comparisons that are.
+
+70
+00:03:08,833 --> 00:03:11,794
+Documentation examples
+are written to work.
+
+71
+00:03:11,794 --> 00:03:15,729
+Bugs often hide in combinations
+nobody thought to write down.
+
+72
+00:03:15,729 --> 00:03:17,030
+So there are fuzzers:
+
+73
+00:03:17,030 --> 00:03:21,140
+programs that generate random
+chains of methods and random scenes,
+
+74
+00:03:21,140 --> 00:03:24,507
+with several animations
+and updaters overlapping,
+
+75
+00:03:24,507 --> 00:03:27,189
+and compare both engines on each one.
+
+76
+00:03:27,189 --> 00:03:28,918
+Whenever a difference turns up,
+
+77
+00:03:28,918 --> 00:03:32,471
+it's investigated, fixed, and
+turned into a permanent test,
+
+78
+00:03:32,471 --> 00:03:34,816
+so it can never quietly come back.
+
+79
+00:03:34,816 --> 00:03:38,624
+And Manim Community has its
+own suite of unit tests.
+
+80
+00:03:38,624 --> 00:03:41,318
+Those can be pointed at manim-lite too.
+
+81
+00:03:41,318 --> 00:03:44,301
+The tests that still fail
+fall into known categories,
+
+82
+00:03:44,301 --> 00:03:47,123
+like tests that need real LaTeX files,
+
+83
+00:03:47,123 --> 00:03:49,968
+or that check how video
+files are written to disk,
+
+84
+00:03:49,968 --> 00:03:51,802
+which don't apply in a browser.
+
+85
+00:03:51,802 --> 00:03:55,598
+All of this sits on top of
+ManimOnline's own tests:
+
+86
+00:03:55,598 --> 00:03:56,492
+hundreds of them,
+
+87
+00:03:56,492 --> 00:04:00,463
+plus checks that open the real editor
+in three different browser engines and
+
+88
+00:04:00,463 --> 00:04:04,650
+confirm that scenes
+actually render and play.
+
+89
+00:04:04,650 --> 00:04:09,085
+Let's look at a few cases where matching
+Manim meant reproducing something you
+
+90
+00:04:09,085 --> 00:04:10,292
+might not expect.
+
+91
+00:04:10,292 --> 00:04:12,057
+The collapsing square.
+
+92
+00:04:12,057 --> 00:04:14,971
+This scene draws the path of every corner.
+
+93
+00:04:14,971 --> 00:04:19,325
+With animate, each corner travels in a
+straight line to the opposite corner,
+
+94
+00:04:19,325 --> 00:04:21,229
+and they all meet in the middle.
+
+95
+00:04:21,229 --> 00:04:24,397
+With Rotate, they travel
+around semicircles.
+
+96
+00:04:24,397 --> 00:04:29,380
+manim-lite actually stores
+shapes differently from Manim.
+
+97
+00:04:29,380 --> 00:04:31,678
+It often keeps a shape's position,
+
+98
+00:04:31,678 --> 00:04:35,150
+scale and rotation
+separately from its outline,
+
+99
+00:04:35,150 --> 00:04:37,402
+which makes many operations cheaper.
+
+100
+00:04:37,402 --> 00:04:42,893
+But a naive blend of "rotation angle
+from start to end" would spin the
+
+101
+00:04:42,893 --> 00:04:46,783
+square rigidly, which
+is not what Manim does.
+
+102
+00:04:46,783 --> 00:04:50,510
+So manim-lite blends the
+pose in a specific way,
+
+103
+00:04:50,510 --> 00:04:55,293
+treating scale and rotation
+together as a single complex number,
+
+104
+00:04:55,293 --> 00:05:00,657
+which gives exactly the same straight-line
+paths as Manim's point-by-point
+
+105
+00:05:00,657 --> 00:05:07,433
+method. Correct, here, means
+faithfully reproducing the collapse.
+
+106
+00:05:07,433 --> 00:05:09,395
+Here's another. Scale an arrow down,
+
+107
+00:05:09,395 --> 00:05:11,624
+and its tip does not shrink with it.
+
+108
+00:05:11,624 --> 00:05:15,177
+Compare the home-made arrow, a line
+and a triangle grouped together,
+
+109
+00:05:15,177 --> 00:05:17,185
+whose head shrinks in proportion.
+
+110
+00:05:17,185 --> 00:05:20,471
+That's because Manim's arrow does
+something particular when scaled:
+
+111
+00:05:20,471 --> 00:05:22,584
+it takes its tip off, scales the shaft,
+
+112
+00:05:22,584 --> 00:05:23,884
+and attaches the tip again.
+
+113
+00:05:23,884 --> 00:05:27,542
+So the tip keeps its size, up to a
+limit tied to the arrow's length,
+
+114
+00:05:27,542 --> 00:05:30,478
+which is why very short
+arrows still get smaller tips.
+
+115
+00:05:30,478 --> 00:05:32,046
+It sounds like a small detail.
+
+116
+00:05:32,046 --> 00:05:33,845
+But it changes where the tip ends up,
+
+117
+00:05:33,845 --> 00:05:37,897
+how long the shaft is, and what happens
+in every later animation of that arrow.
+
+118
+00:05:37,897 --> 00:05:40,231
+manim-lite mirrors Manim's remove,
+
+119
+00:05:40,231 --> 00:05:42,657
+scale, re-attach sequence literally,
+
+120
+00:05:42,657 --> 00:05:46,583
+because subtly different would
+accumulate into visibly different.
+
+121
+00:05:46,583 --> 00:05:48,696
+Here's one that surprises most people.
+
+122
+00:05:48,696 --> 00:05:51,378
+Write the same word
+with Text and with Tex,
+
+123
+00:05:51,378 --> 00:05:53,503
+both at font size ninety six.
+
+124
+00:05:53,503 --> 00:05:55,186
+They come out different sizes.
+
+125
+00:05:55,186 --> 00:05:57,485
+The Text version is about a third larger.
+
+126
+00:05:57,485 --> 00:06:01,711
+In Manim, those two kinds of text go
+through completely different software,
+
+127
+00:06:01,711 --> 00:06:05,740
+and each converts font size into
+screen units with its own rule.
+
+128
+00:06:05,740 --> 00:06:10,186
+For Text, the size of a letter's em
+square is the font size divided by seventy
+
+129
+00:06:10,186 --> 00:06:14,076
+two. For Tex, it's the font
+size divided by ninety six.
+
+130
+00:06:14,076 --> 00:06:15,539
+Those numbers weren't guessed.
+
+131
+00:06:15,539 --> 00:06:17,733
+They were measured from Manim itself.
+
+132
+00:06:17,733 --> 00:06:20,926
+An earlier version of
+manim-lite used a single,
+
+133
+00:06:20,926 --> 00:06:25,024
+made-up scale for both, and its
+text was simply the wrong size.
+
+134
+00:06:25,024 --> 00:06:27,055
+A plausible guess, it turns out,
+
+135
+00:06:27,055 --> 00:06:29,783
+is not the same as a measurement.
+
+136
+00:06:29,783 --> 00:06:31,873
+Some features in Manim are random.
+
+137
+00:06:31,873 --> 00:06:34,891
+Stream lines start from points
+with a little random jitter,
+
+138
+00:06:34,891 --> 00:06:36,517
+so they don't look mechanical.
+
+139
+00:06:36,517 --> 00:06:40,360
+Graph layouts place vertices by
+simulating springs from random starting
+
+140
+00:06:40,360 --> 00:06:41,265
+positions.
+
+141
+00:06:41,265 --> 00:06:43,820
+But computer randomness is reproducible:
+
+142
+00:06:43,820 --> 00:06:46,385
+a generator starts from
+a number called a seed,
+
+143
+00:06:46,385 --> 00:06:48,808
+and produces the same sequence every time.
+
+144
+00:06:48,808 --> 00:06:51,958
+Manim uses NumPy's generator
+for the stream lines,
+
+145
+00:06:51,958 --> 00:06:55,546
+and the networkx library's
+random choices for graph layouts.
+
+146
+00:06:55,546 --> 00:06:59,122
+So for manim-lite to draw the same
+stream lines and the same graphs,
+
+147
+00:06:59,122 --> 00:07:01,397
+it has to produce the same random numbers,
+
+148
+00:07:01,397 --> 00:07:03,255
+bit for bit. And it does:
+
+149
+00:07:03,255 --> 00:07:06,575
+it contains exact reimplementations
+of those generators,
+
+150
+00:07:06,575 --> 00:07:09,837
+an algorithm called P C G sixty four,
+
+151
+00:07:09,837 --> 00:07:11,973
+and another called the Mersenne Twister.
+
+152
+00:07:11,973 --> 00:07:14,574
+Same seed, same numbers, same picture,
+
+153
+00:07:14,574 --> 00:07:17,666
+whether or not NumPy is even loaded.
+
+154
+00:07:17,666 --> 00:07:20,336
+One last case, and it's the most extreme.
+
+155
+00:07:20,336 --> 00:07:21,950
+Here are the same three numbers,
+
+156
+00:07:21,950 --> 00:07:24,005
+added in two different orders.
+
+157
+00:07:24,005 --> 00:07:27,070
+The answers differ, in the
+sixteenth decimal place.
+
+158
+00:07:27,070 --> 00:07:29,613
+Computers store numbers
+with finite precision,
+
+159
+00:07:29,613 --> 00:07:31,598
+so rounding happens at every step,
+
+160
+00:07:31,598 --> 00:07:33,526
+and the order of the steps matters.
+
+161
+00:07:33,526 --> 00:07:34,954
+Normally that's irrelevant.
+
+162
+00:07:34,954 --> 00:07:36,567
+But some of Manim's searches,
+
+163
+00:07:36,567 --> 00:07:39,458
+like finding where along a
+curve a given point lies,
+
+164
+00:07:39,458 --> 00:07:43,522
+can land on a near tie, where the
+sixteenth decimal place decides the answer.
+
+165
+00:07:43,522 --> 00:07:47,017
+So in a few places manim-lite
+reproduces not just Manim's formulas,
+
+166
+00:07:47,017 --> 00:07:49,525
+but the exact order in
+which NumPy adds things up.
+
+167
+00:07:49,525 --> 00:07:52,683
+That's how far "the same"
+sometimes has to go.
+
+168
+00:07:52,683 --> 00:07:55,417
+All of this effort deserves
+an honest boundary.
+
+169
+00:07:55,417 --> 00:07:57,722
+manim-lite is a compatibility subset,
+
+170
+00:07:57,722 --> 00:07:59,359
+not Manim Community.
+
+171
+00:07:59,359 --> 00:08:01,135
+It doesn't have real LaTeX:
+
+172
+00:08:01,135 --> 00:08:03,167
+formulas go through MathJax.
+
+173
+00:08:03,167 --> 00:08:05,373
+Text uses built-in font measurements,
+
+174
+00:08:05,373 --> 00:08:07,184
+not your computer's fonts.
+
+175
+00:08:07,184 --> 00:08:09,761
+Previews run at fifteen frames per second.
+
+176
+00:08:09,761 --> 00:08:12,060
+And there are features it
+doesn't support at all.
+
+177
+00:08:12,060 --> 00:08:15,160
+The design principle is that
+when something isn't supported,
+
+178
+00:08:15,160 --> 00:08:17,122
+it should say so with a clear error,
+
+179
+00:08:17,122 --> 00:08:19,780
+not quietly draw something different.
+
+180
+00:08:19,780 --> 00:08:23,147
+A wrong picture that looks plausible
+is far worse than an error message,
+
+181
+00:08:23,147 --> 00:08:25,700
+because you might never notice.
+
+182
+00:08:25,700 --> 00:08:27,848
+The real Manim can't run in the browser,
+
+183
+00:08:27,848 --> 00:08:31,865
+so manim-lite reimplements
+its interface on a new engine.
+
+184
+00:08:31,865 --> 00:08:34,849
+"The same" means the
+same observable result,
+
+185
+00:08:34,849 --> 00:08:37,008
+and the only way to know is to measure:
+
+186
+00:08:37,008 --> 00:08:40,955
+against recorded references,
+against every documentation example,
+
+187
+00:08:40,955 --> 00:08:44,647
+against random scenes, and
+against Manim's own tests.
+
+188
+00:08:44,647 --> 00:08:48,618
+Along the way, faithfulness means
+copying surprising behaviours:
+
+189
+00:08:48,618 --> 00:08:51,904
+straight paths, fixed
+tips, two font scales,
+
+190
+00:08:51,904 --> 00:08:55,468
+exact random numbers, even
+the order of addition.
+
+191
+00:08:55,468 --> 00:08:56,745
+One question remains.
+
+192
+00:08:56,745 --> 00:09:00,692
+Every QR code in this series
+opened code in this engine,
+
+193
+00:09:00,692 --> 00:09:03,107
+with no server storing your work.
+
+194
+00:09:03,107 --> 00:09:05,696
+How does a link, or a
+little square of dots,
+
+195
+00:09:05,696 --> 00:09:07,658
+carry an entire program?
+
+196
+00:09:07,658 --> 00:09:09,167
+That's our final episode.

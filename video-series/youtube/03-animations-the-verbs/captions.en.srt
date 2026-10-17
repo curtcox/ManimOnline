@@ -1,0 +1,861 @@
+1
+00:00:00,000 --> 00:00:03,860
+Here are two squares, each told
+to rotate by a quarter turn.
+
+2
+00:00:03,860 --> 00:00:05,660
+They both end up in the same place.
+
+3
+00:00:05,660 --> 00:00:08,020
+But watch the blue one again.
+
+4
+00:00:08,020 --> 00:00:10,380
+Halfway through, it shrinks.
+
+5
+00:00:10,380 --> 00:00:12,740
+Now let's ask both for half a turn.
+
+6
+00:00:12,740 --> 00:00:14,700
+The yellow square spins around.
+
+7
+00:00:14,700 --> 00:00:16,820
+The blue one does something much stranger:
+
+8
+00:00:16,820 --> 00:00:20,760
+it collapses to a single point
+and turns itself inside out.
+
+9
+00:00:20,760 --> 00:00:23,640
+Same ending, completely different journey.
+
+10
+00:00:23,640 --> 00:00:26,660
+By the end of this episode,
+you will know exactly why,
+
+11
+00:00:26,660 --> 00:00:32,550
+and the explanation reveals how every
+animation in Manim actually works.
+
+12
+00:00:32,550 --> 00:00:35,590
+Every animation in Manim, from
+a simple fade to a full morph,
+
+13
+00:00:35,590 --> 00:00:37,410
+is built on one idea.
+
+14
+00:00:37,410 --> 00:00:39,610
+You have a starting
+state, an ending state,
+
+15
+00:00:39,610 --> 00:00:42,610
+and a number called alpha
+that runs from zero to one.
+
+16
+00:00:42,610 --> 00:00:44,710
+When alpha is zero, you see the start.
+
+17
+00:00:44,710 --> 00:00:46,550
+When alpha is one, you see the end.
+
+18
+00:00:46,550 --> 00:00:50,510
+And for any alpha in between, Manim
+computes the state that far along the way.
+
+19
+00:00:50,510 --> 00:00:53,050
+For a single point, "that
+far along" is simple.
+
+20
+00:00:53,050 --> 00:00:56,490
+Take the start, and move a fraction
+alpha of the way toward the end.
+
+21
+00:00:56,490 --> 00:00:59,070
+At one half, you are
+exactly in the middle.
+
+22
+00:00:59,070 --> 00:01:01,470
+Mathematicians call this
+linear interpolation,
+
+23
+00:01:01,470 --> 00:01:03,770
+and you will often hear
+it shortened to lerp.
+
+24
+00:01:03,770 --> 00:01:06,970
+A shape is just many points, so
+to morph a square into a circle,
+
+25
+00:01:06,970 --> 00:01:10,670
+Manim pairs every point on the
+square with a point on the circle,
+
+26
+00:01:10,670 --> 00:01:15,150
+and moves each one a fraction alpha
+of the way along its own little path.
+
+27
+00:01:15,150 --> 00:01:16,610
+All of them, at the same time,
+
+28
+00:01:16,610 --> 00:01:18,050
+driven by the same alpha.
+
+29
+00:01:18,050 --> 00:01:19,510
+And where does alpha come from?
+
+30
+00:01:19,510 --> 00:01:23,390
+From the clock. A one-second animation
+sampled fifteen times a second,
+
+31
+00:01:23,390 --> 00:01:25,310
+the rate ManimOnline uses for previews,
+
+32
+00:01:25,310 --> 00:01:28,570
+takes fifteen snapshots, each
+with alpha a little larger.
+
+33
+00:01:28,570 --> 00:01:29,950
+That is the whole engine.
+
+34
+00:01:29,950 --> 00:01:32,183
+Starts, ends, and alpha.
+
+35
+00:01:32,183 --> 00:01:33,763
+There is a small twist.
+
+36
+00:01:33,763 --> 00:01:35,743
+Alpha does not have to grow steadily.
+
+37
+00:01:35,743 --> 00:01:38,143
+Between the clock and
+alpha sits a rate function,
+
+38
+00:01:38,143 --> 00:01:39,483
+which can bend time.
+
+39
+00:01:39,483 --> 00:01:43,183
+If alpha simply equals time,
+that is the linear rate function.
+
+40
+00:01:43,183 --> 00:01:45,083
+Steady speed from start to finish.
+
+41
+00:01:45,083 --> 00:01:47,123
+It looks mechanical, like a conveyor belt,
+
+42
+00:01:47,123 --> 00:01:50,563
+because nothing in the real
+world starts and stops instantly.
+
+43
+00:01:50,563 --> 00:01:52,943
+Manim's default is called smooth.
+
+44
+00:01:52,943 --> 00:01:54,963
+Its graph is an S-shaped curve:
+
+45
+00:01:54,963 --> 00:01:57,263
+flat at the start, steep in the middle,
+
+46
+00:01:57,263 --> 00:01:58,623
+flat again at the end.
+
+47
+00:01:58,623 --> 00:02:01,203
+So objects ease out of rest, cruise,
+
+48
+00:02:01,203 --> 00:02:02,563
+and ease into place.
+
+49
+00:02:02,563 --> 00:02:07,843
+That gentle acceleration is a large
+part of why Manim animations feel calm.
+
+50
+00:02:07,843 --> 00:02:09,103
+There are many more.
+
+51
+00:02:09,103 --> 00:02:12,243
+Rush into starts slowly and finishes fast.
+
+52
+00:02:12,243 --> 00:02:13,843
+Rush from does the opposite.
+
+53
+00:02:13,843 --> 00:02:16,683
+And there and back is
+not even a one-way trip:
+
+54
+00:02:16,683 --> 00:02:18,503
+alpha climbs to one at the halfway mark,
+
+55
+00:02:18,503 --> 00:02:22,323
+and then returns to zero,
+so the motion undoes itself.
+
+56
+00:02:22,323 --> 00:02:25,803
+This code races five dots,
+one per rate function,
+
+57
+00:02:25,803 --> 00:02:27,823
+and they all start and finish together,
+
+58
+00:02:27,823 --> 00:02:30,183
+except the one that comes home.
+
+59
+00:02:30,183 --> 00:02:34,263
+You choose a rate function per
+animation by passing rate func.
+
+60
+00:02:34,263 --> 00:02:35,483
+Try adding your own:
+
+61
+00:02:35,483 --> 00:02:39,603
+any Python function that takes a number
+from zero to one and returns a number
+
+62
+00:02:39,603 --> 00:02:41,183
+will do.
+
+63
+00:02:41,183 --> 00:02:43,943
+Manim comes with dozens
+of ready-made animations,
+
+64
+00:02:43,943 --> 00:02:46,103
+and they fall into a few families.
+
+65
+00:02:46,103 --> 00:02:47,343
+Some bring objects in.
+
+66
+00:02:47,343 --> 00:02:48,723
+Create traces an outline.
+
+67
+00:02:48,723 --> 00:02:53,083
+Write is designed for text, drawing
+strokes and then filling them.
+
+68
+00:02:53,083 --> 00:02:56,283
+Grow from center expands
+an object from nothing.
+
+69
+00:02:56,283 --> 00:02:57,703
+Fade in materialises it,
+
+70
+00:02:57,703 --> 00:03:01,103
+and you can pass a shift so
+it drifts in from a direction.
+
+71
+00:03:01,103 --> 00:03:02,423
+Some draw attention.
+
+72
+00:03:02,423 --> 00:03:05,383
+Indicate briefly enlarges
+and recolours an object,
+
+73
+00:03:05,383 --> 00:03:07,123
+then returns it to normal.
+
+74
+00:03:07,123 --> 00:03:09,583
+Circumscribe traces a shape around it,
+
+75
+00:03:09,583 --> 00:03:12,063
+like a teacher circling
+something on the board.
+
+76
+00:03:12,063 --> 00:03:13,623
+Some change an object:
+
+77
+00:03:13,623 --> 00:03:16,263
+Rotate, Transform, and many more.
+
+78
+00:03:16,263 --> 00:03:17,843
+And some take objects away.
+
+79
+00:03:17,843 --> 00:03:22,063
+Fade out and Uncreate remove the
+object from the scene when they finish,
+
+80
+00:03:22,063 --> 00:03:23,583
+so you do not have to.
+
+81
+00:03:23,583 --> 00:03:25,203
+Not every exit works that way,
+
+82
+00:03:25,203 --> 00:03:29,043
+though: Shrink to center leaves
+a zero-sized object behind,
+
+83
+00:03:29,043 --> 00:03:31,863
+still in the scene, invisible but present.
+
+84
+00:03:31,863 --> 00:03:34,883
+Scan this one and read the
+code alongside the animation.
+
+85
+00:03:34,883 --> 00:03:36,223
+It is almost a dictionary:
+
+86
+00:03:36,223 --> 00:03:38,983
+one line, one effect.
+
+87
+00:03:38,983 --> 00:03:41,803
+You have already met the most
+flexible animation of all:
+
+88
+00:03:41,803 --> 00:03:44,963
+the word animate. Write
+square dot animate,
+
+89
+00:03:44,963 --> 00:03:46,863
+followed by any chain of methods,
+
+90
+00:03:46,863 --> 00:03:48,483
+and Manim does something clever.
+
+91
+00:03:48,483 --> 00:03:50,143
+It makes a copy of the square,
+
+92
+00:03:50,143 --> 00:03:52,603
+applies those methods
+to the copy instantly,
+
+93
+00:03:52,603 --> 00:03:54,623
+and uses the result as the target.
+
+94
+00:03:54,623 --> 00:03:58,543
+Then it builds an animation from
+the current square to that target.
+
+95
+00:03:58,543 --> 00:04:02,583
+Any method that changes a mobject
+can become an animation this way,
+
+96
+00:04:02,583 --> 00:04:04,883
+which is why animate is everywhere.
+
+97
+00:04:04,883 --> 00:04:06,643
+Now we can solve the mystery.
+
+98
+00:04:06,643 --> 00:04:08,563
+The blue square was rotated with animate.
+
+99
+00:04:08,563 --> 00:04:10,743
+So Manim worked out the target,
+
+100
+00:04:10,743 --> 00:04:12,443
+the square turned a quarter turn,
+
+101
+00:04:12,443 --> 00:04:14,563
+and then did what every animation does:
+
+102
+00:04:14,563 --> 00:04:19,543
+it moved each point in a straight line
+from where it starts to where it ends.
+
+103
+00:04:19,543 --> 00:04:20,523
+Follow one corner.
+
+104
+00:04:20,523 --> 00:04:22,523
+It does not travel around a circle.
+
+105
+00:04:22,523 --> 00:04:25,263
+It cuts straight across, like a shortcut.
+
+106
+00:04:25,263 --> 00:04:27,183
+Do that with all four corners,
+
+107
+00:04:27,183 --> 00:04:30,263
+and halfway through they
+form a smaller square,
+
+108
+00:04:30,263 --> 00:04:32,643
+about seventy one percent of the size.
+
+109
+00:04:32,643 --> 00:04:34,983
+For a half turn it gets more dramatic.
+
+110
+00:04:34,983 --> 00:04:37,623
+Every corner's destination
+is the opposite corner,
+
+111
+00:04:37,623 --> 00:04:41,783
+and the straight line between opposite
+corners goes right through the centre.
+
+112
+00:04:41,783 --> 00:04:45,223
+So at the halfway point, all
+four corners meet in the middle,
+
+113
+00:04:45,223 --> 00:04:47,423
+and the square vanishes for an instant.
+
+114
+00:04:47,423 --> 00:04:49,403
+The yellow square used Rotate,
+
+115
+00:04:49,403 --> 00:04:52,083
+an animation that knows it is a rotation.
+
+116
+00:04:52,083 --> 00:04:55,003
+It doesn't interpolate
+between a start and an end;
+
+117
+00:04:55,003 --> 00:04:59,103
+at every moment it turns the
+original by a fraction of the angle.
+
+118
+00:04:59,103 --> 00:05:00,823
+Every corner travels on a circle,
+
+119
+00:05:00,823 --> 00:05:02,803
+and the square stays rigid.
+
+120
+00:05:02,803 --> 00:05:06,163
+So the rule is: animate
+is perfect for moving,
+
+121
+00:05:06,163 --> 00:05:07,883
+scaling and recolouring.
+
+122
+00:05:07,883 --> 00:05:11,383
+When you mean "spin", reach for Rotate.
+
+123
+00:05:11,383 --> 00:05:14,523
+Give play several animations,
+and they run at the same time.
+
+124
+00:05:14,523 --> 00:05:15,963
+That covers most needs.
+
+125
+00:05:15,963 --> 00:05:18,043
+But sometimes you want
+more control over timing,
+
+126
+00:05:18,043 --> 00:05:20,143
+and there are three tools for that.
+
+127
+00:05:20,143 --> 00:05:23,603
+Animation group bundles animations
+together so they can be treated as one,
+
+128
+00:05:23,603 --> 00:05:25,383
+and by default they all start together.
+
+129
+00:05:25,383 --> 00:05:29,163
+Lagged start begins each animation
+a little after the previous one.
+
+130
+00:05:29,163 --> 00:05:31,643
+How much later is controlled by lag ratio.
+
+131
+00:05:31,643 --> 00:05:35,503
+A lag ratio of zero point five means
+each one starts when the previous one is
+
+132
+00:05:35,503 --> 00:05:37,363
+halfway done, so they overlap,
+
+133
+00:05:37,363 --> 00:05:38,643
+like a ripple.
+
+134
+00:05:38,643 --> 00:05:40,603
+Succession plays them
+strictly one after another.
+
+135
+00:05:40,603 --> 00:05:43,283
+Each waits for the previous one to finish.
+
+136
+00:05:43,283 --> 00:05:47,163
+Lagged starts are behind a lot of the
+most satisfying motion in math animations.
+
+137
+00:05:47,163 --> 00:05:48,163
+In this second example,
+
+138
+00:05:48,163 --> 00:05:52,283
+sixteen bars each stretch up and back
+down with the there-and-back rate
+
+139
+00:05:52,283 --> 00:05:57,533
+function, and a small lag turns
+sixteen identical motions into a wave.
+
+140
+00:05:57,533 --> 00:06:02,353
+In episode one, I said that Transform
+makes the square circle-shaped,
+
+141
+00:06:02,353 --> 00:06:05,053
+and that the circle is
+only used as a target.
+
+142
+00:06:05,053 --> 00:06:06,353
+Here is why that matters.
+
+143
+00:06:06,353 --> 00:06:10,153
+After Transform a into b, the
+thing on screen looks like b,
+
+144
+00:06:10,153 --> 00:06:12,433
+but it is still the object named a.
+
+145
+00:06:12,433 --> 00:06:15,793
+The object named b was
+never added to the scene.
+
+146
+00:06:15,793 --> 00:06:18,133
+So if you later want to move what you see,
+
+147
+00:06:18,133 --> 00:06:19,593
+you must animate a.
+
+148
+00:06:19,593 --> 00:06:23,053
+That can feel backwards, so Manim
+offers Replacement transform.
+
+149
+00:06:23,053 --> 00:06:26,273
+After Replacement transform c into d,
+
+150
+00:06:26,273 --> 00:06:28,653
+the object c is removed from the scene,
+
+151
+00:06:28,653 --> 00:06:30,393
+and d takes its place.
+
+152
+00:06:30,393 --> 00:06:32,933
+The circle on screen really is d.
+
+153
+00:06:32,933 --> 00:06:34,533
+Neither is right or wrong.
+
+154
+00:06:34,533 --> 00:06:38,453
+Use Transform when you want to keep
+talking about the same object as it changes
+
+155
+00:06:38,453 --> 00:06:42,753
+shape. Use Replacement transform when
+you would rather keep using the name of
+
+156
+00:06:42,753 --> 00:06:46,473
+the new thing. The trouble only starts
+when you forget which one you used,
+
+157
+00:06:46,473 --> 00:06:49,783
+and animate an object
+that is not on screen.
+
+158
+00:06:49,783 --> 00:06:51,863
+Knowing how to animate is one thing.
+
+159
+00:06:51,863 --> 00:06:54,683
+Knowing how long an animation
+should take is a craft,
+
+160
+00:06:54,683 --> 00:06:56,063
+and it's worth a minute.
+
+161
+00:06:56,063 --> 00:06:58,823
+The default of one second
+is a good starting point,
+
+162
+00:06:58,823 --> 00:07:02,683
+but a viewer needs more time for
+a big change than a small one.
+
+163
+00:07:02,683 --> 00:07:05,923
+A dot sliding a short
+distance can be quick.
+
+164
+00:07:05,923 --> 00:07:08,423
+A whole equation rearranging itself,
+
+165
+00:07:08,423 --> 00:07:10,563
+or a grid bending into a new shape,
+
+166
+00:07:10,563 --> 00:07:12,203
+deserves two or three seconds,
+
+167
+00:07:12,203 --> 00:07:15,343
+because the viewer is trying to
+follow several things at once.
+
+168
+00:07:15,343 --> 00:07:18,283
+New text needs time to be read,
+
+169
+00:07:18,283 --> 00:07:20,343
+and the time grows with its length.
+
+170
+00:07:20,343 --> 00:07:23,223
+If something appears and
+vanishes before it can be read,
+
+171
+00:07:23,223 --> 00:07:24,943
+it might as well not have appeared.
+
+172
+00:07:24,943 --> 00:07:27,723
+And pauses are not wasted time.
+
+173
+00:07:27,723 --> 00:07:32,443
+A short wait after an important reveal
+gives the viewer a moment to think,
+
+174
+00:07:32,443 --> 00:07:37,303
+"oh, I see". The most common mistake
+in first animations isn't anything
+
+175
+00:07:37,303 --> 00:07:40,203
+technical. It's simply going too fast.
+
+176
+00:07:40,203 --> 00:07:43,143
+If you plan to add narration,
+write the words first,
+
+177
+00:07:43,143 --> 00:07:45,703
+and time the animations to them.
+
+178
+00:07:45,703 --> 00:07:47,423
+That's how this series is made:
+
+179
+00:07:47,423 --> 00:07:50,800
+every play and wait is
+matched to a sentence.
+
+180
+00:07:50,800 --> 00:07:52,940
+Every animation is a start, an end,
+
+181
+00:07:52,940 --> 00:07:55,640
+and alpha running from zero to one,
+
+182
+00:07:55,640 --> 00:07:57,620
+bent by a rate function.
+
+183
+00:07:57,620 --> 00:07:59,740
+Animate turns any change
+into an animation,
+
+184
+00:07:59,740 --> 00:08:03,640
+by moving every point in a
+straight line toward the target.
+
+185
+00:08:03,640 --> 00:08:05,360
+That is perfect for most changes,
+
+186
+00:08:05,360 --> 00:08:07,560
+and exactly wrong for rotations,
+
+187
+00:08:07,560 --> 00:08:09,380
+which is what Rotate is for.
+
+188
+00:08:09,380 --> 00:08:14,000
+And groups, lagged starts and
+successions arrange animations in time.
+
+189
+00:08:14,000 --> 00:08:16,740
+But there was a phrase
+we used casually today:
+
+190
+00:08:16,740 --> 00:08:18,120
+"every point on the shape".
+
+191
+00:08:18,120 --> 00:08:20,060
+What points? How many?
+
+192
+00:08:20,060 --> 00:08:22,220
+And how does a square, with four corners,
+
+193
+00:08:22,220 --> 00:08:25,460
+morph into a circle, which has none?
+
+194
+00:08:25,460 --> 00:08:26,700
+That is next time,
+
+195
+00:08:26,700 --> 00:08:30,435
+and it is one of my favourite
+ideas in all of computer graphics.

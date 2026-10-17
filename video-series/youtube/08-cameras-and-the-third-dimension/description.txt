@@ -1,0 +1,41 @@
+The camera is part of the scene. This episode pans and zooms with MovingCameraScene, shows a magnified inset with ZoomedScene, then steps into 3D: placing the camera with phi and theta, ThreeDAxes, surfaces and solids, and text that stays flat.
+
+It closes with how to keep a 3D scene readable, and how a 3D frame becomes a flat picture.
+
+Open the code from this video in your browser (the QR codes on screen):
+q08-01 · Zooming the camera: https://curtcox.github.io/ManimOnline/#AAAAAALfewodV9LpFUCwa-2vlHZGo-C74QTknghHHUVGLA3uQGmZkeBnCqhRYIt9J5-D7kuzCj_1_GpcPC26hlaInwsBTw
+q08-02 · A magnified inset: https://curtcox.github.io/ManimOnline/#AAAAAAP2fsUWDj5p7r2-uWSPYYEWi2V6C3elYB7_H7NBHnsioL8XLg8rwFS29SUuMAss_Gjf-UKN9QW7SazBnUf9rLSAww
+q08-03 · A surface in 3D: https://curtcox.github.io/ManimOnline/#AAAAAANdRDH5i7gOWJpXMcyjd7eQjpRBi5EOUF8vclAzxgjq5bNKVBvGQK2nwaMnANflrllB9ipAwZSC-OflBHX9wFWpKw
+q08-04 · Solids: https://curtcox.github.io/ManimOnline/#AAAAAALNcHiB1p7DSmj-REuDqWM8RtUx0gL-dmus7jFKROeI1Lys3AMU7UUsFct7Jl8QpzV_MBe16eFqsxM-xhP26LvUcQ
+q08-05 · A helix from three angles: https://curtcox.github.io/ManimOnline/#AAAAAAQLbVAATgXZui23cARqetcHPPuqHfntZPw6-PLjnxvi87-RKUMUZCSr3gjHar0mLBIeWThtavbR6uBpA7j6z3_uGg
+
+Chapters
+0:00 Cold open: a secret in the middle
+0:27 The camera is a rectangle
+1:27 A magnifying glass
+2:07 Stepping into 3D
+2:52 Points in space
+3:33 Surfaces
+4:15 Solids
+4:50 Same curve, three views
+5:31 Choosing a good view
+6:17 Behind the scenes in ManimOnline
+6:47 Recap
+
+This is episode 8 of 12 of Drawing with Code.
+Previous: Graphs, Areas and Slopes · Drawing with Code 7 (Manim)
+Next: From Sketch to Shareable: ManimOnline Tour · Drawing with Code 9
+ManimOnline, the editor: https://curtcox.github.io/ManimOnline/
+Sample gallery: https://curtcox.github.io/ManimOnline/gallery.html
+Manim Community, the Python library: https://www.manim.community/
+
+This series is independent. It is not affiliated with 3Blue1Brown or Manim Community.
+
+How this series was made
+Animation: Manim Community, from Python code in the series repository.
+Scripts, animation code and production tooling: Claude Opus 5.5, an AI model by Anthropic.
+Direction: Curt Cox.
+Narration: ElevenLabs text-to-speech, from a model of Curt Cox's voice.
+Source: https://github.com/curtcox/ManimOnline/tree/main/video-series
+
+Text-to-speech reads names from code and terms from math as ordinary English words, so the words you hear in these videos may be pronounced differently than programmers or mathematicians would say them.

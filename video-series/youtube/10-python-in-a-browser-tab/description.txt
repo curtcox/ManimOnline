@@ -1,0 +1,39 @@
+Deep dive 1: how a static website runs Python. Why ManimOnline runs Python in your browser rather than on a server; WebAssembly and Pyodide at a conceptual level; why Python runs in a Web Worker and why only the page can stop it.
+
+Then fresh namespaces, stale-result guards, and one render followed all the way from source code to frame data, SVG and an encoded video.
+
+Open the code from this video in your browser (the QR codes on screen):
+q10-01 · Where is this Python running?: https://curtcox.github.io/ManimOnline/#AAAAAAKgKxDSO7QWwHgLq_jn12T0H0RmMQqoG2g8D6_Dw5uYGOVsZpASnZNQ1m-BI5fxaZx4u48ZQLD4jnvYjhCjQ1pzgA
+q10-02 · One dot per frame: https://curtcox.github.io/ManimOnline/#AAAAAAMEpHtBW4ZRNNuzr6dv0pfeIEV1MuJDWP2PdCa0r0CORhaU-FhHSJ3dzqSs9VQ0VdOo797SJKz-Et_JwM8BG8-_zg
+q10-03 · NumPy, loaded on demand: https://curtcox.github.io/ManimOnline/#AAAAAALZNNPfmNmLHiwfWLTkeuV5erhcdohkO5knGC434ubs4H4YQ6K9WDTU8lWjzyjBUYuHSzN88LJtxYreI-3skomicQ
+q10-04 · Measured formulas: https://curtcox.github.io/ManimOnline/#AAAAAAKs4_Jwfb8uTWu2bQEk39XmzBqPBOPwpxcMvLxJU9tl-OHkmUQnZVHoNBqvrLTayFRAEeZimyqPP7PoE_lHls2DxA
+q10-05 · A frame clock: https://curtcox.github.io/ManimOnline/#AAAAAAO1O9AiCUwuTHBCRN3CYzrTIXwVS5Q-wvrS15ZQElWcQOwYobza5oWXDM-sLVGtWb8qgzfgZw2mrwfADlXHFUCesw
+
+Chapters
+0:00 Cold open: where is this Python?
+0:39 Why not just use a server?
+1:24 WebAssembly and Pyodide
+2:35 The cook who cannot be interrupted
+3:55 Fresh starts and stale answers
+4:42 From Python objects to frames
+5:46 Drawing, playing and measuring
+6:35 Turning frames into a video file
+7:41 Recap: the whole journey
+
+This is episode 10 of 12 of Drawing with Code.
+Previous: From Sketch to Shareable: ManimOnline Tour · Drawing with Code 9
+Next: Rebuilding an Engine to Match Manim · Drawing with Code 11
+ManimOnline, the editor: https://curtcox.github.io/ManimOnline/
+Sample gallery: https://curtcox.github.io/ManimOnline/gallery.html
+Manim Community, the Python library: https://www.manim.community/
+
+This series is independent. It is not affiliated with 3Blue1Brown or Manim Community.
+
+How this series was made
+Animation: Manim Community, from Python code in the series repository.
+Scripts, animation code and production tooling: Claude Opus 5.5, an AI model by Anthropic.
+Direction: Curt Cox.
+Narration: ElevenLabs text-to-speech, from a model of Curt Cox's voice.
+Source: https://github.com/curtcox/ManimOnline/tree/main/video-series
+
+Text-to-speech reads names from code and terms from math as ordinary English words, so the words you hear in these videos may be pronounced differently than programmers or mathematicians would say them.

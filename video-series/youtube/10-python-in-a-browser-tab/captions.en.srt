@@ -1,0 +1,837 @@
+1
+00:00:00,000 --> 00:00:03,576
+Here is a scene that asks
+Python a simple question:
+
+2
+00:00:03,576 --> 00:00:05,132
+where am I running?
+
+3
+00:00:05,132 --> 00:00:07,802
+Run it on a laptop, and it
+says something like darwin,
+
+4
+00:00:07,802 --> 00:00:11,691
+or linux, or windows, and
+names the computer's processor.
+
+5
+00:00:11,691 --> 00:00:16,440
+Run it in ManimOnline, and it
+gives a much stranger answer.
+
+6
+00:00:16,440 --> 00:00:18,866
+Platform: emscripten.
+
+7
+00:00:18,866 --> 00:00:21,688
+Machine: wasm thirty two.
+
+8
+00:00:21,688 --> 00:00:25,774
+Those words mean this Python isn't
+running on your operating system at all.
+
+9
+00:00:25,774 --> 00:00:27,945
+It's running inside your web browser,
+
+10
+00:00:27,945 --> 00:00:33,391
+inside a single tab, on an imaginary
+processor that the browser provides.
+
+11
+00:00:33,391 --> 00:00:35,585
+This episode is about how that works,
+
+12
+00:00:35,585 --> 00:00:39,617
+and about the surprisingly
+delicate problem of stopping it.
+
+13
+00:00:39,617 --> 00:00:44,307
+The obvious way to build a website that
+runs Manim is to put Manim on a server.
+
+14
+00:00:44,307 --> 00:00:47,756
+Your browser sends code;
+the server renders a video;
+
+15
+00:00:47,756 --> 00:00:49,102
+the video comes back.
+
+16
+00:00:49,102 --> 00:00:52,040
+But think about what that
+server is agreeing to do.
+
+17
+00:00:52,040 --> 00:00:55,511
+Run arbitrary code, written
+by anyone on the internet.
+
+18
+00:00:55,511 --> 00:00:58,123
+That code could loop
+forever, fill the disk,
+
+19
+00:00:58,123 --> 00:01:00,643
+or try to attack the
+machine it's running on.
+
+20
+00:01:00,643 --> 00:01:03,615
+So every job would need
+a locked-down sandbox,
+
+21
+00:01:03,615 --> 00:01:07,423
+limits on time and memory,
+and storage for every result.
+
+22
+00:01:07,423 --> 00:01:09,420
+And every render costs real money,
+
+23
+00:01:09,420 --> 00:01:11,115
+for every visitor, forever.
+
+24
+00:01:11,115 --> 00:01:13,321
+ManimOnline is a static site:
+
+25
+00:01:13,321 --> 00:01:15,921
+a folder of files hosted on GitHub Pages.
+
+26
+00:01:15,921 --> 00:01:18,185
+There is no server-side program at all.
+
+27
+00:01:18,185 --> 00:01:20,298
+So the Python has to run somewhere else.
+
+28
+00:01:20,298 --> 00:01:24,850
+And the only computer available is
+the one the visitor already has.
+
+29
+00:01:24,850 --> 00:01:26,348
+The trick is WebAssembly.
+
+30
+00:01:26,348 --> 00:01:30,144
+Browsers can run a compact, low-level
+kind of program called WebAssembly,
+
+31
+00:01:30,144 --> 00:01:32,989
+safely sandboxed, and nearly
+as fast as native code.
+
+32
+00:01:32,989 --> 00:01:35,937
+And the standard Python
+interpreter is itself a program,
+
+33
+00:01:35,937 --> 00:01:39,954
+written in C. Compile that C to
+WebAssembly instead of to your laptop's
+
+34
+00:01:39,954 --> 00:01:43,705
+processor, and you get a Python
+interpreter that runs inside a web page.
+
+35
+00:01:43,705 --> 00:01:45,829
+That project is called Pyodide.
+
+36
+00:01:45,829 --> 00:01:47,675
+Those strange words from the opening,
+
+37
+00:01:47,675 --> 00:01:50,067
+emscripten and wasm thirty two,
+
+38
+00:01:50,067 --> 00:01:54,188
+are the names of the compiler toolchain
+and of the imaginary processor.
+
+39
+00:01:54,188 --> 00:01:55,605
+The cost is a download.
+
+40
+00:01:55,605 --> 00:01:57,358
+The interpreter is several megabytes,
+
+41
+00:01:57,358 --> 00:02:00,538
+which is why the first render on
+your first visit takes a while.
+
+42
+00:02:00,538 --> 00:02:03,011
+After that, the browser keeps a copy.
+
+43
+00:02:03,011 --> 00:02:05,560
+Libraries are downloaded
+only when they're needed.
+
+44
+00:02:05,560 --> 00:02:08,387
+ManimOnline looks at your
+code before running it,
+
+45
+00:02:08,387 --> 00:02:11,916
+and if it mentions NumPy,
+it fetches NumPy first.
+
+46
+00:02:11,916 --> 00:02:15,399
+This scene says n p, so NumPy is loaded.
+
+47
+00:02:15,399 --> 00:02:17,988
+A scene that never mentions
+it doesn't pay for it.
+
+48
+00:02:17,988 --> 00:02:20,113
+The same goes for a few other packages,
+
+49
+00:02:20,113 --> 00:02:21,808
+like the one that lays out graphs.
+
+50
+00:02:21,808 --> 00:02:23,212
+And what about Manim itself?
+
+51
+00:02:23,212 --> 00:02:25,035
+That's a story for next episode.
+
+52
+00:02:25,035 --> 00:02:25,988
+The short version:
+
+53
+00:02:25,988 --> 00:02:29,215
+the real Manim depends on libraries
+that aren't available here,
+
+54
+00:02:29,215 --> 00:02:31,200
+so ManimOnline brings its own engine,
+
+55
+00:02:31,200 --> 00:02:35,067
+written in plain Python,
+that runs inside Pyodide.
+
+56
+00:02:35,067 --> 00:02:36,147
+Now the delicate part.
+
+57
+00:02:36,147 --> 00:02:39,003
+A web page's main thread is
+like a kitchen with one cook.
+
+58
+00:02:39,003 --> 00:02:41,104
+Clicks, key presses, animations,
+
+59
+00:02:41,104 --> 00:02:43,264
+drawing: everything is an order ticket,
+
+60
+00:02:43,264 --> 00:02:45,377
+and the cook handles them one at a time.
+
+61
+00:02:45,377 --> 00:02:47,525
+That's fine as long as
+each order is quick.
+
+62
+00:02:47,525 --> 00:02:49,556
+But Python code can take a long time.
+
+63
+00:02:49,556 --> 00:02:50,834
+And it can take forever:
+
+64
+00:02:50,834 --> 00:02:52,471
+a loop that never ends.
+
+65
+00:02:52,471 --> 00:02:54,003
+If that ran on the main thread,
+
+66
+00:02:54,003 --> 00:02:56,012
+the cook would be stuck stirring one pot,
+
+67
+00:02:56,012 --> 00:02:57,556
+and the whole page would freeze.
+
+68
+00:02:57,556 --> 00:02:59,321
+You couldn't even click
+a button to stop it.
+
+69
+00:02:59,321 --> 00:03:02,177
+So ManimOnline gives Python its own cook,
+
+70
+00:03:02,177 --> 00:03:03,349
+in its own kitchen:
+
+71
+00:03:03,349 --> 00:03:05,555
+a Web Worker, a separate thread.
+
+72
+00:03:05,555 --> 00:03:08,608
+The page stays responsive while
+the worker runs your scene.
+
+73
+00:03:08,608 --> 00:03:09,769
+Here's the subtle part.
+
+74
+00:03:09,769 --> 00:03:12,707
+You might think: just set
+a timer inside the worker,
+
+75
+00:03:12,707 --> 00:03:14,564
+and stop after ninety seconds.
+
+76
+00:03:14,564 --> 00:03:17,281
+But that timer is also
+just an order ticket,
+
+77
+00:03:17,281 --> 00:03:20,578
+and it joins the queue behind
+the Python code that's running.
+
+78
+00:03:20,578 --> 00:03:24,653
+If that code never finishes, the worker
+never gets round to reading the timer.
+
+79
+00:03:24,653 --> 00:03:27,498
+A timeout inside a busy
+worker can't interrupt it.
+
+80
+00:03:27,498 --> 00:03:31,201
+The only one who can stop the
+worker is someone outside it.
+
+81
+00:03:31,201 --> 00:03:33,233
+So the main page keeps the stopwatch.
+
+82
+00:03:33,233 --> 00:03:36,275
+When ninety seconds pass,
+or you press Cancel render,
+
+83
+00:03:36,275 --> 00:03:39,259
+or you edit the code so the
+old result no longer matters,
+
+84
+00:03:39,259 --> 00:03:41,557
+the page simply terminates the worker,
+
+85
+00:03:41,557 --> 00:03:43,949
+and starts a new one for the next render.
+
+86
+00:03:43,949 --> 00:03:45,923
+That's why Cancel render is instant,
+
+87
+00:03:45,923 --> 00:03:47,641
+even for code that's stuck.
+
+88
+00:03:47,641 --> 00:03:51,356
+The trade-off is that a terminated
+worker loses its loaded Python,
+
+89
+00:03:51,356 --> 00:03:55,183
+so the next render takes a
+few seconds to start it again.
+
+90
+00:03:55,183 --> 00:03:58,515
+Two more pieces of care
+make the editor trustworthy.
+
+91
+00:03:58,515 --> 00:04:00,733
+First, every render starts fresh.
+
+92
+00:04:00,733 --> 00:04:02,555
+Your code runs in a brand new,
+
+93
+00:04:02,555 --> 00:04:07,234
+empty namespace, with ManimOnline's
+library definitions rebuilt.
+
+94
+00:04:07,234 --> 00:04:11,286
+So nothing left over from an earlier
+version of your code can quietly affect
+
+95
+00:04:11,286 --> 00:04:14,363
+this one. If it works now, it's
+because of what's on the screen.
+
+96
+00:04:14,363 --> 00:04:16,627
+Second, answers can arrive out of order.
+
+97
+00:04:16,627 --> 00:04:18,519
+Suppose you edit, a render starts,
+
+98
+00:04:18,519 --> 00:04:19,599
+and then you edit again.
+
+99
+00:04:19,599 --> 00:04:22,177
+The second render might
+finish before the first.
+
+100
+00:04:22,177 --> 00:04:26,136
+Without care, the late, outdated
+result could overwrite the newer one.
+
+101
+00:04:26,136 --> 00:04:29,050
+So every render is stamped
+with a revision number,
+
+102
+00:04:29,050 --> 00:04:32,626
+and the page only accepts results
+that match the current revision.
+
+103
+00:04:32,626 --> 00:04:35,006
+Anything older is quietly thrown away.
+
+104
+00:04:35,006 --> 00:04:38,535
+The same rule protects loads from
+the gallery and from HashBin:
+
+105
+00:04:38,535 --> 00:04:42,600
+if you've typed since
+asking, your newer edits win.
+
+106
+00:04:42,600 --> 00:04:44,992
+So what does the worker actually produce?
+
+107
+00:04:44,992 --> 00:04:46,884
+Not a video. Frames.
+
+108
+00:04:46,884 --> 00:04:50,924
+As your scene runs, every play
+and every wait advances a clock,
+
+109
+00:04:50,924 --> 00:04:53,235
+fifteen times per second of animation.
+
+110
+00:04:53,235 --> 00:04:56,520
+At each tick, the engine takes a
+snapshot of everything on screen:
+
+111
+00:04:56,520 --> 00:04:58,203
+every shape's points, colours,
+
+112
+00:04:58,203 --> 00:04:59,573
+opacity and position.
+
+113
+00:04:59,573 --> 00:05:00,990
+This scene makes that visible:
+
+114
+00:05:00,990 --> 00:05:04,635
+an updater drops a little dot at the
+moving dot's position on every frame,
+
+115
+00:05:04,635 --> 00:05:05,994
+so you can literally count them.
+
+116
+00:05:05,994 --> 00:05:08,003
+Four seconds, about sixty dots.
+
+117
+00:05:08,003 --> 00:05:10,510
+Each snapshot is written
+as structured data:
+
+118
+00:05:10,510 --> 00:05:14,005
+a tree of objects, which is sent
+from the worker to the page.
+
+119
+00:05:14,005 --> 00:05:15,329
+That could be a lot of data.
+
+120
+00:05:15,329 --> 00:05:17,732
+A two-minute scene is
+eighteen hundred frames,
+
+121
+00:05:17,732 --> 00:05:19,984
+and many of them contain
+hundreds of shapes.
+
+122
+00:05:19,984 --> 00:05:23,456
+But most of a scene doesn't
+change from one frame to the next.
+
+123
+00:05:23,456 --> 00:05:26,440
+So before sending,
+identical pieces are pooled:
+
+124
+00:05:26,440 --> 00:05:28,692
+an unchanged shape is sent once,
+
+125
+00:05:28,692 --> 00:05:31,943
+and every frame that contains
+it simply refers back to it.
+
+126
+00:05:31,943 --> 00:05:37,097
+In 3D, a shape that only turns can
+even be sent as "the same as before,
+
+127
+00:05:37,097 --> 00:05:39,884
+rotated". Even so, there's a ceiling:
+
+128
+00:05:39,884 --> 00:05:42,554
+results over thirty two
+megabytes are refused,
+
+129
+00:05:42,554 --> 00:05:46,967
+and that's one reason for the
+preview-length limits you met last episode.
+
+130
+00:05:46,967 --> 00:05:51,390
+On the page, a renderer
+turns each frame into S V G,
+
+131
+00:05:51,390 --> 00:05:54,455
+the vector picture format
+browsers draw natively.
+
+132
+00:05:54,455 --> 00:05:57,195
+Every outline becomes an S V G path,
+
+133
+00:05:57,195 --> 00:05:59,239
+and its commands are, once again,
+
+134
+00:05:59,239 --> 00:06:01,352
+cubic Bézier curves.
+
+135
+00:06:01,352 --> 00:06:03,349
+Episode four all the way down.
+
+136
+00:06:03,349 --> 00:06:06,472
+Because every frame is computed
+before playback starts,
+
+137
+00:06:06,472 --> 00:06:08,202
+the player is just a flipbook.
+
+138
+00:06:08,202 --> 00:06:09,479
+Seeking is instant:
+
+139
+00:06:09,479 --> 00:06:11,105
+jump to any frame and draw it.
+
+140
+00:06:11,105 --> 00:06:13,635
+Formulas need one extra round trip.
+
+141
+00:06:13,635 --> 00:06:15,818
+Python can't measure MathJax glyphs,
+
+142
+00:06:15,818 --> 00:06:18,070
+because MathJax lives in the page.
+
+143
+00:06:18,070 --> 00:06:22,668
+So on the first pass, the engine
+estimates the size of each new formula,
+
+144
+00:06:22,668 --> 00:06:24,375
+and lists the ones it guessed.
+
+145
+00:06:24,375 --> 00:06:26,581
+The page typesets and measures them,
+
+146
+00:06:26,581 --> 00:06:29,425
+then asks for a second
+render with the real sizes.
+
+147
+00:06:29,425 --> 00:06:32,839
+That's why the boxes around
+these formulas fit so snugly.
+
+148
+00:06:32,839 --> 00:06:35,033
+A guess wouldn't.
+
+149
+00:06:35,033 --> 00:06:37,227
+Finally, exporting a video.
+
+150
+00:06:37,227 --> 00:06:39,700
+Modern browsers include a video encoder,
+
+151
+00:06:39,700 --> 00:06:43,857
+available to web pages through
+an interface called WebCodecs.
+
+152
+00:06:43,857 --> 00:06:47,212
+The page draws each frame,
+hands it to the encoder,
+
+153
+00:06:47,212 --> 00:06:49,255
+and receives compressed video.
+
+154
+00:06:49,255 --> 00:06:51,066
+One detail matters a lot.
+
+155
+00:06:51,066 --> 00:06:52,611
+Each frame needs a timestamp:
+
+156
+00:06:52,611 --> 00:06:54,236
+when it should appear in the video.
+
+157
+00:06:54,236 --> 00:06:56,651
+You might be tempted to
+use the clock on the wall,
+
+158
+00:06:56,651 --> 00:06:58,752
+the time each frame was encoded.
+
+159
+00:06:58,752 --> 00:07:00,692
+But encoding speed varies:
+
+160
+00:07:00,692 --> 00:07:02,689
+some frames are harder than others,
+
+161
+00:07:02,689 --> 00:07:04,825
+and your computer is doing other things.
+
+162
+00:07:04,825 --> 00:07:07,727
+Wall-clock timestamps would
+make the video stutter.
+
+163
+00:07:07,727 --> 00:07:12,162
+So ManimOnline computes every
+timestamp from the frame number alone:
+
+164
+00:07:12,162 --> 00:07:15,575
+frame forty five appears
+at exactly three seconds.
+
+165
+00:07:15,575 --> 00:07:17,456
+This scene's clock is a good test.
+
+166
+00:07:17,456 --> 00:07:19,755
+Export it, scrub through the video,
+
+167
+00:07:19,755 --> 00:07:23,006
+and the readout always
+agrees with the video player.
+
+168
+00:07:23,006 --> 00:07:27,928
+The encoded frames are then
+packaged into an MP4 or WebM file,
+
+169
+00:07:27,928 --> 00:07:29,844
+entirely in memory.
+
+170
+00:07:29,844 --> 00:07:31,202
+In the MP4,
+
+171
+00:07:31,202 --> 00:07:35,208
+the index that describes where every
+frame lives is placed before the frame
+
+172
+00:07:35,208 --> 00:07:39,364
+data, so a player can start showing the
+video without reading the whole file
+
+173
+00:07:39,364 --> 00:07:41,033
+first.
+
+174
+00:07:41,033 --> 00:07:43,877
+Let's follow one render
+all the way through.
+
+175
+00:07:43,877 --> 00:07:48,881
+You stop typing. The page sends your code
+to a worker running Python compiled to
+
+176
+00:07:48,881 --> 00:07:52,028
+WebAssembly, with a
+stopwatch held outside.
+
+177
+00:07:52,028 --> 00:07:56,486
+The code runs in a fresh namespace and
+produces a snapshot fifteen times a
+
+178
+00:07:56,486 --> 00:07:59,958
+second. Identical pieces are
+pooled and sent to the page,
+
+179
+00:07:59,958 --> 00:08:03,673
+which ignores anything stale, draws S V G,
+
+180
+00:08:03,673 --> 00:08:06,181
+measures formulas, and plays the flipbook.
+
+181
+00:08:06,181 --> 00:08:07,783
+And if you ask for a video,
+
+182
+00:08:07,783 --> 00:08:11,893
+frames are encoded with timestamps
+computed from frame numbers alone.
+
+183
+00:08:11,893 --> 00:08:13,809
+But we skipped the biggest question.
+
+184
+00:08:13,809 --> 00:08:16,676
+If the real Manim can't
+run in the browser,
+
+185
+00:08:16,676 --> 00:08:18,662
+what exactly is drawing these frames?
+
+186
+00:08:18,662 --> 00:08:21,262
+And how could anyone know
+that it behaves the same?
+
+187
+00:08:21,262 --> 00:08:22,272
+That's next time.

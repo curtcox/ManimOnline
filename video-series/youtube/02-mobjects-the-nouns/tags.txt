@@ -1,0 +1,1 @@
+Manim mobjects, Manim shapes, VGroup, next_to, z_index, Python objects, Manim, Manim Community, ManimOnline, Python, math animation, animated math, Python animation, learn Python, creative coding, Drawing with Code

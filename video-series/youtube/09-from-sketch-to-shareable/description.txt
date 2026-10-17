@@ -1,0 +1,42 @@
+A practical tour of the editor for building something real. Find and load examples in the Sample gallery, choose a scene in a file with several, and understand automatic rendering, Render animation, Cancel render and the limits of the preview.
+
+Then export frames and MP4 or WebM videos, share with a link or save permanently with HashBin, work offline, meet the Graphviz and modl modes, build larger scenes in small checkpointed steps, and know when to move to a full Manim install.
+
+Open the code from this video in your browser (the QR codes on screen):
+q09-01 · Several scenes in one file: https://curtcox.github.io/ManimOnline/#AAAAAAJZutWN3tGb9FUTpi3ezwQ4-Mnb9wKlNLKjVqI8uB4UPcJXJfO9_xLDGayFp7Q9aJwxOXD-RDxyf_XX5tWXZ_9qIA
+q09-02 · Export me as a video: https://curtcox.github.io/ManimOnline/#AAAAAALUa6Wm3XYuncb-p2s4Goi7DzcHXk2juYRpi_Stbd-MWpEcOSLf4Sjz7I0wA8djJPxokUaEwCyf39XgL_OOAMGi_Q
+q09-03 · ManimOnline as a Graphviz diagram: https://curtcox.github.io/ManimOnline/#AAAAAAL9kRfr0Z2uEQmcWGBGNBMX7TpxR7rSiyfWMNYPltXIoJK1g-FKwh8mihHwX5vcoRiOXMwYJs3wZhZ3L6DL9LgGpw
+q09-04 · The workflow as a modl diagram: https://curtcox.github.io/ManimOnline/#AAAAAAI1OMBbqpK81-vUf4UxtGe0d0fpFwqSa6r3QkTOqx-lSw5W8xQcdpZO-2nSbL_BtSaEeNKo7RzQJws6Y62DECSNEA
+q09-05 · A scene that never ends: https://curtcox.github.io/ManimOnline/#AAAAAAFmfGuo16wlnFq2ZPizUyWMlBBCaGyE8G67rQAYLyxPyy5Yux5vHrkC9ZUwsdU6-IDcrfdMhNp3fQHti4sqktEXaA
+
+Chapters
+0:00 Cold open: now what?
+0:28 The gallery
+1:04 Several scenes in one file
+1:29 Rendering, and its limits
+2:24 Exporting pictures and videos
+3:09 Sharing a link
+3:47 Saving to HashBin
+4:51 Working offline
+5:16 Two more languages
+5:59 A workflow that scales
+6:53 Graduating to full Manim
+7:34 Recap: the end of the main track
+
+This is episode 9 of 12 of Drawing with Code.
+Previous: Cameras and the Third Dimension · Drawing with Code 8 (Manim)
+Next: Python in a Browser Tab: Pyodide and WebAssembly · Drawing with Code 10
+ManimOnline, the editor: https://curtcox.github.io/ManimOnline/
+Sample gallery: https://curtcox.github.io/ManimOnline/gallery.html
+Manim Community, the Python library: https://www.manim.community/
+
+This series is independent. It is not affiliated with 3Blue1Brown or Manim Community.
+
+How this series was made
+Animation: Manim Community, from Python code in the series repository.
+Scripts, animation code and production tooling: Claude Opus 5.5, an AI model by Anthropic.
+Direction: Curt Cox.
+Narration: ElevenLabs text-to-speech, from a model of Curt Cox's voice.
+Source: https://github.com/curtcox/ManimOnline/tree/main/video-series
+
+Text-to-speech reads names from code and terms from math as ordinary English words, so the words you hear in these videos may be pronounced differently than programmers or mathematicians would say them.

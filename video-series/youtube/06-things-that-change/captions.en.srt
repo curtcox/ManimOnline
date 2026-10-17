@@ -1,0 +1,746 @@
+1
+00:00:00,000 --> 00:00:03,140
+Here is one of the loveliest
+ideas in trigonometry:
+
+2
+00:00:03,140 --> 00:00:06,420
+a point going round a circle,
+casting its height onto a wave.
+
+3
+00:00:06,420 --> 00:00:07,600
+Count the moving parts.
+
+4
+00:00:07,600 --> 00:00:09,560
+The radius. The dot on the circle.
+
+5
+00:00:09,560 --> 00:00:11,640
+The dashed link. The dot on the wave.
+
+6
+00:00:11,640 --> 00:00:13,980
+And the wave itself, growing behind it.
+
+7
+00:00:13,980 --> 00:00:16,560
+Five things, all moving in perfect sync.
+
+8
+00:00:16,560 --> 00:00:19,820
+You could try to animate each one
+separately and hope they line up.
+
+9
+00:00:19,820 --> 00:00:21,060
+But there is a far better way,
+
+10
+00:00:21,060 --> 00:00:22,900
+and it's the subject of this episode.
+
+11
+00:00:22,900 --> 00:00:27,553
+Every one of those five parts
+is driven by a single number.
+
+12
+00:00:27,583 --> 00:00:28,743
+Let's start small.
+
+13
+00:00:28,743 --> 00:00:30,703
+A dot, and a label above it.
+
+14
+00:00:30,703 --> 00:00:32,983
+Move the dot, and the label stays behind,
+
+15
+00:00:32,983 --> 00:00:34,583
+because nobody told it to move.
+
+16
+00:00:34,583 --> 00:00:36,143
+We could animate the label too,
+
+17
+00:00:36,143 --> 00:00:37,283
+with the same shift.
+
+18
+00:00:37,283 --> 00:00:39,223
+That works, for this one motion.
+
+19
+00:00:39,223 --> 00:00:40,943
+But now every time the dot moves,
+
+20
+00:00:40,943 --> 00:00:43,103
+you have to remember to
+move the label as well,
+
+21
+00:00:43,103 --> 00:00:44,783
+and work out exactly how.
+
+22
+00:00:44,783 --> 00:00:46,543
+If the dot travels along an arc,
+
+23
+00:00:46,543 --> 00:00:48,683
+a straight shift for
+the label won't keep up.
+
+24
+00:00:48,683 --> 00:00:51,463
+What we really want to say is
+not "move the label to here".
+
+25
+00:00:51,463 --> 00:00:52,303
+It is a relationship.
+
+26
+00:00:52,303 --> 00:00:54,863
+"The label is always just above the dot."
+
+27
+00:00:54,863 --> 00:00:58,450
+And Manim has a way to say exactly that.
+
+28
+00:00:58,450 --> 00:01:01,810
+An updater is a function
+that you attach to a mobject.
+
+29
+00:01:01,810 --> 00:01:04,930
+Then, every single frame,
+before the frame is captured,
+
+30
+00:01:04,930 --> 00:01:06,450
+Manim calls it.
+
+31
+00:01:06,450 --> 00:01:08,190
+Here, the updater says:
+
+32
+00:01:08,190 --> 00:01:10,630
+put m next to the dot, above it.
+
+33
+00:01:10,630 --> 00:01:13,830
+And m is whatever object
+the updater is attached to,
+
+34
+00:01:13,830 --> 00:01:15,430
+in this case the label.
+
+35
+00:01:15,430 --> 00:01:20,150
+The word lambda is just Python's way of
+writing a small function in one line:
+
+36
+00:01:20,150 --> 00:01:22,650
+it takes m, and does this to it.
+
+37
+00:01:22,650 --> 00:01:24,550
+Now we only animate the dot.
+
+38
+00:01:24,550 --> 00:01:26,170
+It moves right, the label follows.
+
+39
+00:01:26,170 --> 00:01:28,570
+It moves up, the label follows.
+
+40
+00:01:28,570 --> 00:01:30,570
+It swings around a full circle,
+
+41
+00:01:30,570 --> 00:01:33,990
+and every frame the updater
+puts the label back above it.
+
+42
+00:01:33,990 --> 00:01:37,030
+We never mention the label
+in those animations at all.
+
+43
+00:01:37,030 --> 00:01:38,990
+When you want the relationship to end,
+
+44
+00:01:38,990 --> 00:01:40,530
+call clear updaters.
+
+45
+00:01:40,530 --> 00:01:43,890
+The label stops following, and
+the next time the dot moves,
+
+46
+00:01:43,890 --> 00:01:45,510
+the label stays put.
+
+47
+00:01:45,510 --> 00:01:48,450
+This is a shift in how
+you think about a scene.
+
+48
+00:01:48,450 --> 00:01:50,810
+Instead of scripting
+every object's motion,
+
+49
+00:01:50,810 --> 00:01:54,850
+you script a few, and describe
+how the rest relate to them.
+
+50
+00:01:54,850 --> 00:01:56,730
+Some things should change by themselves,
+
+51
+00:01:56,730 --> 00:01:59,990
+as time passes. A spinning wheel.
+
+52
+00:01:59,990 --> 00:02:04,190
+A ticking clock. For those, an
+updater can ask for a second argument,
+
+53
+00:02:04,190 --> 00:02:07,470
+d t, the amount of time
+since the last frame.
+
+54
+00:02:07,470 --> 00:02:12,230
+Here, each wheel rotates by its
+speed times d t every frame.
+
+55
+00:02:12,230 --> 00:02:15,050
+So the slow one turns a
+quarter turn per second,
+
+56
+00:02:15,050 --> 00:02:17,770
+and the fast one half a turn per second.
+
+57
+00:02:17,770 --> 00:02:20,710
+And these wheels keep turning
+even during a plain wait,
+
+58
+00:02:20,710 --> 00:02:23,110
+when no animation is playing at all.
+
+59
+00:02:23,110 --> 00:02:28,310
+Why multiply by d t, instead of just
+rotating a fixed amount each frame?
+
+60
+00:02:28,310 --> 00:02:29,590
+Because frame rates differ.
+
+61
+00:02:29,590 --> 00:02:33,530
+ManimOnline previews at
+fifteen frames per second.
+
+62
+00:02:33,530 --> 00:02:35,810
+A finished video might use sixty.
+
+63
+00:02:35,810 --> 00:02:36,710
+With d t,
+
+64
+00:02:36,710 --> 00:02:40,370
+each frame turns the wheel by the right
+amount for the time that has actually
+
+65
+00:02:40,370 --> 00:02:45,850
+passed, and after one second, both
+versions have turned exactly as far.
+
+66
+00:02:45,850 --> 00:02:48,190
+Your scene describes motion in seconds,
+
+67
+00:02:48,190 --> 00:02:52,083
+not in frames, and looks
+the same at any frame rate.
+
+68
+00:02:52,083 --> 00:02:53,583
+Now the key ingredient.
+
+69
+00:02:53,583 --> 00:02:57,023
+A value tracker is a mobject
+that holds a single number,
+
+70
+00:02:57,023 --> 00:02:59,083
+and is never drawn.
+
+71
+00:02:59,083 --> 00:03:02,983
+That sounds useless, until you
+realise that because it is a mobject,
+
+72
+00:03:02,983 --> 00:03:05,843
+you can animate it like anything else.
+
+73
+00:03:05,843 --> 00:03:11,383
+x dot animate dot set value seven point
+five smoothly changes the number from
+
+74
+00:03:11,383 --> 00:03:14,383
+zero to seven point
+five over three seconds,
+
+75
+00:03:14,383 --> 00:03:17,463
+using every idea from episode three:
+
+76
+00:03:17,463 --> 00:03:19,543
+alpha, interpolation and rate functions.
+
+77
+00:03:19,543 --> 00:03:23,143
+Then other objects read the
+number in their updaters.
+
+78
+00:03:23,143 --> 00:03:26,703
+The pointer asks the number line
+where seven point five lives,
+
+79
+00:03:26,703 --> 00:03:29,723
+using n to p, short for number to point,
+
+80
+00:03:29,723 --> 00:03:31,343
+and sits just above it.
+
+81
+00:03:31,343 --> 00:03:35,743
+The decimal number readout sets its
+displayed value to the tracker's value every
+
+82
+00:03:35,743 --> 00:03:38,483
+frame, and parks itself above the pointer.
+
+83
+00:03:38,483 --> 00:03:40,823
+So one animation, of one invisible number,
+
+84
+00:03:40,823 --> 00:03:43,363
+moves the pointer and
+the readout together.
+
+85
+00:03:43,363 --> 00:03:45,523
+That's the pattern
+you'll use over and over:
+
+86
+00:03:45,523 --> 00:03:48,363
+decide which numbers your
+scene is really about,
+
+87
+00:03:48,363 --> 00:03:52,683
+store them in value trackers,
+and let everything else follow.
+
+88
+00:03:52,683 --> 00:03:56,003
+Sometimes it's easier to rebuild
+an object than to adjust it.
+
+89
+00:03:56,003 --> 00:03:58,083
+This triangle has a corner on the circle,
+
+90
+00:03:58,083 --> 00:04:02,343
+and its shape depends on the angle in a
+way that no single shift or scale could
+
+91
+00:04:02,343 --> 00:04:03,243
+describe.
+
+92
+00:04:03,243 --> 00:04:07,623
+Always redraw takes a function that
+builds the object from scratch.
+
+93
+00:04:07,623 --> 00:04:12,543
+Every frame, Manim calls that function
+again and swaps in the brand new result.
+
+94
+00:04:12,543 --> 00:04:15,023
+So the triangle is rebuilt
+from the current angle,
+
+95
+00:04:15,023 --> 00:04:17,943
+sixty times a second in a finished video,
+
+96
+00:04:17,943 --> 00:04:22,503
+and the cosine and sine labels
+are rebuilt beside its sides.
+
+97
+00:04:22,503 --> 00:04:25,263
+It's the most flexible
+tool in this episode,
+
+98
+00:04:25,263 --> 00:04:29,983
+and also the most expensive, because
+it creates new objects every frame.
+
+99
+00:04:29,983 --> 00:04:32,943
+For a handful of shapes
+that's no problem at all.
+
+100
+00:04:32,943 --> 00:04:35,863
+If you find yourself
+redrawing hundreds of objects,
+
+101
+00:04:35,863 --> 00:04:39,250
+look for an updater that
+adjusts them instead.
+
+102
+00:04:39,250 --> 00:04:41,490
+Now the opening scene makes sense.
+
+103
+00:04:41,490 --> 00:04:43,590
+There is one value tracker, t,
+
+104
+00:04:43,590 --> 00:04:47,350
+the angle. Two little functions
+turn t into positions:
+
+105
+00:04:47,350 --> 00:04:49,870
+one on the circle, one on the wave.
+
+106
+00:04:49,870 --> 00:04:54,610
+The radius, the dashed link and both
+dots are always redrawn from those
+
+107
+00:04:54,610 --> 00:04:55,450
+positions.
+
+108
+00:04:55,450 --> 00:04:57,270
+The wave is a traced path.
+
+109
+00:04:57,270 --> 00:04:59,970
+It's given a function that
+says where the wave dot is,
+
+110
+00:04:59,970 --> 00:05:03,730
+and every frame it adds that
+point to a growing curve.
+
+111
+00:05:03,730 --> 00:05:06,590
+So the wave isn't calculated in advance.
+
+112
+00:05:06,590 --> 00:05:08,790
+It's literally drawn by the moving point.
+
+113
+00:05:08,790 --> 00:05:11,790
+And the whole scene is driven by one line:
+
+114
+00:05:11,790 --> 00:05:14,570
+animate t from zero to
+two pi over six seconds,
+
+115
+00:05:14,570 --> 00:05:16,550
+at a steady linear rate.
+
+116
+00:05:16,550 --> 00:05:19,950
+One number changes, and five things move.
+
+117
+00:05:19,950 --> 00:05:22,270
+Two things tend to surprise people.
+
+118
+00:05:22,270 --> 00:05:25,450
+First: updaters keep running
+while an animation plays.
+
+119
+00:05:25,450 --> 00:05:29,870
+Manim even applies them to the
+animation's starting and ending copies,
+
+120
+00:05:29,870 --> 00:05:33,670
+so a spinning wheel keeps spinning
+while it glides across the screen.
+
+121
+00:05:33,670 --> 00:05:36,370
+But if an updater decides
+where an object is,
+
+122
+00:05:36,370 --> 00:05:38,510
+animating its position does nothing:
+
+123
+00:05:38,510 --> 00:05:41,150
+the updater puts it back, every frame.
+
+124
+00:05:41,150 --> 00:05:45,750
+Animating its colour works, because
+the updater never touches colour.
+
+125
+00:05:45,750 --> 00:05:47,850
+To move a follower, move what it follows,
+
+126
+00:05:47,850 --> 00:05:50,250
+or clear its updater first.
+
+127
+00:05:50,250 --> 00:05:52,370
+Second: updaters run in order.
+
+128
+00:05:52,370 --> 00:05:56,350
+If one object's updater reads another
+object that hasn't been updated yet this
+
+129
+00:05:56,350 --> 00:05:58,610
+frame, it sees last frame's position,
+
+130
+00:05:58,610 --> 00:06:00,730
+and lags one frame behind.
+
+131
+00:06:00,730 --> 00:06:02,190
+Usually that's invisible.
+
+132
+00:06:02,190 --> 00:06:05,450
+When it isn't, have both read
+the same value tracker directly,
+
+133
+00:06:05,450 --> 00:06:07,900
+rather than reading each other.
+
+134
+00:06:07,900 --> 00:06:11,320
+With this many tools, it
+helps to have a way to choose.
+
+135
+00:06:11,320 --> 00:06:13,440
+If an object should follow another,
+
+136
+00:06:13,440 --> 00:06:17,060
+attach an updater that places
+it relative to the leader.
+
+137
+00:06:17,060 --> 00:06:19,660
+If it should change steadily by itself,
+
+138
+00:06:19,660 --> 00:06:23,340
+like a spinning wheel,
+use an updater with d t.
+
+139
+00:06:23,340 --> 00:06:26,080
+If several objects depend
+on the same quantity,
+
+140
+00:06:26,080 --> 00:06:28,360
+put that quantity in a value tracker,
+
+141
+00:06:28,360 --> 00:06:30,380
+and let each object read it.
+
+142
+00:06:30,380 --> 00:06:33,040
+If an object's very shape
+depends on that quantity,
+
+143
+00:06:33,040 --> 00:06:36,640
+so that it's easier to
+rebuild than to adjust,
+
+144
+00:06:36,640 --> 00:06:38,620
+use always redraw.
+
+145
+00:06:38,620 --> 00:06:40,980
+And if you want the
+history of a moving point,
+
+146
+00:06:40,980 --> 00:06:42,500
+use a traced path.
+
+147
+00:06:42,500 --> 00:06:45,680
+It's worth knowing that
+always redraw isn't magic.
+
+148
+00:06:45,680 --> 00:06:49,100
+It's an updater that
+calls become every frame:
+
+149
+00:06:49,100 --> 00:06:53,120
+become makes an object take on the
+shape and style of another one,
+
+150
+00:06:53,120 --> 00:06:54,740
+while staying the same object,
+
+151
+00:06:54,740 --> 00:06:58,140
+so it stays in the scene
+and keeps its name.
+
+152
+00:06:58,140 --> 00:07:02,080
+You can write that updater yourself
+whenever you need a variation.
+
+153
+00:07:02,080 --> 00:07:04,490
+And finally, the most important option:
+
+154
+00:07:04,490 --> 00:07:08,340
+if something changes once, at
+a moment you know in advance,
+
+155
+00:07:08,340 --> 00:07:10,420
+don't use an updater at all.
+
+156
+00:07:10,420 --> 00:07:14,480
+A plain animation is simpler
+to read and easier to change.
+
+157
+00:07:14,480 --> 00:07:18,816
+Updaters are for relationships
+that must hold all the time.
+
+158
+00:07:18,816 --> 00:07:22,096
+Updaters describe relationships
+that hold every frame.
+
+159
+00:07:22,096 --> 00:07:24,656
+With d t, they describe change over time,
+
+160
+00:07:24,656 --> 00:07:26,596
+independent of frame rate.
+
+161
+00:07:26,596 --> 00:07:29,776
+Value trackers hold the numbers
+that a scene is really about,
+
+162
+00:07:29,776 --> 00:07:32,356
+so animating one number
+can move everything.
+
+163
+00:07:32,356 --> 00:07:36,396
+Always redraw rebuilds objects whose
+shape depends on those numbers.
+
+164
+00:07:36,396 --> 00:07:39,516
+And traced paths draw the
+history of a moving point.
+
+165
+00:07:39,516 --> 00:07:43,236
+Next time, we bring all of this
+to the place it shines brightest:
+
+166
+00:07:43,236 --> 00:07:46,751
+graphs, areas under curves, and
+the slope of a tangent line.

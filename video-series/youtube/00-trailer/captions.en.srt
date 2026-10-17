@@ -1,0 +1,117 @@
+1
+00:00:00,000 --> 00:00:03,228
+Every animation you have ever
+watched in a math video is,
+
+2
+00:00:03,228 --> 00:00:05,503
+underneath, a list of instructions.
+
+3
+00:00:05,503 --> 00:00:07,860
+Put a dot here. Turn it into a circle.
+
+4
+00:00:07,860 --> 00:00:10,786
+Now fold that circle into a square.
+
+5
+00:00:10,786 --> 00:00:13,038
+What if you could write
+those instructions yourself,
+
+6
+00:00:13,038 --> 00:00:16,667
+and watch them come alive
+the moment you finish typing?
+
+7
+00:00:16,667 --> 00:00:17,840
+This is Manim,
+
+8
+00:00:17,840 --> 00:00:22,263
+the Python library behind a whole
+genre of animated math explanations.
+
+9
+00:00:22,263 --> 00:00:24,469
+And this is ManimOnline,
+
+10
+00:00:24,469 --> 00:00:28,811
+which runs a Manim-compatible engine
+entirely inside your web browser.
+
+11
+00:00:28,811 --> 00:00:31,238
+No install. No server doing the work.
+
+12
+00:00:31,238 --> 00:00:33,293
+You stop typing, and a moment later,
+
+13
+00:00:33,293 --> 00:00:34,967
+it plays.
+
+14
+00:00:34,967 --> 00:00:37,800
+In this series we will
+start from a single square,
+
+15
+00:00:37,800 --> 00:00:40,017
+and build up to curves, equations,
+
+16
+00:00:40,017 --> 00:00:42,897
+graphs, cameras that fly
+through three dimensions,
+
+17
+00:00:42,897 --> 00:00:46,380
+and animations that respond
+to their own changing numbers.
+
+18
+00:00:46,380 --> 00:00:49,526
+Then, for the curious,
+we will open the hood:
+
+19
+00:00:49,526 --> 00:00:52,545
+how Python can run in
+a browser tab at all,
+
+20
+00:00:52,545 --> 00:00:56,388
+how you rebuild an animation engine and
+prove that it behaves the same as the
+
+21
+00:00:56,388 --> 00:00:59,998
+original, and how a link,
+or a QR code like this one,
+
+22
+00:00:59,998 --> 00:01:02,600
+can carry an entire program.
+
+23
+00:01:02,600 --> 00:01:05,967
+Every few minutes, a code like
+this will appear in the corner.
+
+24
+00:01:05,967 --> 00:01:09,659
+Scan it, and the exact scene on
+screen opens in your browser,
+
+25
+00:01:09,659 --> 00:01:11,609
+ready for you to change.
+
+26
+00:01:11,609 --> 00:01:12,435
+Let's begin.

@@ -1,0 +1,760 @@
+1
+00:00:00,000 --> 00:00:03,420
+Here is a circle. Let's
+zoom in on its edge.
+
+2
+00:00:03,420 --> 00:00:05,520
+Ten times. A hundred times.
+
+3
+00:00:05,520 --> 00:00:08,780
+A thousand. It stays perfectly smooth.
+
+4
+00:00:08,780 --> 00:00:10,460
+That should be a little puzzling.
+
+5
+00:00:10,460 --> 00:00:13,580
+A circle contains infinitely many points,
+
+6
+00:00:13,580 --> 00:00:16,260
+and a computer has finite memory.
+
+7
+00:00:16,260 --> 00:00:19,120
+If you approximate the circle
+with straight segments,
+
+8
+00:00:19,120 --> 00:00:22,160
+zooming in gives the game
+away almost immediately.
+
+9
+00:00:22,160 --> 00:00:24,140
+So how is this circle stored?
+
+10
+00:00:24,140 --> 00:00:28,160
+The answer is: as eight pieces
+of a special kind of curve,
+
+11
+00:00:28,160 --> 00:00:31,040
+each described by just four points.
+
+12
+00:00:31,040 --> 00:00:35,000
+And those same curves are behind every
+outline you have seen in this series,
+
+13
+00:00:35,000 --> 00:00:36,820
+behind the letters in most fonts,
+
+14
+00:00:36,820 --> 00:00:40,850
+and behind almost every
+drawing tool on your computer.
+
+15
+00:00:40,850 --> 00:00:44,030
+To build that kind of curve,
+we need only one tool,
+
+16
+00:00:44,030 --> 00:00:45,710
+and you met it last episode:
+
+17
+00:00:45,710 --> 00:00:46,870
+linear interpolation.
+
+18
+00:00:46,870 --> 00:00:47,890
+Lerp.
+
+19
+00:00:47,890 --> 00:00:50,490
+Take two points. Lerp between them,
+
+20
+00:00:50,490 --> 00:00:52,450
+letting t run from zero to one,
+
+21
+00:00:52,450 --> 00:00:54,110
+and you trace a straight line.
+
+22
+00:00:54,110 --> 00:00:55,410
+Nothing surprising yet.
+
+23
+00:00:55,410 --> 00:00:56,390
+Now take three points.
+
+24
+00:00:56,390 --> 00:01:00,070
+Lerp along the first segment,
+and along the second segment,
+
+25
+00:01:00,070 --> 00:01:01,590
+both with the same t.
+
+26
+00:01:01,590 --> 00:01:03,550
+That gives two moving points.
+
+27
+00:01:03,550 --> 00:01:06,610
+Now lerp between those
+two, again with the same t.
+
+28
+00:01:06,610 --> 00:01:08,390
+This final point traces something new:
+
+29
+00:01:08,390 --> 00:01:11,450
+a smooth curve that
+starts at the first point,
+
+30
+00:01:11,450 --> 00:01:15,770
+ends at the last, and bends toward the
+middle point without ever touching it.
+
+31
+00:01:15,770 --> 00:01:18,110
+Do it once more, with four points.
+
+32
+00:01:18,110 --> 00:01:19,870
+Three lerps on the first level,
+
+33
+00:01:19,870 --> 00:01:21,910
+two on the second, and one at the top.
+
+34
+00:01:21,910 --> 00:01:26,690
+The single point that survives
+traces a cubic Bézier curve.
+
+35
+00:01:26,690 --> 00:01:30,390
+This construction is named
+after Paul de Casteljau,
+
+36
+00:01:30,390 --> 00:01:34,410
+who worked it out at the car maker
+Citroën in the late nineteen fifties.
+
+37
+00:01:34,410 --> 00:01:40,090
+Pierre Bézier, at Renault, popularised
+the same curves for designing car bodies,
+
+38
+00:01:40,090 --> 00:01:42,010
+and his name is the one that stuck.
+
+39
+00:01:42,010 --> 00:01:44,490
+Scan this code to play with
+the construction yourself.
+
+40
+00:01:44,490 --> 00:01:48,330
+The four control points are in a list
+called p at the top of the scene.
+
+41
+00:01:48,330 --> 00:01:49,970
+Drag them around by editing the numbers,
+
+42
+00:01:49,970 --> 00:01:52,783
+and watch the curve follow.
+
+43
+00:01:52,783 --> 00:01:55,123
+The four points have different jobs.
+
+44
+00:01:55,123 --> 00:01:57,023
+The first and last are anchors:
+
+45
+00:01:57,023 --> 00:01:58,943
+the curve really passes through them.
+
+46
+00:01:58,943 --> 00:02:00,763
+The middle two are handles.
+
+47
+00:02:00,763 --> 00:02:02,243
+The curve never touches them,
+
+48
+00:02:02,243 --> 00:02:05,363
+but it leaves the first anchor heading
+straight toward the first handle,
+
+49
+00:02:05,363 --> 00:02:09,723
+and arrives at the last anchor coming
+from the direction of the second handle.
+
+50
+00:02:09,723 --> 00:02:13,803
+Pull a handle further away, and the
+curve leans harder in that direction.
+
+51
+00:02:13,803 --> 00:02:16,923
+That is what makes these
+curves so useful for drawing.
+
+52
+00:02:16,923 --> 00:02:18,923
+You can chain them, end to end,
+
+53
+00:02:18,923 --> 00:02:22,003
+so that one curve's last
+anchor is the next one's first.
+
+54
+00:02:22,003 --> 00:02:25,423
+And if the handles on either side
+of that shared anchor line up,
+
+55
+00:02:25,423 --> 00:02:26,883
+the join is smooth:
+
+56
+00:02:26,883 --> 00:02:28,283
+no corner at all.
+
+57
+00:02:28,283 --> 00:02:29,643
+Now we can look inside the circle.
+
+58
+00:02:29,643 --> 00:02:32,963
+Manim builds it from eight cubic pieces,
+
+59
+00:02:32,963 --> 00:02:35,083
+joined smoothly at eight anchors.
+
+60
+00:02:35,083 --> 00:02:37,023
+That is thirty two points in total,
+
+61
+00:02:37,023 --> 00:02:38,963
+counting each piece's four.
+
+62
+00:02:38,963 --> 00:02:40,863
+The pieces are not exactly circular.
+
+63
+00:02:40,863 --> 00:02:43,443
+But their error is far
+smaller than a pixel,
+
+64
+00:02:43,443 --> 00:02:47,383
+which is why the zoom in the
+opening never revealed them.
+
+65
+00:02:47,383 --> 00:02:49,383
+Why four points? Why not three,
+
+66
+00:02:49,383 --> 00:02:50,443
+or ten?
+
+67
+00:02:50,443 --> 00:02:52,963
+With three points, the quadratic curve,
+
+68
+00:02:52,963 --> 00:02:57,863
+there's only one handle, and it controls
+the direction at both ends at once.
+
+69
+00:02:57,863 --> 00:02:59,483
+You can't choose them separately,
+
+70
+00:02:59,483 --> 00:03:01,223
+and you can't make an S shape:
+
+71
+00:03:01,223 --> 00:03:04,403
+a quadratic curve only ever bends one way.
+
+72
+00:03:04,403 --> 00:03:05,803
+Four points, the cubic,
+
+73
+00:03:05,803 --> 00:03:10,523
+is the smallest number that lets you
+set each end's direction independently.
+
+74
+00:03:10,523 --> 00:03:13,503
+That's exactly what you need
+to join curves smoothly,
+
+75
+00:03:13,503 --> 00:03:16,483
+and it's enough to make S
+shapes within a single piece.
+
+76
+00:03:16,483 --> 00:03:18,343
+You could go higher.
+
+77
+00:03:18,343 --> 00:03:20,523
+Five, six, ten control points.
+
+78
+00:03:20,523 --> 00:03:23,423
+But higher-degree curves
+are harder to control:
+
+79
+00:03:23,423 --> 00:03:26,103
+move one point, and
+the whole curve shifts.
+
+80
+00:03:26,103 --> 00:03:28,863
+It's far easier to
+chain many cubic pieces,
+
+81
+00:03:28,863 --> 00:03:33,123
+where moving a handle only changes
+its own piece and its neighbour.
+
+82
+00:03:33,123 --> 00:03:37,043
+That's why cubic curves became
+the standard of design software.
+
+83
+00:03:37,043 --> 00:03:40,283
+Some font formats use
+quadratic pieces instead,
+
+84
+00:03:40,283 --> 00:03:44,423
+but every quadratic curve can
+be rewritten exactly as a cubic,
+
+85
+00:03:44,423 --> 00:03:48,500
+so when Manim meets one, it
+converts it and carries on.
+
+86
+00:03:48,500 --> 00:03:52,820
+In Manim, a shape made of
+outlines is called a V mobject,
+
+87
+00:03:52,820 --> 00:03:55,260
+short for vectorised mobject.
+
+88
+00:03:55,260 --> 00:03:59,040
+And under the hood, every V
+mobject is just a list of points,
+
+89
+00:03:59,040 --> 00:04:01,120
+read in groups of four:
+
+90
+00:04:01,120 --> 00:04:03,860
+anchor, handle, handle, anchor.
+
+91
+00:04:03,860 --> 00:04:06,180
+Even a straight line is stored this way.
+
+92
+00:04:06,180 --> 00:04:08,320
+Put both handles on the line itself,
+
+93
+00:04:08,320 --> 00:04:10,880
+and the cubic curve is perfectly straight.
+
+94
+00:04:10,880 --> 00:04:13,400
+So a square is four cubic curves,
+
+95
+00:04:13,400 --> 00:04:16,080
+sixteen points, which
+happen to be straight.
+
+96
+00:04:16,080 --> 00:04:19,700
+This is a wonderfully
+simple representation.
+
+97
+00:04:19,700 --> 00:04:22,460
+Squares, circles, stars, arrows,
+
+98
+00:04:22,460 --> 00:04:26,980
+graphs of functions and every letter of
+every formula are all the same kind of
+
+99
+00:04:26,980 --> 00:04:29,340
+thing: a list of cubic curves.
+
+100
+00:04:29,340 --> 00:04:33,500
+And that uniformity is what
+makes the next trick possible.
+
+101
+00:04:33,500 --> 00:04:36,640
+Let's return to the
+question from last episode.
+
+102
+00:04:36,640 --> 00:04:38,400
+To morph one shape into another,
+
+103
+00:04:38,400 --> 00:04:42,660
+Manim pairs up their points and
+moves each one in a straight line.
+
+104
+00:04:42,660 --> 00:04:46,880
+But a square has sixteen points
+and the circle has thirty two.
+
+105
+00:04:46,880 --> 00:04:50,080
+Half of the circle's points
+would have no partner.
+
+106
+00:04:50,080 --> 00:04:52,060
+The fix is beautiful.
+
+107
+00:04:52,060 --> 00:04:54,400
+Remember the de Casteljau construction?
+
+108
+00:04:54,400 --> 00:04:57,580
+Stop it at t equals one half,
+and look at the scaffolding.
+
+109
+00:04:57,580 --> 00:05:01,780
+The points along the way are exactly
+the control points of two smaller cubic
+
+110
+00:05:01,780 --> 00:05:06,000
+curves, which together trace
+the original curve perfectly.
+
+111
+00:05:06,000 --> 00:05:10,720
+So you can split any cubic curve into
+two without changing its shape at all.
+
+112
+00:05:10,720 --> 00:05:14,100
+Manim splits the square's
+four curves into eight.
+
+113
+00:05:14,100 --> 00:05:16,200
+The square looks exactly the same,
+
+114
+00:05:16,200 --> 00:05:18,260
+but it now has thirty two points,
+
+115
+00:05:18,260 --> 00:05:21,440
+and every point has a
+partner on the circle.
+
+116
+00:05:21,440 --> 00:05:25,700
+Then the morph is exactly
+what we saw in episode three:
+
+117
+00:05:25,700 --> 00:05:27,740
+each point travels in a straight line,
+
+118
+00:05:27,740 --> 00:05:32,700
+driven by alpha. The anchors at
+the square's corners glide inward,
+
+119
+00:05:32,700 --> 00:05:36,420
+and the new anchors at the
+middle of each edge bow outward,
+
+120
+00:05:36,420 --> 00:05:39,940
+and the whole outline
+relaxes into a circle.
+
+121
+00:05:39,940 --> 00:05:45,100
+This example calls align points directly
+so you can see the new dots appear.
+
+122
+00:05:45,100 --> 00:05:46,820
+Normally you never need to.
+
+123
+00:05:46,820 --> 00:05:52,117
+Every transform does this matching
+automatically before it starts.
+
+124
+00:05:52,117 --> 00:05:54,557
+Straight lines are only the default.
+
+125
+00:05:54,557 --> 00:05:59,617
+Pass path arc to a transform, and every
+point travels along an arc instead,
+
+126
+00:05:59,617 --> 00:06:02,077
+turning by that angle as it goes.
+
+127
+00:06:02,077 --> 00:06:04,717
+A quarter turn gives a gentle swing.
+
+128
+00:06:04,717 --> 00:06:07,057
+A negative angle swings the other way.
+
+129
+00:06:07,057 --> 00:06:10,557
+This also tells you something
+about the morphs that look odd.
+
+130
+00:06:10,557 --> 00:06:13,357
+Because the pairing goes in
+order around the outline,
+
+131
+00:06:13,357 --> 00:06:16,177
+two shapes that start their
+outlines in different places,
+
+132
+00:06:16,177 --> 00:06:17,937
+or travel in opposite directions,
+
+133
+00:06:17,937 --> 00:06:20,697
+can make points cross
+over each other mid-morph.
+
+134
+00:06:20,697 --> 00:06:23,177
+The outline appears to twist.
+
+135
+00:06:23,177 --> 00:06:23,997
+When you see that,
+
+136
+00:06:23,997 --> 00:06:28,077
+the fix is usually to rotate or reverse
+one of the shapes so their starting
+
+137
+00:06:28,077 --> 00:06:30,100
+points line up.
+
+138
+00:06:30,100 --> 00:06:33,280
+One more payoff. How
+does Create draw a curve,
+
+139
+00:06:33,280 --> 00:06:35,820
+gradually, as if with a pen?
+
+140
+00:06:35,820 --> 00:06:39,800
+At every frame, it shows only
+the first part of the outline:
+
+141
+00:06:39,800 --> 00:06:43,340
+the curve cut off at some
+fraction of the way along.
+
+142
+00:06:43,340 --> 00:06:46,480
+And cutting a cubic
+curve at any fraction is,
+
+143
+00:06:46,480 --> 00:06:49,440
+once again, de Casteljau's construction.
+
+144
+00:06:49,440 --> 00:06:54,520
+The same lerps that built the curve also
+let Manim draw it one sliver at a time.
+
+145
+00:06:54,520 --> 00:06:56,180
+You can build curves yourself.
+
+146
+00:06:56,180 --> 00:07:00,660
+Cubic Bézier takes exactly four points:
+
+147
+00:07:00,660 --> 00:07:03,600
+anchor, handle, handle, anchor.
+
+148
+00:07:03,600 --> 00:07:07,220
+And if you would rather just say
+"go through these points smoothly",
+
+149
+00:07:07,220 --> 00:07:11,560
+a V mobject's set points smoothly
+method works out handles for you,
+
+150
+00:07:11,560 --> 00:07:13,960
+so that the joins have no corners.
+
+151
+00:07:13,960 --> 00:07:16,500
+The same machinery
+answers another question:
+
+152
+00:07:16,500 --> 00:07:19,240
+where is the point halfway
+along this outline?
+
+153
+00:07:19,240 --> 00:07:22,680
+Point from proportion measures along
+the curves and returns that point,
+
+154
+00:07:22,680 --> 00:07:27,300
+and Move along path uses it to
+slide an object along any outline,
+
+155
+00:07:27,300 --> 00:07:31,200
+a circle, a polygon, or a
+curve you drew yourself.
+
+156
+00:07:31,200 --> 00:07:33,600
+Scan this code, move the handles around,
+
+157
+00:07:33,600 --> 00:07:38,580
+and you will build your intuition for
+Bézier curves faster than any explanation
+
+158
+00:07:38,580 --> 00:07:40,483
+can.
+
+159
+00:07:40,483 --> 00:07:41,803
+Let's put it together.
+
+160
+00:07:41,803 --> 00:07:45,623
+A cubic Bézier curve is
+what you get when you lerp,
+
+161
+00:07:45,623 --> 00:07:48,343
+and lerp again, and lerp once more.
+
+162
+00:07:48,343 --> 00:07:51,743
+Anchors are where it goes;
+handles are how it leans.
+
+163
+00:07:51,743 --> 00:07:54,203
+Chain these curves, and
+you can draw anything,
+
+164
+00:07:54,203 --> 00:07:58,323
+so Manim stores every outline as a
+list of cubic curves in groups of four
+
+165
+00:07:58,323 --> 00:08:02,783
+points. To morph two shapes, it
+splits curves until the counts match,
+
+166
+00:08:02,783 --> 00:08:04,563
+then pairs points and moves them.
+
+167
+00:08:04,563 --> 00:08:09,123
+And the very same construction lets
+Create draw a curve one sliver at a time.
+
+168
+00:08:09,123 --> 00:08:12,663
+Next time, we put this to work on
+the most intricate outlines of all:
+
+169
+00:08:12,663 --> 00:08:14,477
+letters, numbers and equations.

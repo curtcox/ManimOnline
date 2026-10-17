@@ -1,0 +1,954 @@
+1
+00:00:00,000 --> 00:00:02,660
+Here is a square turning into a circle.
+
+2
+00:00:02,660 --> 00:00:05,280
+It takes about three seconds,
+and it looks effortless.
+
+3
+00:00:05,280 --> 00:00:07,460
+But a screen cannot show motion.
+
+4
+00:00:07,460 --> 00:00:09,120
+It can only show still pictures,
+
+5
+00:00:09,120 --> 00:00:13,240
+one after another, fast enough
+that your brain fills in the gaps.
+
+6
+00:00:13,240 --> 00:00:16,440
+So this little clip is really
+a stack of still frames.
+
+7
+00:00:16,440 --> 00:00:18,640
+Dozens of them at preview quality,
+
+8
+00:00:18,640 --> 00:00:21,940
+close to two hundred at the
+smoothness of a finished video.
+
+9
+00:00:21,940 --> 00:00:24,440
+And each frame is a
+slightly different shape:
+
+10
+00:00:24,440 --> 00:00:26,540
+not quite a square, not yet a circle.
+
+11
+00:00:26,540 --> 00:00:30,160
+Here is the question that this
+whole series grows out of.
+
+12
+00:00:30,160 --> 00:00:33,800
+Who drew all of those in-between shapes?
+
+13
+00:00:33,800 --> 00:00:35,360
+The traditional answer is:
+
+14
+00:00:35,360 --> 00:00:38,780
+an artist did, or an artist
+drew the start and the end,
+
+15
+00:00:38,780 --> 00:00:40,640
+and software guessed the middle.
+
+16
+00:00:40,640 --> 00:00:45,460
+That is called key framing, and it works
+wonderfully for characters and logos.
+
+17
+00:00:45,460 --> 00:00:48,160
+But think about what a
+mathematician wants to animate.
+
+18
+00:00:48,160 --> 00:00:51,640
+A curve that is exactly
+the graph of a function.
+
+19
+00:00:51,640 --> 00:00:55,220
+A triangle whose corners
+stay exactly on a circle.
+
+20
+00:00:55,220 --> 00:00:59,420
+An equation whose terms slide
+to exactly the right places.
+
+21
+00:00:59,420 --> 00:01:02,840
+Guessing the middle is not good enough
+when the middle is the whole point.
+
+22
+00:01:02,840 --> 00:01:04,640
+So here is a different idea.
+
+23
+00:01:04,640 --> 00:01:07,620
+Instead of drawing frames,
+describe the change.
+
+24
+00:01:07,620 --> 00:01:09,180
+Make a square. Draw it.
+
+25
+00:01:09,180 --> 00:01:10,680
+Turn it into a circle.
+
+26
+00:01:10,680 --> 00:01:11,620
+Pause for a moment.
+
+27
+00:01:11,620 --> 00:01:13,940
+If those sentences are precise enough,
+
+28
+00:01:13,940 --> 00:01:17,300
+a computer can work out every
+in-between frame for you.
+
+29
+00:01:17,300 --> 00:01:19,840
+For any moment in time, it asks:
+
+30
+00:01:19,840 --> 00:01:21,360
+how far along are we?
+
+31
+00:01:21,360 --> 00:01:22,460
+A quarter of the way?
+
+32
+00:01:22,460 --> 00:01:26,580
+Then compute the shape that is a quarter
+of the way from square to circle.
+
+33
+00:01:26,580 --> 00:01:28,720
+Halfway? Compute that one.
+
+34
+00:01:28,720 --> 00:01:32,540
+And a description precise enough for
+a computer to follow has another name.
+
+35
+00:01:32,540 --> 00:01:35,383
+It is a program.
+
+36
+00:01:35,383 --> 00:01:38,103
+That is exactly the idea behind Manim.
+
+37
+00:01:38,103 --> 00:01:40,483
+The name is short for math animation.
+
+38
+00:01:40,483 --> 00:01:41,963
+It was written by Grant Sanderson,
+
+39
+00:01:41,963 --> 00:01:45,883
+around 2015, to make the
+videos on his channel,
+
+40
+00:01:45,883 --> 00:01:48,683
+and he shared the code so
+that anyone could use it.
+
+41
+00:01:48,683 --> 00:01:50,403
+As more people began using it,
+
+42
+00:01:50,403 --> 00:01:52,983
+a group of them formed Manim Community,
+
+43
+00:01:52,983 --> 00:01:56,483
+a separately maintained
+edition focused on stability,
+
+44
+00:01:56,483 --> 00:01:58,943
+documentation and new features.
+
+45
+00:01:58,943 --> 00:02:01,023
+The two have drifted apart in places,
+
+46
+00:02:01,023 --> 00:02:02,903
+so when this series says Manim,
+
+47
+00:02:02,903 --> 00:02:06,443
+it means the Community
+edition and its conventions.
+
+48
+00:02:06,443 --> 00:02:09,543
+Normally, using Manim
+means installing Python,
+
+49
+00:02:09,543 --> 00:02:13,143
+the library, and a handful of
+supporting tools for drawing,
+
+50
+00:02:13,143 --> 00:02:15,103
+video encoding and typesetting.
+
+51
+00:02:15,103 --> 00:02:17,823
+That is a real hurdle on your first day.
+
+52
+00:02:17,823 --> 00:02:20,803
+So in this series we will
+mostly work somewhere else:
+
+53
+00:02:20,803 --> 00:02:23,663
+ManimOnline. It is a website,
+
+54
+00:02:23,663 --> 00:02:28,423
+and it runs a Manim-compatible engine
+entirely inside your browser tab.
+
+55
+00:02:28,423 --> 00:02:29,603
+Nothing to install.
+
+56
+00:02:29,603 --> 00:02:31,563
+And as we will see much later,
+
+57
+00:02:31,563 --> 00:02:34,217
+nothing running on a server either.
+
+58
+00:02:34,217 --> 00:02:36,817
+Let's open it. On the
+left is a code editor.
+
+59
+00:02:36,817 --> 00:02:38,517
+On the right is the preview.
+
+60
+00:02:38,517 --> 00:02:42,557
+Along the top, a toolbar we will
+explore over the course of the series.
+
+61
+00:02:42,557 --> 00:02:45,997
+The first time you visit, the page
+downloads a Python interpreter,
+
+62
+00:02:45,997 --> 00:02:48,437
+so the very first render
+takes a little while.
+
+63
+00:02:48,437 --> 00:02:50,637
+After that, things move quickly.
+
+64
+00:02:50,637 --> 00:02:52,277
+If you would like to follow along,
+
+65
+00:02:52,277 --> 00:02:53,677
+scan the code in the corner.
+
+66
+00:02:53,677 --> 00:02:56,297
+It opens this exact scene in your browser.
+
+67
+00:02:56,297 --> 00:02:59,237
+Once it renders, the preview
+behaves like a video player.
+
+68
+00:02:59,237 --> 00:03:03,057
+You can play, pause, and drag the
+seek bar to scrub through time.
+
+69
+00:03:03,057 --> 00:03:05,997
+That last part is more
+interesting than it looks.
+
+70
+00:03:05,997 --> 00:03:09,377
+The page already computed every
+frame before it started playing,
+
+71
+00:03:09,377 --> 00:03:11,957
+so jumping to any moment is instant.
+
+72
+00:03:11,957 --> 00:03:13,137
+Two more things worth knowing.
+
+73
+00:03:13,137 --> 00:03:16,937
+ManimOnline also understands
+two diagram languages,
+
+74
+00:03:16,937 --> 00:03:21,537
+Graphviz and modl, and it guesses
+which language you are writing.
+
+75
+00:03:21,537 --> 00:03:23,237
+The Renderer selector says Auto,
+
+76
+00:03:23,237 --> 00:03:26,517
+and for Python scenes it
+will choose Manim on its own.
+
+77
+00:03:26,517 --> 00:03:30,467
+And the Sample gallery link opens a
+collection of ready-made examples,
+
+78
+00:03:30,467 --> 00:03:33,557
+which is a wonderful
+place to steal ideas from.
+
+79
+00:03:33,557 --> 00:03:36,867
+We will come back to both in episode nine.
+
+80
+00:03:36,867 --> 00:03:39,487
+Let's read this program
+one line at a time.
+
+81
+00:03:39,487 --> 00:03:40,087
+It is short,
+
+82
+00:03:40,087 --> 00:03:44,267
+but every line is doing something you
+will use in every scene you ever write.
+
+83
+00:03:44,267 --> 00:03:45,627
+The first line says:
+
+84
+00:03:45,627 --> 00:03:47,547
+from manim, import everything.
+
+85
+00:03:47,547 --> 00:03:49,667
+That fills your toolbox with names.
+
+86
+00:03:49,667 --> 00:03:51,487
+Shapes like Square and Circle,
+
+87
+00:03:51,487 --> 00:03:54,027
+animations like Create, colours like BLUE,
+
+88
+00:03:54,027 --> 00:03:55,627
+and directions like UP.
+
+89
+00:03:55,627 --> 00:03:58,247
+Next, a class called SquareToCircle,
+
+90
+00:03:58,247 --> 00:03:59,767
+which is a kind of Scene.
+
+91
+00:03:59,767 --> 00:04:01,847
+If you have not written classes before,
+
+92
+00:04:01,847 --> 00:04:04,967
+do not worry. For now,
+read it as a template:
+
+93
+00:04:04,967 --> 00:04:08,207
+"Here is a scene, and this is its name."
+
+94
+00:04:08,207 --> 00:04:10,367
+A single file can hold several scenes,
+
+95
+00:04:10,367 --> 00:04:12,687
+and the name is how you
+choose between them.
+
+96
+00:04:12,687 --> 00:04:15,827
+Inside the scene is a
+method called construct.
+
+97
+00:04:15,827 --> 00:04:18,847
+When the scene is rendered,
+Manim calls construct,
+
+98
+00:04:18,847 --> 00:04:21,327
+and everything inside it happens in order,
+
+99
+00:04:21,327 --> 00:04:23,147
+from top to bottom.
+
+100
+00:04:23,147 --> 00:04:26,447
+You can think of construct as
+the script for this little film.
+
+101
+00:04:26,447 --> 00:04:29,507
+The first two lines inside make objects.
+
+102
+00:04:29,507 --> 00:04:32,067
+A blue square and a yellow circle.
+
+103
+00:04:32,067 --> 00:04:33,787
+And here is a subtle point.
+
+104
+00:04:33,787 --> 00:04:37,007
+Creating an object does
+not put it on screen.
+
+105
+00:04:37,007 --> 00:04:40,407
+Right now, both shapes exist
+in the computer's memory,
+
+106
+00:04:40,407 --> 00:04:41,887
+waiting in the wings.
+
+107
+00:04:41,887 --> 00:04:45,327
+Then: self dot play, Create, square.
+
+108
+00:04:45,327 --> 00:04:47,947
+This is the first line that takes time.
+
+109
+00:04:47,947 --> 00:04:49,767
+Play means: run this animation,
+
+110
+00:04:49,767 --> 00:04:51,787
+and record the frames.
+
+111
+00:04:51,787 --> 00:04:53,567
+Create is a particular animation,
+
+112
+00:04:53,567 --> 00:04:56,947
+one that draws an object's outline
+as if a pen were tracing it.
+
+113
+00:04:56,947 --> 00:05:00,287
+And when it finishes,
+the square is on stage.
+
+114
+00:05:00,287 --> 00:05:02,787
+Next: self dot play, Transform,
+
+115
+00:05:02,787 --> 00:05:04,387
+square into circle.
+
+116
+00:05:04,387 --> 00:05:07,467
+The square smoothly becomes
+the shape of the circle.
+
+117
+00:05:07,467 --> 00:05:09,207
+Keep an eye on the wording there.
+
+118
+00:05:09,207 --> 00:05:10,907
+The square becomes circle-shaped;
+
+119
+00:05:10,907 --> 00:05:13,387
+the circle object we
+made is used as a target,
+
+120
+00:05:13,387 --> 00:05:15,107
+a picture of where to end up.
+
+121
+00:05:15,107 --> 00:05:19,227
+We will find out in episode three why
+that distinction matters more than it
+
+122
+00:05:19,227 --> 00:05:20,027
+seems.
+
+123
+00:05:20,027 --> 00:05:21,767
+And finally, self dot wait.
+
+124
+00:05:21,767 --> 00:05:24,627
+Nothing moves. The scene
+simply holds for a second,
+
+125
+00:05:24,627 --> 00:05:28,367
+so the viewer has a moment to
+look at what just happened.
+
+126
+00:05:28,367 --> 00:05:31,067
+If you squint, that program
+has a small grammar,
+
+127
+00:05:31,067 --> 00:05:32,987
+and it is the grammar of all of Manim.
+
+128
+00:05:32,987 --> 00:05:36,087
+There is the scene, the stage
+where everything happens.
+
+129
+00:05:36,087 --> 00:05:39,307
+There are mobjects, short
+for mathematical objects:
+
+130
+00:05:39,307 --> 00:05:40,927
+anything you can see, like shapes,
+
+131
+00:05:40,927 --> 00:05:42,307
+text, graphs and arrows.
+
+132
+00:05:42,307 --> 00:05:46,707
+And there are animations, which
+describe how mobjects change over time.
+
+133
+00:05:46,707 --> 00:05:48,987
+Then there is the verb
+that ties them together:
+
+134
+00:05:48,987 --> 00:05:52,467
+play. Play takes animations,
+works out every in-between moment,
+
+135
+00:05:52,467 --> 00:05:54,147
+and turns them into frames.
+
+136
+00:05:54,147 --> 00:05:56,047
+Episode two is all about mobjects.
+
+137
+00:05:56,047 --> 00:05:57,467
+Episode three is all about animations.
+
+138
+00:05:57,467 --> 00:06:01,317
+But you already know enough
+to start changing things.
+
+139
+00:06:01,317 --> 00:06:04,837
+The best way to learn this is to
+change things and see what breaks.
+
+140
+00:06:04,837 --> 00:06:06,457
+Try giving the square a fill.
+
+141
+00:06:06,457 --> 00:06:10,597
+Add fill opacity equals zero
+point five inside the parentheses.
+
+142
+00:06:10,597 --> 00:06:15,057
+Stop typing, and after a short pause
+the preview renders again by itself.
+
+143
+00:06:15,057 --> 00:06:16,997
+Now add another transform:
+
+144
+00:06:16,997 --> 00:06:19,277
+turn the shape into a red triangle.
+
+145
+00:06:19,277 --> 00:06:21,417
+The code in the corner
+has all three shapes,
+
+146
+00:06:21,417 --> 00:06:24,037
+and a comment inviting
+you to add a fourth,
+
+147
+00:06:24,037 --> 00:06:25,397
+a green star.
+
+148
+00:06:25,397 --> 00:06:28,337
+Notice that the new version gave
+the shape a more general name,
+
+149
+00:06:28,337 --> 00:06:33,337
+shape instead of square, because it is
+not going to stay a square for long.
+
+150
+00:06:33,337 --> 00:06:35,977
+Names are for you, not for Manim.
+
+151
+00:06:35,977 --> 00:06:39,717
+Choose the one that will still
+be true at the end of the scene.
+
+152
+00:06:39,717 --> 00:06:41,215
+Here is something worth noticing.
+
+153
+00:06:41,215 --> 00:06:44,268
+In a Manim scene, time
+does not pass on its own.
+
+154
+00:06:44,268 --> 00:06:46,021
+It only passes when you say so.
+
+155
+00:06:46,021 --> 00:06:49,829
+Self dot add puts an
+object on stage instantly,
+
+156
+00:06:49,829 --> 00:06:52,314
+with no animation, and
+takes no time at all.
+
+157
+00:06:52,314 --> 00:06:54,938
+Each call to play adds the
+length of its animation,
+
+158
+00:06:54,938 --> 00:06:57,608
+which is one second
+unless you say otherwise.
+
+159
+00:06:57,608 --> 00:06:59,918
+Wait adds however many
+seconds you ask for,
+
+160
+00:06:59,918 --> 00:07:02,078
+and one if you do not say.
+
+161
+00:07:02,078 --> 00:07:04,829
+To make an animation
+slower, pass run time.
+
+162
+00:07:04,829 --> 00:07:08,521
+Run time equals three makes the
+second slide take three seconds.
+
+163
+00:07:08,521 --> 00:07:11,818
+Add it all up and this scene
+lasts five and a half seconds,
+
+164
+00:07:11,818 --> 00:07:14,756
+and you could have predicted
+that before it ever rendered.
+
+165
+00:07:14,756 --> 00:07:17,356
+That is a surprisingly powerful habit.
+
+166
+00:07:17,356 --> 00:07:20,595
+When a scene feels rushed, you
+know exactly which line to stretch.
+
+167
+00:07:20,595 --> 00:07:22,987
+When it drags, you know
+which wait to shorten.
+
+168
+00:07:22,987 --> 00:07:24,960
+And when you later add a voice-over,
+
+169
+00:07:24,960 --> 00:07:26,899
+like the one you are listening to now,
+
+170
+00:07:26,899 --> 00:07:30,057
+you can match every animation
+to the length of a sentence.
+
+171
+00:07:30,057 --> 00:07:32,101
+This voice-over, by the way, is synthetic:
+
+172
+00:07:32,101 --> 00:07:35,920
+text-to-speech built from a
+model of Curt Cox's voice.
+
+173
+00:07:35,920 --> 00:07:40,576
+It reads names from code and terms
+from math as ordinary English words,
+
+174
+00:07:40,576 --> 00:07:42,956
+so you may hear some of
+them, like construct,
+
+175
+00:07:42,956 --> 00:07:47,467
+pronounced differently than programmers
+or mathematicians would say them.
+
+176
+00:07:47,467 --> 00:07:49,940
+Sooner or later, you will make a mistake.
+
+177
+00:07:49,940 --> 00:07:52,215
+Everyone does, constantly,
+and that is fine.
+
+178
+00:07:52,215 --> 00:07:55,118
+What matters is reading
+what the computer tells you.
+
+179
+00:07:55,118 --> 00:07:58,659
+Scan this code and you will get
+an error instead of an animation.
+
+180
+00:07:58,659 --> 00:08:00,470
+The last line says NameError:
+
+181
+00:08:00,470 --> 00:08:04,510
+name C I R C E L is not defined.
+
+182
+00:08:04,510 --> 00:08:05,659
+Did you mean Circle?
+
+183
+00:08:05,659 --> 00:08:08,864
+Python is telling you it has never
+heard of anything called Circel,
+
+184
+00:08:08,864 --> 00:08:11,070
+and it even suggests
+what you probably meant.
+
+185
+00:08:11,070 --> 00:08:13,380
+The line just above it says where:
+
+186
+00:08:13,380 --> 00:08:15,330
+line seven, inside construct.
+
+187
+00:08:15,330 --> 00:08:17,629
+Find that word in the
+code, fix the spelling,
+
+188
+00:08:17,629 --> 00:08:19,940
+and stop typing. The scene renders again,
+
+189
+00:08:19,940 --> 00:08:21,507
+and this time it works.
+
+190
+00:08:21,507 --> 00:08:23,330
+Most early errors are like this one:
+
+191
+00:08:23,330 --> 00:08:25,651
+a misspelled name, a missing parenthesis,
+
+192
+00:08:25,651 --> 00:08:27,509
+or forgetting to import something.
+
+193
+00:08:27,509 --> 00:08:29,506
+Read the last line of the message first.
+
+194
+00:08:29,506 --> 00:08:33,817
+It usually names the problem,
+and very often the exact spot.
+
+195
+00:08:33,817 --> 00:08:36,737
+Let's take stock. An animation
+is a stack of frames.
+
+196
+00:08:36,737 --> 00:08:38,917
+Instead of drawing them,
+you describe the change,
+
+197
+00:08:38,917 --> 00:08:40,617
+and that description is a program.
+
+198
+00:08:40,617 --> 00:08:43,337
+In Manim, a scene's construct
+method is that description.
+
+199
+00:08:43,337 --> 00:08:45,417
+Mobjects are the things you see,
+
+200
+00:08:45,417 --> 00:08:46,897
+animations are how they change,
+
+201
+00:08:46,897 --> 00:08:48,917
+and play turns animations into frames,
+
+202
+00:08:48,917 --> 00:08:50,657
+adding time only when you ask.
+
+203
+00:08:50,657 --> 00:08:52,017
+Here is a small challenge.
+
+204
+00:08:52,017 --> 00:08:53,737
+This last code builds a traffic light,
+
+205
+00:08:53,737 --> 00:08:55,037
+and lights the green lamp.
+
+206
+00:08:55,037 --> 00:08:56,657
+Your job is to finish the cycle:
+
+207
+00:08:56,657 --> 00:08:58,197
+switch green off, light yellow,
+
+208
+00:08:58,197 --> 00:08:59,197
+wait, then light red.
+
+209
+00:08:59,197 --> 00:09:00,477
+There is a hint in the comments,
+
+210
+00:09:00,477 --> 00:09:02,937
+and everything you need is something
+you have already seen today.
+
+211
+00:09:02,937 --> 00:09:05,177
+Next time, we zoom in on the nouns:
+
+212
+00:09:05,177 --> 00:09:07,277
+where things go on
+screen, how to style them,
+
+213
+00:09:07,277 --> 00:09:08,277
+and how to group them,
+
+214
+00:09:08,277 --> 00:09:11,352
+plus one trap that catches almost
+everyone in their first week.

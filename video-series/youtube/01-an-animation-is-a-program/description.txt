@@ -1,0 +1,39 @@
+A screen can't show motion, only still frames. So who draws all the in-between shapes when a square becomes a circle? In Manim, you don't: you describe the change, and the computer draws every frame.
+
+This episode opens ManimOnline in the browser, tours the editor, reads a first scene line by line (Scene, construct, objects, self.play, self.wait), makes the first edits, and reads an error message without fear.
+
+Open the code from this video in your browser (the QR codes on screen):
+q01-01 · Square to circle: https://curtcox.github.io/ManimOnline/#AAAAAAFOeGgkwFR628reimrT3Ogsm508tD668h10lv79xIVeMMWI_pcRHymWrZ3QptLYXxR7kaDoCGRB5c964xMaHvz5uQ
+q01-02 · Three shapes in a row: https://curtcox.github.io/ManimOnline/#AAAAAAH1Jodk69tlRU4WK7m017HKI3DiVTKiaWWeFJvzh-HwAM6hDk8tHWoiJwlWcSvpnep8KRHGG0HPNM-8UwSktb0KjQ
+q01-03 · How play and wait build a timeline: https://curtcox.github.io/ManimOnline/#AAAAAAKC_Gq8ec1xX7_50HB2gYEuEZGVUucXIsV51DWEetFtpk4lSuP016BYyAdCTSmaxZw8zAsoRukTGAcGb2bjDPeK5g
+q01-04 · Fix the typo: https://curtcox.github.io/ManimOnline/#AAAAAAGAA72MqbicoYxXbdti_okt8GgSndh97CqV_FBB1WIC8TT5EkEp-WXDn33R0LGK7sea9KWfUFDcBo7O41fCLUPxyQ
+q01-05 · Challenge: a traffic light: https://curtcox.github.io/ManimOnline/#AAAAAAKzX-XEbq4KwdlfY-_N12hsnJWpw-_0g-lhypQjLtPm_xq7DSAfrmxIuTM7GFOXtdDtPjj_akH8XXXp0-HLK4rWhg
+
+Chapters
+0:00 Cold open
+0:33 Describing change instead of drawing it
+1:35 Where Manim comes from
+2:34 A tour of ManimOnline
+3:36 Reading the first scene
+5:28 Three nouns, one verb
+6:01 Your first edits
+6:39 Time is something you write down
+7:47 When things go wrong
+8:33 Recap and challenge
+
+This is episode 1 of 12 of Drawing with Code.
+Next: Mobjects: The Nouns · Drawing with Code 2 (Manim)
+ManimOnline, the editor: https://curtcox.github.io/ManimOnline/
+Sample gallery: https://curtcox.github.io/ManimOnline/gallery.html
+Manim Community, the Python library: https://www.manim.community/
+
+This series is independent. It is not affiliated with 3Blue1Brown or Manim Community.
+
+How this series was made
+Animation: Manim Community, from Python code in the series repository.
+Scripts, animation code and production tooling: Claude Opus 5.5, an AI model by Anthropic.
+Direction: Curt Cox.
+Narration: ElevenLabs text-to-speech, from a model of Curt Cox's voice.
+Source: https://github.com/curtcox/ManimOnline/tree/main/video-series
+
+Text-to-speech reads names from code and terms from math as ordinary English words, so the words you hear in these videos may be pronounced differently than programmers or mathematicians would say them.

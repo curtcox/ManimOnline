@@ -1,0 +1,719 @@
+1
+00:00:00,000 --> 00:00:02,554
+How much space is under this curve?
+
+2
+00:00:02,554 --> 00:00:06,908
+There is no formula for "area" that
+works on a wiggly shape directly.
+
+3
+00:00:06,908 --> 00:00:10,403
+But there is a formula for
+the area of a rectangle.
+
+4
+00:00:10,403 --> 00:00:13,468
+So: fill the region with rectangles.
+
+5
+00:00:13,468 --> 00:00:15,441
+Four of them get the rough idea,
+
+6
+00:00:15,441 --> 00:00:17,647
+with obvious gaps and overhangs.
+
+7
+00:00:17,647 --> 00:00:20,805
+Eight are better. Sixteen, forty,
+
+8
+00:00:20,805 --> 00:00:26,006
+eighty. The errors shrink, and the total
+settles towards one particular number.
+
+9
+00:00:26,006 --> 00:00:28,224
+That is the whole idea of an integral,
+
+10
+00:00:28,224 --> 00:00:30,558
+and it is a perfect thing to animate,
+
+11
+00:00:30,558 --> 00:00:32,775
+because the important
+part is not the answer.
+
+12
+00:00:32,775 --> 00:00:35,433
+It's the motion of getting there.
+
+13
+00:00:35,433 --> 00:00:38,266
+Before graphs, the simplest
+coordinate system of all:
+
+14
+00:00:38,266 --> 00:00:40,112
+a number line. You give it a range,
+
+15
+00:00:40,112 --> 00:00:42,550
+a step between ticks
+and a length on screen,
+
+16
+00:00:42,550 --> 00:00:44,210
+and it can label its own ticks.
+
+17
+00:00:44,210 --> 00:00:46,311
+A number line converts in both directions.
+
+18
+00:00:46,311 --> 00:00:48,354
+Number to point, n two p for short,
+
+19
+00:00:48,354 --> 00:00:50,467
+tells you where a number lives on screen.
+
+20
+00:00:50,467 --> 00:00:52,221
+Point to number does the reverse.
+
+21
+00:00:52,221 --> 00:00:55,088
+And these conversions follow
+the line wherever it goes:
+
+22
+00:00:55,088 --> 00:00:56,771
+rotate it, move it, shrink it,
+
+23
+00:00:56,771 --> 00:01:00,045
+and two point five is still exactly
+where two point five should be.
+
+24
+00:01:00,045 --> 00:01:03,853
+We used n two p last episode to
+park the pointer above a value.
+
+25
+00:01:03,853 --> 00:01:05,537
+Now put two number lines together,
+
+26
+00:01:05,537 --> 00:01:07,928
+one across and one up, crossing at zero.
+
+27
+00:01:07,928 --> 00:01:09,437
+That, give or take some styling,
+
+28
+00:01:09,437 --> 00:01:11,700
+is exactly what Axes are.
+
+29
+00:01:11,700 --> 00:01:15,113
+To draw graphs, we need a second
+kind of coordinate system,
+
+30
+00:01:15,113 --> 00:01:17,911
+one that belongs to the
+graph rather than the screen.
+
+31
+00:01:17,911 --> 00:01:19,479
+That is what Axes are.
+
+32
+00:01:19,479 --> 00:01:22,834
+You tell Axes the range of
+numbers each axis should cover,
+
+33
+00:01:22,834 --> 00:01:24,715
+and how long it should be on screen.
+
+34
+00:01:24,715 --> 00:01:27,583
+This one runs from minus
+three to three across,
+
+35
+00:01:27,583 --> 00:01:29,963
+and from minus two to nine upwards,
+
+36
+00:01:29,963 --> 00:01:34,421
+squeezed into a box seven
+units wide and six units tall.
+
+37
+00:01:34,421 --> 00:01:36,790
+Add coordinates puts numbers on the ticks.
+
+38
+00:01:36,790 --> 00:01:39,298
+Now there are two ways
+to describe a position:
+
+39
+00:01:39,298 --> 00:01:41,353
+in graph numbers, or in screen units.
+
+40
+00:01:41,353 --> 00:01:44,569
+The method c to p, short
+for coordinates to point,
+
+41
+00:01:44,569 --> 00:01:46,124
+converts from one to the other.
+
+42
+00:01:46,124 --> 00:01:48,876
+Ask for the point two, four on this graph,
+
+43
+00:01:48,876 --> 00:01:52,127
+and you get back the screen
+location where that point is drawn.
+
+44
+00:01:52,127 --> 00:01:56,005
+This matters because it means you
+can think in the graph's own numbers.
+
+45
+00:01:56,005 --> 00:01:59,058
+To put dots where the
+line crosses the parabola,
+
+46
+00:01:59,058 --> 00:02:02,518
+we solve x squared equals two x plus one,
+
+47
+00:02:02,518 --> 00:02:06,244
+which gives one minus root
+two and one plus root two,
+
+48
+00:02:06,244 --> 00:02:09,541
+and let c to p work out where
+those points are on screen.
+
+49
+00:02:09,541 --> 00:02:15,133
+If you resize the axes later, the
+dots still land in the right place.
+
+50
+00:02:15,133 --> 00:02:17,049
+What does plot actually do?
+
+51
+00:02:17,049 --> 00:02:19,057
+It can't draw a function exactly,
+
+52
+00:02:19,057 --> 00:02:21,786
+any more than a computer
+can store a perfect circle.
+
+53
+00:02:21,786 --> 00:02:25,965
+Instead, it evaluates your function
+at many x values across the range,
+
+54
+00:02:25,965 --> 00:02:29,820
+and threads a smooth chain of
+cubic curves through the results.
+
+55
+00:02:29,820 --> 00:02:31,468
+Episode four in action.
+
+56
+00:02:31,468 --> 00:02:33,686
+That works beautifully
+for smooth functions.
+
+57
+00:02:33,686 --> 00:02:36,008
+But it means plot
+doesn't know about jumps.
+
+58
+00:02:36,008 --> 00:02:38,469
+Plot one over x straight through zero,
+
+59
+00:02:38,469 --> 00:02:42,510
+and the curve may join the two sides with
+a steep line that isn't really there.
+
+60
+00:02:42,510 --> 00:02:45,308
+The fix is to plot each side separately,
+
+61
+00:02:45,308 --> 00:02:48,617
+or to tell plot where
+the discontinuities are.
+
+62
+00:02:48,617 --> 00:02:51,415
+Here is the opening scene.
+
+63
+00:02:51,415 --> 00:02:55,037
+Axes have a method called
+get Riemann rectangles,
+
+64
+00:02:55,037 --> 00:02:57,162
+which builds the rectangles for you:
+
+65
+00:02:57,162 --> 00:03:00,517
+give it a graph, a range, and a width d x.
+
+66
+00:03:00,517 --> 00:03:04,163
+Each rectangle's height is the
+function's value at its left edge,
+
+67
+00:03:04,163 --> 00:03:07,170
+and its colour shifts gradually
+from one end to the other,
+
+68
+00:03:07,170 --> 00:03:10,072
+so you can still tell them
+apart when there are dozens.
+
+69
+00:03:10,072 --> 00:03:14,948
+To refine, we build a new set with a
+smaller d x and transform the old set into
+
+70
+00:03:14,948 --> 00:03:17,549
+it. Transform pairs up rectangles,
+
+71
+00:03:17,549 --> 00:03:19,615
+and because the new set has more of them,
+
+72
+00:03:19,615 --> 00:03:21,392
+the extra ones grow out of the old,
+
+73
+00:03:21,392 --> 00:03:23,598
+which gives that lovely splitting motion.
+
+74
+00:03:23,598 --> 00:03:27,034
+Finally, get area shades the
+exact region under the curve,
+
+75
+00:03:27,034 --> 00:03:29,217
+and we write down the exact answer:
+
+76
+00:03:29,217 --> 00:03:32,293
+twenty two thirds, or about
+seven point three three,
+
+77
+00:03:32,293 --> 00:03:36,500
+which is the number the rectangles
+were closing in on all along.
+
+78
+00:03:36,500 --> 00:03:38,857
+Now let's make the boundary move.
+
+79
+00:03:38,857 --> 00:03:41,783
+Store the right-hand edge of
+the area in a value tracker,
+
+80
+00:03:41,783 --> 00:03:45,858
+b, and always redraw
+the area from zero to b.
+
+81
+00:03:45,858 --> 00:03:49,411
+Then animate b, and the
+area sweeps out behind it.
+
+82
+00:03:49,411 --> 00:03:53,288
+The readout shows the integral
+of sine from zero to b,
+
+83
+00:03:53,288 --> 00:03:56,365
+which works out to one minus cosine of b.
+
+84
+00:03:56,365 --> 00:04:00,219
+As b grows to pi, the
+area grows to exactly two.
+
+85
+00:04:00,219 --> 00:04:02,321
+Then something interesting happens.
+
+86
+00:04:02,321 --> 00:04:05,409
+Past pi, the curve dips below the axis,
+
+87
+00:04:05,409 --> 00:04:08,520
+and area below the axis
+counts as negative.
+
+88
+00:04:08,520 --> 00:04:13,582
+So the total starts falling, and
+by two pi it is back to zero:
+
+89
+00:04:13,582 --> 00:04:17,181
+the part below cancels
+the part above exactly.
+
+90
+00:04:17,181 --> 00:04:20,548
+This is the idea of an
+integral as a running total,
+
+91
+00:04:20,548 --> 00:04:23,695
+an accumulation. It's one
+thing to be told that,
+
+92
+00:04:23,695 --> 00:04:27,133
+and quite another to watch it happen.
+
+93
+00:04:27,200 --> 00:04:30,335
+Area was the first big idea of calculus.
+
+94
+00:04:30,335 --> 00:04:31,519
+Here is the second:
+
+95
+00:04:31,519 --> 00:04:34,027
+the slope of a curve at a single point.
+
+96
+00:04:34,027 --> 00:04:35,896
+A straight line has a slope:
+
+97
+00:04:35,896 --> 00:04:38,682
+how far it rises for each step across.
+
+98
+00:04:38,682 --> 00:04:41,793
+A curve doesn't, because it
+keeps changing direction.
+
+99
+00:04:41,793 --> 00:04:44,243
+But we can pick two points on the curve,
+
+100
+00:04:44,243 --> 00:04:46,553
+draw the line through
+them, called a secant,
+
+101
+00:04:46,553 --> 00:04:48,074
+and measure its slope:
+
+102
+00:04:48,074 --> 00:04:51,395
+the rise, d y, divided by the run,
+
+103
+00:04:51,395 --> 00:04:52,660
+d x.
+
+104
+00:04:52,660 --> 00:04:55,133
+Now put d x in a value tracker,
+
+105
+00:04:55,133 --> 00:04:59,139
+and always redraw the secant, its
+little triangle and its labels.
+
+106
+00:04:59,139 --> 00:05:02,912
+As d x shrinks, the second
+point slides toward the first,
+
+107
+00:05:02,912 --> 00:05:04,502
+and the secant pivots.
+
+108
+00:05:04,502 --> 00:05:07,730
+The slope readout
+changes, and then settles.
+
+109
+00:05:07,730 --> 00:05:11,260
+For this curve, x squared
+over four plus one,
+
+110
+00:05:11,260 --> 00:05:16,298
+at x equals one point five, it
+settles at zero point seven five.
+
+111
+00:05:16,298 --> 00:05:20,443
+The line it settles into touches
+the curve at just that one point.
+
+112
+00:05:20,443 --> 00:05:24,181
+It's the tangent line, and
+its slope is the derivative.
+
+113
+00:05:24,181 --> 00:05:27,374
+Again, the animation shows
+you the limit happening,
+
+114
+00:05:27,374 --> 00:05:30,617
+instead of asking you to imagine it.
+
+115
+00:05:30,617 --> 00:05:32,475
+Plot draws graphs of functions:
+
+116
+00:05:32,475 --> 00:05:34,077
+one height for each x.
+
+117
+00:05:34,077 --> 00:05:36,074
+But many curves aren't like that.
+
+118
+00:05:36,074 --> 00:05:38,895
+A circle has two heights
+for most x values,
+
+119
+00:05:38,895 --> 00:05:39,951
+above and below.
+
+120
+00:05:39,951 --> 00:05:42,773
+For those, describe the curve
+with a parameter instead.
+
+121
+00:05:42,773 --> 00:05:46,941
+Plot parametric curve takes a function
+of t that returns both coordinates,
+
+122
+00:05:46,941 --> 00:05:51,074
+x and y, and traces the point
+as t runs through a range.
+
+123
+00:05:51,074 --> 00:05:53,686
+Cosine t and sine t give a circle.
+
+124
+00:05:53,686 --> 00:05:57,517
+Cosine of three t and sine of
+two t give this looping figure,
+
+125
+00:05:57,517 --> 00:06:01,615
+called a Lissajous curve, which you
+may have seen on an old oscilloscope.
+
+126
+00:06:01,615 --> 00:06:06,283
+And to finish a graph, get axis labels
+puts names at the ends of the axes.
+
+127
+00:06:06,283 --> 00:06:07,281
+It's a small touch,
+
+128
+00:06:07,281 --> 00:06:11,850
+but a graph without axis labels
+is a picture without a caption.
+
+129
+00:06:11,850 --> 00:06:14,787
+Graphs aren't the only thing
+worth drawing on a grid.
+
+130
+00:06:14,787 --> 00:06:17,237
+Sometimes the grid itself is the star.
+
+131
+00:06:17,237 --> 00:06:21,451
+A linear transformation moves every point
+of the plane in a way that keeps grid
+
+132
+00:06:21,451 --> 00:06:24,563
+lines straight, parallel
+and evenly spaced.
+
+133
+00:06:24,563 --> 00:06:27,814
+And a two by two matrix
+describes one completely.
+
+134
+00:06:27,814 --> 00:06:31,494
+Its first column says where the
+arrow one-to-the-right ends up.
+
+135
+00:06:31,494 --> 00:06:35,116
+Its second column says where
+the arrow one-upward ends up.
+
+136
+00:06:35,116 --> 00:06:36,929
+Everything else follows along.
+
+137
+00:06:36,929 --> 00:06:40,399
+Manim has a scene type
+built for exactly this:
+
+138
+00:06:40,399 --> 00:06:42,094
+linear transformation scene.
+
+139
+00:06:42,094 --> 00:06:45,345
+It draws the grid and those
+two basis arrows for you.
+
+140
+00:06:45,345 --> 00:06:48,201
+Call apply matrix, and
+the whole plane moves.
+
+141
+00:06:48,201 --> 00:06:52,067
+This shear leaves the first arrow
+alone and tips the second over to one,
+
+142
+00:06:52,067 --> 00:06:54,819
+one. The yellow vector, one, two,
+
+143
+00:06:54,819 --> 00:06:56,653
+rides along to three, two.
+
+144
+00:06:56,653 --> 00:06:59,416
+Then a quarter-turn
+rotation spins everything.
+
+145
+00:06:59,416 --> 00:07:01,936
+If this way of seeing
+matrices is new to you,
+
+146
+00:07:01,936 --> 00:07:03,573
+it's worth slowing down for.
+
+147
+00:07:03,573 --> 00:07:05,279
+Pause the video, scan the code,
+
+148
+00:07:05,279 --> 00:07:08,196
+and try your own matrices.
+
+149
+00:07:11,150 --> 00:07:13,240
+Axes give a scene its own ruler,
+
+150
+00:07:13,240 --> 00:07:16,746
+and c to p converts graph
+numbers into screen points.
+
+151
+00:07:16,746 --> 00:07:18,378
+Plots are sampled curves.
+
+152
+00:07:18,378 --> 00:07:21,367
+Riemann rectangles and
+get area show integrals;
+
+153
+00:07:21,367 --> 00:07:23,445
+a moving bound shows accumulation;
+
+154
+00:07:23,445 --> 00:07:26,742
+a shrinking d x shows a
+derivative being born.
+
+155
+00:07:26,742 --> 00:07:31,026
+And linear transformation scene
+shows what matrices do to space.
+
+156
+00:07:31,026 --> 00:07:33,859
+So far, the camera has
+stayed perfectly still.
+
+157
+00:07:33,859 --> 00:07:35,415
+Next time, we move it:
+
+158
+00:07:35,415 --> 00:07:38,852
+zoom into tiny details,
+open a magnifying inset,
+
+159
+00:07:38,852 --> 00:07:41,847
+and then tilt the whole
+world into three dimensions.

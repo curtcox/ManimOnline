@@ -1,0 +1,42 @@
+Deep dive 2: ManimOnline can't run real Manim in the browser, so it brings its own engine, manim-lite. How do you know it's right? This episode defines compatibility as observable behaviour that has to be measured, and shows four ways manim-lite is compared with Manim Community, frame for frame.
+
+Along the way: surprising behaviours a faithful reimplementation must copy, and a clear statement of what manim-lite is not.
+
+Open the code from this video in your browser (the QR codes on screen):
+q11-01 · Why the square shrinks: https://curtcox.github.io/ManimOnline/#AAAAAANeTGZFNVZe4UMNkPX6Cp_bwBbUtihZuuO2pV2PTN1gWKyZAQBTtHbecRd-B9ojSc5mkPjbuyfRQjZhIYodwgdD7Q
+q11-02 · Arrow tips keep their size: https://curtcox.github.io/ManimOnline/#AAAAAANDSWWoR1Ot6LQBe8sFRmh_wr479daDgQKekBKl2mnO1m21CvRS625x_v9yrpHTmc-lAPuM8d4c6_O9pH8rET-4rw
+q11-03 · Seeded stream lines: https://curtcox.github.io/ManimOnline/#AAAAAAL_bcuf1DlP50i8FrPA27MkH-3EmVrC_cY7ezE9xOzvXZpwsxRh8AuoT7ap_qU5SQkpXnJTkdkbCPjCadWuLqWV0w
+q11-04 · Graph layouts: https://curtcox.github.io/ManimOnline/#AAAAAAJ5aKSAAS6VjEfbS_KaZewPf_3yg62WGopBe16x7G-_uCsmCTvNv3cNo9qeFuKi-UIy7XgIZSJHMX3hGB86sGovNg
+q11-05 · Same font size, different heights: https://curtcox.github.io/ManimOnline/#AAAAAANd_lQElcZqDMrF137osg36CtTcRtpvoudVOic7O_t5iYPwB3JFGO0per6519sLQvSRftpfwDwWMBS39DnFOwT0hg
+
+Chapters
+0:00 Cold open: a bug-for-bug match
+0:32 Why not run the real thing?
+1:25 What does "the same" mean?
+2:05 Measuring against the reference
+3:08 Random scenes, and Manim's own tests
+4:04 Case study: the straight path
+5:07 Case study: arrow tips keep their size
+5:46 Case study: same font size, different heights
+6:29 Case study: randomness, exactly
+7:17 Case study: the order of addition
+7:52 What manim-lite is not
+8:25 Recap
+
+This is episode 11 of 12 of Drawing with Code.
+Previous: Python in a Browser Tab: Pyodide and WebAssembly · Drawing with Code 10
+Next: Links That Carry Code: Compression, Hashes and QR Codes · Drawing with Code 12
+ManimOnline, the editor: https://curtcox.github.io/ManimOnline/
+Sample gallery: https://curtcox.github.io/ManimOnline/gallery.html
+Manim Community, the Python library: https://www.manim.community/
+
+This series is independent. It is not affiliated with 3Blue1Brown or Manim Community.
+
+How this series was made
+Animation: Manim Community, from Python code in the series repository.
+Scripts, animation code and production tooling: Claude Opus 5.5, an AI model by Anthropic.
+Direction: Curt Cox.
+Narration: ElevenLabs text-to-speech, from a model of Curt Cox's voice.
+Source: https://github.com/curtcox/ManimOnline/tree/main/video-series
+
+Text-to-speech reads names from code and terms from math as ordinary English words, so the words you hear in these videos may be pronounced differently than programmers or mathematicians would say them.

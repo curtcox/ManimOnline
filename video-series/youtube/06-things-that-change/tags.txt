@@ -1,0 +1,1 @@
+Manim updaters, ValueTracker, always_redraw, DecimalNumber, TracedPath, dynamic animation, Manim, Manim Community, ManimOnline, Python, math animation, animated math, Python animation, learn Python, creative coding, Drawing with Code

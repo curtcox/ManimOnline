@@ -1,0 +1,1 @@
+Bezier curves, de Casteljau, cubic Bezier, vector graphics, shape morphing, computer graphics, Manim, Manim Community, ManimOnline, Python, math animation, animated math, Python animation, learn Python, creative coding, Drawing with Code

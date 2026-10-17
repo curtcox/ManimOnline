@@ -1,0 +1,812 @@
+1
+00:00:00,000 --> 00:00:02,612
+Over eight episodes,
+you've learned to draw,
+
+2
+00:00:02,612 --> 00:00:08,359
+animate, write equations, plot graphs and
+fly a camera through three dimensions.
+
+3
+00:00:08,359 --> 00:00:11,436
+You've probably made a few
+things of your own along the way.
+
+4
+00:00:11,436 --> 00:00:14,234
+So: now what? How do you keep your work,
+
+5
+00:00:14,234 --> 00:00:16,777
+turn it into a real video file,
+
+6
+00:00:16,777 --> 00:00:20,561
+show it to a friend, or find
+inspiration for the next one?
+
+7
+00:00:20,561 --> 00:00:24,625
+This episode is a practical
+tour of ManimOnline itself,
+
+8
+00:00:24,625 --> 00:00:26,471
+from the first click to the finished,
+
+9
+00:00:26,471 --> 00:00:28,700
+shareable thing.
+
+10
+00:00:28,700 --> 00:00:32,996
+The quickest way to learn what's possible
+is to look at what others have made.
+
+11
+00:00:32,996 --> 00:00:35,260
+The Sample gallery opens in a new tab,
+
+12
+00:00:35,260 --> 00:00:37,129
+so your current work stays put.
+
+13
+00:00:37,129 --> 00:00:38,998
+Each card has a cover picture,
+
+14
+00:00:38,998 --> 00:00:41,796
+and animated samples have
+a Play preview button,
+
+15
+00:00:41,796 --> 00:00:43,898
+which plays a short pre-rendered video,
+
+16
+00:00:43,898 --> 00:00:45,895
+without running any Python at all.
+
+17
+00:00:45,895 --> 00:00:48,530
+You can search by title,
+and filter by language.
+
+18
+00:00:48,530 --> 00:00:50,144
+When something catches your eye,
+
+19
+00:00:50,144 --> 00:00:51,734
+choose Load in editor.
+
+20
+00:00:51,734 --> 00:00:56,030
+The source opens and renders, ready
+for you to pull apart and change.
+
+21
+00:00:56,030 --> 00:00:59,084
+And the editor remembers your
+edits in the page address,
+
+22
+00:00:59,084 --> 00:01:01,301
+so reloading the page keeps your version,
+
+23
+00:01:01,301 --> 00:01:03,869
+not the original.
+
+24
+00:01:04,167 --> 00:01:06,292
+A single file can hold several scenes.
+
+25
+00:01:06,292 --> 00:01:09,183
+That's handy for keeping the
+parts of a longer video together,
+
+26
+00:01:09,183 --> 00:01:10,831
+sharing helper functions between them.
+
+27
+00:01:10,831 --> 00:01:13,873
+The Scene field in the toolbar
+chooses which one to render.
+
+28
+00:01:13,873 --> 00:01:16,532
+Leave it empty, and you get
+the first scene in the file.
+
+29
+00:01:16,532 --> 00:01:20,142
+Start typing, and it suggests the scene
+names it found the last time the file
+
+30
+00:01:20,142 --> 00:01:20,630
+rendered.
+
+31
+00:01:20,630 --> 00:01:22,708
+This code opens with Middle selected,
+
+32
+00:01:22,708 --> 00:01:25,692
+because the scene choice is
+saved along with the source.
+
+33
+00:01:25,692 --> 00:01:28,887
+Try switching to Intro and Outro.
+
+34
+00:01:29,817 --> 00:01:33,672
+You have probably noticed that
+ManimOnline renders by itself.
+
+35
+00:01:33,672 --> 00:01:35,692
+When you stop typing for about a second,
+
+36
+00:01:35,692 --> 00:01:37,967
+it starts. If you don't want to wait,
+
+37
+00:01:37,967 --> 00:01:40,753
+the Render animation
+button starts immediately,
+
+38
+00:01:40,753 --> 00:01:43,714
+and it's also how you
+retry after an error.
+
+39
+00:01:43,714 --> 00:01:45,978
+But what if your code never finishes?
+
+40
+00:01:45,978 --> 00:01:48,776
+Programs can loop forever,
+and this one does,
+
+41
+00:01:48,776 --> 00:01:51,040
+on purpose. Scan it if you like.
+
+42
+00:01:51,040 --> 00:01:53,431
+The editor stays perfectly responsive,
+
+43
+00:01:53,431 --> 00:01:56,357
+because the Python runs
+separately from the page.
+
+44
+00:01:56,357 --> 00:02:00,537
+Press Cancel render, and that
+separate process is simply stopped.
+
+45
+00:02:00,537 --> 00:02:04,612
+If you don't, the editor stops
+it for you after ninety seconds.
+
+46
+00:02:04,612 --> 00:02:07,050
+There are a few other
+limits worth knowing.
+
+47
+00:02:07,050 --> 00:02:09,547
+Previews run at fifteen frames per second,
+
+48
+00:02:09,547 --> 00:02:10,986
+to keep rendering fast.
+
+49
+00:02:10,986 --> 00:02:14,446
+A single preview can be up to a
+hundred and twenty seconds long.
+
+50
+00:02:14,446 --> 00:02:17,395
+For longer videos, split
+them into several scenes.
+
+51
+00:02:17,395 --> 00:02:20,599
+Episode ten explains
+why these limits exist,
+
+52
+00:02:20,599 --> 00:02:24,017
+and how that "separate
+process" actually works.
+
+53
+00:02:24,017 --> 00:02:27,686
+To keep what you've made, use the
+Export menu next to the Download button.
+
+54
+00:02:27,686 --> 00:02:31,006
+S V G frame saves the current
+frame as a vector image,
+
+55
+00:02:31,006 --> 00:02:32,841
+which stays sharp at any size.
+
+56
+00:02:32,841 --> 00:02:35,998
+It's perfect for slides,
+posters or a blog post.
+
+57
+00:02:35,998 --> 00:02:39,330
+P N G frame saves the current
+frame as an ordinary picture.
+
+58
+00:02:39,330 --> 00:02:42,999
+MP4 and WebM save the whole
+animation as a video file.
+
+59
+00:02:42,999 --> 00:02:45,298
+The video is encoded right
+there in your browser,
+
+60
+00:02:45,298 --> 00:02:47,201
+from the frames it already computed.
+
+61
+00:02:47,201 --> 00:02:48,722
+Nothing is uploaded anywhere.
+
+62
+00:02:48,722 --> 00:02:51,033
+This needs a browser with
+built-in video encoding,
+
+63
+00:02:51,033 --> 00:02:53,250
+which recent versions of
+the major browsers have,
+
+64
+00:02:53,250 --> 00:02:55,247
+and if yours doesn't,
+the editor tells you.
+
+65
+00:02:55,247 --> 00:02:58,497
+Keep in mind that these videos have
+the same frame rate as the preview,
+
+66
+00:02:58,497 --> 00:02:59,995
+fifteen frames per second.
+
+67
+00:02:59,995 --> 00:03:01,771
+That's great for sharing an idea quickly.
+
+68
+00:03:01,771 --> 00:03:04,326
+For a polished,
+sixty-frames-per-second production,
+
+69
+00:03:04,326 --> 00:03:05,765
+which is how this series is made,
+
+70
+00:03:05,765 --> 00:03:09,067
+you'll want full Manim, and
+we'll come to that in a moment.
+
+71
+00:03:09,067 --> 00:03:12,295
+The quickest way to show someone
+your work is the Share button.
+
+72
+00:03:12,295 --> 00:03:15,093
+It produces a link, and
+here's the surprising part:
+
+73
+00:03:15,093 --> 00:03:17,345
+that link contains your entire program.
+
+74
+00:03:17,345 --> 00:03:19,968
+The code is compressed, and
+tucked into the address itself,
+
+75
+00:03:19,968 --> 00:03:22,383
+along with your scene choice
+and renderer settings.
+
+76
+00:03:22,383 --> 00:03:25,715
+Anyone who opens it sees
+exactly what you saw.
+
+77
+00:03:25,715 --> 00:03:27,294
+Because the code is inside the link,
+
+78
+00:03:27,294 --> 00:03:28,711
+nothing is stored on a server,
+
+79
+00:03:28,711 --> 00:03:29,988
+and it can never go missing.
+
+80
+00:03:29,988 --> 00:03:30,975
+The price is length:
+
+81
+00:03:30,975 --> 00:03:33,239
+bigger programs make longer links.
+
+82
+00:03:33,239 --> 00:03:37,593
+Shorten link asks a public link-shortening
+service for a compact version,
+
+83
+00:03:37,593 --> 00:03:39,137
+which is handy for chat messages,
+
+84
+00:03:39,137 --> 00:03:41,598
+though it depends on that
+service being available.
+
+85
+00:03:41,598 --> 00:03:43,316
+If you keep editing after you share,
+
+86
+00:03:43,316 --> 00:03:45,244
+the old link still holds the old version,
+
+87
+00:03:45,244 --> 00:03:47,900
+so share again when you're done.
+
+88
+00:03:47,900 --> 00:03:51,673
+For a short, permanent address
+that doesn't grow with your code,
+
+89
+00:03:51,673 --> 00:03:56,015
+there's HashBin. Save to
+HashBin stores your source,
+
+90
+00:03:56,015 --> 00:03:57,919
+together with your scene choice,
+
+91
+00:03:57,919 --> 00:04:00,740
+and gives back a content identifier,
+
+92
+00:04:00,740 --> 00:04:04,804
+a C I D, which becomes the
+end of the page's address.
+
+93
+00:04:04,804 --> 00:04:07,335
+HashBin is a paid storage service,
+
+94
+00:04:07,335 --> 00:04:09,669
+so the first time you'll
+connect an account,
+
+95
+00:04:09,669 --> 00:04:11,631
+and before anything is saved,
+
+96
+00:04:11,631 --> 00:04:15,729
+the editor shows you the price and
+how long the file will be kept.
+
+97
+00:04:15,729 --> 00:04:18,957
+Loading saved work is
+free, and anyone can do it:
+
+98
+00:04:18,957 --> 00:04:23,311
+paste a C I D or a saved link
+into the box beside the button,
+
+99
+00:04:23,311 --> 00:04:24,948
+or simply open the link.
+
+100
+00:04:24,948 --> 00:04:29,011
+And now you know what's inside
+every QR code in this series.
+
+101
+00:04:29,011 --> 00:04:31,194
+Each one is a HashBin link.
+
+102
+00:04:31,194 --> 00:04:34,213
+The content identifier
+isn't a random number:
+
+103
+00:04:34,213 --> 00:04:36,697
+it's computed from the code itself,
+
+104
+00:04:36,697 --> 00:04:41,806
+in a way that means it can only
+ever refer to that exact code.
+
+105
+00:04:41,806 --> 00:04:44,789
+Episode twelve shows how that works,
+
+106
+00:04:44,789 --> 00:04:51,800
+and why it means a QR code can't be
+quietly changed to point somewhere else.
+
+107
+00:04:51,800 --> 00:04:53,090
+After your first visit,
+
+108
+00:04:53,090 --> 00:04:56,572
+ManimOnline quietly saves
+everything it needs on your device:
+
+109
+00:04:56,572 --> 00:04:59,451
+the editor, the gallery,
+and the Python runtime.
+
+110
+00:04:59,451 --> 00:05:02,644
+When that's finished, the
+toolbar says Ready offline.
+
+111
+00:05:02,644 --> 00:05:03,515
+From then on,
+
+112
+00:05:03,515 --> 00:05:07,439
+you can open the page and render scenes
+with no internet connection at all,
+
+113
+00:05:07,439 --> 00:05:11,560
+on a plane, say. Only the things
+that genuinely need the internet,
+
+114
+00:05:11,560 --> 00:05:14,068
+like saving to HashBin
+or shortening links,
+
+115
+00:05:14,068 --> 00:05:16,933
+wait until you're back online.
+
+116
+00:05:16,933 --> 00:05:20,161
+ManimOnline started life
+as an editor for diagrams,
+
+117
+00:05:20,161 --> 00:05:23,731
+and it still speaks two diagram
+languages alongside Manim.
+
+118
+00:05:23,731 --> 00:05:25,350
+Graphviz describes graphs:
+
+119
+00:05:25,350 --> 00:05:27,127
+boxes, and arrows between them.
+
+120
+00:05:27,127 --> 00:05:28,566
+You say what connects to what,
+
+121
+00:05:28,566 --> 00:05:30,702
+and Graphviz works out the layout.
+
+122
+00:05:30,702 --> 00:05:34,440
+This diagram, fittingly, is
+ManimOnline's own pipeline.
+
+123
+00:05:34,440 --> 00:05:37,210
+The Engine menu chooses
+different layout styles.
+
+124
+00:05:37,210 --> 00:05:39,050
+modl is a lighter language:
+
+125
+00:05:39,050 --> 00:05:41,383
+one line per node or arrow, with shapes,
+
+126
+00:05:41,383 --> 00:05:42,417
+colours and labels.
+
+127
+00:05:42,417 --> 00:05:46,051
+Its diagrams are interactive, so
+you can drag nodes into place,
+
+128
+00:05:46,051 --> 00:05:48,082
+and the positions are
+saved with your work.
+
+129
+00:05:48,082 --> 00:05:50,985
+You never have to tell ManimOnline
+which language you're writing.
+
+130
+00:05:50,985 --> 00:05:53,365
+It reads the code, recognises the style,
+
+131
+00:05:53,365 --> 00:05:55,083
+and picks the right renderer.
+
+132
+00:05:55,083 --> 00:05:59,050
+If it guesses wrong, the
+Renderer menu lets you choose.
+
+133
+00:05:59,050 --> 00:06:04,704
+A few habits make a big difference once
+your scenes grow beyond a few lines.
+
+134
+00:06:04,704 --> 00:06:06,875
+Build in small steps.
+
+135
+00:06:06,875 --> 00:06:09,812
+Add one thing, let it
+render, and check it,
+
+136
+00:06:09,812 --> 00:06:11,438
+before adding the next.
+
+137
+00:06:11,438 --> 00:06:14,910
+When something breaks, you'll
+know exactly what broke it.
+
+138
+00:06:14,910 --> 00:06:18,671
+Because ManimOnline
+re-renders as you type,
+
+139
+00:06:18,671 --> 00:06:21,005
+this rhythm comes almost for free.
+
+140
+00:06:21,005 --> 00:06:22,828
+Give names to things you repeat.
+
+141
+00:06:22,828 --> 00:06:24,987
+If you draw three labelled dots,
+
+142
+00:06:24,987 --> 00:06:27,472
+write a little function
+that makes a labelled dot.
+
+143
+00:06:27,472 --> 00:06:29,213
+If x is always blue,
+
+144
+00:06:29,213 --> 00:06:33,532
+define a constant for that colour at the
+top of the file and use it everywhere.
+
+145
+00:06:33,532 --> 00:06:35,970
+Then changing your mind
+is a one-line edit.
+
+146
+00:06:35,970 --> 00:06:38,687
+Prefer several short
+scenes to one long one.
+
+147
+00:06:38,687 --> 00:06:41,404
+They render faster, they
+stay under the preview limit,
+
+148
+00:06:41,404 --> 00:06:43,564
+and you can perfect each part on its own.
+
+149
+00:06:43,564 --> 00:06:44,934
+And keep checkpoints.
+
+150
+00:06:44,934 --> 00:06:47,128
+A share link, or a HashBin save,
+
+151
+00:06:47,128 --> 00:06:49,160
+is a snapshot of your work at that moment.
+
+152
+00:06:49,160 --> 00:06:50,704
+Make one whenever something works,
+
+153
+00:06:50,704 --> 00:06:53,067
+and you can always go back.
+
+154
+00:06:53,067 --> 00:06:56,318
+At some point, you may want
+full Manim on your own computer:
+
+155
+00:06:56,318 --> 00:06:59,104
+for sixty-frame-per-second,
+high-resolution video,
+
+156
+00:06:59,104 --> 00:07:03,574
+for very long scenes, or for
+features ManimOnline doesn't support.
+
+157
+00:07:03,574 --> 00:07:07,080
+The Manim Community documentation
+walks you through installing it.
+
+158
+00:07:07,080 --> 00:07:09,147
+Then you run your scene from a terminal:
+
+159
+00:07:09,147 --> 00:07:11,121
+manim, a quality flag, your file,
+
+160
+00:07:11,121 --> 00:07:12,398
+and the scene's name.
+
+161
+00:07:12,398 --> 00:07:14,662
+Your code moves across almost unchanged,
+
+162
+00:07:14,662 --> 00:07:18,574
+because ManimOnline's goal is to behave
+like Manim Community for everything it
+
+163
+00:07:18,574 --> 00:07:20,037
+supports.
+
+164
+00:07:20,037 --> 00:07:21,871
+But be clear about the direction.
+
+165
+00:07:21,871 --> 00:07:24,635
+ManimOnline runs a compatibility subset,
+
+166
+00:07:24,635 --> 00:07:29,604
+not all of Manim. Most of what you write
+in ManimOnline should run in Manim.
+
+167
+00:07:29,604 --> 00:07:32,297
+Not everything written for
+Manim will run in ManimOnline,
+
+168
+00:07:32,297 --> 00:07:34,950
+and when it can't, it says so.
+
+169
+00:07:34,950 --> 00:07:36,355
+Gallery for inspiration.
+
+170
+00:07:36,355 --> 00:07:37,806
+Scenes chosen by name.
+
+171
+00:07:37,806 --> 00:07:39,559
+Rendering that you can always cancel.
+
+172
+00:07:39,559 --> 00:07:41,150
+Exports as pictures and videos,
+
+173
+00:07:41,150 --> 00:07:43,657
+links that carry your code,
+and HashBin for permanent,
+
+174
+00:07:43,657 --> 00:07:45,945
+short addresses. Offline
+whenever you need it,
+
+175
+00:07:45,945 --> 00:07:47,257
+with diagrams on the side.
+
+176
+00:07:47,257 --> 00:07:48,812
+That's the end of the main track.
+
+177
+00:07:48,812 --> 00:07:51,274
+You now know enough to
+make real explanations.
+
+178
+00:07:51,274 --> 00:07:54,582
+If you've ever wondered how a
+website runs Python with no server,
+
+179
+00:07:54,582 --> 00:07:58,379
+or how you'd even check that a homemade
+animation engine behaves like the real
+
+180
+00:07:58,379 --> 00:08:00,987
+one, the next three
+episodes open the hood.

@@ -1,0 +1,40 @@
+Number lines, axes and plots, built up to calculus you can watch. This episode converts numbers to points, builds Axes and converts with c2p, plots parametric curves and functions (and explains that plots are sampled), and labels them.
+
+Then the payoff: Riemann rectangles converging to an area, an area with a moving bound, a secant line becoming a tangent as dx shrinks, and what a matrix does to the whole plane.
+
+Open the code from this video in your browser (the QR codes on screen):
+q07-01 · Axes and plots: https://curtcox.github.io/ManimOnline/#AAAAAAONG-LyGWJ-XPiSQ5mwcaYIw6Hjtkjh8lDm-7yd37Yg9_iI5wjifbBfvHp1u1OnXUQq95Q7K5K9rH2ojvthuBYsJA
+q07-02 · Riemann rectangles: https://curtcox.github.io/ManimOnline/#AAAAAAPHzMwosHULmOb95Kovf4hg_4hrqwJKl6WNANcsgHDPzONLNRzmUB8nBqWJzY4LL-cr6uQZCof8az-apfz_PkllRA
+q07-03 · From secant to tangent: https://curtcox.github.io/ManimOnline/#AAAAAAPdiAhpwfIFv21z1kUKo_rrsDa1CoOMBkTTmnDrPHg8p4zn4uBl5Yx74xlrx8rcrFwd7Yawkzj9eTrOrr0Dvd8o_g
+q07-04 · Area with a moving bound: https://curtcox.github.io/ManimOnline/#AAAAAAPoJ3tDRLnooNaNpVLEUDKOPwYwd3Mh4KwpF12Jis2reKOO36PHpj5p8Tftmc_PvHlBfNnJLESvDTAGLy1oiSBkZw
+q07-05 · Bend the grid: https://curtcox.github.io/ManimOnline/#AAAAAAIiVvUfrrF06jWkPfnkqr61VwZs6ZI7SKsTaj_cymiezxlQlzX7Cd7Zmzs0r0n7LJ6-JRSTnLsBj5-4rD7ZFHDAkg
+
+Chapters
+0:00 Cold open: how much is under the curve?
+0:35 Number lines
+1:11 Axes: a ruler inside the scene
+2:15 What a plot really is
+2:48 Rectangles become area
+3:36 Area as a running total
+4:27 The slope of a curve
+5:30 Curves that aren't functions
+6:11 Grids that bend
+7:11 Recap
+
+This is episode 7 of 12 of Drawing with Code.
+Previous: Things That Change: Updaters and ValueTrackers · Drawing with Code 6 (Manim)
+Next: Cameras and the Third Dimension · Drawing with Code 8 (Manim)
+ManimOnline, the editor: https://curtcox.github.io/ManimOnline/
+Sample gallery: https://curtcox.github.io/ManimOnline/gallery.html
+Manim Community, the Python library: https://www.manim.community/
+
+This series is independent. It is not affiliated with 3Blue1Brown or Manim Community.
+
+How this series was made
+Animation: Manim Community, from Python code in the series repository.
+Scripts, animation code and production tooling: Claude Opus 5.5, an AI model by Anthropic.
+Direction: Curt Cox.
+Narration: ElevenLabs text-to-speech, from a model of Curt Cox's voice.
+Source: https://github.com/curtcox/ManimOnline/tree/main/video-series
+
+Text-to-speech reads names from code and terms from math as ordinary English words, so the words you hear in these videos may be pronounced differently than programmers or mathematicians would say them.

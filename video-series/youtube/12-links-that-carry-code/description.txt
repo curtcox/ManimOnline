@@ -1,0 +1,38 @@
+Deep dive 3, and the series finale: how a link or a QR code can carry a program with no server of its own. Code inside the link, compressed with back-references (the Lempel-Ziv idea); where links run out; cryptographic hashes and the avalanche effect.
+
+Then the anatomy of a HashBin content address, why content-addressed links suit printed QR codes and what can still go wrong, and how the editor keeps itself available offline.
+
+Open the code from this video in your browser (the QR codes on screen):
+q12-01 · LZ compression, step by step: https://curtcox.github.io/ManimOnline/#AAAAAApkD6uRdJn0y_0HktjzJskgQQWN6a8LtdqmaHmbT52MILTHC4XDC2KhQGUU6oNflTy8P9VkAuOq2NkZ8hWl-zkptQ
+q12-02 · The avalanche effect: https://curtcox.github.io/ManimOnline/#AAAAAAV_jVbbGHAkreGVfAKX3-et2jUwKB6-OzK8sU9LI7viD3QrDeO5VXl84QGdfty7nF6k3WHelxWFhXi3DUsKopXgMw
+q12-03 · A program inside its own address: https://curtcox.github.io/ManimOnline/#AAAAAAAuZGlncmFwaHtzY2FuLT5sb2FkLT5lZGl0LT5yZW5kZXItPnNoYXJlLT5zY2FufQ
+q12-04 · Anatomy of a content address: https://curtcox.github.io/ManimOnline/#AAAAAAZu6IJodSOI07jXyLGYqJvAquqG60AjEqoNY4_nbOr8jso-unNSAmWbJoEhzsJ6GnnoKQ0S4_As6erMTzQRzWth5g
+
+Chapters
+0:00 Cold open: a program in a square
+0:33 The problem
+0:57 Code inside the link
+1:32 Saying "same as before"
+2:37 Where links run out
+3:06 Fingerprints for data
+4:09 Anatomy of a content address
+5:08 Why these QR codes work
+6:00 An editor that keeps itself
+6:38 Series finale
+
+This is episode 12 of 12 of Drawing with Code.
+Previous: Rebuilding an Engine to Match Manim · Drawing with Code 11
+ManimOnline, the editor: https://curtcox.github.io/ManimOnline/
+Sample gallery: https://curtcox.github.io/ManimOnline/gallery.html
+Manim Community, the Python library: https://www.manim.community/
+
+This series is independent. It is not affiliated with 3Blue1Brown or Manim Community.
+
+How this series was made
+Animation: Manim Community, from Python code in the series repository.
+Scripts, animation code and production tooling: Claude Opus 5.5, an AI model by Anthropic.
+Direction: Curt Cox.
+Narration: ElevenLabs text-to-speech, from a model of Curt Cox's voice.
+Source: https://github.com/curtcox/ManimOnline/tree/main/video-series
+
+Text-to-speech reads names from code and terms from math as ordinary English words, so the words you hear in these videos may be pronounced differently than programmers or mathematicians would say them.

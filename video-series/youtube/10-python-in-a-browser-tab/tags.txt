@@ -1,0 +1,1 @@
+Pyodide, WebAssembly, Python in the browser, Web Worker, wasm, web development, Manim, Manim Community, ManimOnline, Python, math animation, animated math, Python animation, learn Python, creative coding, Drawing with Code

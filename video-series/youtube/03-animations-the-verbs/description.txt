@@ -1,0 +1,40 @@
+Every Manim animation is interpolation driven by one number that runs from 0 to 1. Once you see that, rate functions, built-in animations and timing all make sense.
+
+This episode explains what self.play really does, compares linear, smooth and there-and-back motion, tours the built-in animations, explains why .animate.rotate and Rotate differ (and why a square can shrink to a point), combines animations with AnimationGroup, LaggedStart and Succession, and settles who is on screen after a Transform.
+
+Open the code from this video in your browser (the QR codes on screen):
+q03-01 · Rate function race: https://curtcox.github.io/ManimOnline/#AAAAAANyDywfii5ILIs_4zvdKwn5WXLrZw0rz3JR9qBw-SLt4C6Ky0al8BZhwU_ptgyK6ifvyAZHtfOl_4EJxMg0lo3hlw
+q03-02 · Entrances, emphasis and exits: https://curtcox.github.io/ManimOnline/#AAAAAAMKHaxaoZz010F8qhCbeGaNTKXGB0RfJqqsoDihAZ7VqCxC5EkDqOZwAWmCSUxitBylZaR1fDF9BmaT_ALm-Bm91A
+q03-03 · Two kinds of rotation: https://curtcox.github.io/ManimOnline/#AAAAAAKIhzuG2JrQfH7XtSghPBd9Wo7VqV5K9YIq-IdgVDfNabHcPHP6jNByAEQT3HCBrbjG2Ry1CEU_0i8iEPPHeC1huw
+q03-04 · AnimationGroup, LaggedStart, Succession: https://curtcox.github.io/ManimOnline/#AAAAAAMqq7uI7s9nm9fOVox9SX6lhsMGppp4kVKi4EqkwKUW03S3tktMkjXfHhcNVPHtTs_GWphdsZRwow2VjdMS9Tng7Q
+q03-05 · A lagged wave: https://curtcox.github.io/ManimOnline/#AAAAAAKgkNt99IvASsxgQHQj3wbc0HouaZLwq-dbIr62p_jmGq4DOW70wEd4jLkh67FsuZ4qtbj5TuRHF2zju-hcE7lFew
+q03-06 · Transform or ReplacementTransform?: https://curtcox.github.io/ManimOnline/#AAAAAAM4qxcAGACL2T0fOV-sXevjSihuenK4DJlRRXaf1W18XLo0jLQpyD69gleIH9fWC9Ah100eTbN_KHL3CkxvkuUUww
+
+Chapters
+0:00 Cold open: two rotations
+0:32 What play really does
+1:32 Rate functions
+2:41 A tour of built-in animations
+3:38 The animate builder, and the shrinking square
+5:11 Many things at once
+5:57 Who is on screen after a Transform?
+6:49 Choosing how long things take
+7:50 Recap
+
+This is episode 3 of 12 of Drawing with Code.
+Previous: Mobjects: The Nouns · Drawing with Code 2 (Manim)
+Next: What Is a Shape, Really? Bézier Curves · Drawing with Code 4 (Manim)
+ManimOnline, the editor: https://curtcox.github.io/ManimOnline/
+Sample gallery: https://curtcox.github.io/ManimOnline/gallery.html
+Manim Community, the Python library: https://www.manim.community/
+
+This series is independent. It is not affiliated with 3Blue1Brown or Manim Community.
+
+How this series was made
+Animation: Manim Community, from Python code in the series repository.
+Scripts, animation code and production tooling: Claude Opus 5.5, an AI model by Anthropic.
+Direction: Curt Cox.
+Narration: ElevenLabs text-to-speech, from a model of Curt Cox's voice.
+Source: https://github.com/curtcox/ManimOnline/tree/main/video-series
+
+Text-to-speech reads names from code and terms from math as ordinary English words, so the words you hear in these videos may be pronounced differently than programmers or mathematicians would say them.

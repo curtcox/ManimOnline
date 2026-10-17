@@ -1,0 +1,40 @@
+Text and formulas in Manim are shapes too. This episode chooses between Text, MathTex and Tex, shows how a formula becomes vector outlines (in Manim with LaTeX, and in ManimOnline with MathJax), and indexes letters and formula parts to colour and animate them separately.
+
+Then algebra that moves: TransformMatchingTex, aligned lines of working, braces, titles and TransformFromCopy.
+
+Open the code from this video in your browser (the QR codes on screen):
+q05-01 · Text, MathTex and Tex: https://curtcox.github.io/ManimOnline/#AAAAAAJQYMcEwoEwFK1QAVx50qj1MagLd_5nYSY22wrUcwBBBpbTJv_KokTkgF7fTqOu352iX3_afa0usOfi-mzPalXvNQ
+q05-02 · Letters and formula parts: https://curtcox.github.io/ManimOnline/#AAAAAANy0dCZCi_Hh6mw7sasNzhbd_KNXLPlPGoQx4kvaPVTd4uc9yGVTY-9Kl7rcFtihhcNQpYFmqY7it40h1-kbHiOtw
+q05-03 · Solve for x: https://curtcox.github.io/ManimOnline/#AAAAAAMEIRUKRbETjUZGT_KBhTtsyHxIG2lzHDu_wFmx7WucdTLYgYP8CNTXYMby8AgIOJgbSgPdTBuWs-IoDiE-BN0NzQ
+q05-04 · Titles and braces: https://curtcox.github.io/ManimOnline/#AAAAAALm3na8c0mI4mzwfW6cD4BgUY5UsCfgf8G1cyPAvWJ-0JTYK-KCiCBKRtmuooaCZbYwuzKeesPOdnbMwynurpKVzA
+q05-05 · Pythagoras with labels: https://curtcox.github.io/ManimOnline/#AAAAAAWjZofZd7KCXSr34x0HeGaz6n-w1eo3rSgEyOx9pB0ohtRuS_P14qys8pwVfdivPXokGCJvV4ue_ip83y5wYx_afw
+
+Chapters
+0:00 Cold open: an equation that solves itself
+0:28 Three ways to write
+1:22 From TeX to outlines
+2:36 Every letter is a shape
+3:16 Styling words, colouring symbols
+4:15 Algebra that moves
+5:09 Lining up the working
+5:46 Pointing at things
+6:13 Putting it together: Pythagoras
+6:43 Recap
+
+This is episode 5 of 12 of Drawing with Code.
+Previous: What Is a Shape, Really? Bézier Curves · Drawing with Code 4 (Manim)
+Next: Things That Change: Updaters and ValueTrackers · Drawing with Code 6 (Manim)
+ManimOnline, the editor: https://curtcox.github.io/ManimOnline/
+Sample gallery: https://curtcox.github.io/ManimOnline/gallery.html
+Manim Community, the Python library: https://www.manim.community/
+
+This series is independent. It is not affiliated with 3Blue1Brown or Manim Community.
+
+How this series was made
+Animation: Manim Community, from Python code in the series repository.
+Scripts, animation code and production tooling: Claude Opus 5.5, an AI model by Anthropic.
+Direction: Curt Cox.
+Narration: ElevenLabs text-to-speech, from a model of Curt Cox's voice.
+Source: https://github.com/curtcox/ManimOnline/tree/main/video-series
+
+Text-to-speech reads names from code and terms from math as ordinary English words, so the words you hear in these videos may be pronounced differently than programmers or mathematicians would say them.

@@ -1,0 +1,41 @@
+Everything you see in a Manim scene is a mobject. This episode builds the vocabulary: Manim's coordinate plane and direction constants, a zoo of shapes, stroke, fill and opacity, placing things absolutely and relative to each other, scaling, rotating and measuring.
+
+Then the parts that surprise people: groups that move as one, two names for the same object (and when to copy), and who is drawn on top.
+
+Open the code from this video in your browser (the QR codes on screen):
+q02-01 · Points on the coordinate plane: https://curtcox.github.io/ManimOnline/#AAAAAAK0IIg5fibJSFsj3qigAAZMGHCKevjEGSPN54mYsDy6R3y9vGtlUDX6Rc1Q3nPRi5s1kHa8miE1mB2YfRkXeRxFkA
+q02-02 · Fill, stroke and opacity: https://curtcox.github.io/ManimOnline/#AAAAAAMk3nVzsax7ywCg5eELcEbA6Ndn236e7IDThFVH7r1vqeuvwJmQ3_2CvUJd3ldS8mWXxd7T6rM2pfYyEchkA4YeXQ
+q02-03 · shift, move_to, next_to, to_corner, align_to: https://curtcox.github.io/ManimOnline/#AAAAAALwNFRWrhN5zMg0MgazGwXAhsplgZ0FDc0fR51rMhMdByb4hA8TWhrFsx77TgAoIWpIfTO1DBRGsexWyWojrnkm8w
+q02-04 · Groups, rows and grids: https://curtcox.github.io/ManimOnline/#AAAAAAKrhC7ll95_9yAm_-uN2T8fk9h4_F7t10rwwmePesX5AXYlJEbwnxLJyOU9rVDVaj6drMyVyRJMs-P-YkVgFyI5CA
+q02-05 · The copy trap: https://curtcox.github.io/ManimOnline/#AAAAAAH5g9Vhf0UfPoC5sJ5_pu-0yEA_tu31cpr2RBfHL9iAtP6J1x1vlE1Pqeon9yIhEdcPMkn38ZpB6kR2lShQCKHomw
+q02-06 · Drawing order and z_index: https://curtcox.github.io/ManimOnline/#AAAAAAJmUoCFP_4G6i1-N27PrOYrvHPtV3-dQYwkyvzf3ZPPhtyhRLBNt_L5-JPNAdH4Jz7TW4kM9cNXfLra_5DzRouJ_Q
+
+Chapters
+0:00 Cold open: where is (3, −1)?
+0:25 Manim's coordinate plane
+1:49 A zoo of shapes
+2:21 Stroke, fill and opacity
+3:21 Putting things in their place
+4:33 Scale, rotate and measure
+5:31 Groups
+6:18 The copy trap
+7:02 Who is on top?
+7:26 Recap
+
+This is episode 2 of 12 of Drawing with Code.
+Previous: An Animation Is a Program · Drawing with Code 1 (Manim)
+Next: Animations: The Verbs · Drawing with Code 3 (Manim)
+ManimOnline, the editor: https://curtcox.github.io/ManimOnline/
+Sample gallery: https://curtcox.github.io/ManimOnline/gallery.html
+Manim Community, the Python library: https://www.manim.community/
+
+This series is independent. It is not affiliated with 3Blue1Brown or Manim Community.
+
+How this series was made
+Animation: Manim Community, from Python code in the series repository.
+Scripts, animation code and production tooling: Claude Opus 5.5, an AI model by Anthropic.
+Direction: Curt Cox.
+Narration: ElevenLabs text-to-speech, from a model of Curt Cox's voice.
+Source: https://github.com/curtcox/ManimOnline/tree/main/video-series
+
+Text-to-speech reads names from code and terms from math as ordinary English words, so the words you hear in these videos may be pronounced differently than programmers or mathematicians would say them.

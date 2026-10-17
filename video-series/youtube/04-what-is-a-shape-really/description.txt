@@ -1,0 +1,39 @@
+How do you store a circle in a computer? Not as a circle. This episode builds a cubic Bézier curve from nothing but repeated linear interpolation (de Casteljau's construction), then shows how anchors and handles join curves smoothly and why cubics are the standard choice.
+
+A Manim outline turns out to be a list of points in groups of four, and that explains how one shape morphs into another: matching point counts, subdivision, and path_arc.
+
+Open the code from this video in your browser (the QR codes on screen):
+q04-01 · Building a cubic Bezier curve: https://curtcox.github.io/ManimOnline/#AAAAAAXNFOSs11odSb3y4xN8AUWbZqe8i_65a5MO75GjlkIxd3EgPgTpFHCebbyVuImlWRDvNPqkPojMVFhFY3WkH5ZW6Q
+q04-02 · The control points inside a circle: https://curtcox.github.io/ManimOnline/#AAAAAAPVHUM117yk0qKy8SppnYGRlDgGjzhSfcuZDKYJyVxY4Kp3mbvnz7TmOnuU2Zdaw0qJzYMtCWoknUrsWnDC2f7KHQ
+q04-03 · Matching points before a morph: https://curtcox.github.io/ManimOnline/#AAAAAAS-JBhm594fohfEpr1yOIQoGbW14D6bKr8UvOxYEIkf-50T9Mz5B8okzJZBF2B0rQg7lYytVJnn7C0YMVjsuiQNKQ
+q04-04 · Morphing along arcs: https://curtcox.github.io/ManimOnline/#AAAAAAKBAf0xsahFZtjAnJaR0_56KJqY9NenehwldcadcuQ3PBslIQYp49fLAJ09opDSKweCTX9k-d1MRXS3AuWzjCNRlQ
+q04-05 · Draw your own curve: https://curtcox.github.io/ManimOnline/#AAAAAANoSzwhyQLAadJ7yDvyEWizaD50V9yWW0bpi345_SClEwIhcoz26N_rwU76MJYeD2QNPtuCMg0nOMG2zU9v0kOOBQ
+
+Chapters
+0:00 Cold open: how do you store a circle?
+0:40 Lerp, then lerp again
+1:52 Anchors and handles
+2:47 Why cubic?
+3:48 Every outline is a list of points
+4:33 How a square becomes a circle
+5:52 Not every path is straight
+6:30 Drawing a curve a piece at a time
+7:40 Recap
+
+This is episode 4 of 12 of Drawing with Code.
+Previous: Animations: The Verbs · Drawing with Code 3 (Manim)
+Next: Words and Equations: Text, MathTex and Tex · Drawing with Code 5 (Manim)
+ManimOnline, the editor: https://curtcox.github.io/ManimOnline/
+Sample gallery: https://curtcox.github.io/ManimOnline/gallery.html
+Manim Community, the Python library: https://www.manim.community/
+
+This series is independent. It is not affiliated with 3Blue1Brown or Manim Community.
+
+How this series was made
+Animation: Manim Community, from Python code in the series repository.
+Scripts, animation code and production tooling: Claude Opus 5.5, an AI model by Anthropic.
+Direction: Curt Cox.
+Narration: ElevenLabs text-to-speech, from a model of Curt Cox's voice.
+Source: https://github.com/curtcox/ManimOnline/tree/main/video-series
+
+Text-to-speech reads names from code and terms from math as ordinary English words, so the words you hear in these videos may be pronounced differently than programmers or mathematicians would say them.

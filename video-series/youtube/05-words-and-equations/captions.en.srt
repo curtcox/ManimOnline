@@ -1,0 +1,690 @@
+1
+00:00:00,000 --> 00:00:02,020
+Watch this equation.
+
+2
+00:00:02,020 --> 00:00:04,280
+The three walks across the equals sign.
+
+3
+00:00:04,280 --> 00:00:06,920
+Eleven minus three becomes eight.
+
+4
+00:00:06,920 --> 00:00:09,020
+Divide both sides by two.
+
+5
+00:00:09,020 --> 00:00:10,340
+And there's the answer.
+
+6
+00:00:10,340 --> 00:00:13,200
+What makes this satisfying
+is what doesn't disappear.
+
+7
+00:00:13,200 --> 00:00:16,640
+The two x and the equals sign
+never vanish and reappear;
+
+8
+00:00:16,640 --> 00:00:20,260
+they just glide a little, so your
+eye can follow only what changed.
+
+9
+00:00:20,260 --> 00:00:23,580
+By the end of this episode you will be
+able to write that animation yourself,
+
+10
+00:00:23,580 --> 00:00:25,880
+and to understand why
+letters and numbers are,
+
+11
+00:00:25,880 --> 00:00:28,500
+to Manim, just more shapes.
+
+12
+00:00:28,500 --> 00:00:31,980
+Manim has three main ways
+to put words on screen.
+
+13
+00:00:31,980 --> 00:00:35,320
+Text uses ordinary fonts,
+like a word processor.
+
+14
+00:00:35,320 --> 00:00:37,160
+It is the right choice for titles,
+
+15
+00:00:37,160 --> 00:00:38,900
+labels and sentences.
+
+16
+00:00:38,900 --> 00:00:41,400
+Font size controls how big it is.
+
+17
+00:00:41,400 --> 00:00:43,320
+Math Tex is for formulas.
+
+18
+00:00:43,320 --> 00:00:45,680
+You write them in the notation of TeX,
+
+19
+00:00:45,680 --> 00:00:49,300
+the typesetting system that
+mathematicians have used for decades:
+
+20
+00:00:49,300 --> 00:00:52,600
+a caret for superscripts,
+backslash pi for pi,
+
+21
+00:00:52,600 --> 00:00:55,100
+backslash frac for fractions.
+
+22
+00:00:55,100 --> 00:00:57,940
+Math Tex treats the whole
+string as mathematics.
+
+23
+00:00:57,940 --> 00:01:01,460
+And Tex is for sentences
+that mix words and maths.
+
+24
+00:01:01,460 --> 00:01:05,460
+Ordinary text, with the mathematical
+parts wrapped in dollar signs.
+
+25
+00:01:05,460 --> 00:01:07,320
+One habit to pick up straight away:
+
+26
+00:01:07,320 --> 00:01:10,000
+put a lowercase r in
+front of these strings.
+
+27
+00:01:10,000 --> 00:01:14,120
+It makes it a raw string, which tells
+Python to leave backslashes alone.
+
+28
+00:01:14,120 --> 00:01:18,540
+Without it, Python might read backslash
+f in backslash frac as a special
+
+29
+00:01:18,540 --> 00:01:22,583
+character, and the formula
+breaks in confusing ways.
+
+30
+00:01:22,583 --> 00:01:25,583
+How does a formula become
+something Manim can animate?
+
+31
+00:01:25,583 --> 00:01:26,863
+In standard Manim,
+
+32
+00:01:26,863 --> 00:01:30,683
+your formula is handed to a real
+installation of LaTeX on your computer.
+
+33
+00:01:30,683 --> 00:01:36,223
+LaTeX typesets it, another tool converts
+the result to scalable vector graphics,
+
+34
+00:01:36,223 --> 00:01:39,483
+and Manim reads those
+outlines in as cubic curves,
+
+35
+00:01:39,483 --> 00:01:41,763
+exactly like the ones from last episode.
+
+36
+00:01:41,763 --> 00:01:46,203
+That is why installing Manim
+traditionally means installing LaTeX too,
+
+37
+00:01:46,203 --> 00:01:47,363
+which is a large download.
+
+38
+00:01:47,363 --> 00:01:50,463
+ManimOnline cannot assume you have LaTeX,
+
+39
+00:01:50,463 --> 00:01:51,463
+so it takes a different route.
+
+40
+00:01:51,463 --> 00:01:56,343
+It uses MathJax, a library that
+typesets mathematics inside web pages,
+
+41
+00:01:56,343 --> 00:02:00,383
+to turn your formula into glyph
+outlines right in the browser.
+
+42
+00:02:00,383 --> 00:02:02,743
+Python asks for the formulas it needs;
+
+43
+00:02:02,743 --> 00:02:05,783
+the page draws them and
+measures their exact sizes;
+
+44
+00:02:05,783 --> 00:02:08,643
+then the scene renders a second
+time using those measurements,
+
+45
+00:02:08,643 --> 00:02:12,363
+so that formulas are placed with
+their true widths and heights.
+
+46
+00:02:12,363 --> 00:02:13,343
+The honest caveat:
+
+47
+00:02:13,343 --> 00:02:15,863
+MathJax is not LaTeX.
+
+48
+00:02:15,863 --> 00:02:17,923
+Everyday mathematical notation,
+
+49
+00:02:17,923 --> 00:02:20,583
+fractions, roots, sums, integrals,
+
+50
+00:02:20,583 --> 00:02:23,723
+matrices and Greek letters, works well.
+
+51
+00:02:23,723 --> 00:02:26,883
+Custom LaTeX packages
+and preambles do not.
+
+52
+00:02:26,883 --> 00:02:29,643
+If a formula looks wrong in ManimOnline,
+
+53
+00:02:29,643 --> 00:02:30,963
+simplify it first,
+
+54
+00:02:30,963 --> 00:02:36,333
+and remember that full Manim with a real
+LaTeX installation is the reference.
+
+55
+00:02:36,333 --> 00:02:38,693
+Because text becomes outlines,
+
+56
+00:02:38,693 --> 00:02:41,213
+every letter is a shape you can grab.
+
+57
+00:02:41,213 --> 00:02:42,973
+Index a Text object like a list,
+
+58
+00:02:42,973 --> 00:02:43,953
+and you get its letters.
+
+59
+00:02:43,953 --> 00:02:47,473
+Zero is the first letter,
+minus one the last.
+
+60
+00:02:47,473 --> 00:02:49,113
+You can colour them, move them,
+
+61
+00:02:49,113 --> 00:02:52,913
+and animate them one by
+one with a lagged start.
+
+62
+00:02:52,913 --> 00:02:55,713
+Formulas work the same
+way, with one extra option.
+
+63
+00:02:55,713 --> 00:02:58,653
+If you give Math Tex several
+strings instead of one,
+
+64
+00:02:58,653 --> 00:03:00,493
+each string becomes a separate part,
+
+65
+00:03:00,493 --> 00:03:03,533
+and the parts are typeset
+together as one formula.
+
+66
+00:03:03,533 --> 00:03:06,433
+Index the formula, and you get the parts.
+
+67
+00:03:06,433 --> 00:03:09,653
+Here a squared is part zero,
+the plus sign is part one,
+
+68
+00:03:09,653 --> 00:03:13,353
+and so on. That makes it
+easy to colour a and b and c,
+
+69
+00:03:13,353 --> 00:03:16,583
+or to point at one term
+while you talk about it.
+
+70
+00:03:16,583 --> 00:03:19,583
+Text has the styling options you'd expect.
+
+71
+00:03:19,583 --> 00:03:22,263
+Weight makes it bold,
+slant makes it italic,
+
+72
+00:03:22,263 --> 00:03:24,623
+and font chooses a typeface.
+
+73
+00:03:24,623 --> 00:03:27,743
+To colour particular words, pass t two c,
+
+74
+00:03:27,743 --> 00:03:29,423
+short for text to colour:
+
+75
+00:03:29,423 --> 00:03:31,383
+a dictionary from words to colours.
+
+76
+00:03:31,383 --> 00:03:33,823
+For finer control there's Markup Text,
+
+77
+00:03:33,823 --> 00:03:36,183
+which understands a small set of tags,
+
+78
+00:03:36,183 --> 00:03:37,743
+a bit like a web page:
+
+79
+00:03:37,743 --> 00:03:41,943
+b for bold, i for italic, and
+span for colours and sizes.
+
+80
+00:03:41,943 --> 00:03:44,843
+The tags shape the text,
+and never appear in it.
+
+81
+00:03:44,843 --> 00:03:46,563
+Formulas have their own trick.
+
+82
+00:03:46,563 --> 00:03:51,303
+Tex to color map finds every occurrence
+of a piece of TeX and colours it.
+
+83
+00:03:51,303 --> 00:03:54,463
+Here every x becomes
+blue and every y green,
+
+84
+00:03:54,463 --> 00:03:57,583
+even the x and the y
+tucked inside two x y.
+
+85
+00:03:57,583 --> 00:03:58,683
+To make that possible,
+
+86
+00:03:58,683 --> 00:04:02,763
+Manim isolates each of those symbols
+as its own piece of the formula,
+
+87
+00:04:02,763 --> 00:04:05,543
+so you can also animate them,
+which comes in handy in a moment.
+
+88
+00:04:05,543 --> 00:04:09,063
+Colour is one of the best
+tools you have for explanation.
+
+89
+00:04:09,063 --> 00:04:12,823
+If x is always blue, in every
+formula and on every graph,
+
+90
+00:04:12,823 --> 00:04:15,950
+the viewer stops having to read the label.
+
+91
+00:04:15,950 --> 00:04:17,690
+Now the equation from the start.
+
+92
+00:04:17,690 --> 00:04:20,910
+Each line of working is a
+Math Tex with several parts.
+
+93
+00:04:20,910 --> 00:04:25,150
+And the animation between lines
+is called Transform matching tex.
+
+94
+00:04:25,150 --> 00:04:27,810
+It looks at the parts of the
+old formula and the new one,
+
+95
+00:04:27,810 --> 00:04:30,250
+and pairs up any parts
+whose TeX is identical.
+
+96
+00:04:30,250 --> 00:04:32,430
+Two x goes with two x.
+
+97
+00:04:32,430 --> 00:04:34,830
+The equals sign goes with the equals sign.
+
+98
+00:04:34,830 --> 00:04:36,430
+The three goes with the three,
+
+99
+00:04:36,430 --> 00:04:38,310
+even though it ends up somewhere else.
+
+100
+00:04:38,310 --> 00:04:40,170
+Each matched pair is transformed,
+
+101
+00:04:40,170 --> 00:04:43,130
+so it slides from its old
+position to its new one.
+
+102
+00:04:43,130 --> 00:04:44,650
+Parts with no match are handled gently:
+
+103
+00:04:44,650 --> 00:04:47,630
+the old ones fade out,
+the new ones fade in.
+
+104
+00:04:47,630 --> 00:04:50,070
+In the second step, the
+plus sign has no partner,
+
+105
+00:04:50,070 --> 00:04:53,550
+and the minus sign is new, so
+one fades as the other appears.
+
+106
+00:04:53,550 --> 00:04:55,730
+The art is in how you split the strings.
+
+107
+00:04:55,730 --> 00:04:57,450
+If you want two things to be matched,
+
+108
+00:04:57,450 --> 00:04:59,790
+write them as separate, identical parts.
+
+109
+00:04:59,790 --> 00:05:01,930
+If you write the whole
+equation as one string,
+
+110
+00:05:01,930 --> 00:05:05,450
+there's nothing to match, and the
+entire formula simply cross-fades.
+
+111
+00:05:05,450 --> 00:05:09,517
+So think of the parts as the pieces
+you want the viewer's eye to follow.
+
+112
+00:05:09,517 --> 00:05:11,637
+When working is written down a page,
+
+113
+00:05:11,637 --> 00:05:14,257
+mathematicians line up the equals signs,
+
+114
+00:05:14,257 --> 00:05:16,537
+so your eye can run
+straight down the column.
+
+115
+00:05:16,537 --> 00:05:19,377
+Manim won't do that automatically:
+
+116
+00:05:19,377 --> 00:05:23,817
+arrange centres each line,
+so the equals signs zig-zag.
+
+117
+00:05:23,817 --> 00:05:26,117
+Because each equation is split into parts,
+
+118
+00:05:26,117 --> 00:05:28,057
+though, the fix is short.
+
+119
+00:05:28,057 --> 00:05:31,437
+The equals sign is part one of every line.
+
+120
+00:05:31,437 --> 00:05:33,897
+Get x tells you how far across it is.
+
+121
+00:05:33,897 --> 00:05:39,077
+So shift each later line sideways by the
+difference between its equals sign and
+
+122
+00:05:39,077 --> 00:05:41,857
+the first line's. Now
+the column is straight,
+
+123
+00:05:41,857 --> 00:05:46,283
+and anything that changes from line
+to line stands out immediately.
+
+124
+00:05:46,283 --> 00:05:48,263
+Explanations need pointing.
+
+125
+00:05:48,263 --> 00:05:52,403
+A Brace is a curly bracket that
+stretches to fit whatever you give it.
+
+126
+00:05:52,403 --> 00:05:54,823
+Here, formula from part two onwards:
+
+127
+00:05:54,823 --> 00:05:56,963
+everything after the equals sign.
+
+128
+00:05:56,963 --> 00:06:01,723
+Ask the brace for get text, and it
+places a label neatly beside itself.
+
+129
+00:06:01,723 --> 00:06:04,263
+And Title gives you a heading
+at the top of the frame,
+
+130
+00:06:04,263 --> 00:06:06,003
+with a line beneath it.
+
+131
+00:06:06,003 --> 00:06:09,983
+Small things, but they do a lot of the
+work of making a scene feel like an
+
+132
+00:06:09,983 --> 00:06:13,300
+explanation rather than a picture.
+
+133
+00:06:13,300 --> 00:06:16,420
+Here is a small scene that
+uses most of today's ideas.
+
+134
+00:06:16,420 --> 00:06:19,320
+A right triangle, with
+a square on each side.
+
+135
+00:06:19,320 --> 00:06:23,620
+The square on the hypotenuse is positioned
+using a little vector arithmetic from
+
+136
+00:06:23,620 --> 00:06:26,520
+episode two: a vector as
+long as the hypotenuse,
+
+137
+00:06:26,520 --> 00:06:28,040
+at right angles to it.
+
+138
+00:06:28,040 --> 00:06:29,860
+Each square gets a label, a squared,
+
+139
+00:06:29,860 --> 00:06:31,360
+b squared, c squared.
+
+140
+00:06:31,360 --> 00:06:35,380
+Then Transform from copy sends a copy
+of each label flying to its place in the
+
+141
+00:06:35,380 --> 00:06:37,660
+equation, while the originals stay put.
+
+142
+00:06:37,660 --> 00:06:39,860
+The colours tie each
+term back to its square,
+
+143
+00:06:39,860 --> 00:06:41,900
+so the viewer can see what
+the equation is saying,
+
+144
+00:06:41,900 --> 00:06:43,700
+not just read it.
+
+145
+00:06:43,700 --> 00:06:46,620
+Text is for words, Math Tex for formulas,
+
+146
+00:06:46,620 --> 00:06:48,680
+and Tex for sentences that mix them.
+
+147
+00:06:48,680 --> 00:06:52,540
+Every glyph becomes outlines, so letters
+and terms are shapes you can index,
+
+148
+00:06:52,540 --> 00:06:55,300
+colour and move. Split
+formulas into parts,
+
+149
+00:06:55,300 --> 00:06:59,520
+and Transform matching tex will
+slide the pieces that stay the same.
+
+150
+00:06:59,520 --> 00:07:04,180
+So far, everything we have animated
+changes only when we explicitly tell it to.
+
+151
+00:07:04,180 --> 00:07:07,480
+Next time, we make objects that
+keep themselves up to date:
+
+152
+00:07:07,480 --> 00:07:09,600
+labels that follow, numbers that count,
+
+153
+00:07:09,600 --> 00:07:12,590
+and shapes that redraw
+themselves every single frame.

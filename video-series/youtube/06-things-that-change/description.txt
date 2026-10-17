@@ -1,0 +1,40 @@
+Some things in a scene should follow others: a label that sticks to a dot, a readout that tracks a value, a path traced as something moves. This episode attaches updaters that run every frame, writes time-based updaters with dt, and drives several objects from one ValueTracker.
+
+It also covers always_redraw and TracedPath, the common updater surprises, and how to choose between updaters, trackers, become and plain animations.
+
+Open the code from this video in your browser (the QR codes on screen):
+q06-01 · A label that follows: https://curtcox.github.io/ManimOnline/#AAAAAAK37p1p9M7nBRz-3Oa9Wc1x_EGlnJ2TXUIZgZ7F-_z_u3A0BhDv-fdDwl_OGAvc9t2ba-LXLQFb1zlWtG5NksZMBg
+q06-02 · Time-based updaters: https://curtcox.github.io/ManimOnline/#AAAAAALLw3yNCkCwrM-svmbYMJABJ0T1P8zYAME_zcnPYAlAQ2u6o9Gl9cpAIpa0fSeRtRySIw1a90_V6mHDAQUVHKuQGA
+q06-03 · ValueTracker and DecimalNumber: https://curtcox.github.io/ManimOnline/#AAAAAANMo698nqCvsqRbhgc6V-VDc6Zmi0qj0B4hp0EELlIQKQnES4JK-20J9OiWQUtlu6fCS4jdxnK6fkj5Fcq-Q7l9Vg
+q06-04 · always_redraw: https://curtcox.github.io/ManimOnline/#AAAAAAQxi9JCMhpNPoqcw81BztPC5s-nXSWgvx9mmknFXpttMx_jBEnMhDuPVkC-UQW_0iIZRUc1k9rOvTgH1KPFptnPbw
+q06-05 · From a circle to a sine wave: https://curtcox.github.io/ManimOnline/#AAAAAARWl1LplEDNy9BAZdFX0oA_mimdDKTjAPJWFKA127Qfvs2lm5_AKX-US-dHALbfMtFJ_1jqPEiocVTRBH4571Qm9A
+
+Chapters
+0:00 Cold open: a circle unrolls into a wave
+0:27 The problem with telling everything what to do
+0:58 Updaters
+1:54 Updaters that know what time it is
+2:52 A number you can animate
+3:52 Redrawing from scratch
+4:39 Putting it together
+5:19 Two surprises worth knowing
+6:07 Choosing the right tool
+7:18 Recap
+
+This is episode 6 of 12 of Drawing with Code.
+Previous: Words and Equations: Text, MathTex and Tex · Drawing with Code 5 (Manim)
+Next: Graphs, Areas and Slopes · Drawing with Code 7 (Manim)
+ManimOnline, the editor: https://curtcox.github.io/ManimOnline/
+Sample gallery: https://curtcox.github.io/ManimOnline/gallery.html
+Manim Community, the Python library: https://www.manim.community/
+
+This series is independent. It is not affiliated with 3Blue1Brown or Manim Community.
+
+How this series was made
+Animation: Manim Community, from Python code in the series repository.
+Scripts, animation code and production tooling: Claude Opus 5.5, an AI model by Anthropic.
+Direction: Curt Cox.
+Narration: ElevenLabs text-to-speech, from a model of Curt Cox's voice.
+Source: https://github.com/curtcox/ManimOnline/tree/main/video-series
+
+Text-to-speech reads names from code and terms from math as ordinary English words, so the words you hear in these videos may be pronounced differently than programmers or mathematicians would say them.

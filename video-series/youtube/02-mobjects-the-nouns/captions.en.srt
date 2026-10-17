@@ -1,0 +1,805 @@
+1
+00:00:00,000 --> 00:00:01,460
+Before you can animate something,
+
+2
+00:00:01,460 --> 00:00:03,380
+you have to say where it is.
+
+3
+00:00:03,380 --> 00:00:04,600
+So, quick question:
+
+4
+00:00:04,600 --> 00:00:06,180
+where is this dot?
+
+5
+00:00:06,180 --> 00:00:08,200
+You might say: a bit to the right,
+
+6
+00:00:08,200 --> 00:00:09,420
+a little below the middle.
+
+7
+00:00:09,420 --> 00:00:11,500
+That is how people describe positions.
+
+8
+00:00:11,500 --> 00:00:14,520
+But a computer needs numbers,
+and numbers need a ruler.
+
+9
+00:00:14,520 --> 00:00:17,840
+Manim's ruler is a grid
+laid over the frame.
+
+10
+00:00:17,840 --> 00:00:20,140
+The centre of the screen is the origin.
+
+11
+00:00:20,140 --> 00:00:22,340
+And this dot is three units to the right,
+
+12
+00:00:22,340 --> 00:00:23,460
+and one unit down.
+
+13
+00:00:23,460 --> 00:00:25,817
+Three, minus one.
+
+14
+00:00:25,817 --> 00:00:28,377
+The frame is eight units tall.
+
+15
+00:00:28,377 --> 00:00:31,117
+Its width depends on
+the shape of the video.
+
+16
+00:00:31,117 --> 00:00:35,297
+For ordinary widescreen it works out
+to about fourteen point two units.
+
+17
+00:00:35,297 --> 00:00:38,017
+So anything between minus
+seven and seven horizontally,
+
+18
+00:00:38,017 --> 00:00:40,257
+and minus four and four vertically,
+
+19
+00:00:40,257 --> 00:00:41,977
+is on screen.
+
+20
+00:00:41,977 --> 00:00:44,557
+You could type coordinates
+as lists of numbers,
+
+21
+00:00:44,557 --> 00:00:46,997
+but Manim gives you something friendlier:
+
+22
+00:00:46,997 --> 00:00:48,317
+direction constants.
+
+23
+00:00:48,317 --> 00:00:50,197
+UP is one unit up.
+
+24
+00:00:50,197 --> 00:00:52,037
+RIGHT is one unit right.
+
+25
+00:00:52,037 --> 00:00:56,037
+And because they are vectors, arrows
+with a length and a direction,
+
+26
+00:00:56,037 --> 00:00:58,357
+you can do arithmetic with them.
+
+27
+00:00:58,357 --> 00:01:01,177
+RIGHT times three is three units right.
+
+28
+00:01:01,177 --> 00:01:03,117
+Add DOWN, and you arrive at three,
+
+29
+00:01:03,117 --> 00:01:08,637
+minus one. Read it out loud and it sounds
+like directions to a friend's house:
+
+30
+00:01:08,637 --> 00:01:11,577
+go right three, then down one.
+
+31
+00:01:11,577 --> 00:01:16,937
+That is why Manim code so often reads
+like a description rather than a
+
+32
+00:01:16,937 --> 00:01:18,537
+calculation.
+
+33
+00:01:18,537 --> 00:01:20,357
+There are diagonal shortcuts too.
+
+34
+00:01:20,357 --> 00:01:23,097
+U R means up and to the right,
+
+35
+00:01:23,097 --> 00:01:26,657
+D L means down and to the left.
+
+36
+00:01:26,657 --> 00:01:30,637
+You may have noticed each point
+actually has three numbers.
+
+37
+00:01:30,637 --> 00:01:34,717
+The third is depth,
+pointing out of the screen.
+
+38
+00:01:34,717 --> 00:01:37,637
+In flat scenes it is always zero,
+
+39
+00:01:37,637 --> 00:01:39,997
+so you can ignore it until episode eight,
+
+40
+00:01:39,997 --> 00:01:42,397
+where we will give it a job.
+
+41
+00:01:42,397 --> 00:01:47,517
+This code plots four points with
+labels written in exactly this style.
+
+42
+00:01:47,517 --> 00:01:49,683
+Try adding a fifth.
+
+43
+00:01:49,683 --> 00:01:52,003
+Manim comes with a whole zoo of shapes.
+
+44
+00:01:52,003 --> 00:01:54,223
+Circles, squares, rectangles, triangles,
+
+45
+00:01:54,223 --> 00:01:56,663
+regular polygons with as
+many sides as you like,
+
+46
+00:01:56,663 --> 00:01:58,143
+stars, lines, arrows and dots.
+
+47
+00:01:58,143 --> 00:01:59,983
+Every one of them has sensible defaults.
+
+48
+00:01:59,983 --> 00:02:01,503
+A circle has radius one.
+
+49
+00:02:01,503 --> 00:02:03,423
+A square has sides of length two.
+
+50
+00:02:03,423 --> 00:02:06,743
+A dot is tiny. And all of them
+start out centred at the origin.
+
+51
+00:02:06,743 --> 00:02:08,623
+Arguments let you override any of that:
+
+52
+00:02:08,623 --> 00:02:11,383
+Circle with radius two, a
+square with side length three,
+
+53
+00:02:11,383 --> 00:02:13,383
+a regular polygon with six sides.
+
+54
+00:02:13,383 --> 00:02:16,263
+Under the hood, nearly every shape
+here is the same kind of thing:
+
+55
+00:02:16,263 --> 00:02:17,363
+an outline made of curves.
+
+56
+00:02:17,363 --> 00:02:19,703
+Episode four opens that box.
+
+57
+00:02:19,703 --> 00:02:21,783
+For now, let's dress them up.
+
+58
+00:02:21,783 --> 00:02:24,643
+Every shape has two
+separate layers of paint.
+
+59
+00:02:24,643 --> 00:02:26,343
+The stroke is the outline:
+
+60
+00:02:26,343 --> 00:02:28,463
+it has a colour and a width.
+
+61
+00:02:28,463 --> 00:02:30,303
+The fill is the inside:
+
+62
+00:02:30,303 --> 00:02:32,343
+it has a colour and an opacity,
+
+63
+00:02:32,343 --> 00:02:35,543
+where zero is invisible and one is solid.
+
+64
+00:02:35,543 --> 00:02:40,503
+By default, most shapes are
+outlines with an invisible fill.
+
+65
+00:02:40,503 --> 00:02:45,563
+That is why the square in episode one
+was hollow until we gave it a fill
+
+66
+00:02:45,563 --> 00:02:47,123
+opacity.
+
+67
+00:02:47,123 --> 00:02:49,343
+Set fill paints the inside.
+
+68
+00:02:49,343 --> 00:02:51,623
+Set stroke paints the outline.
+
+69
+00:02:51,623 --> 00:02:54,103
+Set color paints both at once.
+
+70
+00:02:54,103 --> 00:02:56,823
+You can use named colours
+like BLUE and YELLOW,
+
+71
+00:02:56,823 --> 00:03:01,003
+or any hex code, like the
+orange in this example.
+
+72
+00:03:01,003 --> 00:03:03,043
+And notice how these calls are chained,
+
+73
+00:03:03,043 --> 00:03:04,983
+one after another:
+
+74
+00:03:04,983 --> 00:03:07,923
+Square, dot set fill, dot set stroke.
+
+75
+00:03:07,923 --> 00:03:13,123
+That works because each method changes
+the shape and then hands back the very
+
+76
+00:03:13,123 --> 00:03:17,083
+same shape, so the next
+method can keep working on it.
+
+77
+00:03:17,083 --> 00:03:21,917
+You will see this chaining
+style everywhere in Manim code.
+
+78
+00:03:21,917 --> 00:03:25,097
+Once you have a shape, you will spend
+a lot of time putting it somewhere.
+
+79
+00:03:25,097 --> 00:03:27,617
+Manim gives you a handful
+of verbs for this,
+
+80
+00:03:27,617 --> 00:03:31,917
+and choosing the right one makes
+code much easier to change later.
+
+81
+00:03:31,917 --> 00:03:33,517
+Shift moves by an offset:
+
+82
+00:03:33,517 --> 00:03:35,777
+wherever you are, go three units right.
+
+83
+00:03:35,777 --> 00:03:37,757
+Move to goes to an absolute point:
+
+84
+00:03:37,757 --> 00:03:40,257
+no matter where you started, end up here.
+
+85
+00:03:40,257 --> 00:03:42,597
+Next to is the one you will use most.
+
+86
+00:03:42,597 --> 00:03:44,537
+It places one object beside another,
+
+87
+00:03:44,537 --> 00:03:47,877
+in a direction, with a
+small gap called the buffer.
+
+88
+00:03:47,877 --> 00:03:49,537
+How does it know where "beside" is?
+
+89
+00:03:49,537 --> 00:03:52,877
+Every mobject has an
+invisible bounding box,
+
+90
+00:03:52,877 --> 00:03:54,877
+the smallest rectangle that contains it,
+
+91
+00:03:54,877 --> 00:03:57,317
+and next to lines up those boxes.
+
+92
+00:03:57,317 --> 00:04:01,297
+That is why labels stay neatly beside
+things no matter how big they are.
+
+93
+00:04:01,297 --> 00:04:04,457
+To edge and to corner push
+an object against the frame,
+
+94
+00:04:04,457 --> 00:04:05,937
+leaving a small margin.
+
+95
+00:04:05,937 --> 00:04:10,277
+And align to lines up one edge of an
+object with the same edge of another.
+
+96
+00:04:10,277 --> 00:04:12,957
+You will notice something
+new in these lines:
+
+97
+00:04:12,957 --> 00:04:16,717
+dot animate. Putting animate in front
+of a method turns that change into an
+
+98
+00:04:16,717 --> 00:04:18,617
+animation, so instead of jumping,
+
+99
+00:04:18,617 --> 00:04:22,697
+the dot glides. It is so useful it
+gets a big part of next episode.
+
+100
+00:04:22,697 --> 00:04:23,857
+A good rule of thumb:
+
+101
+00:04:23,857 --> 00:04:26,717
+position things relative to
+each other whenever you can.
+
+102
+00:04:26,717 --> 00:04:28,317
+If you place a label with next to,
+
+103
+00:04:28,317 --> 00:04:29,737
+and later move the shape,
+
+104
+00:04:29,737 --> 00:04:33,617
+the label's relationship to it
+is still written in your code.
+
+105
+00:04:33,617 --> 00:04:36,697
+Moving is only one kind of change.
+
+106
+00:04:36,697 --> 00:04:38,877
+Scale makes an object bigger or smaller,
+
+107
+00:04:38,877 --> 00:04:40,777
+and rotate turns it.
+
+108
+00:04:40,777 --> 00:04:44,117
+Both happen around the object's
+centre unless you say otherwise,
+
+109
+00:04:44,117 --> 00:04:46,737
+and you can pin a different
+spot with about point,
+
+110
+00:04:46,737 --> 00:04:48,397
+or with about edge,
+
+111
+00:04:48,397 --> 00:04:52,737
+which keeps one side or corner fixed
+while the rest grows away from it.
+
+112
+00:04:52,737 --> 00:04:54,997
+Angles in Manim are measured in radians,
+
+113
+00:04:54,997 --> 00:04:59,557
+so a full turn is two pi, and pi
+over four is forty five degrees.
+
+114
+00:04:59,557 --> 00:05:01,357
+If you'd rather think in degrees,
+
+115
+00:05:01,357 --> 00:05:03,017
+multiply by the constant DEGREES:
+
+116
+00:05:03,017 --> 00:05:06,177
+forty five times DEGREES
+means exactly what it says.
+
+117
+00:05:06,177 --> 00:05:08,697
+You can also ask an object
+where its parts are.
+
+118
+00:05:08,697 --> 00:05:10,137
+Get center returns its middle.
+
+119
+00:05:10,137 --> 00:05:11,317
+Get top, get bottom,
+
+120
+00:05:11,317 --> 00:05:14,597
+get left and get right return the
+middle of each edge of its bounding box,
+
+121
+00:05:14,597 --> 00:05:16,537
+and get corner returns a corner.
+
+122
+00:05:16,537 --> 00:05:18,697
+And width and height
+tell you how big it is.
+
+123
+00:05:18,697 --> 00:05:20,297
+These answers are ordinary points,
+
+124
+00:05:20,297 --> 00:05:21,457
+so you can hand them to move to,
+
+125
+00:05:21,457 --> 00:05:24,037
+or to a Line, or use them in arithmetic.
+
+126
+00:05:24,037 --> 00:05:27,017
+In fact, next to is built
+from exactly these pieces:
+
+127
+00:05:27,017 --> 00:05:29,317
+a point on one bounding box, a direction,
+
+128
+00:05:29,317 --> 00:05:31,067
+and a buffer.
+
+129
+00:05:31,067 --> 00:05:34,187
+Often you want to treat
+several objects as one.
+
+130
+00:05:34,187 --> 00:05:36,147
+That is what a V group is for.
+
+131
+00:05:36,147 --> 00:05:38,847
+Put mobjects in a V
+group, and you can move,
+
+132
+00:05:38,847 --> 00:05:42,767
+scale, rotate, colour and
+animate them all together.
+
+133
+00:05:42,767 --> 00:05:44,727
+Groups can also organise their members.
+
+134
+00:05:44,727 --> 00:05:46,227
+Arrange lines them up in a row,
+
+135
+00:05:46,227 --> 00:05:48,427
+or a column, with even gaps.
+
+136
+00:05:48,427 --> 00:05:51,567
+Arrange in grid lays them
+out in rows and columns.
+
+137
+00:05:51,567 --> 00:05:55,227
+In this example, twelve dots are
+created with a single line of Python,
+
+138
+00:05:55,227 --> 00:05:56,607
+a list comprehension,
+
+139
+00:05:56,607 --> 00:06:00,167
+each with a colour a little further
+along the way from blue to yellow.
+
+140
+00:06:00,167 --> 00:06:02,827
+They all start at the origin,
+stacked on top of each other,
+
+141
+00:06:02,827 --> 00:06:04,327
+so at first you see only one.
+
+142
+00:06:04,327 --> 00:06:06,247
+Then a single arrange spreads them out,
+
+143
+00:06:06,247 --> 00:06:08,487
+and a single arrange in grid reflows them.
+
+144
+00:06:08,487 --> 00:06:10,287
+And when we scale and rotate the group,
+
+145
+00:06:10,287 --> 00:06:13,867
+every dot moves together, as if
+they were glued to a sheet of glass.
+
+146
+00:06:13,867 --> 00:06:15,447
+The group is an object in its own right,
+
+147
+00:06:15,447 --> 00:06:18,533
+with its own centre and
+its own bounding box.
+
+148
+00:06:18,533 --> 00:06:20,553
+Now, the trap I promised.
+
+149
+00:06:20,553 --> 00:06:22,413
+Here is a square called a.
+
+150
+00:06:22,413 --> 00:06:24,733
+Suppose we write b equals a.
+
+151
+00:06:24,733 --> 00:06:26,653
+How many squares are there?
+
+152
+00:06:26,653 --> 00:06:32,273
+Just one. In Python, a name is like
+a sticky note attached to an object.
+
+153
+00:06:32,273 --> 00:06:35,513
+Writing b equals a does
+not build a second square.
+
+154
+00:06:35,513 --> 00:06:37,673
+It sticks a second note on the same one.
+
+155
+00:06:37,673 --> 00:06:40,193
+So when we turn b red, a turns red too,
+
+156
+00:06:40,193 --> 00:06:42,953
+because a and b are two
+labels for one square.
+
+157
+00:06:42,953 --> 00:06:45,133
+This surprises almost
+everyone the first time,
+
+158
+00:06:45,133 --> 00:06:48,373
+and it can cause some
+very confusing animations.
+
+159
+00:06:48,373 --> 00:06:49,933
+When you really want a second,
+
+160
+00:06:49,933 --> 00:06:52,233
+independent object, ask for one:
+
+161
+00:06:52,233 --> 00:06:56,333
+a dot copy. Copy builds a brand
+new square with the same shape,
+
+162
+00:06:56,333 --> 00:07:02,000
+position and style, and from then on the
+two are free to go their separate ways.
+
+163
+00:07:02,000 --> 00:07:03,340
+One last property.
+
+164
+00:07:03,340 --> 00:07:05,960
+When shapes overlap,
+which one is in front?
+
+165
+00:07:05,960 --> 00:07:08,720
+By default, the answer is
+the order they were added:
+
+166
+00:07:08,720 --> 00:07:11,300
+later objects are painted
+on top of earlier ones,
+
+167
+00:07:11,300 --> 00:07:12,660
+like layers of paper.
+
+168
+00:07:12,660 --> 00:07:14,160
+When that is not what you want,
+
+169
+00:07:14,160 --> 00:07:18,280
+set z index. Objects with a
+higher z index are drawn later,
+
+170
+00:07:18,280 --> 00:07:21,660
+so they appear in front,
+regardless of when they were added.
+
+171
+00:07:21,660 --> 00:07:26,750
+It can even be animated, so a shape can
+rise above its neighbours mid-scene.
+
+172
+00:07:26,750 --> 00:07:29,110
+So here are the nouns of Manim.
+
+173
+00:07:29,110 --> 00:07:33,150
+Positions are vectors, built from
+directions like UP and RIGHT.
+
+174
+00:07:33,150 --> 00:07:35,070
+Shapes have a stroke and a fill.
+
+175
+00:07:35,070 --> 00:07:37,510
+You place them by offset,
+by absolute point,
+
+176
+00:07:37,510 --> 00:07:39,430
+or relative to each other.
+
+177
+00:07:39,430 --> 00:07:41,910
+Groups let many objects act as one.
+
+178
+00:07:41,910 --> 00:07:44,590
+Names are sticky notes, so
+copy when you mean copy.
+
+179
+00:07:44,590 --> 00:07:47,770
+And z index decides who is on top.
+
+180
+00:07:47,770 --> 00:07:49,330
+Next time: the verbs.
+
+181
+00:07:49,330 --> 00:07:51,890
+How Manim moves from
+one moment to the next,
+
+182
+00:07:51,890 --> 00:07:54,790
+why some motions feel natural
+and others feel robotic,
+
+183
+00:07:54,790 --> 00:07:58,450
+and a strange thing that happens when
+you rotate a square the wrong way.
