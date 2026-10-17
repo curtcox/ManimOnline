@@ -1,0 +1,19 @@
+digraph ManimOnline {
+  rankdir=LR;
+  node [shape=box, style="rounded,filled", fillcolor="#1f3b57", fontcolor=white, color="#58c4dd"];
+  edge [color="#bbbbbb"];
+
+  editor   [label="Code editor"];
+  detector [label="Language detector"];
+  worker   [label="Python worker\n(Pyodide)"];
+  frames   [label="Frame snapshots"];
+  player   [label="SVG player"];
+  graphviz [label="Graphviz\n(WebAssembly)"];
+  modl     [label="modl editor"];
+
+  editor -> detector;
+  detector -> worker   [label="Manim"];
+  detector -> graphviz [label="DOT"];
+  detector -> modl     [label="modl"];
+  worker -> frames -> player;
+}

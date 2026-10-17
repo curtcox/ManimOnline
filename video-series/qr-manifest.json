@@ -1,0 +1,524 @@
+{
+  "about": "One entry per QR code. `scene` is saved with Manim sources (empty selects the first scene). `payload: plain` stores the raw source instead of a hashbin-diagram document, so a source of 64 bytes or fewer lives inside its CID. Run tools/qr-links.mjs after editing a snippet: changing a snippet changes its CID and therefore its QR code. `pos` pins modl node positions: the editor otherwise saves its own automatic layout, which would change the CID.",
+  "site": "https://curtcox.github.io/ManimOnline/",
+  "snippets": [
+    {
+      "id": "q00-01",
+      "episode": 0,
+      "title": "Manim, in your browser",
+      "file": "snippets/ep00/01-showcase.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q01-01",
+      "episode": 1,
+      "title": "Square to circle",
+      "file": "snippets/ep01/01-square-to-circle.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q01-02",
+      "episode": 1,
+      "title": "Three shapes in a row",
+      "file": "snippets/ep01/02-three-shapes.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q01-03",
+      "episode": 1,
+      "title": "How play and wait build a timeline",
+      "file": "snippets/ep01/03-timeline.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q01-04",
+      "episode": 1,
+      "title": "Fix the typo",
+      "file": "snippets/ep01/04-fix-the-typo.py",
+      "type": "manim",
+      "scene": "",
+      "expect": "error"
+    },
+    {
+      "id": "q01-05",
+      "episode": 1,
+      "title": "Challenge: a traffic light",
+      "file": "snippets/ep01/05-traffic-light.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q02-01",
+      "episode": 2,
+      "title": "Points on the coordinate plane",
+      "file": "snippets/ep02/01-coordinates.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q02-02",
+      "episode": 2,
+      "title": "Fill, stroke and opacity",
+      "file": "snippets/ep02/02-styles.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q02-03",
+      "episode": 2,
+      "title": "shift, move_to, next_to, to_corner, align_to",
+      "file": "snippets/ep02/03-positioning.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q02-04",
+      "episode": 2,
+      "title": "Groups, rows and grids",
+      "file": "snippets/ep02/04-groups.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q02-05",
+      "episode": 2,
+      "title": "The copy trap",
+      "file": "snippets/ep02/05-copy-trap.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q02-06",
+      "episode": 2,
+      "title": "Drawing order and z_index",
+      "file": "snippets/ep02/06-layers.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q03-01",
+      "episode": 3,
+      "title": "Rate function race",
+      "file": "snippets/ep03/01-rate-race.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q03-02",
+      "episode": 3,
+      "title": "Entrances, emphasis and exits",
+      "file": "snippets/ep03/02-entrances.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q03-03",
+      "episode": 3,
+      "title": "Two kinds of rotation",
+      "file": "snippets/ep03/03-two-rotations.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q03-04",
+      "episode": 3,
+      "title": "AnimationGroup, LaggedStart, Succession",
+      "file": "snippets/ep03/04-combining.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q03-05",
+      "episode": 3,
+      "title": "A lagged wave",
+      "file": "snippets/ep03/05-wave.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q03-06",
+      "episode": 3,
+      "title": "Transform or ReplacementTransform?",
+      "file": "snippets/ep03/06-transform-or-replace.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q04-01",
+      "episode": 4,
+      "title": "Building a cubic Bezier curve",
+      "file": "snippets/ep04/01-de-casteljau.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q04-02",
+      "episode": 4,
+      "title": "The control points inside a circle",
+      "file": "snippets/ep04/02-inside-a-circle.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q04-03",
+      "episode": 4,
+      "title": "Matching points before a morph",
+      "file": "snippets/ep04/03-matching-points.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q04-04",
+      "episode": 4,
+      "title": "Morphing along arcs",
+      "file": "snippets/ep04/04-swinging-morph.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q04-05",
+      "episode": 4,
+      "title": "Draw your own curve",
+      "file": "snippets/ep04/05-draw-your-own-curve.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q05-01",
+      "episode": 5,
+      "title": "Text, MathTex and Tex",
+      "file": "snippets/ep05/01-words-and-symbols.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q05-02",
+      "episode": 5,
+      "title": "Letters and formula parts",
+      "file": "snippets/ep05/02-letters-and-parts.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q05-03",
+      "episode": 5,
+      "title": "Solve for x",
+      "file": "snippets/ep05/03-solve-for-x.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q05-04",
+      "episode": 5,
+      "title": "Titles and braces",
+      "file": "snippets/ep05/04-annotations.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q05-05",
+      "episode": 5,
+      "title": "Pythagoras with labels",
+      "file": "snippets/ep05/05-pythagoras.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q06-01",
+      "episode": 6,
+      "title": "A label that follows",
+      "file": "snippets/ep06/01-label-follows-dot.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q06-02",
+      "episode": 6,
+      "title": "Time-based updaters",
+      "file": "snippets/ep06/02-time-based.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q06-03",
+      "episode": 6,
+      "title": "ValueTracker and DecimalNumber",
+      "file": "snippets/ep06/03-tracker-and-number.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q06-04",
+      "episode": 6,
+      "title": "always_redraw",
+      "file": "snippets/ep06/04-always-redraw.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q06-05",
+      "episode": 6,
+      "title": "From a circle to a sine wave",
+      "file": "snippets/ep06/05-circle-to-sine.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q07-01",
+      "episode": 7,
+      "title": "Axes and plots",
+      "file": "snippets/ep07/01-first-plot.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q07-02",
+      "episode": 7,
+      "title": "Riemann rectangles",
+      "file": "snippets/ep07/02-riemann.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q07-03",
+      "episode": 7,
+      "title": "From secant to tangent",
+      "file": "snippets/ep07/03-secant-to-tangent.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q07-04",
+      "episode": 7,
+      "title": "Area with a moving bound",
+      "file": "snippets/ep07/04-moving-bound.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q07-05",
+      "episode": 7,
+      "title": "Bend the grid",
+      "file": "snippets/ep07/05-bend-the-grid.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q08-01",
+      "episode": 8,
+      "title": "Zooming the camera",
+      "file": "snippets/ep08/01-moving-camera.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q08-02",
+      "episode": 8,
+      "title": "A magnified inset",
+      "file": "snippets/ep08/02-zoomed-inset.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q08-03",
+      "episode": 8,
+      "title": "A surface in 3D",
+      "file": "snippets/ep08/03-surface.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q08-04",
+      "episode": 8,
+      "title": "Solids",
+      "file": "snippets/ep08/04-solids.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q08-05",
+      "episode": 8,
+      "title": "A helix from three angles",
+      "file": "snippets/ep08/05-helix.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q09-01",
+      "episode": 9,
+      "title": "Several scenes in one file",
+      "file": "snippets/ep09/01-several-scenes.py",
+      "type": "manim",
+      "scene": "Middle"
+    },
+    {
+      "id": "q09-02",
+      "episode": 9,
+      "title": "Export me as a video",
+      "file": "snippets/ep09/02-export-me.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q09-03",
+      "episode": 9,
+      "title": "ManimOnline as a Graphviz diagram",
+      "file": "snippets/ep09/03-pipeline.dot",
+      "type": "graphviz"
+    },
+    {
+      "id": "q09-04",
+      "episode": 9,
+      "title": "The workflow as a modl diagram",
+      "file": "snippets/ep09/04-workflow.modl",
+      "type": "modl",
+      "pos": {
+        "code": [
+          544,
+          225
+        ],
+        "idea": [
+          444,
+          362
+        ],
+        "preview": [
+          284,
+          310
+        ],
+        "qr": [
+          284,
+          140
+        ],
+        "share": [
+          444,
+          88
+        ]
+      }
+    },
+    {
+      "id": "q09-05",
+      "episode": 9,
+      "title": "A scene that never ends",
+      "file": "snippets/ep09/05-runaway.py",
+      "type": "manim",
+      "scene": "",
+      "expect": "timeout"
+    },
+    {
+      "id": "q10-01",
+      "episode": 10,
+      "title": "Where is this Python running?",
+      "file": "snippets/ep10/01-where-am-i.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q10-02",
+      "episode": 10,
+      "title": "One dot per frame",
+      "file": "snippets/ep10/02-one-dot-per-frame.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q10-03",
+      "episode": 10,
+      "title": "NumPy, loaded on demand",
+      "file": "snippets/ep10/03-numpy-on-demand.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q10-04",
+      "episode": 10,
+      "title": "Measured formulas",
+      "file": "snippets/ep10/04-measured-formulas.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q10-05",
+      "episode": 10,
+      "title": "A frame clock",
+      "file": "snippets/ep10/05-frame-clock.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q11-01",
+      "episode": 11,
+      "title": "Why the square shrinks",
+      "file": "snippets/ep11/01-why-it-shrinks.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q11-02",
+      "episode": 11,
+      "title": "Arrow tips keep their size",
+      "file": "snippets/ep11/02-fixed-size-tips.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q11-03",
+      "episode": 11,
+      "title": "Seeded stream lines",
+      "file": "snippets/ep11/03-stream-lines.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q11-04",
+      "episode": 11,
+      "title": "Graph layouts",
+      "file": "snippets/ep11/04-graph-layouts.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q11-05",
+      "episode": 11,
+      "title": "Same font size, different heights",
+      "file": "snippets/ep11/05-font-sizes.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q12-01",
+      "episode": 12,
+      "title": "LZ compression, step by step",
+      "file": "snippets/ep12/01-lz-compression.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q12-02",
+      "episode": 12,
+      "title": "The avalanche effect",
+      "file": "snippets/ep12/02-avalanche.py",
+      "type": "manim",
+      "scene": ""
+    },
+    {
+      "id": "q12-03",
+      "episode": 12,
+      "title": "A program inside its own address",
+      "file": "snippets/ep12/03-tiny.dot",
+      "type": "graphviz",
+      "payload": "plain"
+    },
+    {
+      "id": "q12-04",
+      "episode": 12,
+      "title": "Anatomy of a content address",
+      "file": "snippets/ep12/04-cid-anatomy.py",
+      "type": "manim",
+      "scene": ""
+    }
+  ]
+}

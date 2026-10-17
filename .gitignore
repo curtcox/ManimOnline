@@ -3,3 +3,4 @@ __pycache__/
 media/
 node_modules/
 package-lock.json
+video-series/build/

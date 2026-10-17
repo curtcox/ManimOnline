@@ -1,0 +1,13 @@
+# Nodes: id [size] [shape] [color] [text...]
+idea circle yellow Idea
+code square blue Write a scene
+preview circle green Preview
+share diamond purple Share link
+qr hex orange QR code
+
+# Edges: from -> to [style] [color] [text...]
+idea -> code solid teal Type
+code -> preview solid teal Render
+preview -> code dashed orange Tweak
+preview -> share solid purple Save
+share -> qr dotted purple Scan
