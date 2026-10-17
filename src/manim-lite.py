@@ -23490,6 +23490,9 @@ def _svg_color(value, current='#000000'):
         return None, 0.0
     if lower == 'currentcolor':
         return _svg_color(current)
+    if lower.startswith('url('):
+        # svgelements (Community's parser) resolves no gradient or pattern paint: black.
+        return '#000000', 1.0
     if lower in _SVG_NAMED_COLORS:
         return _SVG_NAMED_COLORS[lower], 1.0
     if re.fullmatch(r'#[0-9a-fA-F]{3,4}', value):

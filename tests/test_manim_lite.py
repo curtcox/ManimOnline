@@ -1953,6 +1953,20 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertAlmostEqual(turned.get_height(),2.0850207,delta=1e-6)
         self.assertAlmostEqual(lite.Text('Hello World').apply_matrix([[1,.5],[0,1]]).get_width(),3.5749512,delta=1e-6)
 
+    def test_svg_gradient_and_pattern_paints_are_black_like_svgelements(self):
+        # Manim 0.22: url() fills and strokes (gradients, patterns, even with a fallback color)
+        # are black, and clip paths are ignored.
+        svg = lite.SVGMobject(
+            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><defs><linearGradient id='g'>"
+            "<stop offset='0' stop-color='red'/></linearGradient><clipPath id='c'><rect width='5' height='5'/>"
+            "</clipPath></defs><rect width='10' height='10' fill='url(#g)'/>"
+            "<circle cx='5' cy='5' r='4' clip-path='url(#c)' fill='green'/>"
+            "<rect x='1' y='1' width='3' height='3' fill='url(#p)' stroke='url(#g)'/>"
+            "<rect x='6' y='6' width='2' height='2' fill='url(#missing) yellow'/></svg>")
+        self.assertEqual([(str(m.get_fill_color()), str(m.get_stroke_color()), len(m.get_points())) for m in svg.submobjects],
+                         [('#000000', '#FFFFFF', 16), ('#008000', '#FC6255', 32), ('#000000', '#000000', 16),
+                          ('#000000', '#FFFFFF', 16)])
+
     def test_transform_matching_shapes_matches_text_glyph_outlines(self):
         # Community's Anagram: glyphs are matched by their outline shapes and arc into place.
         result = render('src = Text("the morse code")\ntar = Text("here come dots")\nself.add(src)\n'
