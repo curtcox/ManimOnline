@@ -470,7 +470,7 @@ class Segment_1_8(Segment):
         voice.shift(DOWN * 1.2)
         caption = Text('narration', font_size=20, color=GREEN_B).next_to(voice, LEFT, buff=0.2)
         self.play(Create(voice), FadeIn(caption), run_time=2)
-        self.hold_until(0.8)
+        self.at('This voice-over')
 
         # [V1.8d] this narration is text-to-speech
         synthetic = Text('synthetic voice', font_size=18, color=SCAFFOLD).next_to(caption, DOWN, buff=0.1)

@@ -4,6 +4,7 @@ Usage (from anywhere; needs the manim CLI, ffmpeg, and TeX on the PATH for MathT
     python3 video-series/production/render.py 1            # 1080p60 (-qh)
     python3 video-series/production/render.py 1 -ql        # quick 480p15 review
     python3 video-series/production/render.py 1 -ql 1.5    # one segment
+    python3 video-series/production/render.py 1 --stitch   # stitch existing segment videos again
 
 Segment videos land in build/media/videos/epNN/<quality>/; the stitched file is
 build/episodes/epNN-<quality>.mp4. When tools/narrate.py has generated the episode's
@@ -70,6 +71,7 @@ def main(argv):
     episode = int(argv[0])
     quality = next((a for a in argv[1:] if a.startswith('-q')), '-qh')
     only = [a for a in argv[1:] if not a.startswith('-')]
+    stitch = '--stitch' in argv[1:]
     names = segments(episode)
     if only:
         names = [n for n in names if n.split('_', 1)[1].replace('_', '.') in only]
@@ -80,7 +82,7 @@ def main(argv):
     jobs = [(PRODUCTION / f'ep{episode:02d}.py', name) for name in names]
     if not only:
         jobs.append((PRODUCTION / 'credits.py', 'Credits'))
-    for script, name in jobs:
+    for script, name in [] if stitch else jobs:
         print(f'rendering {name} ...', flush=True)
         run = subprocess.run(['manim', quality, '--progress_bar', 'none', '--media_dir', str(BUILD / 'media'),
                               str(script), name], env=env, capture_output=True, text=True)

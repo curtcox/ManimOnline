@@ -15,8 +15,8 @@ CREDITS = [
     ('Narration', "ElevenLabs text-to-speech, from a model of Curt Cox's voice"),
     ('Source', 'github.com/curtcox/ManimOnline (video-series)'),
 ]
-NOTE = ('Text-to-speech reads names from code as ordinary English words,\n'
-        'so the words you hear may be pronounced differently than programmers would say them.')
+NOTE = ('Text-to-speech reads names from code and terms from math as ordinary English words, so the words\n'
+        'you hear may be pronounced differently than programmers or mathematicians would say them.')
 HOLD = 9.0
 
 

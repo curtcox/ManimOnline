@@ -89,7 +89,8 @@ dictionary. It uses alias rules, which work on every model:
 
 Code words that are also English words (`animate`, `construct`, `Transform`) are left
 as they are: text-to-speech reads them as ordinary English, so it may stress them
-differently than programmers would (CON-struct instead of con-STRUCT). Respellings and
+differently than programmers would (CON-struct instead of con-STRUCT). Math terms have
+the same problem: the voice does not always say them as a mathematician would. Respellings and
 phoneme tags were tried and proved unreliable, so the series says so instead (see
 below) rather than fighting the voice model.
 
@@ -97,8 +98,8 @@ below) rather than fighting the voice model.
 
 The series discloses how it was produced in three places, and they should agree:
 
-- **Episode 1, segment 1.8** says the narration is synthetic and that code words may be
-  pronounced differently than programmers would say them.
+- **Episode 1, segment 1.8** says the narration is synthetic and that code words and math
+  terms may be pronounced differently than programmers or mathematicians would say them.
 - **Every episode ends with a credits card** (`production/credits.py`, appended by
   `production/render.py` after the closing teaser, about 10 seconds, no narration).
 - **Every video description** ends with the block below.
@@ -111,8 +112,9 @@ Direction: Curt Cox.
 Narration: ElevenLabs text-to-speech, from a model of Curt Cox's voice.
 Source: https://github.com/curtcox/ManimOnline/tree/main/video-series
 
-Text-to-speech reads names from code as ordinary English words, so the words you hear
-in these videos may be pronounced differently than programmers would say them.
+Text-to-speech reads names from code and terms from math as ordinary English words, so the
+words you hear in these videos may be pronounced differently than programmers or
+mathematicians would say them.
 ```
 
 ## Visual language

@@ -204,7 +204,7 @@ self.wait(0.5)
 >
 > That is a surprisingly powerful habit. When a scene feels rushed, you know exactly which line to stretch. When it drags, you know which wait to shorten. And when you later add a voice-over, like the one you are listening to now, you can match every animation to the length of a sentence.
 >
-> This voice-over, by the way, is synthetic: text-to-speech built from a model of Curt Cox's voice. It reads names from code as ordinary English words, so you may hear some of them, like animate and construct, pronounced differently than programmers would say them.
+> This voice-over, by the way, is synthetic: text-to-speech built from a model of Curt Cox's voice. It reads names from code and terms from math as ordinary English words, so you may hear some of them, like construct, pronounced differently than programmers or mathematicians would say them.
 
 ### 1.9 When things go wrong · ≈ 1:30
 
