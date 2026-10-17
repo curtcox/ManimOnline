@@ -272,3 +272,235 @@ class Segment_2_4(Segment):
         same = Text('the same square, all the way along', font_size=28, color=FOCUS).to_edge(DOWN, buff=0.8)
         self.play(FadeIn(same))
         self.finish()
+
+
+def verb_tag(verb, meaning):
+    """The method name, large, with its one-word meaning (top-left)."""
+    tag = VGroup(code_text(verb, 40, FOCUS), Text(meaning, font_size=30, color=SCAFFOLD))
+    return tag.arrange(RIGHT, buff=0.35, aligned_edge=DOWN).to_corner(UL, buff=0.4)
+
+
+def code_caption(source):
+    line = code_text(source, 26)
+    return VGroup(BackgroundRectangle(line, buff=0.12, fill_opacity=0.9), line).to_edge(DOWN, buff=0.35).shift(LEFT * 1.6)
+
+
+def dashed_box(mob, color=SCAFFOLD):
+    return DashedVMobject(SurroundingRectangle(mob, buff=0, color=color, stroke_width=2), num_dashes=24)
+
+
+class Segment_2_5(Segment):
+    """Putting things in their place."""
+    EPISODE, SEGMENT = 2, '2.5'
+
+    def construct(self):
+        box = Square(1.5, color=BLUE)
+        dot = Dot(color=FOCUS, radius=0.14)
+        self.play(Create(box), FadeIn(dot))
+        qr = qr_card('q02-03')
+        self.play(FadeIn(qr))
+        self.hold_until(0.11)
+
+        def step(verb, meaning, source, previous=None):
+            tag, caption = verb_tag(verb, meaning), code_caption(source)
+            if previous:
+                self.play(ReplacementTransform(previous[0], tag), ReplacementTransform(previous[1], caption))
+            else:
+                self.play(FadeIn(tag), FadeIn(caption))
+            return tag, caption
+
+        # [V2.5b] shift: by an offset
+        current = step('shift', 'by', 'dot.animate.shift(RIGHT * 3)')
+        ghost = dot.copy().set_opacity(0.3)
+        offset = Arrow(dot.get_center(), RIGHT * 3, buff=0.15, color=GREY_A)
+        self.add(ghost)
+        self.play(dot.animate.shift(RIGHT * 3), GrowArrow(offset), run_time=2)
+        self.play(FadeOut(qr))
+        self.play(FadeOut(VGroup(ghost, offset)))
+
+        # move_to: to a point
+        current = step('move_to', 'to', 'dot.animate.move_to(UP * 2 + LEFT * 4)', current)
+        target = UP * 2 + LEFT * 4
+        cross = VGroup(Line(LEFT * 0.3, RIGHT * 0.3), Line(DOWN * 0.3, UP * 0.3), Circle(radius=0.22)).set_stroke(GREY_A, 2).move_to(target)
+        self.play(Create(cross))
+        self.play(dot.animate.move_to(target), run_time=2)
+        self.play(FadeOut(cross))
+        self.hold_until(0.24)
+
+        # [V2.5c] next_to: beside another object, with a buffer
+        current = step('next_to', 'beside', 'dot.animate.next_to(box, DOWN, buff=0.3)', current)
+        box_bounds = dashed_box(box)
+        self.play(Create(box_bounds))
+        self.play(dot.animate.next_to(box, DOWN, buff=0.3), run_time=2)
+        dot_bounds = dashed_box(dot)
+        gap = BraceBetweenPoints(box.get_bottom() + RIGHT * 0.6, dot.get_top() + RIGHT * 0.6, RIGHT, buff=0.05,
+                                 color=FOCUS)
+        gap_tag = code_text('buff=0.3', 22, FOCUS).next_to(gap, RIGHT, buff=0.1)
+        self.play(Create(dot_bounds), GrowFromCenter(gap), FadeIn(gap_tag))
+        bound_note = Text('bounding boxes', font_size=26, color=SCAFFOLD).next_to(box, LEFT, buff=0.4)
+        self.play(FadeIn(bound_note))
+        self.hold_until(0.5)
+        self.play(FadeOut(VGroup(box_bounds, dot_bounds, gap, gap_tag, bound_note)))
+
+        # to_corner: against the frame, with a margin
+        current = step('to_corner', 'edge', 'dot.animate.to_corner(UR)', current)
+        margin = DashedVMobject(Rectangle(width=config.frame_width - 1, height=config.frame_height - 1), num_dashes=90)
+        margin.set_stroke(GREY_D, 2)
+        self.play(Create(margin))
+        self.play(dot.animate.to_corner(UR), run_time=2)
+        self.play(FadeOut(margin))
+
+        # [V2.5d] align_to: line up one edge
+        current = step('align_to', 'line up', 'box.animate.align_to(dot, UP)', current)
+        guide = DashedLine(LEFT * 7 + UP * dot.get_top()[1], RIGHT * 7 + UP * dot.get_top()[1], color=FOCUS)
+        self.play(Create(guide))
+        self.play(box.animate.align_to(dot, UP), run_time=2)
+        self.play(FadeOut(guide))
+        self.hold_until(0.63)
+
+        # .animate: jump versus glide
+        self.play(FadeOut(VGroup(*current, box, dot)))
+        jump, glide = Dot(LEFT * 5 + UP * 0.8, color=FOCUS, radius=0.14), Dot(LEFT * 5 + DOWN * 1.2, color=FOCUS, radius=0.14)
+        jump_code = code_text('dot.shift(RIGHT * 6)', 28).next_to(jump, UP, buff=0.3).align_to(jump, LEFT)
+        glide_code = code_text('self.play(dot.animate.shift(RIGHT * 6))', 28).next_to(glide, UP, buff=0.3).align_to(glide, LEFT)
+        self.play(FadeIn(VGroup(jump, glide, jump_code, glide_code)))
+        self.wait(0.5)
+        jump.shift(RIGHT * 6)
+        self.wait(0.5)
+        self.play(glide.animate.shift(RIGHT * 6), run_time=2)
+        tags = VGroup(Text('jumps', font_size=28, color=WARNING).next_to(jump, RIGHT),
+                      Text('glides', font_size=28, color=AFTER).next_to(glide, RIGHT))
+        self.play(FadeIn(tags))
+        self.hold_until(0.8)
+
+        # relative positions survive later moves
+        self.play(FadeOut(VGroup(jump, glide, jump_code, glide_code, tags)))
+        shape = Square(1.5, color=BLUE).move_to(LEFT * 3)
+        label = Text('next_to', font_size=26, color=AFTER).next_to(shape, UP)
+        label.add_updater(lambda m: m.next_to(shape, UP))
+        fixed = Text('move_to', font_size=26, color=WARNING).move_to(shape.get_top() + UP * 1.1)
+        self.play(Create(shape), FadeIn(label), FadeIn(fixed))
+        self.play(shape.animate.move_to(RIGHT * 3 + DOWN * 1.5), run_time=2.5)
+        self.finish()
+
+
+class Segment_2_6(Segment):
+    """Scale, rotate and measure."""
+    EPISODE, SEGMENT = 2, '2.6'
+
+    def construct(self):
+        home = LEFT * 3
+        square = Square(color=BLUE).move_to(home)
+        self.play(Create(square))
+
+        # [V2.6a] scale and rotate about the centre
+        ghost = square.copy().set_stroke(opacity=0.3)
+        self.add(ghost)
+        call = code_caption('square.scale(2)')
+        self.play(FadeIn(call), square.animate.scale(2), run_time=1.5)
+        self.play(Transform(call, code_caption('square.rotate(PI / 4)')),
+                  Rotate(square, PI / 4), run_time=1.5)
+        self.wait(0.5)
+        self.play(FadeOut(ghost), square.animate.become(Square(color=BLUE).move_to(home)))
+
+        # [V2.6b] about_edge pins a corner
+        pin = Dot(square.get_corner(DL), color=WARNING, radius=0.1)
+        self.play(Transform(call, code_caption('square.scale(2, about_edge=DL)')), FadeIn(pin, scale=3))
+        self.play(square.animate.scale(2, about_edge=DL), run_time=1.5)
+        self.play(square.animate.scale(0.5, about_edge=DL), run_time=1.5)
+        self.play(FadeOut(pin))
+        self.hold_until(0.38)
+
+        # radians and DEGREES
+        dial = Circle(radius=1.4, color=GREY_D).move_to(RIGHT * 3.6)
+        arm0 = Line(dial.get_center(), dial.get_center() + RIGHT * 1.4, color=GREY_A)
+        arm = arm0.copy().set_color(FOCUS)
+        angle = always_redraw(lambda: Arc(radius=0.5, start_angle=0, angle=arm.get_angle() % TAU,
+                                          arc_center=dial.get_center(), color=FOCUS))
+        self.play(Create(dial), Create(arm0), Create(arm), FadeIn(angle))
+        self.play(Rotate(arm, PI / 4, about_point=dial.get_center()))
+        equal = VGroup(code_text('PI / 4', 30, FOCUS), Text('=', font_size=30), code_text('45 * DEGREES', 30, FOCUS))
+        equal.arrange(RIGHT, buff=0.25).next_to(dial, DOWN, buff=0.4)
+        self.play(Write(equal))
+        self.play(Rotate(arm, TAU - PI / 4 - 0.001, about_point=dial.get_center()), run_time=2)
+        full = code_text('TAU = 2 * PI = a full turn', 26, GREY_A).next_to(equal, DOWN, buff=0.25)
+        self.play(FadeIn(full))
+        self.hold_until(0.62)
+
+        # [V2.6c] asking where the parts are
+        self.play(FadeOut(VGroup(dial, arm0, arm, angle, equal, full, call)))
+        self.play(square.animate.scale(1.5).move_to(LEFT * 1.5))
+        points = [('get_center()', square.get_center(), DOWN), ('get_top()', square.get_top(), UP),
+                  ('get_right()', square.get_right(), RIGHT), ('get_corner(UR)', square.get_corner(UR), UR)]
+        marks = VGroup()
+        for name, point, direction in points:
+            marker = Dot(point, color=FOCUS)
+            tag = code_text(name, 24, FOCUS).next_to(marker, direction, buff=0.15)
+            marks.add(VGroup(marker, tag))
+            self.play(FadeIn(marker, scale=3), FadeIn(tag), run_time=0.8)
+        width = BraceBetweenPoints(square.get_corner(DL), square.get_corner(DR), DOWN, color=GREY_A)
+        width_tag = code_text('square.width', 24, GREY_A).next_to(width, DOWN, buff=0.1)
+        self.play(GrowFromCenter(width), FadeIn(width_tag))
+        self.hold_until(0.82)
+
+        # [V2.6d] next_to is a point on a bounding box, a direction and a buffer
+        label = Text('label', font_size=30)
+        recipe = VGroup(code_text('get_top()', 26, FOCUS), Text('+', font_size=28), code_text('UP * buff', 26),
+                        Text('→ next_to(square, UP)', font_size=26, color=AFTER)).arrange(RIGHT, buff=0.2)
+        recipe.to_edge(RIGHT, buff=0.5).shift(UP * 2.8)
+        self.play(FadeOut(VGroup(marks[0], marks[2], marks[3], marks[1][1])), Write(recipe))
+        self.play(FadeIn(label.next_to(square, UP, buff=0.25), shift=DOWN * 0.3))
+        self.finish()
+
+
+class Segment_2_7(Segment):
+    """Groups."""
+    EPISODE, SEGMENT = 2, '2.7'
+
+    def construct(self):
+        # a VGroup: several objects acting as one
+        trio = VGroup(Circle(color=BLUE), Square(color=YELLOW), Triangle(color=RED)).scale(0.6)
+        trio[0].move_to(LEFT * 3 + UP * 1), trio[1].move_to(UP * 1.5), trio[2].move_to(RIGHT * 2.5 + DOWN * 0.5)
+        self.play(LaggedStart(*[Create(m) for m in trio], lag_ratio=0.2))
+        outline = always_redraw(lambda: dashed_box(trio).set_stroke(AFTER))
+        name = code_text('VGroup(circle, square, triangle)', 28, AFTER).to_edge(DOWN, buff=0.6)
+        self.play(FadeIn(outline), Write(name))
+        self.play(trio.animate.shift(LEFT * 1 + DOWN * 1).rotate(0.3), run_time=1.5)
+        self.play(trio.animate.set_color(PURPLE), run_time=1)
+        self.hold_until(0.27)
+
+        # arrange: rows and columns
+        self.play(trio.animate.arrange(RIGHT, buff=0.6).move_to(ORIGIN), run_time=1.5)
+        self.play(Transform(name, code_text('trio.arrange(DOWN, buff=0.3)', 28, AFTER).to_edge(DOWN, buff=0.6)))
+        self.play(trio.animate.arrange(DOWN, buff=0.3), run_time=1.5)
+        self.hold_until(0.45)
+
+        # [V2.7e] twelve dots from one line of Python
+        self.play(FadeOut(VGroup(trio, outline, name)))
+        code = code_text('Dot(radius=0.15, color=interpolate_color(BLUE, YELLOW, i / 11)) for i in range(12)', 22)
+        code.scale_to_fit_width(13).to_edge(UP, buff=0.4)
+        ramp = VGroup(*[Square(0.4).set_fill(interpolate_color(BLUE, YELLOW, i / 11), 1).set_stroke(width=0)
+                        for i in range(12)]).arrange(RIGHT, buff=0).next_to(code, DOWN, buff=0.25)
+        ticks = VGroup(*[Text(f'{i}/11', font_size=14, color=SCAFFOLD).next_to(sq, DOWN, buff=0.05)
+                         for i, sq in enumerate(ramp) if i in (0, 5, 11)])
+        self.play(FadeIn(code), FadeIn(ramp), FadeIn(ticks))
+
+        # [V2.7a-b] stacked at the origin, then a row, then a grid
+        dots = VGroup(*[Dot(radius=0.15, color=interpolate_color(BLUE, YELLOW, i / 11)) for i in range(12)])
+        self.play(FadeIn(dots))
+        count = Text('12 dots, all at the origin', font_size=26, color=SCAFFOLD).next_to(dots, DOWN, buff=0.4)
+        self.play(FadeIn(count))
+        self.play(FadeOut(count), dots.animate.arrange(RIGHT, buff=0.4), run_time=1.5)
+        qr = qr_card('q02-04')
+        self.play(FadeIn(qr))
+        self.play(dots.animate.arrange_in_grid(rows=3, buff=0.5), run_time=1.5)
+        self.hold_until(0.8)
+
+        # [V2.7c] the group moves as one piece, with its own bounds
+        self.play(FadeOut(qr), FadeOut(VGroup(code, ramp, ticks)))
+        bounds = always_redraw(lambda: dashed_box(dots).set_stroke(AFTER))
+        centre = always_redraw(lambda: Dot(dots.get_center(), color=AFTER, radius=0.06))
+        self.play(FadeIn(bounds), FadeIn(centre))
+        self.play(dots.animate.scale(1.5).rotate(PI / 6), run_time=2)
+        self.play(dots.animate.arrange(DOWN, buff=0.2).to_edge(LEFT), run_time=2)
+        self.finish()

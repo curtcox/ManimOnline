@@ -133,9 +133,15 @@ def qr_title(qr_id):
 def qr_card(qr_id, height=QR_HEIGHT, corner=DR):
     """QR code with its caption above it, placed in a corner of the frame."""
     code = qr_code(qr_id, height)
-    caption = Text(f'{qr_id} · {qr_title(qr_id)}', font_size=20)
+    words = f'{qr_id} · {qr_title(qr_id)}'
+    caption = Text(words, font_size=20)
     if caption.width > 4.2:
-        caption.scale_to_fit_width(4.2)
+        # Wrap long titles at the comma or space nearest the middle rather than shrinking them.
+        breaks = [i for i, ch in enumerate(words) if ch in ', ' and i > len(qr_id) + 3]
+        cut = min(breaks, key=lambda i: abs(i - len(words) / 2)) if breaks else len(words) // 2
+        caption = Text(words[:cut + 1].rstrip() + '\n' + words[cut + 1:].strip(), font_size=20, line_spacing=0.8)
+        if caption.width > 4.2:
+            caption.scale_to_fit_width(4.2)
     caption.next_to(code, UP, buff=0.12)
     caption.align_to(code, RIGHT if corner[0] > 0 else LEFT)
     card = VGroup(BackgroundRectangle(caption, fill_opacity=0.85, buff=0.06), caption, code)
