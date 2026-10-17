@@ -5,7 +5,9 @@ segment's narration: by default its word count at 145 words per minute plus any
 <break/> pauses, or the measured audio length when build/narration/durations.json
 exists ({"01.1": 52.3, ...}, seconds per segment). Visual beats are placed at
 fractions of that length with Segment.hold_until, so re-timing to the real
-ElevenLabs audio is a matter of writing durations.json and rendering again.
+ElevenLabs audio is a matter of writing durations.json and rendering again. Segment.at
+places a beat where the narration says a phrase, from the character timings that
+tools/narrate.py saves with each segment's audio (episode 7 on).
 
 Render from the repository root, with TeX on the PATH for MathTex, for example:
     manim -qh video-series/production/ep01.py Segment_1_1
@@ -79,6 +81,29 @@ def narration_seconds(episode, segment):
     return words / WORDS_PER_MINUTE * 60 + pauses
 
 
+def phrase_seconds(episode, segment, phrase, occurrence=0):
+    """When the narration reaches a phrase: from ElevenLabs' character timings (tools/narrate.py
+    sidecars) when they exist, else from its word position at the estimated speaking rate.
+    Matching ignores case; use the spoken text (pronunciation aliases applied)."""
+    sidecar = SERIES / 'build' / 'narration' / 'audio' / f'ep{episode:02d}' / f'{segment}.json'
+    alignment = json.loads(sidecar.read_text()).get('alignment') if sidecar.exists() else None
+    if alignment and alignment.get('starts'):
+        spoken = ''.join(alignment['characters']).lower()
+        start = -1
+        for _ in range(occurrence + 1):
+            start = spoken.find(phrase.lower(), start + 1)
+            if start < 0:
+                raise ValueError(f'{segment}: narration never says {phrase!r}')
+        return alignment['starts'][start]
+    text = re.sub(r'<[^>]+>', ' ', narration_text(episode, segment))
+    start = -1
+    for _ in range(occurrence + 1):
+        start = text.lower().find(phrase.lower(), start + 1)
+        if start < 0:
+            raise ValueError(f'{segment}: narration never says {phrase!r}')
+    return len(text[:start].split()) / max(len(text.split()), 1) * narration_seconds(episode, segment)
+
+
 class Segment(Scene):
     """A scene whose length follows its segment's narration."""
 
@@ -96,6 +121,12 @@ class Segment(Scene):
     def hold_until(self, fraction):
         """Wait until the given fraction of the narration has been spoken."""
         remaining = fraction * self.target - self.renderer.time
+        if remaining > 1 / 30:
+            self.wait(remaining)
+
+    def at(self, phrase, occurrence=0, lead=0.0):
+        """Wait until the narration starts saying phrase (lead seconds earlier, if given)."""
+        remaining = phrase_seconds(self.EPISODE, self.SEGMENT, phrase, occurrence) - lead - self.renderer.time
         if remaining > 1 / 30:
             self.wait(remaining)
 

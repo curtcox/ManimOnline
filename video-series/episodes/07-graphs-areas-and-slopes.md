@@ -22,8 +22,8 @@
 ### 7.1 Cold open: how much is under the curve? · ≈ 1:00
 
 **Visual.** [V7.1a] A yellow curve rises across a set of axes. The region beneath it
-is shaded with a question mark. [V7.1b] Four wide rectangles fill the region, with a
-staircase edge poking above and below the curve. [V7.1c] They split into eight,
+is shaded with a question mark. [V7.1b] Four wide rectangles fill the region; their
+heights come from left edges, so under this rising curve each leaves a gap (shaded red). [V7.1c] They split into eight,
 sixteen, forty, eighty, each time hugging the curve more tightly, until the staircase
 can no longer be seen. [V7.1d] The rectangles melt into a smooth shaded area and the
 value 22/3 appears.

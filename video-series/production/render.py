@@ -26,7 +26,7 @@ QUALITY_DIRS = {'-ql': '480p15', '-qm': '720p30', '-qh': '1080p60', '-qk': '2160
 
 def segments(episode):
     source = (PRODUCTION / f'ep{episode:02d}.py').read_text()
-    return re.findall(r'^class (Segment_\d+_\d+)\(Segment\)', source, re.M)
+    return re.findall(r'^class (Segment_\d+_\d+)\(Segment\b', source, re.M)
 
 
 def duration(path):

@@ -15,11 +15,13 @@ Narration is the blockquote text of each "### <n.m>" section, paragraphs kept, w
 pronunciations.pls are applied to the text before it is sent.
 
 Output (gitignored): build/narration/audio/epNN/<segment>.mp3 plus a .json sidecar holding a
-hash of everything that shaped the audio. A segment whose hash is unchanged is not generated
+hash of everything that shaped the audio and ElevenLabs' character timings (`alignment`), which
+production scenes use to place a beat at a spoken phrase (Segment.at). A segment whose hash is unchanged is not generated
 again, so re-running costs nothing unless the script, voice or settings changed (use --force
 to regenerate anyway). Each run measures every segment and updates
 build/narration/durations.json, which the production scenes use for their timing.
 """
+import base64
 import hashlib
 import json
 import os
@@ -155,8 +157,13 @@ def main(argv):
             key = api_key()
             vid = voice_id(key)
         print(f'{sid}: generating {len(texts[sid])} characters ...', flush=True)
-        audio.write_bytes(request(key, f'/v1/text-to-speech/{vid}?output_format={OUTPUT_FORMAT}', body))
-        sidecar.write_text(json.dumps({'hash': digest, 'voice': VOICE, 'model': MODEL, 'text': texts[sid]}, indent=1) + '\n')
+        result = json.loads(request(key, f'/v1/text-to-speech/{vid}/with-timestamps?output_format={OUTPUT_FORMAT}', body))
+        audio.write_bytes(base64.b64decode(result['audio_base64']))
+        alignment = result.get('alignment') or {}
+        sidecar.write_text(json.dumps({'hash': digest, 'voice': VOICE, 'model': MODEL, 'text': texts[sid],
+                                       'alignment': {'characters': alignment.get('characters', []),
+                                                     'starts': alignment.get('character_start_times_seconds', [])}},
+                                      indent=1) + '\n')
     if dry:
         print(f'{sum(len(texts[s]) for s in chosen)} characters in {len(chosen)} segment(s)')
         return 0

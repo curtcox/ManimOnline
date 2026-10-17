@@ -4,7 +4,7 @@ Manim Community scenes for the series' visuals, one file per episode
 (`epNN.py`) and one Scene class per script segment (`Segment_1_5` is segment 1.5).
 Shot ids in comments (`[V1.5b]`) match the **Visual.** notes in `../episodes/`.
 
-Episodes 1–6 are complete and narrated (see Narration); episode 1 is the template for
+Episodes 1–7 are complete and narrated (see Narration); episode 1 is the template for
 the others.
 
 ## Requirements
@@ -42,6 +42,12 @@ belong, and `self.finish()` holds until the end.
 real audio without code changes. Fractions were chosen from paragraph word counts, so
 small drifts within a segment are expected; adjust a `hold_until` if a beat lands early.
 
+From episode 7 on, beats use `self.at('phrase')` instead: `narrate.py` asks ElevenLabs for
+character timings and saves them in each segment's sidecar (`build/narration/audio/epNN/<segment>.json`),
+so a beat waits for the moment the narration starts saying that phrase. Match the spoken text,
+which has the pronunciation aliases applied ("ree mahn rectangles", not "Riemann"); an unknown
+phrase raises an error. Without timings, `at` falls back to the phrase's word position.
+
 ## Narration
 
 `python3 video-series/tools/narrate.py N` generates episode N's narration (ElevenLabs,
@@ -51,7 +57,7 @@ and is padded with silence to the scene's length (scenes run 0.8 s past their au
 when a fixed beat such as the 10-second QR wall needs it). Because the voice is faster than
 the 145 wpm estimate, re-check QR card times after narrating an episode: each card should
 stay up at least 8 s. A card shown again later in a segment (2.2, 3.4, 4.8) may be shorter
-the second time.
+the second time; 7.9 holds its repeat for 8 s past the narration instead.
 
 ## Conventions
 
@@ -138,6 +144,18 @@ the second time.
 - 5.6 replays the second step in slow motion, labelling the unmatched + and the new −.
 - 5.7 moves the lines under the first equals sign; the red guides slide with them and merge.
 - 5.9 uses the q05-05 figure (sides 2.4 and 1.6, so the hypotenuse square stays in frame).
+
+## Episode 7 notes
+
+- 7.1 and 7.5 use q07-02's left-edge rectangles; under a rising curve they only leave gaps, which
+  7.1 shades red.
+- 7.4's dots are the parabola's real anchors (plot samples ten points per tick: 61 for −3..3). The
+  1/x example passes an explicit step so the false line joins x = ±0.25; default sampling lands near
+  zero and shoots off the frame. The fix uses `discontinuities=[0], dt=0.25`.
+- 7.9 is a `LinearTransformationScene`. In Manim 0.21, `Scene.play` overwrites its `moving_mobjects`
+  list, so `apply_matrix` would try to move whatever the previous play animated; the segment clears
+  the list first. (q07-05 itself plays nothing before `apply_matrix`, so it is unaffected.)
+- 7.10's teaser zooms by scaling the grid of dots about one dot; episode 8 introduces the real camera.
 
 ## Episode 6 notes
 
