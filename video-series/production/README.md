@@ -4,7 +4,7 @@ Manim Community scenes for the series' visuals, one file per episode
 (`epNN.py`) and one Scene class per script segment (`Segment_1_5` is segment 1.5).
 Shot ids in comments (`[V1.5b]`) match the **Visual.** notes in `../episodes/`.
 
-Episodes 1–3 are complete; episode 1 is the template for the others.
+Episodes 1–4 are complete; episode 1 is the template for the others.
 
 ## Requirements
 
@@ -98,3 +98,15 @@ small drifts within a segment are expected; adjust a `hold_until` if a beat land
 - 3.4, 3.6 and 3.7 replay their snippets' own animations, captioned by their source lines.
 - 3.6's timing bars are drawn to scale (2.1 units per second) with a playhead that sweeps
   in step with the real `AnimationGroup`, `LaggedStart` and `Succession` calls.
+
+## Episode 4 notes
+
+- `lerp_levels`/`scaffold` draw de Casteljau's construction for any number of control
+  points (4.2, 4.6, 4.8, 4.9); `curve_upto` is the partial curve Create shows at t.
+- 4.1 zooms by scaling about the circle's edge (×10, ×100, ×1000): Manim's eight cubics stay
+  smooth while the 24-gon shows its corner at ×10.
+- 4.5 prints `Square(3).get_points()` itself, so the listed coordinates are the real ones.
+- 4.6 splits a cubic at t = ½ from the frozen scaffold, then calls `align_points` on the
+  q04-03 square so the new anchors are Manim's own.
+- 4.7's dashed tracks sample `path_along_arc` directly, the same function `path_arc` uses.
+  Its pairing demo reverses one circle: halfway through, the outline flattens.

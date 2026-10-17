@@ -486,3 +486,328 @@ class Segment_4_5(Segment):
         summary = Text('VMobject = vectorised mobject = list of cubic curves', font_size=32, color=FOCUS).to_edge(DOWN, buff=0.5)
         self.play(Write(summary))
         self.finish()
+
+
+def start_anchors(shape, color, radius=0.08):
+    """The first anchor of every cubic, as q04-03's anchor_dots draws them."""
+    points = shape.get_points()
+    return VGroup(*[Dot(points[i], radius=radius, color=color) for i in range(0, len(points), 4)])
+
+
+def counter(shape, words=None):
+    n = len(shape.get_points())
+    return Text(words or f'{n} points', font_size=28, color=SCAFFOLD).next_to(shape, DOWN, buff=0.7)
+
+
+class Segment_4_6(Segment):
+    """How a square becomes a circle."""
+    EPISODE, SEGMENT = 4, '4.6'
+
+    def construct(self):
+        # [V4.6a] the q04-03 layout: 4 curves on the left, 8 on the right
+        square = Square(3, color=BLUE).shift(LEFT * 3.5)
+        circle = Circle(radius=1.7, color=YELLOW).shift(RIGHT * 3.5)
+        square_dots, circle_dots = start_anchors(square, BLUE), start_anchors(circle, YELLOW)
+        square_count, circle_count = counter(square), counter(circle)
+        square_count.match_y(circle_count)
+        self.play(Create(square), Create(circle))
+        self.play(FadeIn(square_dots), FadeIn(circle_dots), FadeIn(square_count), FadeIn(circle_count))
+        self.hold_until(0.1)
+
+        # [V4.6b] pairing in order leaves half the circle's points without a partner
+        pairs = VGroup(*[DashedLine(square_dots[k].get_center(), circle_dots[k].get_center(), color=GREY_B, stroke_width=2)
+                         for k in range(4)])
+        self.play(Create(pairs), run_time=1.5)
+        orphans = circle_dots[4:]
+        no_partner = Text('no partner', font_size=26, color=WARNING).next_to(circle, UP, buff=0.3)
+        self.play(*[d.animate.set_color(WARNING).scale(1.6) for d in orphans], FadeIn(no_partner))
+        self.play(Indicate(orphans, color=WARNING))
+        self.hold_until(0.22)
+
+        # [V4.6c] de Casteljau stopped at t = 1/2: the scaffolding holds two smaller cubics
+        stash = VGroup(square, circle, square_dots, circle_dots, square_count, circle_count, pairs, no_partner)
+        self.play(FadeOut(stash))
+        p = [LEFT * 5 + DOWN * 2, LEFT * 3 + UP * 2.8, RIGHT * 3.5 + UP * 2.8, RIGHT * 5 + DOWN * 1.5]
+        t = ValueTracker(0)
+        controls = control_polygon(p)
+        trail = always_redraw(lambda: curve_upto(p, t.get_value()))
+        moving = always_redraw(lambda: scaffold(p, t.get_value()))
+        tip = always_redraw(lambda: Dot(lerp_levels(p, t.get_value())[-1][0], color=YELLOW, radius=0.11))
+        whole = CubicBezier(*p, color=GREY_D, stroke_width=4)
+        self.play(FadeIn(controls), Create(whole))
+        self.add(trail, moving, tip)
+        self.play(t.animate.set_value(0.5), run_time=3, rate_func=linear)
+        half = MathTex('t = \\tfrac{1}{2}', font_size=40, color=FOCUS).to_corner(UR, buff=0.5)
+        self.play(FadeIn(half))
+        levels = lerp_levels(p, 0.5)
+        left_half = [levels[0][0], levels[1][0], levels[2][0], levels[3][0]]
+        right_half = [levels[3][0], levels[2][1], levels[1][2], levels[0][3]]
+        frozen = VGroup(controls, whole, scaffold(p, 0.5), curve_upto(p, 0.5), Dot(levels[3][0], color=YELLOW, radius=0.11))
+        self.add(frozen)
+        self.remove(trail, moving, tip)
+        self.play(frozen.animate.fade(0.75))
+        halves = VGroup(
+            VGroup(CubicBezier(*left_half, color=OBJECT, stroke_width=7), handle_sticks(left_half, OBJECT)),
+            VGroup(CubicBezier(*right_half, color=AFTER, stroke_width=7), handle_sticks(right_half, AFTER)))
+        self.play(Create(halves[0]), run_time=1.5)
+        self.play(Create(halves[1]), run_time=1.5)
+        same = Text('two cubics, exactly the same curve', font_size=30, color=FOCUS).to_edge(DOWN, buff=0.5)
+        self.play(FadeIn(same))
+        self.hold_until(0.49)
+
+        # back to the square: four curves become eight, and nothing visible changes
+        self.play(FadeOut(VGroup(frozen, halves, same, half)))
+        self.play(FadeIn(VGroup(square, circle, square_dots, circle_dots, square_count, circle_count)))
+        self.play(*[d.animate.set_color(YELLOW).scale(1 / 1.6) for d in orphans])
+        square.align_points(circle)
+        new_dots = start_anchors(square, BLUE)
+        fresh = VGroup(*[d for d in new_dots if not any(np.allclose(d.get_center(), o.get_center()) for o in square_dots)])
+        self.add(square_dots)
+        self.play(LaggedStart(*[FadeIn(d, scale=3) for d in fresh], lag_ratio=0.2))
+        self.remove(square_dots, fresh)
+        square_dots = new_dots
+        self.add(square_dots)
+        self.play(Transform(square_count, counter(square).match_y(circle_count).set_color(AFTER)))
+        self.hold_until(0.63)
+
+        # [V4.6d] every point has a partner, and travels in a straight line
+        target = circle.copy().move_to(square)
+        target_dots = start_anchors(target, YELLOW)
+        tracks = VGroup(*[DashedLine(a.get_center(), b.get_center(), color=GREY_B, stroke_width=2, dash_length=0.08)
+                          for a, b in zip(square_dots, target_dots)])
+        code = VGroup(*[code_text(line, 22) for line in snippet_lines('ep04/03-matching-points.py', 18, 19).splitlines()])
+        code.arrange(DOWN, aligned_edge=LEFT, buff=0.12)
+        code.scale_to_fit_width(min(code.width, 10.2)).to_corner(DL, buff=0.45)
+        qr = qr_card('q04-03')
+        self.play(FadeOut(square_count), FadeOut(circle_count), Create(tracks), FadeIn(code), FadeIn(qr))
+        self.play(Transform(square, target), Transform(square_dots, target_dots), run_time=3)
+        self.wait(1)
+        relax = Text('corners glide in, edge midpoints bow out', font_size=26, color=GREY_A).next_to(square, UP, buff=0.4)
+        self.play(FadeIn(relax))
+        self.hold_until(0.86)
+
+        auto = Text('every Transform does this matching for you', font_size=28, color=FOCUS).next_to(code, UP, buff=0.35, aligned_edge=LEFT)
+        self.play(FadeOut(relax), FadeIn(auto))
+        self.finish()
+
+
+def arc_tracks(start, end, angle, color=GREY_B):
+    """The path each anchor takes under a Transform with the given path_arc."""
+    path = path_along_arc(angle) if angle else straight_path()
+    a, b = start_anchors(start, WHITE), start_anchors(end, WHITE)
+    tracks = VGroup()
+    for p, q in zip(a, b):
+        samples = [path(np.array([p.get_center()]), np.array([q.get_center()]), s)[0] for s in np.linspace(0, 1, 40)]
+        track = VMobject(color=color, stroke_width=2).set_points_as_corners(samples)
+        tracks.add(DashedVMobject(track, num_dashes=24))
+    return tracks
+
+
+class Segment_4_7(Segment):
+    """Not every path is straight."""
+    EPISODE, SEGMENT = 4, '4.7'
+
+    def construct(self):
+        # [V4.7a] a straight-path transform between two distant shapes
+        square = Square(2, color=BLUE).shift(LEFT * 4 + UP * 0.6)
+        circle = Circle(radius=1.1, color=YELLOW).shift(RIGHT * 4 + UP * 0.6)
+        ghost = DashedVMobject(circle.copy().set_stroke(opacity=0.5), num_dashes=30)
+        start = square.copy()
+        start.align_points(circle)
+        straight = arc_tracks(start, circle, 0)
+        label = code_text('Transform(square, circle)', 28).to_edge(UP, buff=0.5)
+        self.play(Create(square), Create(ghost), Write(label))
+        self.play(Create(straight))
+        moving = square.copy()
+        self.play(Transform(moving, circle), run_time=2)
+        self.wait(0.5)
+
+        # [V4.7b] the same transform with path_arc: the tracks bend into arcs
+        arcs = arc_tracks(start, circle, PI / 2)
+        arc_label = code_text('Transform(square, circle, path_arc=PI / 2)', 28).move_to(label)
+        self.play(FadeOut(moving), ReplacementTransform(straight, arcs), Transform(label, arc_label))
+        moving = square.copy()
+        self.play(Transform(moving, circle, path_arc=PI / 2), run_time=2)
+        self.wait(0.5)
+
+        # [V4.7c] q04-04: square, circle, triangle, star, and back along a half circle
+        self.play(FadeOut(VGroup(square, ghost, arcs, label, moving)))
+        shapes = [Square(color=BLUE), Circle(color=YELLOW), Triangle(color=RED), Star(color=GREEN)]
+        for i, shape in enumerate(shapes):
+            shape.move_to(LEFT * 4.5 + RIGHT * 3 * i + UP * 0.6)
+        code = code_text('self.play(Transform(current, target, path_arc=PI / 2), run_time=1.5)', 22)
+        code.scale_to_fit_width(min(code.width, 10.2)).to_corner(DL, buff=0.5)
+        qr = qr_card('q04-04')
+        self.play(FadeIn(qr), FadeIn(code))
+        current = shapes[0].copy()
+        self.play(Create(current))
+        self.bring_to_front(qr)
+        for target in shapes[1:]:
+            self.play(Transform(current, target, path_arc=PI / 2), run_time=1.5)
+        self.play(Transform(current, shapes[0], path_arc=-PI), run_time=2)
+        self.hold_until(0.4)
+
+        # [V4.7d] pairing order matters: one outline reversed twists through itself
+        self.play(FadeOut(VGroup(current, code)))
+        good_square, bad_square = Square(2.2, color=BLUE).shift(LEFT * 3.6 + UP * 0.3), Square(2.2, color=BLUE).shift(RIGHT * 2 + UP * 0.3)
+        good_circle = Circle(radius=1.25, color=YELLOW).move_to(good_square)
+        bad_circle = Circle(radius=1.25, color=YELLOW).move_to(bad_square).reverse_points()
+        starts = VGroup(*[Dot(m.get_points()[0], color=c, radius=0.1) for m, c in
+                          ((good_square, BLUE), (good_circle, FOCUS), (bad_square, BLUE), (bad_circle, FOCUS))])
+        arrows = VGroup()
+        for shape, color in ((good_square, BLUE), (good_circle, FOCUS), (bad_square, BLUE), (bad_circle, FOCUS)):
+            pts = shape.get_points()
+            arrows.add(Arrow(pts[0], pts[0] + normalize(pts[1] - pts[0]) * 0.7, buff=0, color=color, stroke_width=4,
+                             max_tip_length_to_length_ratio=0.4))
+        titles = VGroup(Text('same direction', font_size=26, color=AFTER).next_to(good_square, UP, buff=0.5),
+                        Text('opposite directions', font_size=26, color=WARNING).next_to(bad_square, UP, buff=0.5))
+        self.play(Create(good_square), Create(bad_square), FadeIn(titles))
+        self.play(FadeIn(starts[0]), FadeIn(starts[2]), GrowArrow(arrows[0]), GrowArrow(arrows[2]))
+        ghosts = VGroup(DashedVMobject(good_circle.copy().set_stroke(opacity=0.6), num_dashes=30),
+                        DashedVMobject(bad_circle.copy().set_stroke(opacity=0.6), num_dashes=30))
+        self.play(Create(ghosts), FadeIn(starts[1]), FadeIn(starts[3]), GrowArrow(arrows[1]), GrowArrow(arrows[3]))
+        self.wait(1)
+        self.play(FadeOut(VGroup(starts, arrows)))
+        for _ in range(2):
+            a, b = good_square.copy(), bad_square.copy()
+            self.add(a, b)
+            self.remove(good_square, bad_square)
+            self.play(Transform(a, good_circle), Transform(b, bad_circle), run_time=3)
+            self.wait(0.6)
+            self.remove(a, b)
+            self.add(good_square, bad_square)
+        twist = Text('pairing order matters', font_size=30, color=FOCUS).to_edge(DOWN, buff=0.6).shift(LEFT * 1.4)
+        fix = Text('fix: rotate or reverse one shape so the starts line up', font_size=24, color=SCAFFOLD).next_to(twist, DOWN, buff=0.15)
+        self.play(FadeIn(twist), FadeIn(fix))
+        self.finish()
+
+
+class Segment_4_8(Segment):
+    """Drawing a curve a piece at a time."""
+    EPISODE, SEGMENT = 4, '4.8'
+
+    def construct(self):
+        # [V4.8a] q04-05, moved and scaled clear of its QR code
+        def place(point):
+            return point * 0.85 + LEFT * 0.8 + UP * 0.2
+
+        start, handle1, handle2, end = [place(q) for q in (LEFT * 4 + UP, LEFT * 2 + UP * 4, RIGHT * 2 + DOWN * 2, RIGHT * 4 + UP)]
+        p = [start, handle1, handle2, end]
+        guides = VGroup(Line(start, handle1), Line(end, handle2), Dot(handle1), Dot(handle2)).set_color(GREY)
+        curve = CubicBezier(start, handle1, handle2, end, color=YELLOW, stroke_width=8)
+        qr = qr_card('q04-05')
+        self.play(Create(guides), FadeIn(qr))
+        self.play(Create(curve), run_time=3)
+        self.hold_until(0.08)
+
+        # [V4.8b] at every frame, Create shows the curve cut at t: de Casteljau again
+        t = ValueTracker(0)
+        cut = always_redraw(lambda: curve_upto(p, t.get_value(), YELLOW, 8))
+        moving = always_redraw(lambda: scaffold(p, t.get_value()))
+        tip = always_redraw(lambda: Dot(lerp_levels(p, t.get_value())[-1][0], color=YELLOW, radius=0.12))
+        readout = always_redraw(lambda: VGroup(MathTex('t =', font_size=36), DecimalNumber(t.get_value(), font_size=36))
+                                .arrange(RIGHT, buff=0.15).to_corner(UL, buff=0.5))
+        note = Text('each frame: the curve cut at t', font_size=28, color=GREY_A).to_edge(DOWN, buff=0.5).shift(LEFT * 1.4)
+        self.play(FadeOut(curve), FadeIn(note))
+        self.add(cut, moving, tip, readout)
+        for run in (6, 4):
+            t.set_value(0)
+            self.play(t.animate.set_value(1), run_time=run, rate_func=linear)
+            self.wait(0.8)
+        self.hold_until(0.37)
+
+        # [V4.8c] CubicBezier takes four points; set_points_smoothly works out the handles
+        self.remove(cut, moving, tip, readout)
+        self.add(curve)
+        self.play(FadeOut(note), FadeOut(qr), VGroup(curve, guides).animate.scale(0.6).to_corner(UR, buff=0.4))
+        cubic_code = code_text('CubicBezier(start, handle1, handle2, end)', 24, FOCUS).to_corner(UL, buff=0.4)
+        self.play(FadeIn(cubic_code))
+        self.wait(1.5)
+        path = VMobject(color=BLUE, stroke_width=6)
+        path.set_points_smoothly([LEFT * 5 + DOWN * 2, LEFT * 2.5 + DOWN, DOWN * 3, RIGHT * 2.5 + DOWN, RIGHT * 5 + DOWN * 2])
+        smooth_code = code_text('path.set_points_smoothly([...five points...])', 24, OBJECT).next_to(cubic_code, DOWN, buff=0.2,
+                                                                                                  aligned_edge=LEFT)
+        self.play(FadeIn(smooth_code))
+        self.play(Create(path), run_time=2)
+        dots, sticks = anchors_and_handles(path)
+        self.play(FadeIn(dots), Create(sticks), run_time=1.5)
+        pieces = Text(f'{len(path.get_points()) // 4} cubic pieces, joined smoothly', font_size=26, color=OBJECT)
+        pieces.next_to(path, UP, buff=0.3)
+        self.play(FadeIn(pieces))
+        self.wait(2)
+        self.play(FadeOut(dots), FadeOut(sticks), FadeOut(pieces))
+        self.hold_until(0.62)
+
+        # [V4.8d] point_from_proportion, and MoveAlongPath on any outline
+        halfway_dot = Dot(path.point_from_proportion(0.5), color=FOCUS, radius=0.12)
+        halfway_label = code_text('path.point_from_proportion(0.5)', 22, FOCUS).next_to(halfway_dot, DOWN, buff=0.25)
+        self.play(FadeIn(halfway_dot, scale=2), FadeIn(halfway_label))
+        self.wait(2)
+        self.play(FadeOut(VGroup(curve, guides, cubic_code, smooth_code, halfway_dot, halfway_label)), path.animate.scale(0.45).move_to(RIGHT * 4.3 + UP * 0.3))
+        tracks = [Circle(radius=1.2, color=GREY_B).move_to(LEFT * 4.3 + UP * 0.3),
+                  RegularPolygon(5, color=GREY_B).scale(1.3).move_to(UP * 0.3), path]
+        riders = [Dot(track.point_from_proportion(0), color=FOCUS, radius=0.12) for track in tracks]
+        self.play(*[Create(track) for track in tracks[:2]], *[FadeIn(r) for r in riders])
+        caption = code_text('MoveAlongPath(dot, path)', 26, FOCUS).to_edge(DOWN, buff=0.7)
+        self.play(FadeIn(caption))
+        for _ in range(2):
+            self.play(*[MoveAlongPath(r, track) for r, track in zip(riders, tracks)], run_time=3, rate_func=linear)
+        self.hold_until(0.88)
+
+        # scan it and move the handles
+        self.play(FadeIn(qr_card('q04-05')), caption.animate.shift(LEFT * 1.4))
+        self.finish()
+
+
+class Segment_4_9(Segment):
+    """Recap."""
+    EPISODE, SEGMENT = 4, '4.9'
+
+    def construct(self):
+        # [V4.9a] one tile per idea
+        p = [LEFT * 1.3 + DOWN * 0.8, LEFT * 0.7 + UP * 0.9, RIGHT * 0.7 + UP * 0.9, RIGHT * 1.3 + DOWN * 0.8]
+        pyramid = VGroup(control_polygon(p), scaffold(p, 0.4), curve_upto(p, 0.4, YELLOW, 4),
+                         Dot(lerp_levels(p, 0.4)[-1][0], color=YELLOW, radius=0.08))
+        q = [LEFT * 1.3 + DOWN * 0.6, LEFT * 0.6 + UP * 1.0, RIGHT * 1.2 + DOWN * 1.0, RIGHT * 1.3 + UP * 0.6]
+        handles = VGroup(CubicBezier(*q, color=OBJECT, stroke_width=5), handle_sticks(q))
+        ring = Circle(radius=0.95, color=OBJECT)
+        ring = VGroup(ring, start_anchors(ring, FOCUS, 0.06))
+        aligned = Square(1.7, color=OBJECT)
+        aligned.align_points(Circle())
+        aligned = VGroup(aligned, start_anchors(aligned, FOCUS, 0.06))
+        pen = VGroup(curve_upto(p, 0.65, YELLOW, 5), Dot(lerp_levels(p, 0.65)[-1][0], color=YELLOW, radius=0.09),
+                     CubicBezier(*p, color=GREY_D, stroke_width=2))
+        groups = VGroup(*[code_text(g, 20, c) for g, c in (('[a, h, h, a]', GREY_A), ('[a, h, h, a]', GREY_A), ('...', GREY_B))])
+        groups.arrange(DOWN, buff=0.12)
+        tiles = VGroup()
+        for art, words in ((pyramid, 'lerp, lerp, lerp'), (handles, 'anchors and handles'), (groups, 'outlines: points in fours'),
+                           (ring, 'a circle: 8 cubics'), (aligned, 'split until the counts match'), (pen, 'Create cuts at t')):
+            art.move_to(ORIGIN)
+            caption = Text(words, font_size=22, color=SCAFFOLD).next_to(art, DOWN, buff=0.25)
+            tiles.add(VGroup(art, caption))
+        for k, tile in enumerate(tiles):
+            tile.move_to([(-4.6, 0, 4.6)[k % 3], (1.7, -1.9)[k // 3], 0])
+        self.play(LaggedStart(*[FadeIn(t, shift=UP * 0.2) for t in tiles], lag_ratio=0.35), run_time=5)
+        self.hold_until(0.5)
+
+        # [V4.9b] the QR wall, 10 seconds
+        wall = qr_wall([f'q04-0{i}' for i in range(1, 6)])
+        heading = Text('Episode 4 · scan to open each scene', font_size=26, color=SCAFFOLD).to_corner(UL, buff=0.3)
+        self.play(FadeOut(tiles), FadeIn(wall), FadeIn(heading))
+        self.wait(10)
+
+        # [V4.9c] teaser: MANIM as outlines with anchors and handles, then filled (episode 5)
+        self.play(FadeOut(VGroup(wall, heading)))
+        word = Text('MANIM', font_size=150, weight=BOLD).set_fill(WHITE, 0).set_stroke(GREY_A, 2)
+        dots, sticks = VGroup(), VGroup()
+        for letter in word:
+            d, s = anchors_and_handles(letter, anchor_radius=0.04)
+            dots.add(d)
+            sticks.add(s)
+        self.play(Create(word), run_time=2)
+        self.play(FadeIn(dots), FadeIn(sticks))
+        self.wait(1)
+        self.play(FadeOut(dots), FadeOut(sticks), word.animate.set_fill(WHITE, 1).set_stroke(width=0))
+        nxt = Text('Next: Words and equations', font_size=34).to_edge(DOWN, buff=0.6)
+        self.play(Write(nxt))
+        self.finish()
