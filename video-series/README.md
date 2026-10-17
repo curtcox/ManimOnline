@@ -154,7 +154,8 @@ Workflow:
    ```
    Output goes to `build/narration/epNN/` (gitignored) plus `cues.csv`.
 2. **Graphics.** Build the production scenes in Manim Community from the **Visual**
-   notes. Where a shot reproduces a QR snippet, start from the snippet's code. If
+   notes; see [`production/README.md`](production/README.md) (episode 1 is done and is
+   the template). Where a shot reproduces a QR snippet, start from the snippet's code. If
    a production scene stays within what ManimOnline supports, consider adding it as
    an extra QR code: viewers can then open the very animation they are watching.
 3. **Timing.** Use each segment's audio length to set `run_time` and `wait` values.
@@ -178,3 +179,4 @@ snippet checks after any ManimOnline release.
 - `qr-links.md`, `qr-links.json` – generated CIDs and final URLs.
 - `pronunciations.pls` – ElevenLabs pronunciation dictionary.
 - `tools/` – snippet checks, link generation, narration extraction and QR images.
+- `production/` – Manim Community scenes for the graphics, one Scene per segment.
