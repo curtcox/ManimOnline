@@ -4,7 +4,7 @@ Manim Community scenes for the series' visuals, one file per episode
 (`epNN.py`) and one Scene class per script segment (`Segment_1_5` is segment 1.5).
 Shot ids in comments (`[V1.5b]`) match the **Visual.** notes in `../episodes/`.
 
-Episodes 1–8 are complete and narrated (see Narration); episode 1 is the template for
+Episodes 1–9 are complete and narrated (see Narration); episode 1 is the template for
 the others.
 
 ## Requirements
@@ -162,6 +162,17 @@ the second time; 7.9 holds its repeat for 8 s past the narration instead.
   surface is turned by the rotation `ThreeDCamera` would apply for its phi and theta (`view_matrix`).
 - q08-02 colours `zoomed_display.display_frame`: Manim Community's zoomed display is an image, and
   `set_color` on it raises NotImplementedError. manim-lite used to accept the earlier form; it now raises too.
+
+## Episode 9 notes
+
+- This episode tours the editor. 9.2 is a footage card; the other segments explain each feature
+  with diagrams rather than imitations of the interface, and the editor recordings listed in the
+  script can be cut in over them in the edit.
+- 9.6 shows the real Share link for q09-01 with Middle chosen (`ShareLinks.build` with LZString,
+  computed on the deployed site); 9.7 shows q09-01's real CID and the CID of the same document with
+  `Square(color=RED)`, both from `cidFor` in `tools/qr-links.mjs`. Recompute them if q09-01 changes.
+- 9.9 places q09-03's nodes where `dot -Tplain` and `neato -Tplain` (Graphviz 16.1) put them; neato
+  overlaps the boxes, as it does in the editor. The modl diagram is laid out by hand.
 
 ## Episode 7 notes
 

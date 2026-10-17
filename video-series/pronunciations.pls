@@ -20,6 +20,7 @@
   <lexeme><grapheme>JSON</grapheme><alias>jay son</alias></lexeme>
   <lexeme><grapheme>Graphviz</grapheme><alias>graph viz</alias></lexeme>
   <lexeme><grapheme>HashBin</grapheme><alias>hash bin</alias></lexeme>
+  <lexeme><grapheme>WebM</grapheme><alias>web em</alias></lexeme>
   <lexeme><grapheme>VGroup</grapheme><alias>V group</alias></lexeme>
   <lexeme><grapheme>VMobject</grapheme><alias>V mob ject</alias></lexeme>
   <lexeme><grapheme>Mobject</grapheme><alias>mob ject</alias></lexeme>
