@@ -33,7 +33,7 @@ to HashBin before publishing (see README.md, "QR codes"), then run the tool with
 | q05-02 | 5 | Letters and formula parts | 882 | yes | https://curtcox.github.io/ManimOnline/#AAAAAANy0dCZCi_Hh6mw7sasNzhbd_KNXLPlPGoQx4kvaPVTd4uc9yGVTY-9Kl7rcFtihhcNQpYFmqY7it40h1-kbHiOtw |
 | q05-03 | 5 | Solve for x | 772 | yes | https://curtcox.github.io/ManimOnline/#AAAAAAMEIRUKRbETjUZGT_KBhTtsyHxIG2lzHDu_wFmx7WucdTLYgYP8CNTXYMby8AgIOJgbSgPdTBuWs-IoDiE-BN0NzQ |
 | q05-04 | 5 | Titles and braces | 742 | yes | https://curtcox.github.io/ManimOnline/#AAAAAALm3na8c0mI4mzwfW6cD4BgUY5UsCfgf8G1cyPAvWJ-0JTYK-KCiCBKRtmuooaCZbYwuzKeesPOdnbMwynurpKVzA |
-| q05-05 | 5 | Pythagoras with labels | 1439 | yes | https://curtcox.github.io/ManimOnline/#AAAAAAWfPGr0w1AErWBsXgs84YgHhRQ346TKh82FdOtqCr3hDBo1ry2-VYnEhUIl-Hler64wncTdKHqk26l6k5xPkOt4lQ |
+| q05-05 | 5 | Pythagoras with labels | 1443 | yes | https://curtcox.github.io/ManimOnline/#AAAAAAWjZofZd7KCXSr34x0HeGaz6n-w1eo3rSgEyOx9pB0ohtRuS_P14qys8pwVfdivPXokGCJvV4ue_ip83y5wYx_afw |
 | q06-01 | 6 | A label that follows | 695 | yes | https://curtcox.github.io/ManimOnline/#AAAAAAK37p1p9M7nBRz-3Oa9Wc1x_EGlnJ2TXUIZgZ7F-_z_u3A0BhDv-fdDwl_OGAvc9t2ba-LXLQFb1zlWtG5NksZMBg |
 | q06-02 | 6 | Time-based updaters | 715 | yes | https://curtcox.github.io/ManimOnline/#AAAAAALLw3yNCkCwrM-svmbYMJABJ0T1P8zYAME_zcnPYAlAQ2u6o9Gl9cpAIpa0fSeRtRySIw1a90_V6mHDAQUVHKuQGA |
 | q06-03 | 6 | ValueTracker and DecimalNumber | 844 | yes | https://curtcox.github.io/ManimOnline/#AAAAAANMo698nqCvsqRbhgc6V-VDc6Zmi0qj0B4hp0EELlIQKQnES4JK-20J9OiWQUtlu6fCS4jdxnK6fkj5Fcq-Q7l9Vg |

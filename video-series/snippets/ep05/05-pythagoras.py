@@ -3,7 +3,7 @@ from manim import *
 
 class Pythagoras(Scene):
     def construct(self):
-        a, b = 3, 2
+        a, b = 2.4, 1.6
         A = LEFT * 4.5 + DOWN * 0.5
         B, C = A + RIGHT * a, A + UP * b
         triangle = Polygon(A, B, C, color=WHITE, fill_opacity=0.2)
