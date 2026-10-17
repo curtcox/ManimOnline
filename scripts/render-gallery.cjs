@@ -10,7 +10,7 @@ const root = path.resolve(__dirname, '..');
 const output = path.join(root, 'gallery/previews');
 const base = process.argv[2] || 'http://localhost:8000/';
 const selected = process.argv.slice(3);
-const runtimeFiles = ['src/manim-lite.py', 'src/unified-worker.js', 'src/manim-renderer.js',
+const runtimeFiles = ['src/manim-lite.py', 'src/text-outlines.json', 'src/unified-worker.js', 'src/manim-renderer.js',
   'src/manim-math.js', 'src/manim-typst.js', 'src/manim-video.js', 'src/modl.js', 'viz-global.js'];
 const digest = files => createHash('sha256').update(Buffer.concat(files.map(file => fs.readFileSync(path.join(root, file))))).digest('hex');
 const runtime = digest(runtimeFiles);

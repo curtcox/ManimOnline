@@ -778,8 +778,17 @@ self.play(stream.end_animation())""")
                     if isinstance(node.get('children'),list):
                         self.assertTrue(all(index<position for index in node['children']))
                         node['children']=[pool[index] for index in node['children']]
+            def cut(node):
+                # The renderer cuts partially drawn outlines from the pooled whole one.
+                if 'partial' in node:
+                    points=[point for curve in node['curves'] for point in curve]
+                    node['curves']=lite._partial_cubics(points,0,node.pop('partial'))[0]
+                for child in node.get('children',[]):
+                    cut(child)
             for frame in data['frames']:
                 frame['mobjects']=[pool[index] for index in frame['mobjects']]
+                for node in frame['mobjects']:
+                    cut(node)
             return data
         for name in ('vector_field_scene','chart_scene','text_layout_scene','three_d_scene'):
             if name == 'vector_field_scene' and not HAS_NUMPY:

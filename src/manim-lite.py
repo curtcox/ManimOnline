@@ -13244,7 +13244,10 @@ def interpolate(start, end, alpha):
     if isinstance(start, list) and isinstance(end, list) and len(start) == len(end):
         return [interpolate(a, b, alpha) for a, b in zip(start, end)]
     if isinstance(start, dict) and isinstance(end, dict):
-        result = {key: interpolate(value, end.get(key, value), alpha)
+        # Unchanged geometry (e.g. outlines that only move) is shared, not re-lerped:
+        # frames never mutate lists in place, and the pooled encoder reuses them.
+        result = {key: value if key in _GEOMETRY_KEYS and (value is end.get(key) or value == end.get(key))
+                  else interpolate(value, end.get(key, value), alpha)
                   for key, value in start.items()}
         _interpolate_gradient_styles(result, start, end, alpha)
         # Tip roles identify aligned child slots, rather than animated values.
@@ -13557,8 +13560,14 @@ def _align_path_snapshots(start, target):
             return path
         paths1, paths2 = [trimmed(path) for path in paths1], [trimmed(path) for path in paths2]
     if (start['type'] == target['type'] and not pointwise and not drawn and
-            (len(paths1) == len(paths2) == 1 and len(paths1[0]) == len(paths2[0]) if start['type'] == 'bezierpath'
+            (lengths1 == lengths2 if start['type'] == 'bezierpath'
              else len(start['vertices']) == len(target['vertices']))):
+        if start['type'] == 'bezierpath' and len(lengths1) > 1 and (
+                start.get('subpath_lengths') != lengths1 or target.get('subpath_lengths') != lengths2):
+            # Equal contours pair in order, in their own frames; explicit boundaries keep them
+            # apart where their ends meet mid-morph.
+            start['subpath_lengths'], target['subpath_lengths'] = lengths1[:], lengths2[:]
+            return start, target
         return None
     path_count = max(len(paths1), len(paths2))
     for paths in (paths1, paths2):
@@ -15122,6 +15131,14 @@ def _partial_node(node, progress):
     Returns False for nodes without a cubic outline of their own."""
     if node['type'] not in _PATH_TYPES or progress >= 1:
         return node['type'] in _PATH_TYPES
+    whole = node.get('curves')
+    if (progress <= 0 and node['type'] == 'bezierpath' and type(whole) is list and whole and not node.get('vertices')
+            and not node.get('subpath_lengths') and 'shaft_curves' not in node and '_curved_tip_path' not in node):
+        # Not started (e.g. members waiting in a lagged Write): Community's partial is the first point.
+        node['curves'] = [[list(whole[0][0]) for _ in range(4)]]
+        node['vertices'], node['subpath_lengths'] = [], None
+        _PARTIAL_SOURCES[id(node)] = (node, whole, 0.0, node['curves'])
+        return True
     try:
         subpaths = _path_subpaths(node, include_pending=False)
     except (KeyError, TypeError, ValueError):
@@ -15129,6 +15146,10 @@ def _partial_node(node, progress):
     points = [point for path in subpaths for curve in path for point in curve]
     if not points:
         return True
+    whole = node.get('curves') if (node['type'] == 'bezierpath' and not node.get('vertices') and
+                                   not any(key in node for key in ('shaft_curves', '_curved_tip_path')) and
+                                   isinstance(node.get('curves'), list) and
+                                   len(node['curves']) * 4 == len(points)) else None
     curves, first, last = _partial_cubics(points, 0, max(0.0, progress))
     lengths, offset = [], 0
     for path in subpaths:
@@ -15141,7 +15162,14 @@ def _partial_node(node, progress):
     # Exposure to scene code keeps live keys a snapshot lacks, so clear these explicitly.
     node['type'], node['curves'], node['vertices'] = 'bezierpath', curves, []
     node['subpath_lengths'] = lengths if len(lengths) > 1 else None
+    if whole is not None:
+        # Compact frames send the pooled whole outline and the progress; the renderer
+        # cuts it the same way (Community's pointwise_become_partial(0, progress)).
+        _PARTIAL_SOURCES[id(node)] = (node, whole, max(0.0, progress), curves)
     return True
+
+
+_PARTIAL_SOURCES = {}  # id(frame node) -> (node, whole curves, progress, cut curves)
 
 
 def _freeze_node_shafts(node):
@@ -15254,7 +15282,8 @@ class DrawBorderThenFill(Animation):
         return self.sample_members(alpha, linear)
 
     def sample_members(self, alpha, rate_func):
-        return [self._member_states(_freeze_node_shafts(_snapshot_copy(self.start)), alpha, rate_func, self._member)]
+        # Members only get new node keys: share their geometry arrays (frames pool them once).
+        return [self._member_states(_freeze_node_shafts(_node_copy(self.start)), alpha, rate_func, self._member)]
 
     def finish(self, scene=None):
         if scene is None or not self.reverse_rate_function:
@@ -27175,6 +27204,8 @@ def _flat_points(value):
 
 # Point-list attributes (and the per-frame rigid3d map) whose arrays are pooled at any size; the rest of such a node (its
 # style) is pooled separately as {'$base': index}, so styles repeat across frames once.
+_FRAME_VOLATILE_KEYS = ('position', 'angle', 'geometry_scale', 'opacity', 'fill_opacity', 'stroke_opacity',
+                        'stroke_width', 'draw_progress', 'partial', 'subpath_lengths')
 _GEOMETRY_KEYS = frozenset(('curves', 'vertices', 'shaft_curves', 'cloud', 'rigid3d', 'glyph_curves'))
 
 
@@ -27210,6 +27241,9 @@ def _pooled_json(result, default):
         if hit is not None and hit[0] is original:
             return hit[1]
         node = dict(original)
+        partial = _PARTIAL_SOURCES.get(id(original))
+        if partial is not None and partial[0] is original and original.get('curves') is partial[3]:
+            node['curves'], node['partial'] = partial[1], partial[2]
         raster = node.get('raster_background')
         if isinstance(raster,str):
             if raster not in images:
@@ -27225,9 +27259,14 @@ def _pooled_json(result, default):
             node['children'] = [intern(child) for child in children]
         geometry = {name: node.pop(name) for name in _GEOMETRY_KEYS
                     if type(node.get(name)) is dict}
-        if geometry:
+        if geometry or isinstance(node.get('children'), list) and node['children']:
             if 'children' in node:
                 geometry['children'] = node.pop('children')
+            # Pose and drawing progress change every frame of most animations; keeping
+            # them out of the shared base lets moving members reuse one base.
+            for name in _FRAME_VOLATILE_KEYS:
+                if name in node:
+                    geometry[name] = node.pop(name)
             node = {'$base': store(dumps(node)), **geometry}
         key = store(dumps(node))
         seen_nodes[id(original)] = (original, key)
@@ -28419,6 +28458,7 @@ def _arrayed(function, shape):
 
 
 def _render_scene(source, scene_name=None, compact=False):
+    _PARTIAL_SOURCES.clear()
     module = types.ModuleType('manim')
     module.__all__ = list(EXPORTS)
     for name in EXPORTS:
@@ -28475,7 +28515,11 @@ def _render_scene(source, scene_name=None, compact=False):
             return _plain_number(value)
         raise TypeError(f'Object of type {type(value).__name__} is not part of a preview frame')
     if compact:
-        return _pooled_json(result, plain)
+        try:
+            return _pooled_json(result, plain)
+        finally:
+            _PARTIAL_SOURCES.clear()
+    _PARTIAL_SOURCES.clear()
     return json.dumps(result, allow_nan=False, default=plain)
 
 

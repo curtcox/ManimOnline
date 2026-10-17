@@ -62,6 +62,33 @@ function svgPaintViewport(node) {
           y+(height-box[3]*sy)*align[match[2]]-box[1]*sy];
 }
 
+/**
+ * Community's pointwise_become_partial(0, progress) of a cubic list, as manim-lite's
+ * _partial_cubics computes it: whole curves by index, then the last one split at its
+ * residue (a single point when the residue is zero).
+ */
+function partialCurves(curves, progress) {
+  const count = curves.length;
+  if (!count || !(progress < 1)) return curves;
+  const b = Math.max(0, progress);
+  const last = Math.min(Math.trunc(b * count), count - 1);
+  const upper = b * count - last;
+  const result = curves.slice(0, last);
+  const curve = curves[last];
+  if (upper === 0) {
+    result.push([0, 1, 2, 3].map(() => curve[0].slice()));
+  } else if (upper < 1) {
+    const lerp = (p, q) => p.map((v, i) => v * (1 - upper) + q[i] * upper);
+    const [p0, p1, p2, p3] = curve;
+    const a = lerp(p0, p1), m = lerp(p1, p2), c = lerp(p2, p3);
+    const d = lerp(a, m), e = lerp(m, c);
+    result.push([p0, a, d, lerp(d, e)]);
+  } else {
+    result.push(curve);
+  }
+  return result;
+}
+
 function glyphPaintPoints(root, points, unitScale) {
   const frames = new Map();
   function visit(node, parent) {
@@ -962,7 +989,8 @@ const ManimRenderer = {
 
   renderBezierPath(mobject) {
     const path = this.renderCornerPath({ ...mobject, vertices: [] });
-    const curves = mobject.shaft_curves || mobject.curves || [];
+    let curves = mobject.shaft_curves || mobject.curves || [];
+    if (Number.isFinite(mobject.partial)) curves = partialCurves(curves, mobject.partial);
     const xy = point => `${point[0] * this.UNIT_SCALE},${point[1] * this.UNIT_SCALE}`;
     const commands = [];
     let start = null, end = null, offset = 0;
@@ -1127,6 +1155,8 @@ const ManimRenderer = {
 };
 
 // Export for use in modules or global scope
+ManimRenderer.partialCurves = partialCurves;
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = ManimRenderer;
 } else {

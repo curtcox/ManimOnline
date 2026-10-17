@@ -688,3 +688,16 @@ test('background stroke gradients retain local paint definitions and alpha stops
   assert.equal(back.getAttribute('fill'),'none');
   assert.equal(all.filter(e=>e.tag==='path').length,2);
 });
+
+test('partial outlines are cut like manim-lite _partial_cubics', () => {
+  const curves = [[[0, 0, 0], [1, 2, 0], [3, 2, 0], [4, 0, 0]], [[4, 0, 0], [5, -1, 0], [6, 1, 0], [7, 0, 0]],
+    [[7, 0, 0], [7, 1, 0], [8, 1, 0], [8, 0, 0]]];
+  // Expected values come from lite._partial_cubics(points, 0, b)[0].
+  assert.deepEqual(renderer.partialCurves(curves, 0), [[[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]]);
+  assert.deepEqual(renderer.partialCurves(curves, 0.25), [[[0, 0, 0], [0.75, 1.5, 0], [2.0625, 1.875, 0], [3.09375, 1.125, 0]]]);
+  assert.deepEqual(renderer.partialCurves(curves, 1 / 3), [curves[0], [[4, 0, 0], [4, 0, 0], [4, 0, 0], [4, 0, 0]]]);
+  assert.deepEqual(renderer.partialCurves(curves, 0.5), [curves[0], [[4, 0, 0], [4.5, -0.5, 0], [5, -0.25, 0], [5.5, 0, 0]]]);
+  assert.deepEqual(renderer.partialCurves(curves, 0.9), [curves[0], curves[1],
+    [[7, 0, 0], [7, 0.7000000000000002, 0], [7.49, 0.9100000000000001, 0], [7.784000000000001, 0.6299999999999998, 0]]]);
+  assert.equal(renderer.partialCurves(curves, 1), curves);
+});
