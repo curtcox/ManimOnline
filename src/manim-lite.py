@@ -15755,6 +15755,17 @@ class Transform(_PathOptions, Animation):
             # callbacks and checkpoints. Community's align_data leaves the mobject with the
             # aligned family structure and point counts.
             target = self.target
+            if self.__dict__.get('_split_glyphs'):
+                # The morph ran on glyph outlines. When the glyph families differ in structure,
+                # Community's align_data pads the mobject's: end with its glyph family.
+                def structure(mobject):
+                    split = mobject.copy()
+                    _glyph_family(split)
+                    return [len(member.children) for member in split.get_family()]
+                if structure(self.mobject) != structure(target):
+                    _glyph_family(self.mobject)
+                    target = target.copy()  # The target may be a scene object (TransformFromCopy).
+                    _glyph_family(target)
             if self.mobject._alignable(True) and target._alignable(True):
                 target = self.mobject._aligned_target(target, root_points=True)
                 # (A NumberLine's own points are its shaft, so it takes the target's style.)
