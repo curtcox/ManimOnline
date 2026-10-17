@@ -1897,7 +1897,13 @@ assert isinstance(t.get_value(), (int, float))""")
                                   (lambda: lite.MarkupText('<b>Bold</b> and <i>it</i>'),3.275732,.489453),
                                   (lambda: lite.MarkupText('ab\ncd\nef'),.685205,1.979004),
                                   (lambda: lite.MarkupText(LOREM),23.325049,1.366064),
-                                  (lambda: lite.MarkupText(LOREM,justify=True),24.944385,1.366064)):
+                                  (lambda: lite.MarkupText(LOREM,justify=True),24.944385,1.366064),
+                                  # DejaVu Sans Mono: Community's Linux monospace font (Code).
+                                  (lambda: lite.Text('def f(x):',font='Monospace'),3.412109,.594336),
+                                  (lambda: lite.Text('a\nbb  c',font='Monospace',line_spacing=.5),1.907422,1.132812),
+                                  (lambda: lite.Text('Bold',font='Monospace',weight=lite.BOLD),1.516016,.51582),
+                                  (lambda: lite.Paragraph('Short','A much longer line',alignment='right',line_spacing=1.5),
+                                   5.453564,1.871289)):
             text=make()
             self.assertAlmostEqual(text.get_width(),width,delta=1e-6)
             self.assertAlmostEqual(text.get_height(),height,delta=1e-6)

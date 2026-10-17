@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Build src/text-outlines.json from the Liberation Sans 2.1.5 TrueType fonts.
+"""Build src/text-outlines.json from Liberation Sans 2.1.5 and DejaVu Sans Mono 2.35.
 
-Usage: build-text-outlines.py FONT_DIR [OUTPUT]
+Usage: build-text-outlines.py LIBERATION_DIR DEJAVU_DIR [OUTPUT]
 
 Community's Text draws Pango/Cairo glyph outlines; on Linux the default sans font is
-Liberation Sans. The preview reproduces those outlines from the font's TrueType
-contours (font units, on/off-curve flags), advances and HarfBuzz kerning, for the
-characters the runtime has layout metrics for. Requires fontTools and uharfbuzz.
-The output is derived from fonts under the SIL Open Font License 1.1; keep
+Liberation Sans and the monospace font (Code) is DejaVu Sans Mono. The preview
+reproduces those outlines from the fonts' TrueType contours (font units, on/off-curve
+flags), advances and HarfBuzz kerning, for the characters the runtime has layout
+metrics for. Requires fontTools and uharfbuzz. The output is derived from fonts under
+the SIL Open Font License 1.1 and the Bitstream Vera license; keep
 src/text-outlines-LICENSE.txt next to it.
 """
 import ast
@@ -20,8 +21,11 @@ import unicodedata
 from fontTools.ttLib import TTFont
 import uharfbuzz as hb
 
-FACES = {'r': 'Regular', 'b': 'Bold', 'i': 'Italic', 'x': 'BoldItalic'}
-TABLES = ('_SANS_GLYPHS', '_SANS_BOLD_GLYPHS', '_SANS_ITALIC_GLYPHS', '_SANS_BOLD_ITALIC_GLYPHS')
+# Face keys: r(egular), b(old), i(talic), x (bold italic), prefixed by family: none for
+# Liberation Sans, m for DejaVu Sans Mono.
+FAMILIES = (('', 0, 'LiberationSans-{}.ttf', {'r': 'Regular', 'b': 'Bold', 'i': 'Italic', 'x': 'BoldItalic'}),
+            ('m', 1, 'DejaVuSansMono{}.ttf', {'r': '', 'b': '-Bold', 'i': '-Oblique', 'x': '-BoldOblique'}))
+TABLES = ('_SANS_GLYPHS', '_SANS_BOLD_GLYPHS', '_SANS_ITALIC_GLYPHS', '_SANS_BOLD_ITALIC_GLYPHS', '_MONO_GLYPHS')
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -92,14 +96,15 @@ def face_data(path, chars):
 
 
 def main():
-    if len(sys.argv) < 2:
+    if len(sys.argv) < 3:
         raise SystemExit(__doc__)
-    directory = sys.argv[1]
-    output = sys.argv[2] if len(sys.argv) > 2 else os.path.join(ROOT, 'src', 'text-outlines.json')
+    directories = sys.argv[1:3]
+    output = sys.argv[3] if len(sys.argv) > 3 else os.path.join(ROOT, 'src', 'text-outlines.json')
     chars = characters()
-    data = {'source': 'Liberation Sans 2.1.5 (SIL Open Font License 1.1; see text-outlines-LICENSE.txt)',
-            'faces': {key: face_data(os.path.join(directory, f'LiberationSans-{name}.ttf'), chars)
-                      for key, name in FACES.items()}}
+    data = {'source': 'Liberation Sans 2.1.5 (SIL Open Font License 1.1) and DejaVu Sans Mono 2.35 '
+                      '(Bitstream Vera license); see text-outlines-LICENSE.txt',
+            'faces': {prefix + key: face_data(os.path.join(directories[where], pattern.format(name)), chars)
+                      for prefix, where, pattern, faces in FAMILIES for key, name in faces.items()}}
     with open(output, 'w', encoding='utf-8') as handle:
         json.dump(data, handle, ensure_ascii=False, separators=(',', ':'), sort_keys=True)
         handle.write('\n')

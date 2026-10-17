@@ -1892,7 +1892,8 @@ class Mobject:
     def family_members_with_points(self):
         if sys._getframe(1).f_code.co_filename == _LIB_FILE:
             return [member for member in self._family() if member.has_points()]
-        # Scene code sees Community's members: a NumberLine has its own (shaft) points.
+        # Scene code sees Community's members: glyphs, and a NumberLine has its own (shaft) points.
+        self._explode_text_family()
         return [member for member in self._family() if member.__dict__.get('_number_line_role') != 'shaft'
                 and _call_as_scene(member.has_points)]
 
@@ -7679,8 +7680,9 @@ def _outline_faces():
 
 
 def _outline_font(font):
-    """Whether a font draws Liberation Sans outlines (the default and its sans aliases)."""
-    return (font or '').strip().lower() in _OUTLINE_FONTS
+    """Whether a font draws outlines: Liberation Sans (the default and its sans aliases) or
+    DejaVu Sans Mono (monospace fonts, as Community's Code)."""
+    return (font or '').strip().lower() in _OUTLINE_FONTS or _is_mono(font)
 
 
 def _pango_scale(font_size):
@@ -7835,13 +7837,13 @@ def _svg_glyph_points(ops, ox, oy):
     return closed
 
 
-def _shape_paragraph(paragraph, offset, faces, scale, boundaries, data):
+def _shape_paragraph(paragraph, offset, faces, scale, boundaries, data, family=''):
     """Pango's shaping of one paragraph: [char, face, pen, advance, run start] in Pango units,
     with HarfBuzz kerning between neighbours of the same face that no run boundary separates.
     None when a character has no outline."""
     shaped, x, previous, run = [], 0, None, 0
     for k, char in enumerate(paragraph):
-        face = faces if len(faces) == 1 else faces[offset + k]
+        face = family + (faces if len(faces) == 1 else faces[offset + k])
         table = data.get(face)
         if table is None:
             return None
@@ -7861,7 +7863,7 @@ def _shape_paragraph(paragraph, offset, faces, scale, boundaries, data):
     return shaped
 
 
-def _outline_layout(text, font_size, line_spacing, faces, runs=(), wrap=None, justify=False):
+def _outline_layout(text, font_size, line_spacing, faces, runs=(), wrap=None, justify=False, family=''):
     """Community's Text geometry from Liberation Sans outlines, or None when a character or
     face has no outline data. Text shapes each line (and each style run: t2c/t2f/t2s/t2w/
     gradient keys) separately, so kerning stops at run boundaries; MarkupText (wrap set)
@@ -7873,7 +7875,7 @@ def _outline_layout(text, font_size, line_spacing, faces, runs=(), wrap=None, ju
     boundaries = set(runs or ())
     rows, index = [], 0  # (shaped glyphs, baseline px, text start index)
     for paragraph in text.split('\n'):
-        shaped = _shape_paragraph(paragraph, index, faces, scale, () if wrap is not None else boundaries, data)
+        shaped = _shape_paragraph(paragraph, index, faces, scale, () if wrap is not None else boundaries, data, family)
         if shaped is None:
             return None
         if wrap is None:
@@ -7908,7 +7910,7 @@ def _outline_layout(text, font_size, line_spacing, faces, runs=(), wrap=None, ju
     if wrap is None:
         pitch = (font_size + font_size * line_spacing) / 4.8
     else:
-        table = data[faces[0]]
+        table = data[family + faces[0]]
         pitch = (_hb_scale(table['ascent'], scale, table['upem']) + _hb_scale(table['descent'], scale, table['upem'])) / 1024
     glyphs, lines = [], []
     for row, (line, shaped, start) in enumerate(rows):
@@ -7936,7 +7938,8 @@ def _outline_layout(text, font_size, line_spacing, faces, runs=(), wrap=None, ju
     return {'width': (max(xs) - min(xs)) * 0.05, 'height': (max(ys) - min(ys)) * 0.05,
             'lines': [{'text': line, 'x': -cx * 0.05, 'y': -(baseline - cy) * 0.05, 'length': width / 1024 * 0.05,
                        'start': start} for line, baseline, width, start in lines if line],
-            'em': scale / 1024 * 0.05, 'family': 'sans', 'outline': curves, 'outline_glyphs': owners}
+            'em': scale / 1024 * 0.05, 'family': 'mono' if family else 'sans', 'outline': curves,
+            'outline_glyphs': owners}
 
 
 _TEXT_LAYOUTS = {}
@@ -8028,8 +8031,8 @@ def _numeric_boxes(text, font_size):
 def _compute_text_layout(text, font_size, line_spacing, numeric, mono=False, wrap=None, justify=False, faces='r',
                          outline=False, runs=None):
     import re
-    if outline and not numeric and not mono:
-        layout = _outline_layout(text, font_size, line_spacing, faces, runs, wrap, justify)
+    if outline and not numeric:
+        layout = _outline_layout(text, font_size, line_spacing, faces, runs, wrap, justify, 'm' if mono else '')
         if layout is not None:
             return layout
     snapshot = {'text': text, 'font_size': font_size, '_line_spacing': line_spacing}
