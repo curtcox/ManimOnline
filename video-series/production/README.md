@@ -4,7 +4,7 @@ Manim Community scenes for the series' visuals, one file per episode
 (`epNN.py`) and one Scene class per script segment (`Segment_1_5` is segment 1.5).
 Shot ids in comments (`[V1.5b]`) match the **Visual.** notes in `../episodes/`.
 
-Episodes 1–10 are complete and narrated (see Narration); episode 1 is the template for
+Episodes 1–11 are complete and narrated (see Narration); episode 1 is the template for
 the others.
 
 ## Requirements
@@ -162,6 +162,18 @@ the second time; 7.9 holds its repeat for 8 s past the narration instead.
   surface is turned by the rotation `ThreeDCamera` would apply for its phi and theta (`view_matrix`).
 - q08-02 colours `zoomed_display.display_frame`: Manim Community's zoomed display is an image, and
   `set_color` on it raises NotImplementedError. manim-lite used to accept the earlier form; it now raises too.
+
+## Episode 11 notes
+
+- Everything drawn is Manim Community. manim-lite's side appears as a footage card (11.1, to be
+  replaced by a ManimOnline recording and overlaid in the edit) or as numbers measured by running the
+  same code through manim-lite: the fuzz chain's centre and width, the row width, and q11-03's 54
+  stream line start points (`LITE_STARTS`), all identical to six decimals. `ep11.py` lists them with
+  the line, fixture and test counts quoted on screen; re-measure after manim-lite changes.
+- 11.8 sets Text in Helvetica, which measures like Liberation Sans (0.980 at font size 96, the 0.22
+  reference). This machine's TeX gives Tex 0.691 rather than the reference 0.75; the segment shows the
+  live heights and makes no ratio claim beyond the narration's "about a third".
+- 11.11's error message is manim-lite's own (`CameraFrame.rotate`).
 
 ## Episode 10 notes
 

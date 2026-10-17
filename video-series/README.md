@@ -193,7 +193,7 @@ Workflow:
    `node video-series/tools/extract-narration.mjs` still writes plain-text narration
    and the `cues.csv` cue sheet.
 2. **Graphics.** Build the production scenes in Manim Community from the **Visual**
-   notes; see [`production/README.md`](production/README.md) (episodes 1–10 are done and
+   notes; see [`production/README.md`](production/README.md) (episodes 1–11 are done and
    narrated; episode 1 is the template). Where a shot reproduces a QR snippet, start from the snippet's code. If
    a production scene stays within what ManimOnline supports, consider adding it as
    an extra QR code: viewers can then open the very animation they are watching.
