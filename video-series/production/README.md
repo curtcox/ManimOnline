@@ -4,7 +4,7 @@ Manim Community scenes for the series' visuals, one file per episode
 (`epNN.py`) and one Scene class per script segment (`Segment_1_5` is segment 1.5).
 Shot ids in comments (`[V1.5b]`) match the **Visual.** notes in `../episodes/`.
 
-All twelve episodes are complete and narrated (see Narration); episode 1 is the template
+The trailer and all twelve episodes are complete and narrated (see Narration); episode 1 is the template
 for the others.
 
 ## Requirements
@@ -83,6 +83,14 @@ the second time; 7.9 holds its repeat for 8 s past the narration instead.
 - Regenerate `qr-matrices.json` whenever a snippet changes (its CID, and so its QR code,
   changes too): `node video-series/tools/qr-links.mjs` then
   `python video-series/tools/make_qr_svgs.py`.
+
+## Trailer notes
+
+- `ep00.py`'s 0.3 is a `ThreeDScene` (for the turning surface) with the default camera, so the 2D
+  montage shots and the QR card draw as usual. 0.2's editor recording is a footage card; its RED to
+  GREEN edit is also shown on the code excerpt itself.
+- q00-01 stays in the corner from 0.2 to the end; 0.4 enlarges it with the caption "Scan to edit this
+  trailer's final scene". `check_qr.py --wall 0` decodes it in the last segment.
 
 ## Episode 1 notes
 
