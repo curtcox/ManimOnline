@@ -15135,12 +15135,14 @@ class DrawBorderThenFill(Animation):
         color = self.outline_color or (node.get('stroke_color') if node.get('stroke_width') else node.get('color'))
         width, fill = node.get('stroke_width', 0), node.get('fill_opacity', 1)
         stroke = node.get('stroke_color', node.get('color'))
-        glyph = node['type'] in ('text', 'mathtex')
+        glyph = node['type'] == 'text'
         if phase == 0:
             node['fill_opacity'] = 0
             node['stroke_width'] = self.outline_width
             node['stroke_color'] = color
-            if glyph:
+            if node['type'] == 'mathtex':
+                node['draw_progress'] = sub  # The browser traces the formula's glyph paths.
+            elif glyph:
                 node['opacity'] *= sub
             elif not node.get('_fill_partial') and not _partial_node(node, sub):
                 node['draw_progress'] = sub

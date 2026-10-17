@@ -648,7 +648,7 @@ const ManimRenderer = {
 
     if (element && mobject.draw_progress !== undefined) {
       const progress = Math.max(0, Math.min(1, mobject.draw_progress));
-      for (const path of [element, ...element.querySelectorAll('line, path')]) {
+      for (const path of [element, ...element.querySelectorAll('line, path, rect, polygon, polyline, circle, ellipse')]) {
         // Normalized dashes must scale with the path, including preview resizing.
         // A non-scaling stroke makes the visible fraction depend on viewport size.
         if (this._strokeUnit === undefined) path.setAttribute('vector-effect', 'none');
@@ -1084,7 +1084,7 @@ const ManimRenderer = {
     group.setAttribute('transform', `scale(1, -1) scale(${scale}) translate(${-x - width / 2}, ${-y - height / 2})`);
     group.setAttribute('fill', mobject.color || '#FFFFFF');
     group.setAttribute('fill-opacity', mobject.fill_opacity ?? 1);
-    group.setAttribute('stroke', mobject.color || '#FFFFFF');
+    group.setAttribute('stroke', mobject.stroke_color || mobject.color || '#FFFFFF');
     group.setAttribute('stroke-width', mobject.stroke_width || 0);
     // Copy only inert vector geometry. No links, scripts, styles or font references.
     // Nested svg viewports clip the extension pieces of stretchy delimiters; text draws
