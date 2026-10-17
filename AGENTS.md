@@ -1449,10 +1449,18 @@ pitch = scaled ascent + descent, 500 px wrap, Pango's justify). Exploded glyphs 
 `_TextGlyph` (Text + VMobject, type bezierpath); unexploded leaves ship pooled
 `glyph_curves` that the renderer draws instead of <text>. Other fonts (serif, custom)
 keep the metric layout and browser text. The worker writes the JSON to
-/manim-lite/text-outlines.json. Reference checks: register the fonts with
+/manim-lite/text-outlines.json. MarkupText markup (`_markup_marks`): sizes multiply the
+1024ths-of-a-point size by 1.2^level (keywords set the level, big/small/larger/smaller step
+it, N% multiplies, numbers/pt are absolute) and truncate; sub/sup scale by the OS/2 script
+size at the current HarfBuzz scale (truncated) and shift by its offset; rise shifts in Pango
+units. Line extents use each run's ascent/descent plus shift. Underlines/strikethroughs are
+`_TextDecoration` path members emitted in Pango's renderer order (`_markup_decorations`:
+extend while style/position/thickness match, flush after the next differing run, or before
+it when the line color changes); underline position/thickness floor the post metrics,
+strikethrough sits ascent/3 up. Span colors are Pango (CSS) names, not Manim's palette. Reference checks: register the fonts with
 manimpango.register_font in the Community venv and pass font='Liberation Sans' /
 'DejaVu Sans Mono' (corpus harness: LIBERATION=1). Pango markup sizes, rise, sub/sup and
-underline/strikethrough paths are not modelled yet.
+underline="low"/"error" are drawn as single underlines.
 
 Formula outlines: `ManimMath.glyphLeaves` also converts each MathJax glyph leaf (path, rect,
 line, polygon; not clipped delimiter viewports or text) into cubic curves (`pathOutline`:

@@ -97,7 +97,12 @@ def face_data(path, chars):
             if delta:
                 kerning[a + b] = delta
     # Pango's line height for MarkupText: HarfBuzz's scaled hhea ascender plus descender.
+    os2, post = font['OS/2'], font['post']
+    # MarkupText: <sub>/<sup> scale and shift by the OS/2 script metrics; underlines use post.
     return {'upem': upem, 'ascent': font['hhea'].ascent, 'descent': -font['hhea'].descent,
+            'subscript': [os2.ySubscriptYSize, os2.ySubscriptYOffset],
+            'superscript': [os2.ySuperscriptYSize, os2.ySuperscriptYOffset],
+            'underline': [post.underlinePosition, post.underlineThickness],
             'glyphs': glyphs, 'kerning': kerning}
 
 

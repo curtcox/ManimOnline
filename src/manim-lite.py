@@ -7600,7 +7600,7 @@ def _face(weight=None, slant=None):
 
 
 def _glyph_table(font, face='r'):
-    if _is_mono(font):
+    if _is_mono(font) or face.isupper():
         return _MONO_GLYPHS
     return {'r': _SANS_GLYPHS, 'b': _SANS_BOLD_GLYPHS, 'i': _SANS_ITALIC_GLYPHS, 'x': _SANS_BOLD_ITALIC_GLYPHS}[face]
 
@@ -7617,7 +7617,7 @@ def _pen_positions(text, faces, mono=False, start=0):
     positions, x, previous = [], 0, None
     for k, char in enumerate(text):
         face = faces if len(faces) == 1 else faces[start + k]
-        if previous is not None and not mono and previous[1] == face:
+        if previous is not None and not mono and previous[1] == face and face.islower():
             x += _SANS_KERNING[face].get(previous[0] + char, 0)
         positions.append(x)
         x += _glyph_box(char, _glyph_table('mono' if mono else '', face))[0]
@@ -7851,13 +7851,15 @@ def _svg_glyph_points(ops, ox, oy):
     return closed
 
 
-def _shape_paragraph(paragraph, offset, faces, scale, boundaries, data, family=''):
-    """Pango's shaping of one paragraph: [char, face, pen, advance, run start] in Pango units,
-    with HarfBuzz kerning between neighbours of the same face that no run boundary separates.
-    None when a character has no outline."""
+def _shape_paragraph(paragraph, offset, faces, scale, boundaries, data, family='', marks=None):
+    """Pango's shaping of one paragraph: [char, face, pen, advance, run start, scale, shift] in
+    Pango units, with HarfBuzz kerning between neighbours of the same face and size that no
+    run boundary separates. Uppercase face codes are monospace (MarkupText <tt>). None when
+    a character has no outline."""
     shaped, x, previous, run = [], 0, None, 0
     for k, char in enumerate(paragraph):
-        face = family + (faces if len(faces) == 1 else faces[offset + k])
+        code = faces if len(faces) == 1 else faces[offset + k]
+        face = 'm' + code.lower() if code.isupper() else family + code
         table = data.get(face)
         if table is None:
             return None
@@ -7866,30 +7868,98 @@ def _shape_paragraph(paragraph, offset, faces, scale, boundaries, data, family='
                 char = ' '  # Other spaces take the width of the space glyph here.
             else:
                 return None
+        size, shift = scale, 0
+        if marks is not None:
+            size, shift = math.floor(marks[offset + k][0] * 96 / 72 + 0.5), marks[offset + k][1]
         if offset + k in boundaries:
             run = x  # manimpango shapes each run as its own layout, drawn from here.
-        elif previous is not None and previous[1] == face:
-            x += _hb_scale(table['kerning'].get(previous[0] + char, 0), scale, table['upem'])
-        advance = _hb_scale(table['glyphs'][char][0], scale, table['upem'])
-        shaped.append([char, face, x, advance, run])
+        elif previous is not None and previous[1:] == (face, size):
+            x += _hb_scale(table['kerning'].get(previous[0] + char, 0), size, table['upem'])
+        advance = _hb_scale(table['glyphs'][char][0], size, table['upem'])
+        shaped.append([char, face, x, advance, run, size, shift])
         x += advance
-        previous = (char, face)
+        previous = (char, face, size)
     return shaped
 
 
-def _outline_layout(text, font_size, line_spacing, faces, runs=(), wrap=None, justify=False, family=''):
+def _markup_decorations(shaped, start, baseline, marks, data, emit):
+    """Pango's underline and strikethrough rectangles for one MarkupText line, in the order
+    its renderer draws them: a run's line extends the pending one when style, position and
+    thickness match, and a pending line is drawn after the next run that changes it (or at
+    the end of the line). baseline is in absolute Pango units; emit(points, color, char, after)
+    is called in drawing order, after is how many of the line's glyphs precede the line."""
+    runs = []
+    for k, item in enumerate(shaped):
+        mark = marks[start + k]
+        key = (item[1], item[5], item[6]) + tuple(mark[2:6]) + (mark[6],)
+        if runs and runs[-1][0] == key:
+            runs[-1][2] = k
+        else:
+            runs.append([key, k, k])
+    pending = {'u': None, 's': None}
+    def rect(x0, x1, top, height):
+        # cairo_rectangle in Pango units, rounded to Cairo's 1/256 px grid.
+        a, b = round((30720 + x0) / 4), round((30720 + x1) / 4)
+        c, d = round(top / 4), round((top + height) / 4)
+        return _svg_glyph_points((('M', (a, c)), ('L', (b, c)), ('L', (b, d)), ('L', (a, d)), ('Z',)), 0, 0)
+    def flush(kind, after):
+        line = pending[kind]
+        if line is None:
+            return
+        x0, x1, top, height, style, color, char = line
+        if style == 'double':
+            emit(rect(x0, x1, top + 2 * height, height), color, char, after)
+        emit(rect(x0, x1, top, height), color, char, after)
+        pending[kind] = None
+    for key, first, last in runs:
+        (face, size, shift), (underline, ucolor, strike, scolor, color) = key[:3], key[3:]
+        table = data[face]
+        for kind, own in (('u', ucolor), ('s', scolor)):
+            # A changed line color is a new part: Pango draws the pending line before the run.
+            line = pending[kind]
+            if line is not None and line[5] != (own or color):
+                flush(kind, first)
+        x0, x1 = shaped[first][2], shaped[last][2] + shaped[last][3]
+        y = baseline - shift
+        char = start + last
+        lines = {}
+        if underline:
+            position, thickness = table['underline']
+            lines['u'] = [x0, x1, y + math.floor(-position * size / table['upem']),
+                          math.floor(thickness * size / table['upem']), underline, ucolor or color, char]
+        if strike:
+            thickness = table['underline'][1]
+            lines['s'] = [x0, x1, y - _hb_scale(table['ascent'], size, table['upem']) // 3,
+                          math.floor(thickness * size / table['upem'] + 0.5), 'single', scolor or color, char]
+        for kind in ('u', 's'):
+            new, old = lines.get(kind), pending[kind]
+            if new is None:
+                flush(kind, last + 1)
+            elif old is not None and old[2:6] == new[2:6] and old[1] == x0:
+                old[1], old[6] = x1, char
+            else:
+                flush(kind, last + 1)
+                pending[kind] = new
+    flush('u', len(shaped))
+    flush('s', len(shaped))
+
+
+def _outline_layout(text, font_size, line_spacing, faces, runs=(), wrap=None, justify=False, family='', marks=None):
     """Community's Text geometry from Liberation Sans outlines, or None when a character or
     face has no outline data. Text shapes each line (and each style run: t2c/t2f/t2s/t2w/
     gradient keys) separately, so kerning stops at run boundaries; MarkupText (wrap set)
-    is one Pango layout 500 px wide, with Pango's line height, wrapping and justification."""
+    is one Pango layout 500 px wide, with Pango's line height, wrapping, justification,
+    sizes, baseline shifts, underlines and strikethroughs (marks)."""
     data = _outline_faces()
     if not data:
         return None
     scale = _pango_scale(font_size)
     boundaries = set(runs or ())
-    rows, index = [], 0  # (shaped glyphs, baseline px, text start index)
+    marks = marks if wrap is not None else None
+    rows, index = [], 0  # (line text, shaped glyphs, text start index)
     for paragraph in text.split('\n'):
-        shaped = _shape_paragraph(paragraph, index, faces, scale, () if wrap is not None else boundaries, data, family)
+        shaped = _shape_paragraph(paragraph, index, faces, scale, () if wrap is not None else boundaries, data,
+                                  family, marks)
         if shaped is None:
             return None
         if wrap is None:
@@ -7921,36 +7991,63 @@ def _outline_layout(text, font_size, line_spacing, faces, runs=(), wrap=None, ju
                             item[2] += shift
                 rows.append((paragraph[first:last], line, index + first))
         index += len(paragraph) + 1
-    if wrap is None:
-        pitch = (font_size + font_size * line_spacing) / 4.8
-    else:
-        table = data[family + faces[0]]
-        pitch = (_hb_scale(table['ascent'], scale, table['upem']) + _hb_scale(table['descent'], scale, table['upem'])) / 1024
-    glyphs, lines = [], []
+    pieces, lines = [], []  # pieces: (char index, points, decoration color or False)
+    def emit(points, color, char):
+        pieces.append((char, points, color))
+    baseline_units, previous_descent = None, 0
+    base_face = (faces[0] if len(faces) == 1 else faces[0]) if faces else 'r'
     for row, (line, shaped, start) in enumerate(rows):
-        # cairo_move_to snaps each line's and run's origin to Cairo's 1/256 px grid.
-        baseline = row * pitch if wrap is not None else round(row * pitch * 256) / 256
-        for k, (char, face, pen, _, run) in enumerate(shaped):
-            if not char.isspace():
-                x = round(run / 4) / 256 + (pen - run) / 1024
-                points = _svg_glyph_points(_cairo_glyph(face, char, scale)[1], x, baseline)
-                if points:
-                    glyphs.append((start + k, points))
+        if wrap is None:
+            # cairo_move_to snaps each line's and run's origin to Cairo's 1/256 px grid.
+            baseline = round(row * (font_size + font_size * line_spacing) / 4.8 * 256) / 256
+        else:
+            # Pango's line extents: the largest HarfBuzz ascent and descent of its runs, with
+            # baseline shifts (rise, sub/sup) included.
+            default = data['m' + base_face.lower() if base_face.isupper() else family + base_face]
+            extents = [(_hb_scale(data[item[1]]['ascent'], item[5], data[item[1]]['upem']) + item[6],
+                        _hb_scale(data[item[1]]['descent'], item[5], data[item[1]]['upem']) - item[6])
+                       for item in shaped] or [(_hb_scale(default['ascent'], scale, default['upem']),
+                                                _hb_scale(default['descent'], scale, default['upem']))]
+            ascent, descent = max(e[0] for e in extents), max(e[1] for e in extents)
+            baseline_units = 20480 + ascent if baseline_units is None else baseline_units + previous_descent + ascent
+            previous_descent = descent
+            baseline = baseline_units / 1024
+        def glyphs(items, offset):
+            for k, (char, face, pen, _, run, size, shift) in enumerate(items, offset):
+                if not char.isspace():
+                    x = round(run / 4) / 256 + (pen - run) / 1024
+                    points = _svg_glyph_points(_cairo_glyph(face, char, size)[1], 30 + x, baseline - shift / 1024)
+                    if points:
+                        pieces.append((start + k, points, False))
+        if marks is not None and any(mark[2] or mark[4] for mark in marks[start:start + len(shaped)]):
+            # Underlines and strikethroughs are drawn between the glyph runs, as Pango does.
+            ordered, drawn = [], 0
+            _markup_decorations(shaped, start, baseline_units, marks, data,
+                                lambda *entry: ordered.append(entry))
+            for points, color, char, after in ordered:
+                if after > drawn:
+                    glyphs(shaped[drawn:after], drawn)
+                    drawn = after
+                emit(points, color, char)
+            glyphs(shaped[drawn:], drawn)
+        else:
+            glyphs(shaped, 0)
         width = shaped[-1][2] + shaped[-1][3] if shaped else 0
         lines.append((line, baseline, width, start))
-    if not glyphs:
+    if not pieces:
         return {'width': 0, 'height': 0, 'lines': [], 'em': font_size * TEXT_EM_PER_POINT, 'outline': [],
                 'outline_glyphs': []}
-    xs = [p[0] for _, points in glyphs for p in points]
-    ys = [p[1] for _, points in glyphs for p in points]
+    xs = [p[0] for _, points, _ in pieces for p in points]
+    ys = [p[1] for _, points, _ in pieces for p in points]
     cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
     curves, owners = [], []
-    for char_index, points in glyphs:
+    for char_index, points, color in pieces:
         local = [((p[0] - cx) * 0.05, -(p[1] - cy) * 0.05, 0.0) for p in points]
         curves.extend([list(map(list, local[i:i + 4])) for i in range(0, len(local), 4)])
-        owners.append((char_index, len(local) // 4))
+        owners.append((char_index, len(local) // 4) if color is False else (char_index, len(local) // 4, color))
     return {'width': (max(xs) - min(xs)) * 0.05, 'height': (max(ys) - min(ys)) * 0.05,
-            'lines': [{'text': line, 'x': -cx * 0.05, 'y': -(baseline - cy) * 0.05, 'length': width / 1024 * 0.05,
+            'lines': [{'text': line, 'x': (30 - cx) * 0.05,
+                       'y': -(baseline - cy) * 0.05, 'length': width / 1024 * 0.05,
                        'start': start} for line, baseline, width, start in lines if line],
             'em': scale / 1024 * 0.05, 'family': 'mono' if family else 'sans', 'outline': curves,
             'outline_glyphs': owners}
@@ -7963,7 +8060,8 @@ def _text_layout_key(snapshot):
     numeric = '_number_format' in snapshot or bool(snapshot.get('_tex_glyph'))
     return (snapshot['text'], snapshot['font_size'], snapshot.get('_line_spacing', .3), numeric,
             _is_mono(snapshot.get('font')), snapshot.get('_wrap_width'), bool(snapshot.get('justify')),
-            _snapshot_faces(snapshot), _outline_font(snapshot.get('font')), snapshot.get('_runs'))
+            _snapshot_faces(snapshot), _outline_font(snapshot.get('font')), snapshot.get('_runs'),
+            snapshot.get('_marks'))
 
 
 def _text_layout(snapshot):
@@ -8113,11 +8211,11 @@ def _numeric_boxes(text, font_size):
 
 
 def _compute_text_layout(text, font_size, line_spacing, numeric, mono=False, wrap=None, justify=False, faces='r',
-                         outline=False, runs=None):
+                         outline=False, runs=None, marks=None):
     import re
     if outline:
         layout = (_number_outline_layout(text, font_size) if numeric else
-                  _outline_layout(text, font_size, line_spacing, faces, runs, wrap, justify, 'm' if mono else ''))
+                  _outline_layout(text, font_size, line_spacing, faces, runs, wrap, justify, 'm' if mono else '', marks))
         if layout is not None:
             return layout
     snapshot = {'text': text, 'font_size': font_size, '_line_spacing': line_spacing}
@@ -8299,7 +8397,7 @@ def _math_glyphs(text, font_size, part_strings=None):
 class Text(Mobject):
     # Community's defaults; non-default values are stored (and exported) per text.
     font, slant, weight = '', NORMAL, NORMAL
-    _frame_excluded = ('_text_maps', '_line_spacing_value', '_original_text', '_faces', '_runs')
+    _frame_excluded = ('_text_maps', '_line_spacing_value', '_original_text', '_faces', '_runs', '_marks')
     _TEXT_MAPS = ('t2c', 't2f', 't2g', 't2s', 't2w')
 
     def __getattr__(self, name):
@@ -8426,13 +8524,16 @@ class Text(Mobject):
         uses each face's advances and kerning as Pango does."""
         text = self.__dict__['text']
         weights, slants = [self.weight] * len(text), [self.slant] * len(text)
+        mono = [False] * len(text)
         for i, style in enumerate(markup):
             weights[i], slants[i] = style.get('weight', weights[i]), style.get('slant', slants[i])
+            mono[i] = 'font' in style and _is_mono(style['font']) and not _is_mono(self.font)
         for mapping, values in ((t2w, weights), (t2s, slants)):
             for key, value in (mapping or {}).items():
                 for i in self._indices(key):
                     values[i] = value
-        faces = ''.join(_face(w, s) for w, s in zip(weights, slants))
+        # Uppercase codes are monospace runs inside sans text (MarkupText <tt>).
+        faces = ''.join(_face(w, s).upper() if m else _face(w, s) for w, s, m in zip(weights, slants, mono))
         if faces != _face(self.weight, self.slant) * len(text):
             self.__dict__['_faces'] = faces
 
@@ -8589,10 +8690,21 @@ def _outline_glyphs(leaf, layout, make, index_key='_char_index'):
     (a, b), (c, d) = _glyph_matrix(leaf.__dict__)
     e, f = leaf.__dict__.get('glyph_depth') or (0, 0)
     outline, at, glyphs = layout['outline'], 0, []
-    for char_index, count in layout['outline_glyphs']:
+    for entry in layout['outline_glyphs']:
+        char_index, count = entry[:2]
         points = [(a * p[0] + b * p[1], c * p[0] + d * p[1], e * p[0] + f * p[1])
                   for curve in outline[at:at + count] for p in curve]
         at += count
+        if len(entry) > 2:
+            # A MarkupText underline or strikethrough: Community's extra path submobject.
+            line = _copy_glyph_paint(leaf, _TextDecoration())
+            line.set_points(points)
+            line._decor_char = char_index
+            if entry[2]:
+                line.set_color(entry[2])
+                line._decor_color = entry[2]
+            glyphs.append(line)
+            continue
         glyph = _copy_glyph_paint(leaf, make(char_index))
         glyph.set_points(points)
         center = glyph._geometry_center()
@@ -8605,6 +8717,11 @@ def _outline_glyphs(leaf, layout, make, index_key='_char_index'):
     return glyphs
 
 
+class _TextDecoration(VMobject):
+    """A MarkupText underline or strikethrough path (Community's VMobjectFromSVGPath)."""
+    _frame_excluded = ('_decor_char', '_decor_color')
+
+
 class _TextGlyph(Text, VMobject):
     """One glyph of a Text: Community's outline path (VMobjectFromSVGPath), with the
     glyph bookkeeping (character, index, font size) of the preview's Text leaves."""
@@ -8613,6 +8730,69 @@ class _TextGlyph(Text, VMobject):
 
     def __len__(self):
         return 1
+
+
+# Pango's named colors (CSS names) for markup spans.
+_PANGO_COLORS = dict(zip(*[iter("""aliceblue f0f8ff antiquewhite faebd7 aqua 00ffff aquamarine 7fffd4 azure f0ffff beige f5f5dc bisque ffe4c4 black 000000 blanchedalmond ffebcd blue 0000ff blueviolet 8a2be2 brown a52a2a burlywood deb887 cadetblue 5f9ea0 chartreuse 7fff00 chocolate d2691e coral ff7f50 cornflowerblue 6495ed cornsilk fff8dc crimson dc143c cyan 00ffff darkblue 00008b darkcyan 008b8b darkgoldenrod b8860b darkgray a9a9a9 darkgreen 006400 darkgrey a9a9a9 darkkhaki bdb76b darkmagenta 8b008b darkolivegreen 556b2f darkorange ff8c00 darkorchid 9932cc darkred 8b0000 darksalmon e9967a darkseagreen 8fbc8f darkslateblue 483d8b darkslategray 2f4f4f darkslategrey 2f4f4f darkturquoise 00ced1 darkviolet 9400d3 deeppink ff1493 deepskyblue 00bfff dimgray 696969 dimgrey 696969 dodgerblue 1e90ff firebrick b22222 floralwhite fffaf0 forestgreen 228b22 fuchsia ff00ff gainsboro dcdcdc ghostwhite f8f8ff gold ffd700 goldenrod daa520 gray 808080 grey 808080 green 008000 greenyellow adff2f honeydew f0fff0 hotpink ff69b4 indianred cd5c5c indigo 4b0082 ivory fffff0 khaki f0e68c lavender e6e6fa lavenderblush fff0f5 lawngreen 7cfc00 lemonchiffon fffacd lightblue add8e6 lightcoral f08080 lightcyan e0ffff lightgoldenrodyellow fafad2 lightgray d3d3d3 lightgreen 90ee90 lightgrey d3d3d3 lightpink ffb6c1 lightsalmon ffa07a lightseagreen 20b2aa lightskyblue 87cefa lightslategray 778899 lightslategrey 778899 lightsteelblue b0c4de lightyellow ffffe0 lime 00ff00 limegreen 32cd32 linen faf0e6 magenta ff00ff maroon 800000 mediumaquamarine 66cdaa mediumblue 0000cd mediumorchid ba55d3 mediumpurple 9370db mediumseagreen 3cb371 mediumslateblue 7b68ee mediumspringgreen 00fa9a mediumturquoise 48d1cc mediumvioletred c71585 midnightblue 191970 mintcream f5fffa mistyrose ffe4e1 moccasin ffe4b5 navajowhite ffdead navy 000080 oldlace fdf5e6 olive 808000 olivedrab 6b8e23 orange ffa500 orangered ff4500 orchid da70d6 palegoldenrod eee8aa palegreen 98fb98 paleturquoise afeeee palevioletred db7093 papayawhip ffefd5 peachpuff ffdab9 peru cd853f pink ffc0cb plum dda0dd powderblue b0e0e6 purple 800080 rebeccapurple 663399 red ff0000 rosybrown bc8f8f royalblue 4169e1 saddlebrown 8b4513 salmon fa8072 sandybrown f4a460 seagreen 2e8b57 seashell fff5ee sienna a0522d silver c0c0c0 skyblue 87ceeb slateblue 6a5acd slategray 708090 slategrey 708090 snow fffafa springgreen 00ff7f steelblue 4682b4 tan d2b48c teal 008080 thistle d8bfd8 tomato ff6347 turquoise 40e0d0 violet ee82ee wheat f5deb3 white ffffff whitesmoke f5f5f5 yellow ffff00 yellowgreen 9acd32""".split())] * 2))
+
+
+def _pango_color(value):
+    """A markup color as Pango parses it: #rgb/#rrggbb (case-insensitive) or a CSS name."""
+    value = value.strip()
+    if value.startswith('#'):
+        digits = value[1:]
+        if len(digits) == 3:
+            digits = ''.join(c * 2 for c in digits)
+        return '#' + digits.upper()
+    named = _PANGO_COLORS.get(value.replace(' ', '').lower())
+    return '#' + named.upper() if named else value
+
+
+_PANGO_SIZE_LEVELS = {'xx-small': -3, 'x-small': -2, 'small': -1, 'medium': 0, 'large': 1, 'x-large': 2,
+                      'xx-large': 3}
+
+
+def _markup_size(style, value):
+    """Pango's size attribute: keywords set the scale level (1.2 per step), larger/smaller
+    step it, N% multiplies, Npt or a bare number (1024ths of a point) set the size."""
+    value = value.strip()
+    if value in _PANGO_SIZE_LEVELS:
+        style['level'] = _PANGO_SIZE_LEVELS[value]
+    elif value in ('larger', 'smaller'):
+        style['level'] = style.get('level', 0) + (1 if value == 'larger' else -1)
+    elif value.endswith('%'):
+        style['factor'] = style.get('factor', 1) * float(value[:-1]) / 100
+    elif value.endswith('pt'):
+        style['absolute'] = int(float(value[:-2]) * 1024)
+    else:
+        style['absolute'] = int(float(value))
+
+
+def _markup_marks(styles, font_size):
+    """Per character (size in 1024ths of a point, baseline shift up in Pango units, underline,
+    underline color, strikethrough, strikethrough color) for markup that changes them, else None."""
+    keys = ('level', 'factor', 'absolute', 'scripts', 'rise', 'underline', 'strikethrough')
+    if not any(key in style for style in styles for key in keys):
+        return None
+    base = math.floor(font_size / 4.8 * 1024 + 0.5)
+    table = _outline_faces().get('r')
+    marks = []
+    for style in styles:
+        size = style.get('absolute', base) * 1.2 ** style.get('level', 0) * style.get('factor', 1)
+        size, shift = int(size), 0
+        for script in style.get('scripts', ()):
+            # Pango's font_scale/baseline_shift subscript and superscript use the font's OS/2
+            # sizes and offsets at the current size.
+            if table is None:
+                break
+            scale = math.floor(size * 96 / 72 + 0.5)
+            ratio = _hb_scale(table['subscript'][0] if script == 'sub' else table['superscript'][0], scale, table['upem'])
+            offset = _hb_scale(table['subscript'][1] if script == 'sub' else table['superscript'][1], scale, table['upem'])
+            shift += -offset if script == 'sub' else offset
+            size = int(size * ratio / scale)
+        marks.append((size, shift + style.get('rise', 0), style.get('underline'), style.get('underline_color'),
+                      bool(style.get('strikethrough')), style.get('strikethrough_color'), style.get('color')))
+    return tuple(marks)
 
 
 class MarkupText(Text):
@@ -8688,36 +8868,65 @@ class MarkupText(Text):
                     style['weight'] = BOLD
                 elif tag in ('i', 'italic'):
                     style['slant'] = ITALIC
+                elif tag in ('big', 'small'):
+                    style['level'] = style.get('level', 0) + (1 if tag == 'big' else -1)
+                elif tag in ('sub', 'sup'):
+                    style['scripts'] = style.get('scripts', ()) + (tag,)
+                elif tag == 'u':
+                    style['underline'] = 'single'
+                elif tag == 's':
+                    style['strikethrough'] = True
+                elif tag == 'tt':
+                    style['font'] = 'monospace'
                 elif tag == 'span':
                     for name, value in re.findall(r'(\w+)\s*=\s*["\']([^"\']*)["\']', attributes):
                         if name in ('foreground', 'fgcolor', 'color'):
-                            style['color'] = value.upper() if value.startswith('#') else _PALETTE.get(value.upper(), value)
+                            style['color'] = _pango_color(value)
                         elif name in ('font_weight', 'weight') and value.upper() in globals():
                             style['weight'] = value.upper()
                         elif name in ('font_style', 'style') and value.upper() in (NORMAL, ITALIC, OBLIQUE):
                             style['slant'] = value.upper()
                         elif name in ('font', 'font_family', 'face'):
                             style['font'] = value
+                        elif name in ('size', 'font_size'):
+                            _markup_size(style, value)
+                        elif name == 'rise':
+                            style['rise'] = int(float(value[:-2]) * 1024) if value.endswith('pt') else int(value)
+                        elif name == 'underline' and value in ('single', 'double', 'low', 'error', 'none', 'true', 'false'):
+                            style['underline'] = {'none': None, 'false': None, 'true': 'single'}.get(value, value)
+                        elif name == 'strikethrough':
+                            style['strikethrough'] = value == 'true'
+                        elif name in ('underline_color', 'strikethrough_color'):
+                            style[name] = _pango_color(value)
                 stack.append(style)
         if names:
             raise invalid
-        # Community lays markup out in a Pango box 500 px wide: 25 scene units at any size.
+        # Community lays out markup in a Pango box 500 px wide: 25 scene units at any size.
         self._wrap_width = 25.0
         self.__dict__['_markup_styles'] = styles
+        marks = _markup_marks(styles, kwargs.get('font_size', DEFAULT_FONT_SIZE))
+        if marks:
+            self.__dict__['_marks'] = marks
         super().__init__(plain, **kwargs)
         self.markup = str(text)
         if any(styles):
             self._explode()
             for glyph in self.children:
+                if '_char_index' not in glyph.__dict__:
+                    # An underline or strikethrough takes its run's color unless it has its own.
+                    color = styles[glyph.__dict__['_decor_char']].get('color') if '_decor_char' in glyph.__dict__ else None
+                    if color and not glyph.__dict__.get('_decor_color'):
+                        glyph.set_color(color)
+                    continue
                 for key, value in styles[glyph._char_index].items():
                     if key == 'color':
                         glyph.set_color(value)
-                    else:
+                    elif key in ('weight', 'slant', 'font'):
                         setattr(glyph, key, value)
         if colors or gradients:
             # Community slices the displayed characters (spaces excluded).
             self._explode()
-            chars = [glyph for glyph in self.children if glyph.text.strip()]
+            chars = [glyph for glyph in self.children if '_char_index' in glyph.__dict__ and glyph.text.strip()]
             for start, end, (color,) in colors:
                 for glyph in chars[start:end]:
                     glyph.set_color(self._parse_color(color))

@@ -1916,6 +1916,22 @@ assert isinstance(t.get_value(), (int, float))""")
             text=make()
             self.assertAlmostEqual(text.get_width(),width,delta=1e-6)
             self.assertAlmostEqual(text.get_height(),height,delta=1e-6)
+        # Pango markup: size keywords, <big>/<small>, <sub>/<sup> (OS/2 script metrics), rise,
+        # and underline/strikethrough paths as extra submobjects (Manim 0.22, Liberation Sans).
+        for markup,width,height,points in (('<span size="x-large">H</span>H',1.041699,.660352,[52,52]),
+                                           ('H<sub>2</sub>O and H<sub>3</sub>O<sup>+</sup>',4.141455,.664453,
+                                            [52,100,84,148,88,108,52,120,84,52]),
+                                           ('a<span rise="5000">b</span>c',1.029004,.733594,[148,108,76]),
+                                           ('<span underline="double">foo</span>',.926758,.650586,[76,68,68,20,20]),
+                                           ('<s>foo</s>',.926758,.488867,[76,68,68,20]),
+                                           ('<big>big</big> <small>small</small>',2.460449,.745703,
+                                            [108,40,140,128,132,148,20,20])):
+            text=lite.MarkupText(markup)
+            self.assertAlmostEqual(text.get_width(),width,delta=1e-6)
+            self.assertAlmostEqual(text.get_height(),height,delta=1e-6)
+            self.assertEqual([len(member.get_points()) for member in text],points)
+        colored=lite.MarkupText('<span underline="single" underline_color="green">xx</span>y')
+        self.assertEqual([str(member.color) for member in colored],['#FFFFFF','#FFFFFF','#008000','#FFFFFF'])
         # DecimalNumber: Computer Modern outlines as dvisvgm writes them, arranged as Community
         # does (a comma drops the row's center).
         for number,options,width,center in ((3.14,{},.788583,0),(1000,{},1.660035,-.037235),
