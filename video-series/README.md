@@ -162,14 +162,23 @@ Workflow:
    ```bash
    node video-series/tools/qr-links.mjs --payloads video-series/build/payloads
    ```
-3. Upload every payload that needs it. The simplest route is the editor itself: open
-   each editor link from `build/payloads/editor-links.tsv`, confirm the Scene field
-   matches the manifest (blank, except `q09-01`, which saves `Middle`), do not drag
-   modl nodes (`q09-04`'s link pins its layout), choose
+3. Upload every payload that needs it. The quickest route is one batch upload:
+   ```bash
+   node video-series/tools/qr-links.mjs --upload
+   ```
+   writes exactly the files to upload, and nothing else, to `build/hashbin-upload/`
+   (named by QR id; the tool checks that each file hashes to its link's CID). Drop the
+   whole folder's contents on https://hashbin.org/upload, set one retention period for
+   all of them, and upload. HashBin computes each CID from the file's raw bytes, so do
+   not open and re-save the files. Saving spends HashBin account funds; choose a long
+   retention period, because an expired payload breaks a printed QR code. Inline payloads
+   (64 bytes or fewer, such as `q12-03`) need no upload: their content is inside the CID.
+
+   Alternatively, save them one at a time from the editor: open each editor link from
+   `build/payloads/editor-links.tsv` (written by `--payloads video-series/build/payloads`),
+   confirm the Scene field matches the manifest (blank, except `q09-01`, which saves
+   `Middle`), do not drag modl nodes (`q09-04`'s link pins its layout), choose
    **Save to HashBin**, and confirm that the returned CID equals the expected one.
-   Saving spends HashBin account funds; choose a long retention period, because an
-   expired payload breaks a printed QR code. Inline payloads (64 bytes or fewer, such
-   as `q12-03`) need no upload: their content is inside the CID.
 4. Confirm that everything resolves:
    ```bash
    node video-series/tools/qr-links.mjs --check

@@ -4,17 +4,19 @@
  *
  *   node video-series/tools/qr-links.mjs                 write qr-links.json and qr-links.md
  *   node video-series/tools/qr-links.mjs --payloads DIR  also write the exact bytes to upload
+ *   node video-series/tools/qr-links.mjs --upload [DIR]  only those files, for hashbin.org/upload
  *   node video-series/tools/qr-links.mjs --check         ask 256t.us whether each payload is stored
  *
  * A CID is a 6-byte length prefix plus either the content itself (64 bytes or fewer)
  * or its SHA-512 digest, so it is known before anything is uploaded. Payloads are
  * built with the editor's own HashBinDocuments.serialize, so saving a snippet with
  * the editor's "Save to HashBin" button (using the editor link listed for it, with the
- * same scene selection) stores exactly these bytes and therefore this CID.
+ * same scene selection) stores exactly these bytes and therefore this CID. Dropping the
+ * --upload folder's files on https://hashbin.org/upload stores the same bytes in one go.
  */
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -88,6 +90,27 @@ if (payloadIndex >= 0) {
   }
   writeFileSync(join(dir, 'editor-links.tsv'), 'id\texpected CID\teditor link (open, check the scene field, Save to HashBin)\n' + links.join('\n') + '\n');
   console.log(`Wrote ${links.length} payloads and editor-links.tsv to ${dir}`);
+}
+
+const uploadIndex = args.indexOf('--upload');
+if (uploadIndex >= 0) {
+  // Only the files to drop on https://hashbin.org/upload: its CID is computed from each
+  // file's raw bytes, so every file must be exactly its payload and nothing else may be here.
+  const dir = resolve(args[uploadIndex + 1] || join(SERIES, 'build', 'hashbin-upload'));
+  mkdirSync(dir, { recursive: true });
+  for (const name of readdirSync(dir)) {
+    if (/^q\d\d-\d\d\.(json|txt)$/.test(name)) unlinkSync(join(dir, name));
+  }
+  const stray = readdirSync(dir).filter(name => !name.startsWith('.'));
+  if (stray.length) throw new Error(`${dir} holds other files (${stray.join(', ')}); they would be uploaded too.`);
+  const pending = rows.filter(row => !row.inline);
+  for (const row of pending) {
+    const file = join(dir, `${row.id}.${row.payload.startsWith('{') ? 'json' : 'txt'}`);
+    writeFileSync(file, row.payload);
+    if (cidFor(readFileSync(file, 'utf8')) !== row.cid) throw new Error(`${file} does not hash to ${row.cid}.`);
+  }
+  const total = pending.reduce((sum, row) => sum + row.bytes, 0);
+  console.log(`Wrote ${pending.length} files (${total} bytes) to ${dir}; each hashes to its QR link's CID.`);
 }
 
 if (args.includes('--check')) {

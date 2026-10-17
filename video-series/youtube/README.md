@@ -36,7 +36,9 @@ local speech recogniser. Spot checks (transcribing the stitched audio at a cue's
 
 1. **Upload the QR payloads to HashBin first.** Every description lists the episode's QR links, and
    they only open after their payloads are saved (see the series README, "QR codes"). Saving spends
-   HashBin account funds, so it is done by hand. Then check them all:
+   HashBin account funds, so it is done by hand: `node video-series/tools/qr-links.mjs --upload`
+   puts the 61 files in `build/hashbin-upload/`; drop them all on https://hashbin.org/upload.
+   Then check them all:
    ```bash
    node video-series/tools/qr-links.mjs --check
    ```
