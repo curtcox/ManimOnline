@@ -650,3 +650,16 @@ accepted alongside an independent SVG-opacity check. Vertical pixels were
 endpoint comparison also passed. Commits 8547a4d, 3649911 and 76384bd passed CI
 and Pages deployment. Exact glyph outlines/bounds, sampled animation bounds, 3D
 glyph paint, stored-RGBA/sheens and Cairo pixel parity remain open.
+
+
+Text outlines (2026-10-17): Text, MarkupText, Paragraph and Code now draw and expose
+Community's exact glyph outlines (Liberation Sans for sans text, DejaVu Sans Mono for
+monospace), reproducing manimpango's Pango placement, run boundaries, MarkupText
+wrapping/justification and Cairo's fixed-point glyph paths. Glyph points, widths and
+heights match Manim 0.22 to print precision for every supported character, all faces
+and several sizes; Write/Create trace real outlines and Transform morphs them. Write
+on MathTex now traces MathJax glyph paths. The docstring corpus against Community with
+Liberation Sans registered matches 285 of 375 (remaining: MathTex estimates in native
+runs, Group-root harness artifacts, other fonts/scripts and Pango markup sizes,
+sub/sup, rise, underlines). Still open: Pango markup extras, serif/custom fonts,
+DecimalNumber and MathTex outline points in Python.

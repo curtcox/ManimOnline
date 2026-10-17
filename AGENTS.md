@@ -1435,3 +1435,21 @@ copied inert geometry. `GLYPH_VIEWPORT` in the browser smoke compares each
 foreground/background path's gradient with native SVG screen coordinates;
 this catches offsets that transform-attribute checks alone miss. Percentage
 viewport lengths remain unsupported by paint conversion.
+
+Text outlines: `src/text-outlines.json` (built by `scripts/build-text-outlines.py` from
+Liberation Sans 2.1.5 and DejaVu Sans Mono 2.35; licenses in text-outlines-LICENSE.txt)
+holds TrueType contours, advances, HarfBuzz kerning and hhea metrics. `_outline_layout`
+reproduces manimpango exactly: Pango units at round(round(fs/4.8*1024)*96/72) per em,
+half-up HarfBuzz scaling, Cairo fixed-point (1/256 px, half-even) glyph paths with
+cairo-ft's conic handles and collinear/degenerate segment rules (`_CairoPath`), then
+Manim's SVG and Text closing lines (`_svg_glyph_points`). Text shapes each style run
+(`_runs`: t2c/t2f/t2s/t2w/t2g matches, every gradient char) separately and snaps run and
+line origins to 1/256 px; MarkupText is one layout (kerning through color spans, line
+pitch = scaled ascent + descent, 500 px wrap, Pango's justify). Exploded glyphs are
+`_TextGlyph` (Text + VMobject, type bezierpath); unexploded leaves ship pooled
+`glyph_curves` that the renderer draws instead of <text>. Other fonts (serif, custom)
+keep the metric layout and browser text. The worker writes the JSON to
+/manim-lite/text-outlines.json. Reference checks: register the fonts with
+manimpango.register_font in the Community venv and pass font='Liberation Sans' /
+'DejaVu Sans Mono' (corpus harness: LIBERATION=1). Pango markup sizes, rise, sub/sup and
+underline/strikethrough paths are not modelled yet.
