@@ -4,7 +4,7 @@ Manim Community scenes for the series' visuals, one file per episode
 (`epNN.py`) and one Scene class per script segment (`Segment_1_5` is segment 1.5).
 Shot ids in comments (`[V1.5b]`) match the **Visual.** notes in `../episodes/`.
 
-Episodes 1–9 are complete and narrated (see Narration); episode 1 is the template for
+Episodes 1–10 are complete and narrated (see Narration); episode 1 is the template for
 the others.
 
 ## Requirements
@@ -162,6 +162,17 @@ the second time; 7.9 holds its repeat for 8 s past the narration instead.
   surface is turned by the rotation `ThreeDCamera` would apply for its phi and theta (`view_matrix`).
 - q08-02 colours `zoomed_display.display_frame`: Manim Community's zoomed display is an image, and
   `set_color` on it raises NotImplementedError. manim-lite used to accept the earlier form; it now raises too.
+
+## Episode 10 notes
+
+- Values on screen are measured, not invented: q10-01's output in ManimOnline (Python 3.12.7,
+  emscripten, wasm32 on Pyodide 0.27.0) and on the Mac the series was made on (3.14.8, darwin, arm64);
+  manim-lite's first-pass boxes for q10-04's formulas; q10-02's frame data as plain and pooled JSON.
+  Re-measure them after a Pyodide or manim-lite change (`ep10.py` lists them at the top).
+- q10-02 and q10-05 count frames at the preview's 15 per second (`PREVIEW_FPS`), so 10.6 leaves 61
+  dots behind, as ManimOnline does, although production renders at 60.
+- 10.4's kitchen and 10.8's wall-clock timestamps are illustrations; the uneven stamps are made up.
+- `ep10.py` imports its small drawing helpers from `ep09.py`.
 
 ## Episode 9 notes
 
