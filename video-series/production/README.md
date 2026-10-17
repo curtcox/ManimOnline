@@ -4,8 +4,8 @@ Manim Community scenes for the series' visuals, one file per episode
 (`epNN.py`) and one Scene class per script segment (`Segment_1_5` is segment 1.5).
 Shot ids in comments (`[V1.5b]`) match the **Visual.** notes in `../episodes/`.
 
-Episodes 1–11 are complete and narrated (see Narration); episode 1 is the template for
-the others.
+All twelve episodes are complete and narrated (see Narration); episode 1 is the template
+for the others.
 
 ## Requirements
 
@@ -162,6 +162,18 @@ the second time; 7.9 holds its repeat for 8 s past the narration instead.
   surface is turned by the rotation `ThreeDCamera` would apply for its phi and theta (`view_matrix`).
 - q08-02 colours `zoomed_display.display_frame`: Manim Community's zoomed display is an image, and
   `set_color` on it raises NotImplementedError. manim-lite used to accept the earlier form; it now raises too.
+
+## Episode 12 notes
+
+- Encoded strings are computed in `ep12.py`: the percent encoding uses `encodeURIComponent`'s rules
+  (the editor's own: 249 → 391 characters for q01-01; the script was corrected from 429, which is
+  Python's stricter `quote`), q12-03's CID is decoded group by group, the SHA-512 grids and the LZ
+  tokens are recomputed, and 12.6 fingerprints the real `src/manim-lite.py`.
+- `ep12-share-qr.json` is the q09-01 share link (from `ep09.py`) as a level-M QR matrix made with
+  segno, for 12.5's dense-code comparison. Regenerate it if that link changes.
+- 12.9's manifest numbers (`manimonline-offline-v373`, 258 local and 8 remote files) come from
+  `offline-assets.js` at the time of the build.
+- `ep12.py` imports helpers from `ep09.py` and `ep10.py`.
 
 ## Episode 11 notes
 

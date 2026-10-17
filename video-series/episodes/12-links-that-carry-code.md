@@ -53,15 +53,15 @@ code somewhere, by name". [V12.2c] Under path B, a question: "who chooses the na
 ### 12.3 Code inside the link · ≈ 1:30
 
 **Visual.** [V12.3a] The `SquareToCircle` source (249 characters). Each space, newline,
-bracket and quote becomes a percent code as it is made URL-safe; a character counter
-climbs to 429. [V12.3b] A browser address bar stretches comically to fit it. [V12.3c]
+colon, comma and equals sign becomes a percent code as `encodeURIComponent` makes it
+URL-safe (the editor's own encoding); a character counter climbs to 391. [V12.3b] A browser address bar stretches comically to fit it. [V12.3c]
 The source is highlighted for repetition: `self.play(` twice, `Transform`/`Create`,
 `color=`, the indentation runs. Each repeat glows the same colour as its first
 appearance.
 
 > The first option sounds easy. Take the source code, and put it in the address after a hash sign, the part of a link that browsers never send to a server.
 >
-> But addresses have rules: spaces, new lines, quotes and brackets aren't allowed as they are, so each one gets replaced by a three-character code. Our seven-line scene grows from two hundred and forty nine characters to four hundred and twenty nine. Real scenes get long fast.
+> But addresses have rules: spaces, new lines, colons and equals signs aren't allowed as they are, so each one gets replaced by a three-character code. Our little scene grows from two hundred and forty nine characters to three hundred and ninety one. Real scenes get long fast.
 >
 > Look at the code again, though. It repeats itself. Self dot play, twice. Indentation, over and over. Colour equals, twice. Code is full of repetition, and repetition is exactly what compression feeds on.
 

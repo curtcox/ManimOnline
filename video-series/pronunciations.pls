@@ -32,6 +32,7 @@
   <lexeme><grapheme>emscripten</grapheme><alias>em scripten</alias></lexeme>
   <lexeme><grapheme>wasm32</grapheme><alias>wasm thirty two</alias></lexeme>
   <lexeme><grapheme>Riemann</grapheme><alias>ree mahn</alias></lexeme>
+  <lexeme><grapheme>lz-string</grapheme><alias>L Z string</alias></lexeme>
   <lexeme><grapheme>Lempel</grapheme><alias>lem pel</alias></lexeme>
   <lexeme><grapheme>Ziv</grapheme><alias>zeev</alias></lexeme>
   <!-- Manim constants are written in capitals; say them as ordinary words, not letters. -->
