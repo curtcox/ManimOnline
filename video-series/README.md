@@ -87,6 +87,33 @@ dictionary. It uses alias rules, which work on every model:
 | modl | MOD-ul *(assumed; confirm with the modl author)* |
 | SVG, CID, JSON | S-V-G, C-I-D, JAY-son |
 
+Code words that are also English words (`animate`, `construct`, `Transform`) are left
+as they are: text-to-speech reads them as ordinary English, so it may stress them
+differently than programmers would (CON-struct instead of con-STRUCT). Respellings and
+phoneme tags were tried and proved unreliable, so the series says so instead (see
+below) rather than fighting the voice model.
+
+## How this series was made
+
+The series discloses how it was produced in three places, and they should agree:
+
+- **Episode 1, segment 1.8** says the narration is synthetic and that code words may be
+  pronounced differently than programmers would say them.
+- **Every episode ends with a credits card** (`production/credits.py`, appended by
+  `production/render.py` after the closing teaser, about 10 seconds, no narration).
+- **Every video description** ends with the block below.
+
+```text
+How this series was made
+Animation: Manim Community, from Python code in the series repository.
+Scripts and animation code: Curt Cox with Claude, an AI model by Anthropic.
+Narration: ElevenLabs text-to-speech, from a model of the author's voice.
+Source: https://github.com/curtcox/ManimOnline/tree/main/video-series
+
+Text-to-speech reads names from code as ordinary English words, so the words you hear
+in these videos may be pronounced differently than programmers would say them.
+```
+
 ## Visual language
 
 - **Canvas.** Manim's default near-black background. 16:9 at 1920×1080, 60 fps for
@@ -189,3 +216,4 @@ snippet checks after any ManimOnline release.
 - `pronunciations.pls` – ElevenLabs pronunciation dictionary.
 - `tools/` – snippet checks, link generation, narration extraction and QR images.
 - `production/` – Manim Community scenes for the graphics, one Scene per segment.
+  `production/credits.py` is the closing credits card shared by every episode.

@@ -423,7 +423,7 @@ class Segment_1_8(Segment):
         track = Line(LEFT * 4, RIGHT * 4, color=GREY_D).shift(DOWN * 0.4)
         dot = Dot(track.get_start(), color=FOCUS, radius=0.14)
         self.play(FadeIn(code), Create(axis), FadeIn(unit), Create(track))
-        self.hold_until(0.12)
+        self.hold_until(0.1)
 
         def block(t0, t1, color, words):
             rect = Rectangle(width=axis.n2p(t1)[0] - axis.n2p(t0)[0], height=0.42)
@@ -438,7 +438,7 @@ class Segment_1_8(Segment):
         box = line_highlight(code, 0)
         tick = Line(UP * 0.3, DOWN * 0.3, color=FOCUS, stroke_width=6).move_to(axis.n2p(0) + UP * 0.35)
         self.play(Create(box), FadeIn(dot, scale=2), Create(tick))
-        self.hold_until(0.2)
+        self.hold_until(0.16)
 
         # each play/wait grows its block for exactly as long as it lasts
         plan = [(1, 0, 1, OBJECT, 'play: 1 s', lambda: dot.animate.move_to(ORIGIN + DOWN * 0.4)),
@@ -453,7 +453,7 @@ class Segment_1_8(Segment):
             self.play(*animations, run_time=t1 - t0, rate_func=linear if not motion else smooth)
             self.play(FadeIn(label), run_time=0.3)
             if line == 2:
-                self.hold_until(0.4)
+                self.hold_until(0.32)
 
         # [V1.8c] the total
         total = BraceBetweenPoints(axis.n2p(0) + UP * 0.8, axis.n2p(5.5) + UP * 0.8, direction=UP)
@@ -461,7 +461,7 @@ class Segment_1_8(Segment):
         self.play(FadeOut(box), GrowFromCenter(total), Write(sum_text))
         qr = qr_card('q01-03', height=1.7, corner=UR).shift(DOWN * 2.6)
         self.play(FadeIn(qr))
-        self.hold_until(0.66)
+        self.hold_until(0.53)
 
         # matching animations to narration (the card stays up; the voice line passes beneath it)
         voice = VMobject(color=GREEN_B, stroke_width=2)
@@ -470,6 +470,11 @@ class Segment_1_8(Segment):
         voice.shift(DOWN * 1.2)
         caption = Text('narration', font_size=20, color=GREEN_B).next_to(voice, LEFT, buff=0.2)
         self.play(Create(voice), FadeIn(caption), run_time=2)
+        self.hold_until(0.8)
+
+        # [V1.8d] this narration is text-to-speech
+        synthetic = Text('synthetic voice', font_size=18, color=SCAFFOLD).next_to(caption, DOWN, buff=0.1)
+        self.play(FadeIn(synthetic, shift=UP * 0.1))
         self.finish()
 
 

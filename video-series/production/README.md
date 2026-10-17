@@ -23,8 +23,8 @@ the others.
 python3 video-series/production/render.py 1
 ```
 
-renders every segment of episode 1 at 1080p60 and stitches a silent animatic to
-`build/episodes/ep01-1080p60.mp4`. Add `-ql` for a quick 480p15 review render, or list
+renders every segment of episode 1 at 1080p60, adds the shared credits card (`credits.py`,
+silent) and stitches the episode to `build/episodes/ep01-1080p60.mp4`. Add `-ql` for a quick 480p15 review render, or list
 segments (`render.py 1 -ql 1.5 1.6`) to render only those. Segment videos are in
 `build/media/videos/ep01/<quality>/`, which is the folder to import into the editor.
 Set `SEGMENT_LABELS=1` to burn the segment id and clock into the top-left corner for review.

@@ -181,7 +181,8 @@ slides to the right edge slowly (3 s), then waits (0.5 s). [V1.8b] As each line 
 q01-03 code is highlighted, a coloured block grows on the timeline with its length
 labelled: "play: 1 s", "wait: 1 s", "play, run_time=3: 3 s", "wait: 0.5 s". [V1.8c]
 The blocks total "5.5 s" at the end, and `self.add` appears as a zero-width tick at
-the start.
+the start. [V1.8d] For the closing note about the narration, "synthetic voice"
+appears under the narration line.
 
 **On screen**
 
@@ -202,6 +203,8 @@ self.wait(0.5)
 > To make an animation slower, pass run time. Run time equals three makes the second slide take three seconds. Add it all up and this scene lasts five and a half seconds, and you could have predicted that before it ever rendered.
 >
 > That is a surprisingly powerful habit. When a scene feels rushed, you know exactly which line to stretch. When it drags, you know which wait to shorten. And when you later add a voice-over, like the one you are listening to now, you can match every animation to the length of a sentence.
+>
+> This voice-over, by the way, is synthetic: text-to-speech built from a model of the author's voice. It reads names from code as ordinary English words, so you may hear some of them, like animate and construct, pronounced differently than programmers would say them.
 
 ### 1.9 When things go wrong · ≈ 1:30
 

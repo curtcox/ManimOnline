@@ -9,6 +9,7 @@ Segment videos land in build/media/videos/epNN/<quality>/; the stitched file is
 build/episodes/epNN-<quality>.mp4. When tools/narrate.py has generated the episode's
 narration (build/narration/audio/epNN/), each segment's audio starts with its scene and is
 padded with silence to the scene's length, and the stitched file carries that soundtrack.
+Every full episode ends with the production credits card (credits.py), under silence.
 """
 import re
 import shutil
@@ -33,9 +34,9 @@ def duration(path):
                                  str(path)], capture_output=True, text=True, check=True).stdout)
 
 
-def soundtrack(episode, videos):
-    """One WAV of every segment's narration, each padded to its scene's length, or None
-    when some segment has no narration yet."""
+def soundtrack(episode, videos, credits):
+    """One WAV of every segment's narration, each padded to its scene's length, then silence
+    for the credits, or None when some segment has no narration yet."""
     audio = BUILD / 'narration' / 'audio' / f'ep{episode:02d}'
     clips = [audio / (v.stem.split('_', 1)[1].replace('_', '.') + '.mp3') for v in videos]
     if not all(c.exists() for c in clips):
@@ -53,6 +54,10 @@ def soundtrack(episode, videos):
         subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(clip), '-af', f'apad=whole_dur={length}',
                         '-t', f'{length}', '-ar', '48000', '-ac', '1', '-c:a', 'pcm_s16le', str(part)], check=True)
         parts.append(part)
+    silence = work / 'credits.wav'
+    subprocess.run(['ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono',
+                    '-t', f'{duration(credits)}', '-c:a', 'pcm_s16le', str(silence)], check=True)
+    parts.append(silence)
     listing = work / 'parts.txt'
     listing.write_text(''.join(f"file '{p}'\n" for p in parts))
     track = work / 'narration.wav'
@@ -72,8 +77,10 @@ def main(argv):
     if TEX.exists() and not shutil.which('latex'):
         import os
         env = {**os.environ, 'PATH': f'{TEX}:{os.environ["PATH"]}'}
-    script = PRODUCTION / f'ep{episode:02d}.py'
-    for name in names:
+    jobs = [(PRODUCTION / f'ep{episode:02d}.py', name) for name in names]
+    if not only:
+        jobs.append((PRODUCTION / 'credits.py', 'Credits'))
+    for script, name in jobs:
         print(f'rendering {name} ...', flush=True)
         run = subprocess.run(['manim', quality, '--progress_bar', 'none', '--media_dir', str(BUILD / 'media'),
                               str(script), name], env=env, capture_output=True, text=True)
@@ -83,14 +90,15 @@ def main(argv):
     if only:
         return 0
     videos = BUILD / 'media' / 'videos' / f'ep{episode:02d}' / QUALITY_DIRS[quality]
+    credits = BUILD / 'media' / 'videos' / 'credits' / QUALITY_DIRS[quality] / 'Credits.mp4'
     listing = BUILD / 'episodes' / f'ep{episode:02d}-segments.txt'
     listing.parent.mkdir(parents=True, exist_ok=True)
-    listing.write_text(''.join(f"file '{videos / (n + '.mp4')}'\n" for n in names))
+    listing.write_text(''.join(f"file '{videos / (n + '.mp4')}'\n" for n in names) + f"file '{credits}'\n")
     output = BUILD / 'episodes' / f'ep{episode:02d}-{QUALITY_DIRS[quality]}.mp4'
     silent = output.with_name(output.stem + '-silent.mp4')
     subprocess.run(['ffmpeg', '-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', str(listing),
                     '-c', 'copy', str(silent)], check=True)
-    track = soundtrack(episode, [videos / (n + '.mp4') for n in names])
+    track = soundtrack(episode, [videos / (n + '.mp4') for n in names], credits)
     if track:
         subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(silent), '-i', str(track), '-map', '0:v', '-map', '1:a',
                         '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest', str(output)], check=True)
