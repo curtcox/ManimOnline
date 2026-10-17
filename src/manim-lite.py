@@ -2959,6 +2959,11 @@ class Mobject:
         return lengths[-1]
 
     def get_num_points(self):
+        d = self.__dict__
+        if (d.get('_type') == 'bezierpath' and not self.children and not d.get('_mobject_points')
+                and 'shaft_curves' not in d and not d.get('_curved_tip_path')):
+            # A plain path's points are its cubic controls plus pending anchors (no copy needed).
+            return 4 * len(d.get('curves', ())) + len(d.get('vertices', ()))
         return len(self.get_points())
 
     def has_points(self):
@@ -14769,8 +14774,15 @@ class Animation(metaclass=_CommunityTree):
             self.mobject.suspend_updating()
         self.interpolate(0)
 
-    def _member_states(self, data, alpha, rate_func, member, nested=True):
-        """Apply member(node, sub_alpha) to drawable members with Community's lag timing."""
+    def _member_states(self, data, alpha, rate_func, member, nested=True, source=None):
+        """Apply member(node, sub_alpha) to drawable members with Community's lag timing.
+        With source (the snapshot data was copied from), childless members that have not
+        started or have finished reuse the node of an earlier frame: same content, encoded once."""
+        cache = None
+        if source is not None:
+            if self.__dict__.get('_member_cache_source') is not source:
+                self._member_cache_source, self._member_cache = source, {}
+            cache = self._member_cache
         paths = _painted_paths(data, nested=nested)
         if self.__dict__.get('_inverted_members'):
             # Community's invert(recursive=True): siblings reversed at every level. A
@@ -14792,7 +14804,18 @@ class Animation(metaclass=_CommunityTree):
                 if not nested:
                     return
             for index, child in enumerate(node.get('children', [])):
-                visit(child, path + (index,))
+                inner = path + (index,)
+                if cache is not None and inner in order and not child.get('children'):
+                    local = max(0, min(1, alpha * full - order[inner] * self.lag_ratio))
+                    if local in (0, 1):
+                        hit = cache.get((inner, local))
+                        if hit is not None:
+                            node['children'][index] = hit
+                            continue
+                        visit(child, inner)
+                        cache[(inner, local)] = child
+                        continue
+                visit(child, inner)
         visit(data, ())
         return data
 
@@ -14874,6 +14897,13 @@ class Animation(metaclass=_CommunityTree):
             self.begin()
             return
         self.begin(scene)
+        if (getattr(self, '_unchanged_terminal', False) and self.mobject is not None and not self.remover
+                and not self.reverse_rate_function and '_on_finish' not in self.__dict__
+                and not self.__dict__.get('_shared_terminal')
+                and not any(m.updaters for m in self.mobject.get_family())):
+            # Completion leaves the (already final) mobject as it is: no copy to complete.
+            self._terminal = [self.mobject.to_dict()]
+            return
         # Compute the held terminal frame without changing the live scene early.
         terminal = copy.deepcopy(self)
         if '_on_finish' in terminal.__dict__:
@@ -15264,6 +15294,7 @@ class ShrinkToCenter(GrowFromCenter):
 class Create(Animation):
     """Trace outlines; Community's default lag_ratio=1 draws members in sequence."""
     _finishes_at_terminal = True
+    _unchanged_terminal = True
     _lagged = True
     _start_follows_updaters = True
 
@@ -15287,7 +15318,7 @@ class Create(Animation):
 
     def sample_members(self, alpha, rate_func):
         return [self._member_states(_freeze_node_shafts(_node_copy(self.start)), alpha, rate_func,
-                                    lambda node, a, path: self._reveal(node, a))]
+                                    lambda node, a, path: self._reveal(node, a), source=self.start)]
 
     def finish(self, scene=None):
         result = super().finish(scene)
@@ -15460,6 +15491,7 @@ def _collapse_drawn(mobject, unfill=False):
 class DrawBorderThenFill(Animation):
     """Draw each member's outline, then interpolate to its fill and stroke."""
     _finishes_at_terminal = True
+    _unchanged_terminal = True
     _lagged = True
     _start_follows_updaters = True
 
@@ -15530,7 +15562,8 @@ class DrawBorderThenFill(Animation):
 
     def sample_members(self, alpha, rate_func):
         # Members only get new node keys: share their geometry arrays (frames pool them once).
-        return [self._member_states(_freeze_node_shafts(_node_copy(self.start)), alpha, rate_func, self._member)]
+        return [self._member_states(_freeze_node_shafts(_node_copy(self.start)), alpha, rate_func, self._member,
+                                    source=self.start)]
 
     def finish(self, scene=None):
         if scene is None or not self.reverse_rate_function:
