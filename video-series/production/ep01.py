@@ -247,21 +247,6 @@ def clapperboard():
     return VGroup(board, bar, stripes)
 
 
-def stage(width=5.6):
-    floor = Line(LEFT * width / 2, RIGHT * width / 2, color=SCAFFOLD, stroke_width=4).shift(DOWN * 1.6)
-    left = Rectangle(width=0.5, height=3.6).set_fill(DARK_BROWN, 1).set_stroke(width=0)
-    right = left.copy()
-    left.next_to(floor.get_start(), UP, buff=0).shift(RIGHT * 0.25)
-    right.next_to(floor.get_end(), UP, buff=0).shift(LEFT * 0.25)
-    return VGroup(floor, left, right)
-
-
-def clock_icon(radius=0.45):
-    face = Circle(radius=radius, color=GREY_A, stroke_width=3)
-    hand = Line(ORIGIN, UP * radius * 0.8, color=FOCUS, stroke_width=4)
-    return VGroup(face, hand)
-
-
 class Segment_1_5(Segment):
     """Reading the first scene, one line at a time."""
     EPISODE, SEGMENT = 1, '1.5'
@@ -424,13 +409,6 @@ class Segment_1_7(Segment):
         rename = Text('shape: a name that stays true', font_size=30, color=FOCUS).next_to(after, DOWN, buff=0.3).align_to(after, LEFT)
         self.play(FadeOut(qr), ReplacementTransform(marks[2], VGroup(line_highlight(after, 5, color=FOCUS), rename)))
         self.finish()
-
-
-def snippet_lines(path, first, last):
-    """Lines first..last (1-based, inclusive) of a snippet, dedented, for an excerpt panel."""
-    import textwrap
-    lines = snippet_source(path).splitlines()[first - 1:last]
-    return textwrap.dedent('\n'.join(lines))
 
 
 class Segment_1_8(Segment):

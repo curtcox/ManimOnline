@@ -14,6 +14,7 @@ Set SEGMENT_LABELS=1 to burn the segment id and clock into a corner for review.
 import json
 import os
 import re
+import textwrap
 from pathlib import Path
 
 from manim import *
@@ -212,3 +213,24 @@ def browser_icon(width=2.4, height=1.6, color=SCAFFOLD):
 def snippet_source(path):
     """Source of a QR snippet, so on-screen code always matches what the QR opens."""
     return (SERIES / 'snippets' / path).read_text()
+
+
+def snippet_lines(path, first, last):
+    """Lines first..last (1-based, inclusive) of a snippet, dedented, for an excerpt panel."""
+    lines = snippet_source(path).splitlines()[first - 1:last]
+    return textwrap.dedent('\n'.join(lines))
+
+
+def stage(width=5.6):
+    floor = Line(LEFT * width / 2, RIGHT * width / 2, color=SCAFFOLD, stroke_width=4).shift(DOWN * 1.6)
+    left = Rectangle(width=0.5, height=3.6).set_fill(DARK_BROWN, 1).set_stroke(width=0)
+    right = left.copy()
+    left.next_to(floor.get_start(), UP, buff=0).shift(RIGHT * 0.25)
+    right.next_to(floor.get_end(), UP, buff=0).shift(LEFT * 0.25)
+    return VGroup(floor, left, right)
+
+
+def clock_icon(radius=0.45):
+    face = Circle(radius=radius, color=GREY_A, stroke_width=3)
+    hand = Line(ORIGIN, UP * radius * 0.8, color=FOCUS, stroke_width=4)
+    return VGroup(face, hand)
