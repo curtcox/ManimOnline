@@ -73,6 +73,9 @@ def check_wall(episode, video=None):
                     # OpenCV's detector sometimes misses a sound code at one size; phones don't.
                     bigger = cv2.resize(crop, None, fx=2, fy=2, interpolation=cv2.INTER_NEAREST)
                     decoded, _, _ = cv2.QRCodeDetector().detectAndDecode(bigger)
+                if decoded not in urls and hasattr(cv2, 'QRCodeDetectorAruco'):
+                    # The default detector rejects q12-03 at wall size; OpenCV's other detector reads it.
+                    decoded, _, _ = cv2.QRCodeDetectorAruco().detectAndDecode(crop)
                 if decoded in urls:
                     found.add(urls[decoded])
             if found >= expected:
