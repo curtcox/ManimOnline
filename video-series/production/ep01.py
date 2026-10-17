@@ -230,3 +230,197 @@ class Segment_1_4(Segment):
         self.hold_until(0.56)
         self.play(FadeOut(qr))
         self.finish()
+
+
+def toolbox():
+    box = RoundedRectangle(width=1.6, height=1.0, corner_radius=0.12).set_stroke(SCAFFOLD, 3).set_fill('#1a1d22', 1)
+    handle = Arc(radius=0.3, start_angle=0, angle=PI).set_stroke(SCAFFOLD, 3).next_to(box, UP, buff=0)
+    return VGroup(handle, box)
+
+
+def clapperboard():
+    board = Rectangle(width=1.8, height=1.2).set_stroke(GREY_A, 3).set_fill('#1a1d22', 1)
+    bar = Rectangle(width=1.8, height=0.3).set_fill(GREY_A, 1).set_stroke(GREY_A, 3).next_to(board, UP, buff=0)
+    stripes = VGroup(*[Polygon(LEFT * 0.12, RIGHT * 0.05, RIGHT * 0.17 + UP * 0.3, UP * 0.3 + LEFT * 0.0)
+                       .set_fill(BLACK, 1).set_stroke(width=0) for _ in range(5)])
+    stripes.arrange(RIGHT, buff=0.18).move_to(bar)
+    return VGroup(board, bar, stripes)
+
+
+def stage(width=5.6):
+    floor = Line(LEFT * width / 2, RIGHT * width / 2, color=SCAFFOLD, stroke_width=4).shift(DOWN * 1.6)
+    left = Rectangle(width=0.5, height=3.6).set_fill(DARK_BROWN, 1).set_stroke(width=0)
+    right = left.copy()
+    left.next_to(floor.get_start(), UP, buff=0).shift(RIGHT * 0.25)
+    right.next_to(floor.get_end(), UP, buff=0).shift(LEFT * 0.25)
+    return VGroup(floor, left, right)
+
+
+def clock_icon(radius=0.45):
+    face = Circle(radius=radius, color=GREY_A, stroke_width=3)
+    hand = Line(ORIGIN, UP * radius * 0.8, color=FOCUS, stroke_width=4)
+    return VGroup(face, hand)
+
+
+class Segment_1_5(Segment):
+    """Reading the first scene, one line at a time."""
+    EPISODE, SEGMENT = 1, '1.5'
+
+    def construct(self):
+        code = code_panel(snippet_source('ep01/01-square-to-circle.py'), font_size=24)
+        code.scale_to_fit_width(6.6).to_edge(LEFT, buff=0.35)
+        self.play(FadeIn(code, shift=RIGHT * 0.3))
+        box = line_highlight(code, 0)
+        right = RIGHT * 3.85
+        self.hold_until(0.07)
+
+        # [V1.5b] the import fills a toolbox with names
+        tools = toolbox().move_to(right + DOWN * 1.5)
+        names = VGroup(*[Text(n, font_size=28, color=c) for n, c in (
+            ('Square', OBJECT), ('Circle', OBJECT), ('Create', AFTER), ('Transform', AFTER),
+            ('BLUE', BLUE), ('YELLOW', YELLOW), ('UP', GREY_A), ('RIGHT', GREY_A))])
+        spots = [right + 1.9 * np.array([np.cos(a), np.sin(a) * 0.9, 0]) + UP * 0.4
+                 for a in np.linspace(PI * 0.05, PI * 0.95, len(names))]
+        self.play(Create(box), FadeIn(tools))
+        self.play(LaggedStart(*[FadeIn(n, target_position=tools.get_center()) for n in names], lag_ratio=0.1),
+                  *[n.animate.move_to(p) for n, p in zip(names, spots)], run_time=2)
+        self.hold_until(0.16)
+
+        # [V1.5c] the class: a scene with a name
+        clapper = clapperboard().move_to(right)
+        title = Text('Scene: SquareToCircle', font_size=28).next_to(clapper, DOWN, buff=0.35)
+        self.play(Transform(box, line_highlight(code, 3)), FadeOut(VGroup(tools, names)), FadeIn(clapper), Write(title))
+        self.hold_until(0.33)
+
+        # [V1.5d] construct: the script, run from top to bottom
+        theatre = stage(width=4.8).move_to(right + DOWN * 0.2)
+        order = Arrow(code_line(code, 5).get_left() + LEFT * 0.35, code_line(code, 9).get_left() + LEFT * 0.35,
+                      buff=0, color=FOCUS, stroke_width=4)
+        self.play(Transform(box, line_highlight(code, 4)), FadeOut(title), ReplacementTransform(clapper, theatre))
+        self.play(GrowArrow(order))
+        script = Text('top to bottom', font_size=24, color=FOCUS).next_to(theatre, DOWN, buff=0.3)
+        self.play(FadeIn(script))
+        self.hold_until(0.45)
+
+        # [V1.5e] two objects exist, waiting in the wings
+        square = Square(color=BLUE).scale(0.45).set_opacity(0.35).move_to(theatre[1].get_center() + UP * 2.4)
+        circle = Circle(color=YELLOW).scale(0.45).set_opacity(0.35).move_to(theatre[2].get_center() + UP * 2.4)
+        wings = Text('exist, but not on screen yet', font_size=24, color=SCAFFOLD).move_to(script)
+        self.play(Transform(box, VGroup(line_highlight(code, 5), line_highlight(code, 6))),
+                  FadeIn(square), FadeIn(circle), FadeOut(order), ReplacementTransform(script, wings))
+        self.hold_until(0.58)
+
+        # [V1.5f] play(Create(square)): time passes and the square is drawn on stage
+        centre = theatre[0].get_center() + UP * 1.4
+        drawn = Square(color=BLUE).scale(0.8).move_to(centre)
+        self.play(Transform(box, line_highlight(code, 7)), FadeOut(wings))
+        self.play(square.animate.move_to(centre).scale(0.8 / 0.55).set_opacity(0.15), run_time=0.8)
+        self.play(Create(drawn), run_time=1.5)
+        self.remove(square)
+        self.hold_until(0.72)
+
+        # [V1.5g] Transform: the square takes the circle's shape; the circle is only the target
+        target = Text('target', font_size=24, color=FOCUS).next_to(circle, UP, buff=0.15)
+        self.play(Transform(box, line_highlight(code, 8)), circle.animate.set_opacity(0.6), FadeIn(target))
+        self.play(Transform(drawn, Circle(color=YELLOW).scale(0.8).move_to(centre)), run_time=1.5)
+        note = Text('still called square', font_size=24, color=SCAFFOLD).next_to(drawn, DOWN, buff=0.3)
+        self.play(FadeIn(note))
+        self.hold_until(0.91)
+
+        # [V1.5h] wait: a second of stillness
+        clock = clock_icon().move_to(theatre[0].get_center() + UP * 3.2)
+        self.play(Transform(box, line_highlight(code, 9)), FadeOut(VGroup(note, target)), FadeIn(clock))
+        self.play(Rotate(clock[1], -TAU, about_point=clock[0].get_center()), run_time=1, rate_func=linear)
+        self.finish()
+
+
+class Segment_1_6(Segment):
+    """Three nouns, one verb."""
+    EPISODE, SEGMENT = 1, '1.6'
+
+    def construct(self):
+        def node(word, icon, color):
+            label = Text(word, font_size=40, color=color)
+            return VGroup(icon.next_to(label, UP, buff=0.25), label)
+
+        scene = node('Scene', stage(width=2.2).scale(0.5), GREY_A).move_to(UP * 2.55)
+        mob = node('Mobject', VGroup(Square(color=BLUE).scale(0.35), Circle(color=YELLOW).scale(0.35)).arrange(RIGHT),
+                   OBJECT).move_to(LEFT * 4.2 + DOWN * 1.6)
+        anim = node('Animation', CurvedArrow(LEFT * 0.6, RIGHT * 0.6, color=AFTER, angle=-PI / 2), AFTER)
+        anim.move_to(RIGHT * 4.2 + DOWN * 1.6)
+        self.play(LaggedStart(*[FadeIn(n, shift=UP * 0.2) for n in (scene, mob, anim)], lag_ratio=0.3))
+        self.hold_until(0.17)
+
+        meanings = [('the stage where everything happens', scene), ('anything you can see', mob),
+                    ('how mobjects change over time', anim)]
+        lines = VGroup()
+        for i, (words, target) in enumerate(meanings):
+            line = Text(words, font_size=24, color=SCAFFOLD).next_to(target, DOWN, buff=0.2)
+            lines.add(line)
+            self.play(Write(line))
+            self.hold_until(0.17 + 0.43 * (i + 1) / 3)
+
+        # [V1.6b] play in the middle: animations in, frames out
+        play = Text('play', font_size=48, color=FOCUS).move_to(DOWN * 0.2)
+        ring = SurroundingRectangle(play, color=FOCUS, corner_radius=0.2, buff=0.25)
+        into = Arrow(anim.get_left(), ring.get_right(), color=AFTER, buff=0.2)
+        strip = VGroup(*[square_to_circle_frame(i).scale(0.18) for i in (8, 18, 22, 26, 45)])
+        for shape in strip:
+            shape.add(Rectangle(width=0.5, height=0.5, color=GREY_D, stroke_width=1.5).move_to(shape))
+        strip.arrange(RIGHT, buff=0.08).next_to(ring, DOWN, buff=1.2)
+        out = Arrow(ring.get_bottom(), strip.get_top(), color=FOCUS, buff=0.15)
+        frames = Text('frames', font_size=24, color=SCAFFOLD).next_to(strip, DOWN, buff=0.15)
+        self.play(Write(play), Create(ring))
+        self.play(GrowArrow(into))
+        self.play(GrowArrow(out), LaggedStart(*[FadeIn(f) for f in strip], lag_ratio=0.2), FadeIn(frames))
+        self.hold_until(0.8)
+
+        # episode pointers
+        two = Text('episode 2', font_size=24, color=OBJECT).next_to(mob, UP, buff=0.25)
+        three = Text('episode 3', font_size=24, color=AFTER).next_to(anim, UP, buff=0.25)
+        self.play(FadeIn(two, shift=DOWN * 0.2), Indicate(mob[1], color=OBJECT))
+        self.play(FadeIn(three, shift=DOWN * 0.2), Indicate(anim[1], color=AFTER))
+        self.finish()
+
+
+class Segment_1_7(Segment):
+    """Your first edits."""
+    EPISODE, SEGMENT = 1, '1.7'
+
+    def construct(self):
+        card = footage_card('Your first edits', [
+            '[V1.7a] Add fill_opacity=0.5 to the square; after a pause the preview re-renders, half-filled',
+            '[V1.7b] Add a third line that transforms the shape into a red triangle; the preview ends red',
+        ])
+        self.play(FadeIn(card))
+        self.hold_until(0.3)
+
+        # [V1.7c] the edited code, with each change marked
+        after = code_panel(snippet_source('ep01/02-three-shapes.py'), font_size=24)
+        after.scale_to_fit_width(13).to_edge(UP, buff=0.5)
+        self.play(FadeOut(card), FadeIn(after))
+        notes = [(5, 'a fill, and a more general name'), (8, 'a third shape'), (9, 'your turn: a green star')]
+        marks = VGroup()
+        for i, words in notes:
+            box = line_highlight(after, i, color=AFTER)
+            tag = Text(words, font_size=24, color=AFTER).next_to(after, DOWN, buff=0.3).align_to(after, LEFT)
+            marks.add(VGroup(box, tag))
+        results = VGroup(Square(color=BLUE, fill_opacity=0.5), Circle(color=YELLOW, fill_opacity=0.5),
+                         Triangle(color=RED, fill_opacity=0.5),
+                         DashedVMobject(Star(color=GREEN), num_dashes=30)).scale(0.55)
+        results.arrange(RIGHT, buff=0.9).move_to(DOWN * 2.5 + LEFT * 2.4)
+        steps = VGroup(*[Arrow(a.get_right(), b.get_left(), buff=0.15, color=SCAFFOLD, stroke_width=3)
+                         for a, b in zip(results[:-1], results[1:])])
+        self.play(Create(marks[0][0]), Write(marks[0][1]), DrawBorderThenFill(results[0]))
+        self.hold_until(0.4)
+        qr = qr_card('q01-02')
+        self.play(FadeIn(qr, shift=UP * 0.2), ReplacementTransform(marks[0], marks[1]))
+        self.play(GrowArrow(steps[0]), FadeIn(results[1]), GrowArrow(steps[1]), FadeIn(results[2]))
+        self.hold_until(0.52)
+        self.play(ReplacementTransform(marks[1], marks[2]), GrowArrow(steps[2]), Create(results[3]))
+        self.hold_until(0.68)
+
+        # names: shape, not square
+        rename = Text('shape: a name that stays true', font_size=30, color=FOCUS).next_to(after, DOWN, buff=0.3).align_to(after, LEFT)
+        self.play(FadeOut(qr), ReplacementTransform(marks[2], VGroup(line_highlight(after, 5, color=FOCUS), rename)))
+        self.finish()
