@@ -673,3 +673,11 @@ approximated. Compact frames ship partial outlines as the pooled whole outline p
 progress, so text-heavy Write/Create scenes stay small (a 30-line Code Write: 9 MB, was
 22 MB before outlines). Docstring corpus against Liberation-font Community: 289 of 375; the
 animation-chain fuzz suites e301-e305 and e401-e410 match 1,780 of 1,782 scenes.
+
+Text animation parity (2026-10-17): a text-focused fuzz suite (`gen11.py`: Text, MarkupText,
+Paragraph, Code and DecimalNumber through Write, Create, Uncreate, DrawBorderThenFill,
+Transform/ReplacementTransform/FadeTransform/TransformMatchingShapes, become, stretch,
+ApplyWave, arrange and emphasis animations) matches Manim 0.22 with Liberation Sans in all
+120 scenes. Behavior changes that follow Community: `number.animate.set_value(...)` morphs
+glyph outlines instead of counting; transforms between different texts end with
+Community's padded glyph families; SVG url() paints are black.
