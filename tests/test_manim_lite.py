@@ -1953,6 +1953,27 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertAlmostEqual(turned.get_height(),2.0850207,delta=1e-6)
         self.assertAlmostEqual(lite.Text('Hello World').apply_matrix([[1,.5],[0,1]]).get_width(),3.5749512,delta=1e-6)
 
+    def test_transform_matching_shapes_matches_text_glyph_outlines(self):
+        # Community's Anagram: glyphs are matched by their outline shapes and arc into place.
+        result = render('src = Text("the morse code")\ntar = Text("here come dots")\nself.add(src)\n'
+                        'self.play(TransformMatchingShapes(src, tar, path_arc=PI/2))')
+        def world(node, points):
+            px, py, angle, scale = node['position'][0], node['position'][1], node.get('angle', 0), node.get('geometry_scale', 1)
+            cx, cy = node.get('geometry_center', [0, 0, 0])[:2]
+            for curve in node.get('curves', []) if node['type'] == 'bezierpath' else []:
+                for x, y, *_ in curve:
+                    dx, dy = (x - cx) * scale, (y - cy) * scale
+                    points.append((px + cx + dx * math.cos(angle) - dy * math.sin(angle),
+                                   py + cy + dx * math.sin(angle) + dy * math.cos(angle)))
+            for child in node.get('children', []):
+                world(child, points)
+            return points
+        points = [p for root in result['frames'][5]['mobjects'] for p in world(root, [])]
+        bounds = (min(p[0] for p in points), min(p[1] for p in points), max(p[0] for p in points), max(p[1] for p in points))
+        # Manim 0.22 with Liberation Sans, a third of the way through.
+        for value, expected in zip(bounds, (-2.084, -0.6708, 2.0803, 0.3015)):
+            self.assertAlmostEqual(value, expected, delta=1e-4)
+
     def test_browser_formula_outlines_make_glyph_paths(self):
         # The browser sends each MathJax glyph's outline (flat em pairs around the ink center,
         # y up); exploded formula glyphs become Community-style paths with those points.

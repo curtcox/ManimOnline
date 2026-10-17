@@ -16235,6 +16235,9 @@ class TransformMatchingTex(_TransformMatching):
 class TransformMatchingShapes(_TransformMatching):
     def __init__(self, mobject, target_mobject, **kwargs):
         super().__init__(mobject, target_mobject, **kwargs)
+        # Community's parts are glyph paths: split text and formulas so outlines are matched.
+        _glyph_family(mobject)
+        _glyph_family(target_mobject)
         # Community's get_mobject_key saves (and restores) every part when the animation is built.
         for part in mobject.family_members_with_points() + target_mobject.family_members_with_points():
             part.save_state()
