@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Build src/text-outlines.json from Liberation Sans 2.1.5 and DejaVu Sans Mono 2.35.
 
-Usage: build-text-outlines.py LIBERATION_DIR DEJAVU_DIR [OUTPUT]
+Usage: build-text-outlines.py LIBERATION_DIR DEJAVU_DIR CM_TYPE1_DIR [OUTPUT]
+
+CM_TYPE1_DIR holds the AMS Computer Modern Type 1 fonts (cmr10/cmmi10/cmsy10.pfb, e.g.
+texmf-dist/fonts/type1/public/amsfonts/cm): Community's DecimalNumber typesets each
+character as MathTex, which dvisvgm writes as their outlines in big points.
 
 Community's Text draws Pango/Cairo glyph outlines; on Linux the default sans font is
 Liberation Sans and the monospace font (Code) is DejaVu Sans Mono. The preview
@@ -18,6 +22,8 @@ import re
 import sys
 import unicodedata
 
+from fontTools.pens.recordingPen import RecordingPen
+from fontTools.t1Lib import T1Font
 from fontTools.ttLib import TTFont
 import uharfbuzz as hb
 
@@ -95,16 +101,47 @@ def face_data(path, chars):
             'glyphs': glyphs, 'kerning': kerning}
 
 
+# DecimalNumber characters: digits and + from cmr10, . and , from cmmi10, the minus
+# from cmsy10 (math mode). \\dots is three cmmi10 periods 4.427808 bp apart.
+TEX_GLYPHS = (('cmr10', {**{str(i): name for i, name in enumerate(
+                  'zero one two three four five six seven eight nine'.split())}, '+': 'plus'}),
+              ('cmmi10', {'.': 'period', ',': 'comma'}), ('cmsy10', {'-': 'minus'}))
+DOTS_STEP = 4.427808
+
+
+def tex_glyphs(directory):
+    """Outline commands in dvisvgm's coordinates: big points (10 pt fonts), y down, printed
+    with six decimals."""
+    scale = 72 / 72.27 / 100
+    def bp(value):
+        return float('%.6f' % (value * scale))
+    glyphs = {}
+    for font, chars in TEX_GLYPHS:
+        t1 = T1Font(os.path.join(directory, font + '.pfb'))
+        t1.parse()
+        glyph_set = t1.getGlyphSet()
+        for char, name in chars.items():
+            pen = RecordingPen()
+            glyph_set[name].draw(pen)
+            glyphs[char] = [[{'moveTo': 'M', 'lineTo': 'L', 'curveTo': 'C', 'closePath': 'Z'}[op]] + [bp(v) * (1 if k % 2 == 0 else -1)
+                                              for point in args for k, v in enumerate(point)]
+                            for op, args in pen.value]
+    glyphs['\u2026'] = [[op[0]] + [v + DOTS_STEP * n if k % 2 == 0 else v for k, v in enumerate(op[1:])]
+                         for n in range(3) for op in glyphs['.']]
+    return glyphs
+
+
 def main():
-    if len(sys.argv) < 3:
+    if len(sys.argv) < 4:
         raise SystemExit(__doc__)
     directories = sys.argv[1:3]
-    output = sys.argv[3] if len(sys.argv) > 3 else os.path.join(ROOT, 'src', 'text-outlines.json')
+    output = sys.argv[4] if len(sys.argv) > 4 else os.path.join(ROOT, 'src', 'text-outlines.json')
     chars = characters()
-    data = {'source': 'Liberation Sans 2.1.5 (SIL Open Font License 1.1) and DejaVu Sans Mono 2.35 '
-                      '(Bitstream Vera license); see text-outlines-LICENSE.txt',
+    data = {'source': 'Liberation Sans 2.1.5 and AMS Computer Modern 3.002 (SIL Open Font License 1.1), '
+                      'DejaVu Sans Mono 2.35 (Bitstream Vera license); see text-outlines-LICENSE.txt',
             'faces': {prefix + key: face_data(os.path.join(directories[where], pattern.format(name)), chars)
-                      for prefix, where, pattern, faces in FAMILIES for key, name in faces.items()}}
+                      for prefix, where, pattern, faces in FAMILIES for key, name in faces.items()},
+            'tex': tex_glyphs(sys.argv[3])}
     with open(output, 'w', encoding='utf-8') as handle:
         json.dump(data, handle, ensure_ascii=False, separators=(',', ':'), sort_keys=True)
         handle.write('\n')

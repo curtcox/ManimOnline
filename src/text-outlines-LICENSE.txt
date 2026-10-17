@@ -1,5 +1,10 @@
 Glyph outlines in text-outlines.json are derived from Liberation Sans 2.1.5 (first
-license below) and DejaVu Sans Mono 2.35 (second license below).
+license below), DejaVu Sans Mono 2.35 (second license below) and the AMS Computer
+Modern Type 1 fonts 3.002 (number glyphs):
+
+  Copyright (c) 1997, 2009 American Mathematical Society (<http://www.ams.org>), with
+  Reserved Font Names CMR10, CMMI10 and CMSY10. Licensed under the SIL Open Font
+  License, Version 1.1 (the full text follows in the first license below).
 
 Digitized data copyright (c) 2010 Google Corporation
 	with Reserved Font Arimo, Tinos and Cousine.

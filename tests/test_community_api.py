@@ -2898,7 +2898,7 @@ class AnimationApiTests(unittest.TestCase):
             'd.set_value(12.5)\n'
             'result = [len(n), len(i.submobjects), xs, type(i[0]).__name__, len(d), d[0].get_color() == WHITE]\n')
         # Community 0.22 places these glyph centers at -0.291, -0.113, 0.043, 0.284.
-        self.assertEqual(values, [5.0, 2.0, [-0.2918, -0.1135, 0.0435, 0.2848], 'MathTex', 5.0, True])
+        self.assertEqual(values, [5.0, 2.0, [-0.2909, -0.1132, 0.0434, 0.284], 'MathTex', 5.0, True])
 
 
     def test_partial_parent_exposure_keeps_member_frames(self):

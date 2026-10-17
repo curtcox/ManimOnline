@@ -1907,6 +1907,15 @@ assert isinstance(t.get_value(), (int, float))""")
             text=make()
             self.assertAlmostEqual(text.get_width(),width,delta=1e-6)
             self.assertAlmostEqual(text.get_height(),height,delta=1e-6)
+        # DecimalNumber: Computer Modern outlines as dvisvgm writes them, arranged as Community
+        # does (a comma drops the row's center).
+        for number,options,width,center in ((3.14,{},.788583,0),(1000,{},1.660035,-.037235),
+                                            (-1234567.891,{'num_decimal_places':3},3.08527,-.037235),
+                                            (-.25,{'font_size':72.5},1.746621,0)):
+            value=lite.DecimalNumber(number,**options)
+            self.assertAlmostEqual(value.get_width(),width,delta=1e-6)
+            self.assertAlmostEqual(value.get_center()[1],center,delta=1e-6)
+        self.assertEqual(len(lite.DecimalNumber(0)[0].get_points()),64)
         # Glyphs are Community's outline paths (68 points for 'A', first ones below).
         glyph=lite.Text('Ab')[0]
         self.assertEqual(len(glyph.get_points()),68)
@@ -9540,7 +9549,9 @@ self.play(text.animate.set_fill([PURE_RED,PURE_BLUE],opacity=[.2,.8]).set_backgr
         result = json.loads(lite.render_scene((ROOT/'examples/glyph_style_scene.py').read_text()))
         self.assertEqual(result['duration'],8)
         def glyphs(node):
-            return ([node] if node['type'] in ('text','mathtex') else []) + [leaf for child in node['children'] for leaf in glyphs(child)]
+            # Text and number glyphs are outline paths (they keep their character index).
+            glyph = node['type'] in ('text','mathtex') or '_char_index' in node
+            return ([node] if glyph else []) + [leaf for child in node['children'] for leaf in glyphs(child)]
         created = [leaf for root in result['frames'][30]['mobjects'] for leaf in glyphs(root)]
         self.assertGreater(len(created),10)
         for leaf in created:

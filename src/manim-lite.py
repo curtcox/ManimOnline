@@ -7664,7 +7664,7 @@ _OUTLINE_FONTS = ('', 'sans', 'sans-serif', 'sans serif', 'liberation sans', 'ar
 _CAIRO_GLYPHS = globals().get('_CAIRO_GLYPHS') or {}
 
 
-def _outline_faces():
+def _outline_document():
     global _OUTLINE_DATA
     if _OUTLINE_DATA is None:
         import os
@@ -7672,11 +7672,22 @@ def _outline_faces():
         for path in (os.path.join(os.path.dirname(os.path.abspath(_LIB_FILE)), 'text-outlines.json'),) + _OUTLINE_PATHS:
             try:
                 with open(path, encoding='utf-8') as handle:
-                    _OUTLINE_DATA = json.load(handle)['faces']
-                break
-            except (OSError, ValueError, KeyError, TypeError):
+                    data = json.load(handle)
+                if isinstance(data.get('faces'), dict):
+                    _OUTLINE_DATA = data
+                    break
+            except (OSError, ValueError, AttributeError):
                 continue
     return _OUTLINE_DATA
+
+
+def _outline_faces():
+    return _outline_document().get('faces', {})
+
+
+def _outline_tex():
+    """dvisvgm outlines (big points, y down) of DecimalNumber's TeX characters."""
+    return _outline_document().get('tex', {})
 
 
 def _outline_font(font):
@@ -8006,6 +8017,76 @@ def _wrap_paragraph(paragraph, width, measure):
             return spans
 
 
+def _tex_glyph_points(char, font_size):
+    """Community's MathTex(char) points at font_size: dvisvgm's path through Manim's SVG
+    handling, centered on its bounds and scaled 0.05 * font_size / 48 per big point."""
+    ops = _outline_tex().get(char)
+    if ops is None:
+        return None
+    points, last, start = [], None, None
+    def line(a, b):
+        points.extend((a, ((a[0] + a[0] + b[0]) / 3, (a[1] + a[1] + b[1]) / 3),
+                       ((a[0] + b[0] + b[0]) / 3, (a[1] + b[1] + b[1]) / 3), b))
+    for op in ops:
+        coords = [(op[k], op[k + 1]) for k in range(1, len(op), 2)]
+        if op[0] == 'M':
+            last = start = coords[0]
+        elif op[0] == 'L':
+            line(last, coords[0])
+            last = coords[0]
+        elif op[0] == 'C':
+            points.extend([last] + coords)
+            last = coords[-1]
+        else:
+            if math.hypot(last[0] - start[0], last[1] - start[1]) > 0.0001:
+                line(last, start)
+            last = start
+    xs, ys = [p[0] for p in points], [p[1] for p in points]
+    cx, cy, factor = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, 0.05 * font_size / 48
+    return [[(p[0] - cx) * factor, -(p[1] - cy) * factor] for p in points]
+
+
+def _number_outline_layout(text, font_size):
+    """Community's DecimalNumber: one MathTex per character, arranged right with
+    0.001 * font_size gaps on their bottom anchors, centered, then minus signs and commas
+    moved down. Edges use anchors, heights all points. None without outline data."""
+    glyphs = [_tex_glyph_points(char, font_size) for char in text]
+    if not glyphs or any(glyph is None for glyph in glyphs):
+        return None
+    def bounds(points, anchors=True):
+        points = [p for k, p in enumerate(points) if k % 4 in (0, 3)] if anchors else points
+        return (min(p[0] for p in points), min(p[1] for p in points),
+                max(p[0] for p in points), max(p[1] for p in points))
+    def shift(points, dx, dy):
+        for p in points:
+            p[0] += dx
+            p[1] += dy
+    for previous, glyph in zip(glyphs, glyphs[1:]):
+        before, after = bounds(previous), bounds(glyph)
+        shift(glyph, before[2] + 0.001 * font_size - after[0], before[1] - after[1])
+    left, bottom, right, top = bounds([p for glyph in glyphs for p in glyph])
+    for glyph in glyphs:
+        shift(glyph, -(left + right) / 2, -(bottom + top) / 2)
+    for index, char in enumerate(text):
+        if char == '-' and index + 1 < len(text):
+            shift(glyphs[index], 0, bounds(glyphs[index + 1])[3] - bounds(glyphs[index])[3])
+            low, high = bounds(glyphs[index + 1], False)[1::2]
+            shift(glyphs[index], 0, -(high - low) / 2)
+        elif char == ',':
+            low, high = bounds(glyphs[index], False)[1::2]
+            shift(glyphs[index], 0, -(high - low) / 2)
+    left, bottom, right, top = bounds([p for glyph in glyphs for p in glyph], False)
+    cx, cy = (left + right) / 2, (bottom + top) / 2
+    curves, owners = [], []
+    for index, glyph in enumerate(glyphs):
+        local = [(p[0] - cx, p[1] - cy, 0.0) for p in glyph]
+        curves.extend([list(map(list, local[i:i + 4])) for i in range(0, len(local), 4)])
+        owners.append((index, len(local) // 4))
+    return {'width': right - left, 'height': top - bottom, 'em': font_size * TEX_EM_PER_POINT,
+            'lines': [{'text': text, 'x': -(right - left) / 2, 'y': -(top - bottom) / 2, 'length': right - left}],
+            'family': 'serif', 'outline': curves, 'outline_glyphs': owners, 'center': [cx, cy]}
+
+
 def _numeric_boxes(text, font_size):
     """Ink boxes [x0, x1, y0, y1, ...] of Community's DecimalNumber glyphs: separate TeX glyphs
     with 0.001 * font_size gaps, bottom-aligned; commas drop by half their height."""
@@ -8031,8 +8112,9 @@ def _numeric_boxes(text, font_size):
 def _compute_text_layout(text, font_size, line_spacing, numeric, mono=False, wrap=None, justify=False, faces='r',
                          outline=False, runs=None):
     import re
-    if outline and not numeric:
-        layout = _outline_layout(text, font_size, line_spacing, faces, runs, wrap, justify, 'm' if mono else '')
+    if outline:
+        layout = (_number_outline_layout(text, font_size) if numeric else
+                  _outline_layout(text, font_size, line_spacing, faces, runs, wrap, justify, 'm' if mono else ''))
         if layout is not None:
             return layout
     snapshot = {'text': text, 'font_size': font_size, '_line_spacing': line_spacing}
@@ -8406,24 +8488,9 @@ class Text(Mobject):
         faces, mono = _snapshot_faces(self.__dict__), _is_mono(self.__dict__.get('font'))
         glyphs, index = [], 0
         if layout.get('outline_glyphs') is not None:
-            # Community's glyphs are outline paths: place each under this leaf's pose.
-            (a, b), (c, d) = _glyph_matrix(self.__dict__)
-            e, f = self.__dict__.get('glyph_depth') or (0, 0)
-            outline, at, text = layout['outline'], 0, self.__dict__['text']
-            for char_index, count in layout['outline_glyphs']:
-                points = [(a * p[0] + b * p[1], c * p[0] + d * p[1], e * p[0] + f * p[1])
-                          for curve in outline[at:at + count] for p in curve]
-                at += count
-                glyph = _copy_glyph_paint(self, _TextGlyph(text[char_index], font_size=self.__dict__['font_size'],
-                                                           **options))
-                glyph.set_points(points)
-                center = glyph._geometry_center()
-                glyph.curves = [[[p[0] - center[0], p[1] - center[1], p[2] - center[2]] for p in curve]
-                                for curve in glyph.curves]
-                glyph.position = list(self._point_to_world(center))
-                glyph.angle, glyph.geometry_scale, glyph.opacity = self.angle, self.geometry_scale, self.opacity
-                glyph._char_index = char_index
-                glyphs.append(glyph)
+            text = self.__dict__['text']
+            glyphs = _outline_glyphs(self, layout, lambda index: _TextGlyph(
+                text[index], font_size=self.__dict__['font_size'], **options))
             layout['lines'] = []
         for line in layout['lines']:
             index = line.get('start', index)
@@ -8511,6 +8578,28 @@ class Text(Mobject):
             return 1
         self._explode()
         return len(self.split())
+
+
+def _outline_glyphs(leaf, layout, make):
+    """Community's glyphs are outline paths: one per layout glyph, made by make(char index),
+    placed under the leaf's pose and glyph map."""
+    (a, b), (c, d) = _glyph_matrix(leaf.__dict__)
+    e, f = leaf.__dict__.get('glyph_depth') or (0, 0)
+    outline, at, glyphs = layout['outline'], 0, []
+    for char_index, count in layout['outline_glyphs']:
+        points = [(a * p[0] + b * p[1], c * p[0] + d * p[1], e * p[0] + f * p[1])
+                  for curve in outline[at:at + count] for p in curve]
+        at += count
+        glyph = _copy_glyph_paint(leaf, make(char_index))
+        glyph.set_points(points)
+        center = glyph._geometry_center()
+        glyph.curves = [[[p[0] - center[0], p[1] - center[1], p[2] - center[2]] for p in curve]
+                        for curve in glyph.curves]
+        glyph.position = list(leaf._point_to_world(center))
+        glyph.angle, glyph.geometry_scale, glyph.opacity = leaf.angle, leaf.geometry_scale, leaf.opacity
+        glyph._char_index = char_index
+        glyphs.append(glyph)
+    return glyphs
 
 
 class _TextGlyph(Text, VMobject):
@@ -8667,6 +8756,10 @@ class DecimalNumber(Text):
                        group_with_commas=group_with_commas, show_ellipsis=show_ellipsis, unit=None)
         super().__init__(_number_text(number, options), font_size=font_size, **kwargs)
         self.number, self._number_format, self.unit = number, options, unit
+        center = _cached_text_layout(self.__dict__).get('center')
+        if center and not unit:
+            # Community centers the row before moving minus signs and commas down.
+            self.shift(Vector((center[0], center[1], 0)))
         self.edge_to_fix = Vector(edge_to_fix)
         self.digit_buff_per_font_unit = NumberLine._real(digit_buff_per_font_unit, 'digit_buff_per_font_unit')
         self.unit_buff_per_font_unit = NumberLine._real(unit_buff_per_font_unit, 'unit_buff_per_font_unit')
@@ -8744,6 +8837,11 @@ class DecimalNumber(Text):
         bottom, top = min(b[2] for b in boxes), max(b[3] for b in boxes)
         cx, cy = (left + right) / 2, (bottom + top) / 2
         glyphs = []
+        layout = _cached_text_layout(dict(self.__dict__, text=text))
+        if layout.get('outline_glyphs') is not None:
+            glyphs = _outline_glyphs(self, layout, lambda index: _NumberGlyph(
+                text[index], font_size=self.__dict__['font_size']))
+            boxes = []
         for index, (char, box) in enumerate(zip(text, boxes)):
             glyph = _copy_glyph_paint(self, _NumberGlyph(char, font_size=self.__dict__['font_size']))
             glyph._tex_glyph = True
@@ -8773,8 +8871,9 @@ class DecimalNumber(Text):
         return result
 
 
-class _NumberGlyph(Text):
-    """One TeX character of an exploded DecimalNumber (Community's MathTex submobject)."""
+class _NumberGlyph(Text, VMobject):
+    """One TeX character of an exploded DecimalNumber (Community's MathTex submobject):
+    its Computer Modern outline path when outline data is available."""
 
 
 class Integer(DecimalNumber):
