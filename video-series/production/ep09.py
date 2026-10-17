@@ -249,14 +249,13 @@ class Segment_9_2(Segment):
     EPISODE, SEGMENT = 9, '9.2'
 
     def construct(self):
-        card = footage_card('The Sample gallery', [
-            '[V9.2a] "Sample gallery ↗" opens the gallery in a new tab',
-            '[V9.2b] Search for "arrow"; switch the language filter',
-            '[V9.2c] "Play preview" plays a card\'s video in place',
-            '[V9.2d] "Load in editor →"; edit, reload: the edit stays',
-        ])
-        self.play(FadeIn(card))
+        # [V9.2a-d] the recording: the gallery opens in a new tab, Play preview, search and language
+        # filter, Load in editor, an edit, and a reload that keeps it
+        screen = footage_screen(6.0).to_edge(LEFT, buff=0.3)
+        address = site_address().next_to(screen, RIGHT, buff=0.4).align_to(screen, UP)
+        self.footage_in(screen, 'V9.2', FadeIn(address))
         self.finish()
+        self.wait(1.0)   # the reloaded page renders the kept edit
 
 
 # ---------------------------------------------------------------- 9.3

@@ -77,9 +77,15 @@ the second time; 7.9 holds its repeat for 8 s past the narration instead.
   Long QR titles wrap onto two lines (`wrapped_text`) rather than shrinking.
 - `anchors_and_handles` (common.py) marks every cubic of a VMobject, letters and formulas included.
   `chars`/`find_chars` pick a Text's glyphs by source position; `fit` shrinks a line to the frame.
-- **Screen recordings** are `footage_card` placeholders listing the shots to capture.
-  Never draw an imitation of the ManimOnline interface; replace the card with real
-  footage in the edit. Error and code panels (as in 1.9) are diagrams, not UI mock-ups.
+- **Screen recordings** are real footage of the deployed editor, never an imitation of its
+  interface. A segment places a `footage_screen` with `self.footage_in(screen, 'V1.4', ...)` (and
+  `footage_out`); it then renders with a transparent background, and `render.py` lays the clip
+  under it, so QR cards and labels stay on top. `tools/record_footage.cjs` records each clip in a
+  real Chromium (1536 × 864 at 125 % = 1920 × 1080), running its clicks, typing and seeks at the
+  moments the narration names; it adds only a pointer and the soft yellow outlines the scripts ask
+  for. Order: render the segment (writes `build/footage/epNN-S.json`), record, then
+  `render.py N --stitch`. Clips: V0.2, V1.4, V1.7, V9.2, V11.1. Error and code panels (as in 1.9)
+  are diagrams, not UI mock-ups.
 - Regenerate `qr-matrices.json` whenever a snippet changes (its CID, and so its QR code,
   changes too): `node video-series/tools/qr-links.mjs` then
   `python video-series/tools/make_qr_svgs.py`.
@@ -87,8 +93,8 @@ the second time; 7.9 holds its repeat for 8 s past the narration instead.
 ## Trailer notes
 
 - `ep00.py`'s 0.3 is a `ThreeDScene` (for the turning surface) with the default camera, so the 2D
-  montage shots and the QR card draw as usual. 0.2's editor recording is a footage card; its RED to
-  GREEN edit is also shown on the code excerpt itself.
+  montage shots and the QR card draw as usual. 0.2's second half is the editor recording: the
+  Showcase plays, RED becomes GREEN on the Star line, and the recording seeks to the green star.
 - q00-01 stays in the corner from 0.2 to the end; 0.4 enlarges it with the caption "Scan to edit this
   trailer's final scene". `check_qr.py --wall 0` decodes it in the last segment.
 
@@ -98,8 +104,9 @@ the second time; 7.9 holds its repeat for 8 s past the narration instead.
   fans eleven of them into a flipbook.
 - 1.2 shows the four sentences before the progress slider, following the narration's
   order (the script's visual note lists the slider first).
-- 1.4 and 1.7 open with footage cards for the editor recordings; 1.7 continues with the
-  annotated q01-02 code.
+- 1.4 and 1.7 are editor recordings beside the site's address. 1.4 holds Python's download
+  (the `.wasm` request) until the narration mentions it, so "Loading Python…" is on screen then;
+  1.7 types both edits and continues with the annotated q01-02 code.
 - 1.8's timeline blocks grow for exactly the duration of the play or wait they stand for.
 - 1.9 reproduces the real Pyodide traceback lines verified in the browser.
 - 1.10 ends with the 10-second QR wall and the episode 2 teaser.
@@ -185,8 +192,9 @@ the second time; 7.9 holds its repeat for 8 s past the narration instead.
 
 ## Episode 11 notes
 
-- Everything drawn is Manim Community. manim-lite's side appears as a footage card (11.1, to be
-  replaced by a ManimOnline recording and overlaid in the edit) or as numbers measured by running the
+- Everything drawn is Manim Community. manim-lite's side appears as a recording of ManimOnline
+  (11.1: `same_code` turns the left panel's timing into one scene that plays in step, and its picture
+  is laid over the left panel at 50 %) or as numbers measured by running the
   same code through manim-lite: the fuzz chain's centre and width, the row width, and q11-03's 54
   stream line start points (`LITE_STARTS`), all identical to six decimals. `ep11.py` lists them with
   the line, fixture and test counts quoted on screen; re-measure after manim-lite changes.
@@ -208,9 +216,9 @@ the second time; 7.9 holds its repeat for 8 s past the narration instead.
 
 ## Episode 9 notes
 
-- This episode tours the editor. 9.2 is a footage card; the other segments explain each feature
-  with diagrams rather than imitations of the interface, and the editor recordings listed in the
-  script can be cut in over them in the edit.
+- This episode tours the editor. 9.2 is an editor recording (gallery, search, Load in editor, an
+  edit kept by a reload; it holds one silent second at the end for the reloaded render); the other
+  segments explain each feature with diagrams rather than imitations of the interface.
 - 9.6 shows the real Share link for q09-01 with Middle chosen (`ShareLinks.build` with LZString,
   computed on the deployed site); 9.7 shows q09-01's real CID and the CID of the same document with
   `Square(color=RED)`, both from `cidFor` in `tools/qr-links.mjs`. Recompute them if q09-01 changes.

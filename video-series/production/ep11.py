@@ -64,34 +64,44 @@ class Segment_11_1(Segment):
     EPISODE, SEGMENT = 11, '11.1'
 
     def construct(self):
-        # [V11.1a] Manim Community on the left; the ManimOnline recording goes on the right
+        # [V11.1a] Manim Community on the left; on the right, a recording of ManimOnline playing the
+        # same code (same_code below, with waits that keep both in step)
         frame = stage_frame(6.4).move_to([-3.4, 0.5, 0])
         left_tag = note('Manim Community', 26, BLUE).next_to(frame, UP, buff=0.2)
-        card = footage_card('ManimOnline', ['[V11.1a] The same code in ManimOnline',
-                                            '[V11.1b] Overlay both at 50 %: every frame lines up'], height=3.6)
-        card.move_to([3.4, 0.5, 0])
-        right_tag = note('ManimOnline', 26, AFTER).next_to(card, UP, buff=0.2)
+        screen = footage_screen(3.6).move_to([3.4, 0.5, 0])
+        right_tag = note('ManimOnline', 26, AFTER).next_to(screen, UP, buff=0.2)
         self.play(FadeIn(frame), FadeIn(left_tag))
         self.at('On the right')
-        self.play(FadeIn(card), FadeIn(right_tag))
+        self.footage_in(screen, 'V11.1', FadeIn(right_tag))
 
-        arrow = on_stage(Arrow(LEFT * 3, RIGHT * 3, buff=0, color=YELLOW).shift(UP * 1.6), frame)
-        words = on_stage(VGroup(Text('Manim', font_size=72), Tex('Manim', font_size=72)).arrange(RIGHT, buff=1.2).shift(DOWN * 1.6), frame)
+        starts = []
+        # scale_tips: on_stage's plain scale would keep the tip at full size, unlike the picture on the right
+        arrow = Arrow(LEFT * 3, RIGHT * 3, buff=0, color=YELLOW).shift(UP * 1.6)
+        arrow.scale(frame.width / config.frame_width, scale_tips=True, about_point=ORIGIN).shift(frame.get_center())
+        words = on_stage(VGroup(Text('Manim', font='Helvetica', font_size=72), Tex('Manim', font_size=72))
+                         .arrange(RIGHT, buff=1.2).shift(DOWN * 1.6), frame)
+        starts.append(self.renderer.time)
         self.play(GrowArrow(arrow), FadeIn(words))
-        self.play(arrow.animate.scale(0.4), run_time=1.5)
+        # [V11.1b] ManimOnline's picture laid over Manim Community's at 50 %: one picture, frame for frame
+        overlay = Rectangle(width=frame.width, height=frame.height).move_to(frame).set_stroke(opacity=0)
+        both = note('ManimOnline laid over it at 50 %', 22, AFTER).next_to(frame, DOWN, buff=0.25)
+        self.footage_in(overlay, 'V11.1', arrow.animate.scale(0.4), FadeIn(both), run_time=1.5, crop='preview', opacity=0.5)
         self.play(arrow.animate.scale(2.5), run_time=1.5)
 
         # the square that collapses, frozen at the midpoint: on purpose
         self.at('Including this')
+        starts.append(self.renderer.time)
         self.play(FadeOut(arrow), FadeOut(words))
         square = on_stage(Square(3, color=BLUE).set_fill(BLUE, 0.4), frame)
         self.play(FadeIn(square))
         self.at('collapses to a point')
+        starts.append(self.renderer.time)
         self.play(square.animate.rotate(PI), rate_func=halfway(), run_time=1.5)
         purpose = note('on purpose', 30, FOCUS).next_to(frame, DOWN, buff=0.3)
         self.at('arguably a surprising behaviour')
-        self.play(FadeIn(purpose, scale=0.8))
+        self.footage_out('V11.1', FadeOut(both), FadeIn(purpose, scale=0.8))
         self.at('deliberately')
+        starts.append(self.renderer.time)
         final = on_stage(Square(3, color=BLUE).set_fill(BLUE, 0.4), frame)
         self.play(Transform(square, final), rate_func=lambda t: smooth(0.5 + t / 2) * 2 - 1, run_time=1.5)
 
@@ -99,6 +109,36 @@ class Segment_11_1(Segment):
         question = Text("how do you know it's right?", font_size=40, color=FOCUS).to_edge(DOWN, buff=0.5)
         self.play(FadeOut(purpose), Write(question))
         self.finish()
+        self.footage_notes = {'start': starts[0], 'code': same_code(starts, self.renderer.time)}
+
+
+def same_code(starts, end):
+    """The left panel's animations as one ManimOnline scene, with waits that keep it in step."""
+    grow, fade, turn, finish = (round(t - starts[0], 3) for t in starts)
+
+    def wait(seconds):   # Manim rejects a zero wait, and the gaps are often empty
+        return f'        self.wait({seconds:.3f})\n' if seconds >= 1 / 60 else ''
+
+    return ('''from manim import *
+
+
+class SameCode(Scene):
+    def construct(self):
+        arrow = Arrow(LEFT * 3, RIGHT * 3, buff=0, color=YELLOW).shift(UP * 1.6)
+        words = VGroup(Text("Manim", font="Helvetica", font_size=72), Tex("Manim", font_size=72))
+        words.arrange(RIGHT, buff=1.2).shift(DOWN * 1.6)
+        self.play(GrowArrow(arrow), FadeIn(words))
+        self.play(arrow.animate.scale(0.4), run_time=1.5)
+        self.play(arrow.animate.scale(2.5), run_time=1.5)
+''' + wait(fade - 4) + '''        self.play(FadeOut(arrow), FadeOut(words))
+        square = Square(3, color=BLUE).set_fill(BLUE, 0.4)
+        self.play(FadeIn(square))
+''' + wait(turn - fade - 2) + '''        # Half a turn with .animate, stopped halfway: the square has collapsed to its centre
+        self.play(square.animate.rotate(PI), rate_func=lambda t: smooth(t) / 2, run_time=1.5)
+''' + wait(finish - turn - 1.5) + '''        # ... and the second half of the same straight-line path
+        self.play(Transform(square, Square(3, color=BLUE).set_fill(BLUE, 0.4)),
+                  rate_func=lambda t: smooth(0.5 + t / 2) * 2 - 1, run_time=1.5)
+''' + wait(end - starts[0] - finish - 1.5))
 
 
 # ---------------------------------------------------------------- 11.2

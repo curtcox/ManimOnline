@@ -25,6 +25,7 @@ PRODUCTION = Path(__file__).resolve().parent
 SERIES = PRODUCTION.parent
 WORDS_PER_MINUTE = 145
 TAIL_SECONDS = 0.8          # breathing room after the last sentence
+FOOTAGE = SERIES / 'build' / 'footage'   # screen-recording slots and clips (gitignored)
 
 # Colour roles from the series README.
 OBJECT = BLUE
@@ -139,6 +140,39 @@ class Segment(Scene):
 
     def finish(self):
         self.hold_until(1.0)
+
+    # Screen recordings. Each slot names a clip (a shot id such as 'V1.4') and says where and when it
+    # shows; tear_down writes them to build/footage/epNN-S.json for tools/record_footage.cjs (which
+    # times the clip's actions in segment time) and render.py (which lays the clip under the scene).
+
+    def footage_in(self, screen, clip, *animations, run_time=1.0, **options):
+        """Fade in a footage_screen showing clip. options: crop='preview' shows only the editor's
+        preview picture, opacity=0.5 lets the scene show through."""
+        left, top = screen.get_corner(UL)[:2]
+        self.footage_slots().append(dict(clip=clip, start=self.renderer.time, fade_in=run_time,
+                                         rect=[left, top, screen.width, screen.height], **options))
+        self.play(FadeIn(screen), *animations, run_time=run_time)
+
+    def footage_out(self, clip, *animations, run_time=1.0):
+        """Fade out clip's slot (the last one opened for it), with the scene's own animations."""
+        slot = [s for s in self.footage_slots() if s['clip'] == clip][-1]
+        slot.update(end=self.renderer.time, fade_out=run_time)
+        self.play(*animations, run_time=run_time)
+
+    def footage_slots(self):
+        if not hasattr(self, '_footage'):
+            self._footage = []
+        return self._footage
+
+    def tear_down(self):
+        if self.footage_slots():
+            FOOTAGE.mkdir(parents=True, exist_ok=True)
+            notes = getattr(self, 'footage_notes', {})
+            (FOOTAGE / f'ep{self.EPISODE:02d}-{self.SEGMENT}.json').write_text(json.dumps({
+                'episode': self.EPISODE, 'segment': self.SEGMENT, 'scene': type(self).__name__,
+                'duration': self.renderer.time, 'frame': [config.frame_width, config.frame_height],
+                'slots': self.footage_slots(), **notes}, indent=1) + '\n')
+        super().tear_down()
 
 
 # ---------------------------------------------------------------- QR codes
@@ -275,21 +309,18 @@ def line_highlight(code, index, color=FOCUS):
     return box.stretch_to_fit_width(code.background.width - 0.25).align_to(code.background, RIGHT).shift(LEFT * 0.1)
 
 
-def footage_card(title, shots, height=6.0):
-    """Placeholder for a screen recording: what to capture, never a fake interface."""
-    frame = RoundedRectangle(width=height * 16 / 9, height=height, corner_radius=0.2)
-    frame.set_stroke(SCAFFOLD, width=2).set_fill('#101418', 1)
-    dashes = DashedVMobject(frame.copy().set_fill(opacity=0), num_dashes=80).set_stroke(SCAFFOLD, 2)
-    tag = Text('SCREEN RECORDING', font_size=26, weight=BOLD, color=WARNING)
-    heading = Text(title, font_size=44)
-    items = VGroup(*[Text(f'• {shot}', font_size=28, color=GREY_A) for shot in shots])
-    items.arrange(DOWN, aligned_edge=LEFT, buff=0.28)
-    body = VGroup(tag, heading, items).arrange(DOWN, aligned_edge=LEFT, buff=0.4)
-    body.scale_to_fit_width(frame.width - 1.2)
-    if body.height > frame.height - 1:
-        body.scale_to_fit_height(frame.height - 1)
-    body.move_to(frame)
-    return VGroup(frame, dashes, body)
+def footage_screen(height=6.0):
+    """Where a screen recording goes: a 16:9 frame whose inside stays transparent. Segments with a
+    screen render with a transparent background (render.py) and the recording, captured from the
+    deployed editor by tools/record_footage.cjs, is laid underneath, so captions, QR cards and
+    highlights drawn by the scene stay on top. Never draw an imitation of the interface instead."""
+    return Rectangle(width=height * 16 / 9, height=height).set_stroke(SCAFFOLD, width=2).set_fill(opacity=0)
+
+
+def site_address(font_size=24):
+    """The editor's address, for the space beside a recording placed with footage_screen."""
+    return VGroup(Text('curtcox.github.io/', font_size=font_size, color=SCAFFOLD),
+                  Text('ManimOnline', font_size=font_size + 6)).arrange(DOWN, aligned_edge=LEFT, buff=0.12)
 
 
 def browser_icon(width=2.4, height=1.6, color=SCAFFOLD):

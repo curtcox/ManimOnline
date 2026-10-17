@@ -3,7 +3,7 @@
     python3 video-series/production/render.py 0 [-ql] [segment ...]
 
 Shot ids in comments ([V0.3a] ...) refer to episodes/00-trailer.md. The montage in 0.3 redraws
-moments from later episodes in miniature; 0.2's editor recording is a footage card.
+moments from later episodes in miniature; 0.2 shows a screen recording of the editor (footage_screen).
 """
 import math
 import sys
@@ -76,26 +76,12 @@ class Segment_0_2(Segment):
         lines = code.code_lines
         self.play(LaggedStart(*[Write(line) for line in lines if len(line)], lag_ratio=0.8), run_time=4.5)
 
-        # [V0.2b] the editor recording, and the QR code that stays to the end of 0.3
+        # [V0.2b] the editor recording, and the QR code that stays to the end of 0.3. [V0.2c] happens in
+        # the recording: RED becomes GREEN on the Star line, and a moment later the preview plays it.
         self.at('And this is Mannim Online')
-        card = footage_card('ManimOnline', ['[V0.2b] The Showcase code in the editor, the preview playing on the right',
-                                            '[V0.2c] Change RED to GREEN on the Star line; a second later the star is green'], height=4.6)
-        card.move_to(UP * 0.4)
-        corner = trailer_card()
-        self.play(FadeOut(VGroup(code, star)), FadeIn(card), FadeIn(corner, shift=UP * 0.2))
-        self.at('No install')
-        self.play(Indicate(card[2][1], color=FOCUS))
-
-        # [V0.2c] edit RED to GREEN; a moment later it plays
-        self.at('You stop typing')
-        code = showcase_excerpt().to_edge(LEFT, buff=0.5).shift(UP * 0.4)
-        star = hook_star().scale(0.8).move_to([4.9, 1.2, 0])
-        self.play(FadeOut(card), FadeIn(code), FadeIn(star))
-        green = showcase_excerpt('GREEN').move_to(code, aligned_edge=UL)
-        mark = line_highlight(code, STAR_LINE)
-        self.play(Create(mark), Transform(code_line(code, STAR_LINE), code_line(green, STAR_LINE)), run_time=0.8)
-        self.wait(1.0)
-        self.play(star.animate.set_color(GREEN).set_fill(GREEN, 0.4))
+        screen = footage_screen(5.4).to_edge(LEFT, buff=0.3).shift(UP * 0.5)
+        address = site_address().next_to(screen, RIGHT, buff=0.45).align_to(screen, UP)
+        self.footage_in(screen, 'V0.2', FadeOut(VGroup(code, star)), FadeIn(address), FadeIn(trailer_card(), shift=UP * 0.2))
         self.finish()
 
 

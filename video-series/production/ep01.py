@@ -217,17 +217,15 @@ class Segment_1_4(Segment):
     EPISODE, SEGMENT = 1, '1.4'
 
     def construct(self):
-        card = footage_card('A tour of ManimOnline', [
-            '[V1.4a] Page loads; outline the code editor, the preview, the toolbar',
-            '[V1.4b] SquareToCircle in the editor; "Python loading", then the preview plays',
-            '[V1.4c] Play, pause; drag the seek bar back and forth through the morph',
-            '[V1.4d] Briefly highlight "Renderer: Auto" and "Sample gallery"',
-        ])
-        self.play(FadeIn(card))
-        self.hold_until(0.3)
+        # [V1.4a-d] the recording: page load, regions outlined as they are named, Python loading,
+        # playback controls, then the Renderer selector and the Sample gallery link
+        screen = footage_screen(6.0).to_edge(LEFT, buff=0.3)
+        address = site_address().next_to(screen, RIGHT, buff=0.4).align_to(screen, UP)
+        self.footage_in(screen, 'V1.4', FadeIn(address))
+        self.at('scan the code')
         qr = qr_card('q01-01')
         self.play(FadeIn(qr, shift=UP * 0.2))
-        self.hold_until(0.56)
+        self.wait(8.5)
         self.play(FadeOut(qr))
         self.finish()
 
@@ -373,41 +371,39 @@ class Segment_1_7(Segment):
     EPISODE, SEGMENT = 1, '1.7'
 
     def construct(self):
-        card = footage_card('Your first edits', [
-            '[V1.7a] Add fill_opacity=0.5 to the square; after a pause the preview re-renders, half-filled',
-            '[V1.7b] Add a third line that transforms the shape into a red triangle; the preview ends red',
-        ])
-        self.play(FadeIn(card))
-        self.hold_until(0.3)
+        # [V1.7a] [V1.7b] the recording: fill_opacity=0.5, then a third transform to a red triangle
+        screen = footage_screen(6.0).to_edge(LEFT, buff=0.3)
+        address = site_address().next_to(screen, RIGHT, buff=0.4).align_to(screen, UP)
+        self.footage_in(screen, 'V1.7', FadeIn(address))
+        self.at('The code in the corner')
+        qr = qr_card('q01-02')
+        self.play(FadeIn(qr, shift=UP * 0.2))
 
-        # [V1.7c] the edited code, with each change marked
+        # [V1.7c] the finished code, with the rename marked (the screen holds a moment for the triangle)
+        self.at('Notice that', lead=-0.6)
         after = code_panel(snippet_source('ep01/02-three-shapes.py'), font_size=24)
         after.scale_to_fit_width(13).to_edge(UP, buff=0.5)
-        self.play(FadeOut(card), FadeIn(after))
-        notes = [(5, 'a fill, and a more general name'), (8, 'a third shape'), (9, 'your turn: a green star')]
-        marks = VGroup()
-        for i, words in notes:
-            box = line_highlight(after, i, color=AFTER)
-            tag = Text(words, font_size=24, color=AFTER).next_to(after, DOWN, buff=0.3).align_to(after, LEFT)
-            marks.add(VGroup(box, tag))
         results = VGroup(Square(color=BLUE, fill_opacity=0.5), Circle(color=YELLOW, fill_opacity=0.5),
                          Triangle(color=RED, fill_opacity=0.5),
                          DashedVMobject(Star(color=GREEN), num_dashes=30)).scale(0.55)
         results.arrange(RIGHT, buff=0.9).move_to(DOWN * 2.5 + LEFT * 2.4)
         steps = VGroup(*[Arrow(a.get_right(), b.get_left(), buff=0.15, color=SCAFFOLD, stroke_width=3)
                          for a, b in zip(results[:-1], results[1:])])
-        self.play(Create(marks[0][0]), Write(marks[0][1]), DrawBorderThenFill(results[0]))
-        self.hold_until(0.4)
-        qr = qr_card('q01-02')
-        self.play(FadeIn(qr, shift=UP * 0.2), ReplacementTransform(marks[0], marks[1]))
-        self.play(GrowArrow(steps[0]), FadeIn(results[1]), GrowArrow(steps[1]), FadeIn(results[2]))
-        self.hold_until(0.52)
-        self.play(ReplacementTransform(marks[1], marks[2]), GrowArrow(steps[2]), Create(results[3]))
-        self.hold_until(0.68)
+        self.footage_out('V1.7', FadeOut(screen), FadeOut(address), FadeIn(after))
+        self.play(LaggedStart(*[FadeIn(r) for r in results[:3]], *[GrowArrow(s) for s in steps[:2]], lag_ratio=0.2),
+                  run_time=1.2)
+        self.play(GrowArrow(steps[2]), Create(results[3]))
+        mark = VGroup(line_highlight(after, 5, color=AFTER),
+                      Text('a more general name', font_size=24, color=AFTER).next_to(after, DOWN, buff=0.3).align_to(after, LEFT))
+        self.at('a more general name')
+        self.play(Create(mark[0]), Write(mark[1]))
+        self.at('square', occurrence=1)
+        self.play(FadeOut(qr))
 
         # names: shape, not square
+        self.at('Names are for you')
         rename = Text('shape: a name that stays true', font_size=30, color=FOCUS).next_to(after, DOWN, buff=0.3).align_to(after, LEFT)
-        self.play(FadeOut(qr), ReplacementTransform(marks[2], VGroup(line_highlight(after, 5, color=FOCUS), rename)))
+        self.play(ReplacementTransform(mark, VGroup(line_highlight(after, 5, color=FOCUS), rename)))
         self.finish()
 
 
