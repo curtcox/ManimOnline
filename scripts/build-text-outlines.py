@@ -86,7 +86,9 @@ def face_data(path, chars):
             delta = positions[0].x_advance - glyphs[a][0]
             if delta:
                 kerning[a + b] = delta
-    return {'upem': upem, 'glyphs': glyphs, 'kerning': kerning}
+    # Pango's line height for MarkupText: HarfBuzz's scaled hhea ascender plus descender.
+    return {'upem': upem, 'ascent': font['hhea'].ascent, 'descent': -font['hhea'].descent,
+            'glyphs': glyphs, 'kerning': kerning}
 
 
 def main():

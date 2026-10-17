@@ -2088,7 +2088,7 @@ class Mobject:
             low, high = child._z_extent()
             zs.extend(pivot_z + (z - center_z) * scale for z in (low, high))
         depth = self.__dict__.get('glyph_depth') if self._type in ('text', 'mathtex') else None
-        if depth:
+        if depth and not own:
             # A text plane turned out of XY spans the z of its mapped ink box.
             width, height = self._glyph_size()
             half = (abs(depth[0]) * width + abs(depth[1]) * height) / 2 * scale
@@ -2818,6 +2818,11 @@ class Mobject:
             # Text is centered on its estimated (Text) or measured (MathTex) ink box.
             width, height = self._glyph_size()
             (a, b), (c, d) = _glyph_matrix(self.__dict__)
+            if (b or c) and self._type == 'text':
+                points = self._text_bound_points()  # A sheared or turned outline.
+                if points:
+                    return (min(p[0] for p in points), min(p[1] for p in points),
+                            max(p[0] for p in points), max(p[1] for p in points))
             # The glyph map's image of the centered ink box.
             half_w, half_h = (abs(a) * width + abs(b) * height) / 2, (abs(c) * width + abs(d) * height) / 2
             return (-half_w, -half_h, half_w, half_h)
@@ -3285,7 +3290,23 @@ class Mobject:
         if self._type in ('square', 'rectangle', 'triangle'):
             return [curve[0] for curve in _path_curves({'type': self._type, 'side_length': self.__dict__.get('side_length', 0),
                      'width': self.__dict__.get('width', 0), 'height': self.__dict__.get('height', 0)})]
+        if self._type == 'text' and not self.children:
+            return self._text_bound_points()
         return None
+
+    def _text_bound_points(self):
+        """A text leaf's outline anchors (handles too for sizes) under its glyph map, or None."""
+        layout = _cached_text_layout(self.__dict__)
+        outline = layout.get('outline')
+        if not outline:
+            return None
+        (a, b), (c, d) = _glyph_matrix(self.__dict__)
+        e, f = self.__dict__.get('glyph_depth') or (0, 0)
+        points = ([p for curve in outline for p in curve] if _BOUNDS_WITH_HANDLES else
+                  [p for curve in outline for p in (curve[0], curve[3])])
+        if (a, b, c, d, e, f) == (1, 0, 0, 1, 0, 0):
+            return points
+        return [(a * x + b * y, c * x + d * y, e * x + f * y) for x, y, _ in points]
 
     def _round_snapshot(self):
         """The analytical fields _path_curves reads for circles, arcs, ellipses and annuli."""
@@ -7814,40 +7835,93 @@ def _svg_glyph_points(ops, ox, oy):
     return closed
 
 
-def _outline_layout(text, font_size, line_spacing, faces, runs=()):
+def _shape_paragraph(paragraph, offset, faces, scale, boundaries, data):
+    """Pango's shaping of one paragraph: [char, face, pen, advance, run start] in Pango units,
+    with HarfBuzz kerning between neighbours of the same face that no run boundary separates.
+    None when a character has no outline."""
+    shaped, x, previous, run = [], 0, None, 0
+    for k, char in enumerate(paragraph):
+        face = faces if len(faces) == 1 else faces[offset + k]
+        table = data.get(face)
+        if table is None:
+            return None
+        if char not in table['glyphs']:
+            if char.isspace() and char not in ' \xa0':
+                char = ' '  # Other spaces take the width of the space glyph here.
+            else:
+                return None
+        if offset + k in boundaries:
+            run = x  # manimpango shapes each run as its own layout, drawn from here.
+        elif previous is not None and previous[1] == face:
+            x += _hb_scale(table['kerning'].get(previous[0] + char, 0), scale, table['upem'])
+        advance = _hb_scale(table['glyphs'][char][0], scale, table['upem'])
+        shaped.append([char, face, x, advance, run])
+        x += advance
+        previous = (char, face)
+    return shaped
+
+
+def _outline_layout(text, font_size, line_spacing, faces, runs=(), wrap=None, justify=False):
     """Community's Text geometry from Liberation Sans outlines, or None when a character or
-    face has no outline data. Each line (and each style run: t2c/t2f/t2s/t2w/gradient keys)
-    is shaped separately by manimpango, so kerning stops at run boundaries."""
+    face has no outline data. Text shapes each line (and each style run: t2c/t2f/t2s/t2w/
+    gradient keys) separately, so kerning stops at run boundaries; MarkupText (wrap set)
+    is one Pango layout 500 px wide, with Pango's line height, wrapping and justification."""
     data = _outline_faces()
-    if not data or any((faces if len(faces) == 1 else faces[i]) not in data for i in range(len(text) if len(faces) > 1 else 1)):
+    if not data:
         return None
     scale = _pango_scale(font_size)
-    pitch = (font_size + font_size * line_spacing) / 4.8
     boundaries = set(runs or ())
-    glyphs, lines, index = [], [], 0
-    for row, paragraph in enumerate(text.split('\n')):
-        x, previous = 0, None
-        pens = []
-        for k, char in enumerate(paragraph):
-            face = faces if len(faces) == 1 else faces[index + k]
-            table = data[face]
-            if char not in table['glyphs']:
-                if char.isspace() and char not in ' \xa0':
-                    char = ' '  # Pango draws other spaces at the width of its space glyph here.
-                else:
-                    return None
-            if previous is not None and previous[1] == face and index + k not in boundaries:
-                x += _hb_scale(table['kerning'].get(previous[0] + char, 0), scale, table['upem'])
-            pens.append(x)
-            advance, ops = _cairo_glyph(face, char, scale)
-            if not char.isspace():
-                points = _svg_glyph_points(ops, x / 1024, row * pitch)
-                if points:
-                    glyphs.append((index + k, points))
-            x += _hb_scale(advance, scale, table['upem'])
-            previous = (char, face)
-        lines.append((paragraph, row * pitch, x, index))
+    rows, index = [], 0  # (shaped glyphs, baseline px, text start index)
+    for paragraph in text.split('\n'):
+        shaped = _shape_paragraph(paragraph, index, faces, scale, () if wrap is not None else boundaries, data)
+        if shaped is None:
+            return None
+        if wrap is None:
+            rows.append((paragraph, shaped, index))
+        else:
+            ends = [item[2] + item[3] for item in shaped]
+            def measure(start, stop):
+                return (ends[stop - 1] - shaped[start][2]) / 1024 if stop > start else 0
+            spans = _wrap_paragraph(paragraph, 500, measure) if paragraph else [(0, 0)]
+            for number, (first, last) in enumerate(spans):
+                line = [list(item) for item in shaped[first:last]]
+                origin = line[0][2] if line else 0
+                for item in line:
+                    item[2] -= origin
+                    item[4] = 0  # One layout: only its origin is snapped.
+                if justify and number < len(spans) - 1:
+                    # Pango's justify_words: spread the free width over the word starts,
+                    # rounding cumulatively.
+                    width = max([item[2] + item[3] for item in line if not item[0].isspace()] or [0])
+                    starts = [k for k in range(1, len(line)) if line[k - 1][0].isspace() and not line[k][0].isspace()]
+                    free = 512000 - width
+                    if starts and free > 0:
+                        shift, added = 0, 0
+                        cuts = {k: n + 1 for n, k in enumerate(starts)}
+                        for k, item in enumerate(line):
+                            if k in cuts:
+                                total = cuts[k] * free // len(starts)
+                                shift, added = shift + total - added, total
+                            item[2] += shift
+                rows.append((paragraph[first:last], line, index + first))
         index += len(paragraph) + 1
+    if wrap is None:
+        pitch = (font_size + font_size * line_spacing) / 4.8
+    else:
+        table = data[faces[0]]
+        pitch = (_hb_scale(table['ascent'], scale, table['upem']) + _hb_scale(table['descent'], scale, table['upem'])) / 1024
+    glyphs, lines = [], []
+    for row, (line, shaped, start) in enumerate(rows):
+        # cairo_move_to snaps each line's and run's origin to Cairo's 1/256 px grid.
+        baseline = row * pitch if wrap is not None else round(row * pitch * 256) / 256
+        for k, (char, face, pen, _, run) in enumerate(shaped):
+            if not char.isspace():
+                x = round(run / 4) / 256 + (pen - run) / 1024
+                points = _svg_glyph_points(_cairo_glyph(face, char, scale)[1], x, baseline)
+                if points:
+                    glyphs.append((start + k, points))
+        width = shaped[-1][2] + shaped[-1][3] if shaped else 0
+        lines.append((line, baseline, width, start))
     if not glyphs:
         return {'width': 0, 'height': 0, 'lines': [], 'em': font_size * TEXT_EM_PER_POINT, 'outline': [],
                 'outline_glyphs': []}
@@ -7860,8 +7934,8 @@ def _outline_layout(text, font_size, line_spacing, faces, runs=()):
         curves.extend([list(map(list, local[i:i + 4])) for i in range(0, len(local), 4)])
         owners.append((char_index, len(local) // 4))
     return {'width': (max(xs) - min(xs)) * 0.05, 'height': (max(ys) - min(ys)) * 0.05,
-            'lines': [{'text': paragraph, 'x': -cx * 0.05, 'y': -(baseline - cy) * 0.05, 'length': width / 1024 * 0.05,
-                       'start': start} for paragraph, baseline, width, start in lines if paragraph],
+            'lines': [{'text': line, 'x': -cx * 0.05, 'y': -(baseline - cy) * 0.05, 'length': width / 1024 * 0.05,
+                       'start': start} for line, baseline, width, start in lines if line],
             'em': scale / 1024 * 0.05, 'family': 'sans', 'outline': curves, 'outline_glyphs': owners}
 
 
@@ -7885,6 +7959,15 @@ def _text_layout(snapshot):
     # Outline curves are shared and read-only; the rest may be edited by the caller.
     return {name: value if name in ('outline', 'outline_glyphs') else copy.deepcopy(value)
             for name, value in _TEXT_LAYOUTS[key].items()}
+
+
+def _cached_text_layout(snapshot):
+    """The shared (read-only) layout of a text snapshot."""
+    layout = _TEXT_LAYOUTS.get(_text_layout_key(snapshot))
+    if layout is None:
+        _text_layout(snapshot)
+        layout = _TEXT_LAYOUTS[_text_layout_key(snapshot)]
+    return layout
 
 
 def _text_extent(snapshot):
@@ -7945,8 +8028,8 @@ def _numeric_boxes(text, font_size):
 def _compute_text_layout(text, font_size, line_spacing, numeric, mono=False, wrap=None, justify=False, faces='r',
                          outline=False, runs=None):
     import re
-    if outline and not numeric and not mono and wrap is None and not justify:
-        layout = _outline_layout(text, font_size, line_spacing, faces, runs)
+    if outline and not numeric and not mono:
+        layout = _outline_layout(text, font_size, line_spacing, faces, runs, wrap, justify)
         if layout is not None:
             return layout
     snapshot = {'text': text, 'font_size': font_size, '_line_spacing': line_spacing}
@@ -8128,7 +8211,7 @@ def _math_glyphs(text, font_size, part_strings=None):
 class Text(Mobject):
     # Community's defaults; non-default values are stored (and exported) per text.
     font, slant, weight = '', NORMAL, NORMAL
-    _frame_excluded = ('_text_maps', '_line_spacing_value', '_original_text', '_faces')
+    _frame_excluded = ('_text_maps', '_line_spacing_value', '_original_text', '_faces', '_runs')
     _TEXT_MAPS = ('t2c', 't2f', 't2g', 't2s', 't2w')
 
     def __getattr__(self, name):
@@ -8188,7 +8271,7 @@ class Text(Mobject):
             self.scale(value / self.font_size)
 
     def __init__(self, text, font_size=48, line_spacing=-1, font='', slant=NORMAL, weight=NORMAL,
-                 t2c=None, t2f=None, t2g=None, t2s=None, t2w=None, gradient=None, disable_ligatures=False,
+                 t2c=None, t2f=None, t2g=None, t2s=None, t2w=None, gradient=None, tab_width=4, disable_ligatures=False,
                  height=None, width=None, warn_missing_font=True, **kwargs):
         if isinstance(font_size, bool) or not isinstance(font_size, _REAL) or not math.isfinite(font_size) or font_size <= 0:
             raise ValueError('font_size must be positive and finite')
@@ -8207,6 +8290,10 @@ class Text(Mobject):
         kwargs.setdefault('stroke_width', 0)
         super().__init__(**kwargs)
         self._type, self.text, self.font_size = 'text', str(text), font_size
+        if '\t' in self.text and type(self) is not MarkupText:
+            # Community draws a tab as tab_width spaces.
+            self.__dict__.setdefault('_original_text', self.text)
+            self.text = self.text.replace('\t', ' ' * int(tab_width))
         if len(self.text) > 10000:
             raise ValueError('Text is limited to 10000 characters')
         if line_spacing != -1:
@@ -8223,6 +8310,7 @@ class Text(Mobject):
         if weight != NORMAL:
             self.weight = weight
         self._set_faces(t2w, t2s, self.__dict__.pop('_markup_styles', ()))
+        self._set_runs((t2f, t2s, t2w, t2c, t2g), gradient)
         styles = [(t2f, 'font'), (t2s, 'slant'), (t2w, 'weight'), (t2c, 'color'), (t2g, 'gradient')]
         if gradient or any(mapping for mapping, _ in styles):
             self._explode()
@@ -8259,6 +8347,27 @@ class Text(Mobject):
         faces = ''.join(_face(w, s) for w, s in zip(weights, slants))
         if faces != _face(self.weight, self.slant) * len(text):
             self.__dict__['_faces'] = faces
+
+    def _set_runs(self, mappings, gradient):
+        """Community lays out each t2f/t2s/t2w/t2c/t2g match (and, with a gradient, each
+        character) as its own Pango run: kerning stops at these boundaries."""
+        import re
+        text, bounds = self.__dict__['text'], set()
+        for mapping in mappings:
+            for key in mapping or {}:
+                match = re.match(r'\[([0-9\-]{0,}):([0-9\-]{0,})\]', key)
+                if match:
+                    start = int(match.group(1)) if match.group(1) else 0
+                    end = int(match.group(2)) if match.group(2) else len(text)
+                    spans = [(len(text) + start if start < 0 else start, len(text) + end if end < 0 else end)]
+                else:
+                    spans = [found.span() for found in re.finditer(re.escape(key), text)]
+                for start, end in spans:
+                    bounds.update((start, end) if mapping is not mappings[4] else range(start, end + 1))
+        if gradient:
+            bounds.update(range(len(text) + 1))
+        if bounds:
+            self.__dict__['_runs'] = tuple(sorted(bounds))
 
     def _fit_svg_size(self, height, width):
         """Community's SVGMobject sizing: scale to height, then to width (both uniform)."""

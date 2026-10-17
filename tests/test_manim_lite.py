@@ -73,6 +73,9 @@ def plain_points(value):
     return value
 
 
+LOREM = ('Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut '
+         'labore et dolore magna aliqua. Ut enim ad minim veniam')
+
 class PointTestCase(unittest.TestCase):
     def assertEqual(self, first, second, msg=None):
         super().assertEqual(plain_points(first), plain_points(second), msg)
@@ -1882,6 +1885,34 @@ assert isinstance(t.get_value(), (int, float))""")
         for bad in ({'slant':'WIDE'},{'weight':'FAT'},{'weight':lite.SEMILIGHT}):
             with self.assertRaises(AttributeError): lite.Text('x',**bad)
 
+    def test_text_outlines_runs_and_markup_layout_match_community(self):
+        # Manim 0.22 with Liberation Sans: each t2c/t2g/gradient run is shaped separately (no
+        # kerning across it), tabs are four spaces, MarkupText is one wrapped/justified layout.
+        for make,width,height in ((lambda: lite.Text('AVATAR Wolf',t2c={'V':lite.RED}),4.074219,.489453),
+                                  (lambda: lite.Text('AVATAR Wolf',gradient=(lite.RED,lite.BLUE)),4.185156,.489453),
+                                  (lambda: lite.Text('AVATAR Wolf',t2g={'VAT':(lite.RED,lite.BLUE)}),4.173047,.489453),
+                                  (lambda: lite.Text('AVA\tTo'),2.601709,.465039),
+                                  (lambda: lite.Text('ab\ncd',line_spacing=2),.685205,1.989453),
+                                  (lambda: lite.MarkupText("A<span fgcolor='red'>V</span>ATAR"),2.437109,.458594),
+                                  (lambda: lite.MarkupText('<b>Bold</b> and <i>it</i>'),3.275732,.489453),
+                                  (lambda: lite.MarkupText('ab\ncd\nef'),.685205,1.979004),
+                                  (lambda: lite.MarkupText(LOREM),23.325049,1.366064),
+                                  (lambda: lite.MarkupText(LOREM,justify=True),24.944385,1.366064)):
+            text=make()
+            self.assertAlmostEqual(text.get_width(),width,delta=1e-6)
+            self.assertAlmostEqual(text.get_height(),height,delta=1e-6)
+        # Glyphs are Community's outline paths (68 points for 'A', first ones below).
+        glyph=lite.Text('Ab')[0]
+        self.assertEqual(len(glyph.get_points()),68)
+        for point,expected in zip(glyph.get_points()[:3],((-.0145,-.23828),(-.03195,-.19355),(-.0494,-.14883))):
+            self.assertAlmostEqual(point[0],expected[0],delta=1e-5)
+            self.assertAlmostEqual(point[1],expected[1],delta=1e-5)
+        # Unexploded text bounds turned or sheared outlines exactly.
+        turned=lite.Text('Hello World').rotate(lite.PI/6)
+        self.assertAlmostEqual(turned.get_width(),3.1178383,delta=1e-6)
+        self.assertAlmostEqual(turned.get_height(),2.0850207,delta=1e-6)
+        self.assertAlmostEqual(lite.Text('Hello World').apply_matrix([[1,.5],[0,1]]).get_width(),3.5749512,delta=1e-6)
+
     def test_text_faces_and_kerning_match_community(self):
         # Manim Community 0.22 with Liberation Sans registered: Bold for SEMIBOLD and heavier,
         # Italic for ITALIC and OBLIQUE, HarfBuzz kerning within each face.
@@ -2372,7 +2403,8 @@ assert isinstance(t.get_value(), (int, float))""")
         self.assertEqual(len(host[1].glyph_matrix),4)
         for value,expected in zip(host[1].glyph_matrix,(2*c,-2*s,s,c)):
             self.assertAlmostEqual(value,expected)
-        self.assertPointAlmostEqual(host[1].get_center(),(2,0,0))
+        # Community's center of the stretched outline's anchors (Manim 0.22, Liberation Sans).
+        self.assertPointAlmostEqual(host[1].get_center(),(1.94785641,-.05415669,0))
         for kwargs in ({'factor':float('inf'),'dim':0},
                        {'factor':2,'dim':0,'about_point':lite.OUT}):
             with self.assertRaises(ValueError): arrow.stretch(**kwargs)
@@ -9491,10 +9523,10 @@ self.play(text.animate.set_fill([PURE_RED,PURE_BLUE],opacity=[.2,.8]).set_backgr
             points = point_list(shape) if shape.has_points() else None
             data = shape.to_dict()
             ends = [shape._point_to_world(lite.Vector(point)) for point in data['gradient_points']]
-            center = shape.get_center()
-            half = shape.get_height()/2
-            self.assertPointAlmostEqual(ends[0],center-half*lite.UP)
-            self.assertPointAlmostEqual(ends[1],center+half*lite.UP)
+            # Community: center -+ (top - center), both from the anchors.
+            center, top = shape.get_center(), shape.get_critical_point(lite.UP)
+            self.assertPointAlmostEqual(ends[0],2*center-top)
+            self.assertPointAlmostEqual(ends[1],top)
             self.assertEqual(shape.to_dict(),data)
             if points is not None: self.assertEqual(point_list(shape),points)
 
