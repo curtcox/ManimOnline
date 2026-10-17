@@ -672,4 +672,4 @@ paths (in Pango's drawing order) and CSS color names; only low/error underline s
 approximated. Compact frames ship partial outlines as the pooled whole outline plus a
 progress, so text-heavy Write/Create scenes stay small (a 30-line Code Write: 9 MB, was
 22 MB before outlines). Docstring corpus against Liberation-font Community: 289 of 375; the
-animation-chain fuzz suites e301-e305 and e401-e410 match 1,822 of 1,823 scenes.
+animation-chain fuzz suites e301-e305 and e401-e410 match 1,780 of 1,782 scenes.
