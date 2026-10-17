@@ -33,4 +33,17 @@
   <lexeme><grapheme>Riemann</grapheme><alias>ree mahn</alias></lexeme>
   <lexeme><grapheme>Lempel</grapheme><alias>lem pel</alias></lexeme>
   <lexeme><grapheme>Ziv</grapheme><alias>zeev</alias></lexeme>
+  <!-- Manim constants are written in capitals; say them as ordinary words, not letters. -->
+  <lexeme><grapheme>UP</grapheme><alias>up</alias></lexeme>
+  <lexeme><grapheme>DOWN</grapheme><alias>down</alias></lexeme>
+  <lexeme><grapheme>LEFT</grapheme><alias>left</alias></lexeme>
+  <lexeme><grapheme>RIGHT</grapheme><alias>right</alias></lexeme>
+  <lexeme><grapheme>IN</grapheme><alias>in</alias></lexeme>
+  <lexeme><grapheme>OUT</grapheme><alias>out</alias></lexeme>
+  <lexeme><grapheme>ORIGIN</grapheme><alias>origin</alias></lexeme>
+  <lexeme><grapheme>DEGREES</grapheme><alias>degrees</alias></lexeme>
+  <lexeme><grapheme>BLUE</grapheme><alias>blue</alias></lexeme>
+  <lexeme><grapheme>YELLOW</grapheme><alias>yellow</alias></lexeme>
+  <lexeme><grapheme>RED</grapheme><alias>red</alias></lexeme>
+  <lexeme><grapheme>GREEN</grapheme><alias>green</alias></lexeme>
 </lexicon>
