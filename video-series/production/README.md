@@ -4,7 +4,8 @@ Manim Community scenes for the series' visuals, one file per episode
 (`epNN.py`) and one Scene class per script segment (`Segment_1_5` is segment 1.5).
 Shot ids in comments (`[V1.5b]`) match the **Visual.** notes in `../episodes/`.
 
-Episodes 1–4 are complete; episode 1 is the template for the others.
+Episodes 1–4 are complete; episode 1 is the template for the others. Episode 1 is
+narrated (see Narration).
 
 ## Requirements
 
@@ -35,11 +36,21 @@ minute plus any `<break/>` pauses, read straight from the episode script. Visual
 are placed with `self.hold_until(fraction)` at the point in the narration where they
 belong, and `self.finish()` holds until the end.
 
-Once the ElevenLabs audio exists, measure each segment file and write
-`build/narration/durations.json`, for example `{"01.1": 47.2, "01.2": 81.9}` (keys are
+`tools/narrate.py` measures each generated segment and writes
+`build/narration/durations.json`, for example `{"01.1": 33.0, "01.10": 37.7}` (keys are
 `EE.S`, the episode padded to two digits). Re-rendering then fits every scene to the
 real audio without code changes. Fractions were chosen from paragraph word counts, so
 small drifts within a segment are expected; adjust a `hold_until` if a beat lands early.
+
+## Narration
+
+`python3 video-series/tools/narrate.py N` generates episode N's narration (ElevenLabs,
+voice "Curt Cox 2", key from the keychain). After that, `render.py N` re-times the scenes
+and the stitched file carries the soundtrack: each segment's audio starts with its scene
+and is padded with silence to the scene's length (scenes run 0.8 s past their audio, more
+when a fixed beat such as the 10-second QR wall needs it). Because the voice is faster than
+the 145 wpm estimate, re-check QR card times after narrating an episode: each card should
+stay up at least 8 s.
 
 ## Conventions
 

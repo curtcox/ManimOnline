@@ -60,7 +60,9 @@ extraction tool reports the narrated word count per segment.
 ## Voice and narration
 
 - One narrator throughout: warm, curious, unhurried, speaking to one viewer ("you").
-  Pick an original ElevenLabs voice; do not clone or imitate any real presenter.
+  The voice is the author's own ElevenLabs voice, "Curt Cox 2"; do not clone or
+  imitate any other presenter. It reads at about 185 words per minute, faster than
+  the 145 the estimates assume, so measured segments come out about a quarter shorter.
 - Narration is written to be spoken: code is read in plain words ("self dot play",
   "the shift method"), numbers are spelled when ambiguous, and symbols never appear.
 - `<break time="0.8s" />` marks a deliberate pause. ElevenLabs' v2/Turbo/Flash models
@@ -148,17 +150,24 @@ Workflow:
 
 ## Production pipeline
 
-1. **Narration.** Extract the narration and cue sheet, then generate audio per segment:
+1. **Narration.** Generate each segment's audio with ElevenLabs:
    ```bash
-   node video-series/tools/extract-narration.mjs
+   python3 video-series/tools/narrate.py 1
    ```
-   Output goes to `build/narration/epNN/` (gitignored) plus `cues.csv`.
+   The API key comes from the macOS keychain (service `elevenlabs`, or set
+   `ELEVENLABS_KEYCHAIN_SERVICE`); `--dry-run` shows the text without spending credits.
+   Pronunciation aliases from `pronunciations.pls` are applied to the text, and unchanged
+   segments are not generated again. Audio goes to `build/narration/audio/epNN/`
+   (gitignored), and the measured lengths to `build/narration/durations.json`.
+   `node video-series/tools/extract-narration.mjs` still writes plain-text narration
+   and the `cues.csv` cue sheet.
 2. **Graphics.** Build the production scenes in Manim Community from the **Visual**
    notes; see [`production/README.md`](production/README.md) (episode 1 is done and is
    the template). Where a shot reproduces a QR snippet, start from the snippet's code. If
    a production scene stays within what ManimOnline supports, consider adding it as
    an extra QR code: viewers can then open the very animation they are watching.
-3. **Timing.** Use each segment's audio length to set `run_time` and `wait` values.
+3. **Timing.** The scenes read `durations.json`, so rendering after step 1 fits each scene
+   to its audio, and `production/render.py` lays the narration under the stitched video.
 4. **Assembly.** Combine graphics, editor footage, narration and QR overlays in an
    editor; keep the segment ids as markers.
 

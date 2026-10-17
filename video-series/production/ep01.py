@@ -463,8 +463,7 @@ class Segment_1_8(Segment):
         self.play(FadeIn(qr))
         self.hold_until(0.66)
 
-        # matching animations to narration
-        self.play(FadeOut(qr))
+        # matching animations to narration (the card stays up; the voice line passes beneath it)
         voice = VMobject(color=GREEN_B, stroke_width=2)
         xs = np.linspace(axis.n2p(0)[0], axis.n2p(5.5)[0], 160)
         voice.set_points_as_corners([[x, 0.3 * np.sin(9 * x) * np.sin(1.3 * x) ** 2 + 0.35, 0] for x in xs])
@@ -567,7 +566,8 @@ class Segment_1_10(Segment):
         light = traffic_light().scale(0.75).move_to(LEFT * 3)
         housing, lamps = light
         red, yellow, green = lamps
-        self.play(FadeOut(VGroup(words, arrows, icons, sentence)), FadeIn(light))
+        qr = qr_card('q01-05')
+        self.play(FadeOut(VGroup(words, arrows, icons, sentence)), FadeIn(light), FadeIn(qr))
         self.play(green.animate.set_fill(GREEN))
         marks = VGroup()
         for lamp in (yellow, red):
@@ -576,8 +576,7 @@ class Segment_1_10(Segment):
         steps = VGroup(*[Text(t, font_size=28) for t in
                          ('1. green off', '2. yellow on', '3. wait', '4. red on')]).arrange(DOWN, aligned_edge=LEFT, buff=0.3)
         steps.next_to(light, RIGHT, buff=1.2)
-        qr = qr_card('q01-05')
-        self.play(LaggedStart(*[Create(m) for m in marks], lag_ratio=0.4), FadeIn(qr))
+        self.play(LaggedStart(*[Create(m) for m in marks], lag_ratio=0.4))
         self.play(LaggedStart(*[FadeIn(s, shift=RIGHT * 0.2) for s in steps], lag_ratio=0.25))
         self.hold_until(0.62)
 
