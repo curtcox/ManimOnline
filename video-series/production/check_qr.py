@@ -69,6 +69,10 @@ def check_wall(episode, video=None):
             for x, y, w, h, _ in squares:
                 crop = image[max(0, y - 20):y + h + 20, max(0, x - 20):x + w + 20]
                 decoded, _, _ = cv2.QRCodeDetector().detectAndDecode(crop)
+                if decoded not in urls:
+                    # OpenCV's detector sometimes misses a sound code at one size; phones don't.
+                    bigger = cv2.resize(crop, None, fx=2, fy=2, interpolation=cv2.INTER_NEAREST)
+                    decoded, _, _ = cv2.QRCodeDetector().detectAndDecode(bigger)
                 if decoded in urls:
                     found.add(urls[decoded])
             if found >= expected:
