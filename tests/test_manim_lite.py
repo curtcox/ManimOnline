@@ -5779,9 +5779,12 @@ self.play(Restore(number), run_time=2, rate_func=linear)""")
     def test_numeric_labels_can_become_plain_text_or_geometry(self):
         number = lite.DecimalNumber(3)
         number.become(lite.Text('done'))
-        self.assertEqual(number.to_dict()['text'], 'done')
+        self.assertEqual(len(number.submobjects), 4)  # Glyph paths, as in Community.
+        self.assertAlmostEqual(number.get_width(), 1.425537, delta=1e-6)
+        # Community's align_data pushes the circle into each glyph slot, subdivided to its points.
         number.become(lite.Circle())
-        self.assertEqual(number.to_dict()['type'], 'circle')
+        self.assertEqual([len(member.get_points()) for member in number.family_members_with_points()], [124, 64, 84, 84])
+        self.assertAlmostEqual(number.get_width(), 2)
         result = render("""number = DecimalNumber(3)
 self.add(number)
 self.play(Transform(number, Text('done')))

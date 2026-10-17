@@ -4065,6 +4065,8 @@ class Mobject:
                 # Community fits a copy of the target first; align_data then pads that copy.
                 mobject = self._become_fitted(mobject, **options)
                 args, kwargs = (), {}
+            _glyph_family(self)  # Community's text families are glyph paths.
+            _glyph_family(mobject)
             if self._alignable(True) and mobject._alignable(True):
                 aligned = self._aligned_target(mobject)
                 # align_data pads and subdivides the target itself, not a copy (Community).
@@ -4083,12 +4085,14 @@ class Mobject:
         return result
 
     def _alignable(self, receiving=False):
-        """Whether Lite's family matches Community's submobject structure (no text, SVG or
-        NumberLine scene views), so align_data's padding can be reproduced. A receiver's
-        NumberLines count as their shaft's own points plus their other members."""
+        """Whether Lite's family matches Community's submobject structure (no SVG, unsplit
+        text or NumberLine scene views), so align_data's padding can be reproduced. Text split
+        into outline glyphs counts; a receiver's NumberLines count as their shaft's own points
+        plus their other members."""
         family = self.get_family()
         return all(isinstance(member, VMobject) or type(member) in (Group, Mobject) for member in family) and not any(
-            isinstance(member, (Text, SVGMobject, Code, Paragraph)) or
+            isinstance(member, (SVGMobject, Code)) or
+            isinstance(member, Text) and member._type not in ('bezierpath', 'vgroup') or
             (isinstance(member, NumberLine) and _has_shaft(member) and not receiving)
             for member in family)
 
@@ -8659,7 +8663,8 @@ class Text(Mobject):
 
     def _scene_has_points(self):
         # Community's glyphs are outline paths (the Text itself has none).
-        return '_char_index' in self.__dict__ or 'glyph' in self.__dict__
+        return ('_char_index' in self.__dict__ or 'glyph' in self.__dict__ or
+                self._type in _PATH_TYPES and bool(Mobject.get_points(self)))
 
     @property
     def submobjects(self):
@@ -13479,6 +13484,18 @@ def interpolate(start, end, alpha):
                   else interpolate(value, end.get(key, value), alpha)
                   for key, value in start.items()}
         _interpolate_gradient_styles(result, start, end, alpha)
+        if start.get('type') in ('text', 'mathtex') and any(
+                key in start or key in end for key in ('glyph_stretch', 'glyph_matrix')):
+            # A glyph map on either side (stretch, apply_matrix) blends from the identity:
+            # Community moves every glyph point linearly.
+            if 'glyph_matrix' in start or 'glyph_matrix' in end:
+                (a, b), (c, d) = _glyph_matrix(start)
+                (e, f), (g, h) = _glyph_matrix(end)
+                result.pop('glyph_stretch', None)
+                result['glyph_matrix'] = [x + (y - x) * alpha for x, y in ((a, e), (b, f), (c, g), (d, h))]
+            else:
+                first, last = start.get('glyph_stretch', [1, 1]), end.get('glyph_stretch', [1, 1])
+                result['glyph_stretch'] = [x + (y - x) * alpha for x, y in zip(first, last)]
         # Tip roles identify aligned child slots, rather than animated values.
         if '_tip_role' in end:
             result['_tip_role'] = end['_tip_role']
@@ -15450,6 +15467,7 @@ class DrawBorderThenFill(Animation):
                  stroke_color=None, introducer=True, **kwargs):
         if not isinstance(vmobject, VMobject):
             raise TypeError(f'{type(self).__name__} only works for vectorized Mobjects')
+        _glyph_family(vmobject)  # Community draws each glyph's outline.
         super().__init__(vmobject, run_time=run_time, rate_func=rate_func, introducer=introducer, **kwargs)
         Mobject._validate_width(stroke_width)
         self.outline_width, self.outline_color = stroke_width, stroke_color
@@ -17047,6 +17065,7 @@ class Homotopy(Animation):
     def __init__(self, homotopy, mobject, run_time=3, apply_function_kwargs=None, **kwargs):
         if not callable(homotopy):
             raise TypeError('Homotopy expects a function of (x, y, z, t)')
+        _glyph_family(mobject)  # Community moves every glyph outline point.
         super().__init__(mobject, run_time=run_time, **kwargs)
         self.homotopy, self.apply_function_kwargs = homotopy, dict(apply_function_kwargs or {})
 
@@ -17127,6 +17146,7 @@ class PhaseFlow(Animation):
     def __init__(self, function, mobject, virtual_time=1, suspend_mobject_updating=False, rate_func=linear, **kwargs):
         if not callable(function):
             raise TypeError('PhaseFlow expects a vector field function')
+        _glyph_family(mobject)
         super().__init__(mobject, rate_func=rate_func, **kwargs)
         self.function, self.virtual_time = function, virtual_time
 
