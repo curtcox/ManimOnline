@@ -7631,6 +7631,240 @@ def _glyph_box(char, table):
     return (556, 50, 506, 0, 716)
 
 
+# Community's Text is Pango/Cairo output of Liberation Sans (the Linux default sans font):
+# text-outlines.json holds its TrueType contours, advances and HarfBuzz kerning. The
+# browser worker writes the file into Pyodide's file system; natively it sits next to this
+# file. Without it, text keeps the metric layout and has no outline points.
+_OUTLINE_PATHS = ('/manim-lite/text-outlines.json',)
+# The browser re-runs this file for every render in one namespace: keep the parsed data.
+_OUTLINE_DATA = globals().get('_OUTLINE_DATA') or None
+_OUTLINE_FONTS = ('', 'sans', 'sans-serif', 'sans serif', 'liberation sans', 'arial', 'helvetica', 'arimo')
+_CAIRO_GLYPHS = globals().get('_CAIRO_GLYPHS') or {}
+
+
+def _outline_faces():
+    global _OUTLINE_DATA
+    if _OUTLINE_DATA is None:
+        import os
+        _OUTLINE_DATA = {}
+        for path in (os.path.join(os.path.dirname(os.path.abspath(_LIB_FILE)), 'text-outlines.json'),) + _OUTLINE_PATHS:
+            try:
+                with open(path, encoding='utf-8') as handle:
+                    _OUTLINE_DATA = json.load(handle)['faces']
+                break
+            except (OSError, ValueError, KeyError, TypeError):
+                continue
+    return _OUTLINE_DATA
+
+
+def _outline_font(font):
+    """Whether a font draws Liberation Sans outlines (the default and its sans aliases)."""
+    return (font or '').strip().lower() in _OUTLINE_FONTS
+
+
+def _pango_scale(font_size):
+    """Pango units (1/1024 px) per em for Community's Text: font_size / 4.8 points at 96 dpi."""
+    size = math.floor(font_size / 4.8 * 1024 + 0.5)  # pango_units_from_double
+    return math.floor(size * 96 / 72 + 0.5)
+
+
+def _hb_scale(value, scale, upem):
+    """HarfBuzz's em_scale: font units to Pango units, rounding half up."""
+    return (value * ((scale << 16) // upem) + 32768) >> 16
+
+
+class _CairoPath:
+    """Cairo's fixed-point (1/256 px) path builder, with its rules for degenerate and
+    collinear line segments, as cairo-ft fills it from FreeType's outline decomposition."""
+    def __init__(self):
+        self.ops, self.current, self.start, self.needs_move = [], None, None, True
+
+    def _last(self):
+        return self.ops[-1][0] if self.ops else None
+
+    def move_to(self, point):
+        if self._last() == 'M':
+            self.ops[-1] = ('M', point)
+        else:
+            self.ops.append(('M', point))
+        self.current = self.start = point
+        self.needs_move = False
+
+    def line_to(self, point):
+        if self.needs_move:
+            return self.move_to(point)
+        if self._last() != 'M' and point == self.current:
+            return
+        if self._last() == 'L':
+            before, here = self.ops[-2][-1], self.current
+            if before == here:
+                self.ops.pop()
+            else:
+                ax, ay, bx, by = here[0] - before[0], here[1] - before[1], point[0] - here[0], point[1] - here[1]
+                if ax * by == ay * bx and ax * bx + ay * by >= 0:
+                    self.ops.pop()  # Same slope: extend the previous line.
+        self.ops.append(('L', point))
+        self.current = point
+
+    def curve_to(self, first, second, end):
+        if self.current == first == second == end:
+            return self.line_to(end)
+        if self._last() == 'L' and self.ops[-2][-1] == self.current:
+            self.ops.pop()
+        self.ops.append(('C', first, second, end))
+        self.current = end
+
+    def close(self):
+        self.line_to(self.start)
+        if self._last() == 'L':
+            self.ops.pop()
+        self.ops.append(('Z',))
+        self.current, self.needs_move = self.start, True
+
+
+def _cairo_glyph(face, char, scale):
+    """(advance in font units, Cairo path ops in fixed units, y down) of one glyph."""
+    key = (face, char, scale)
+    if key in _CAIRO_GLYPHS:
+        return _CAIRO_GLYPHS[key]
+    data = _outline_faces()[face]
+    advance, contours = data['glyphs'][char]
+    k = scale / 1024 / data['upem'] * 256
+    path = _CairoPath()
+    for contour in contours:
+        flags, values = contour[0], contour[1:]
+        points = [(values[2 * i] * k, -values[2 * i + 1] * k, flags[i] == '1') for i in range(len(flags))]
+        # FreeType's FT_Outline_Decompose: start on an on-curve point (or the midpoint of
+        # two off-curve ends), split runs of off-curve points at their midpoints.
+        if points[0][2]:
+            start, rest = points[0], points[1:]
+        elif points[-1][2]:
+            start, rest = points[-1], points[:-1]
+        else:
+            start, rest = ((points[0][0] + points[-1][0]) / 2, (points[0][1] + points[-1][1]) / 2, True), points
+        if path.ops and path._last() != 'Z':
+            path.close()
+        path.move_to((round(start[0]), round(start[1])))
+        def conic(control, to):
+            # cairo-ft's conic: handles from the current fixed point and the exact control.
+            x0, y0 = path.current
+            path.curve_to((round(x0 + 2 / 3 * (control[0] - x0)), round(y0 + 2 / 3 * (control[1] - y0))),
+                          (round(to[0] + 2 / 3 * (control[0] - to[0])), round(to[1] + 2 / 3 * (control[1] - to[1]))),
+                          (round(to[0]), round(to[1])))
+        control = None
+        for point in rest:
+            if point[2]:
+                if control is None:
+                    path.line_to((round(point[0]), round(point[1])))
+                else:
+                    conic(control, point)
+                    control = None
+            else:
+                if control is not None:
+                    conic(control, ((control[0] + point[0]) / 2, (control[1] + point[1]) / 2))
+                control = point
+        if control is not None:
+            conic(control, start)
+        else:
+            path.line_to((round(start[0]), round(start[1])))
+    if path.ops and path._last() != 'Z':
+        path.close()
+    if len(_CAIRO_GLYPHS) > 20000:
+        _CAIRO_GLYPHS.clear()
+    _CAIRO_GLYPHS[key] = result = (advance, tuple(path.ops))
+    return result
+
+
+def _svg_glyph_points(ops, ox, oy):
+    """Community's points (px, y down) for one glyph's SVG path placed at (ox, oy): the
+    SVG path handling (lines as thirds, closing lines), then Text's closing lines."""
+    points, last, start = [], None, None
+    def line(a, b):
+        points.extend((a, ((a[0] + a[0] + b[0]) / 3, (a[1] + a[1] + b[1]) / 3),
+                       ((a[0] + b[0] + b[0]) / 3, (a[1] + b[1] + b[1]) / 3), b))
+    for op in ops:
+        kind = op[0]
+        if kind == 'M':
+            last = start = (op[1][0] / 256 + ox, op[1][1] / 256 + oy)
+        elif kind == 'L':
+            end = (op[1][0] / 256 + ox, op[1][1] / 256 + oy)
+            line(last, end)
+            last = end
+        elif kind == 'C':
+            first, second, end = [(p[0] / 256 + ox, p[1] / 256 + oy) for p in op[1:]]
+            points.extend((last, first, second, end))
+            last = end
+        else:
+            if math.hypot(last[0] - start[0], last[1] - start[1]) > 0.0001:
+                line(last, start)
+            last = start
+    if not points:
+        return []
+    closed, curve_start = [], points[0]
+    def close(end):
+        a = closed[-1]
+        closed.extend((a, ((a[0] + a[0] + end[0]) / 3, (a[1] + a[1] + end[1]) / 3),
+                       ((a[0] + end[0] + end[0]) / 3, (a[1] + end[1] + end[1]) / 3), end))
+    for index, point in enumerate(points):
+        closed.append(point)
+        if index != len(points) - 1 and (index + 1) % 4 == 0 and point != points[index + 1]:
+            close(curve_start)
+            curve_start = points[index + 1]
+    close(curve_start)
+    return closed
+
+
+def _outline_layout(text, font_size, line_spacing, faces, runs=()):
+    """Community's Text geometry from Liberation Sans outlines, or None when a character or
+    face has no outline data. Each line (and each style run: t2c/t2f/t2s/t2w/gradient keys)
+    is shaped separately by manimpango, so kerning stops at run boundaries."""
+    data = _outline_faces()
+    if not data or any((faces if len(faces) == 1 else faces[i]) not in data for i in range(len(text) if len(faces) > 1 else 1)):
+        return None
+    scale = _pango_scale(font_size)
+    pitch = (font_size + font_size * line_spacing) / 4.8
+    boundaries = set(runs or ())
+    glyphs, lines, index = [], [], 0
+    for row, paragraph in enumerate(text.split('\n')):
+        x, previous = 0, None
+        pens = []
+        for k, char in enumerate(paragraph):
+            face = faces if len(faces) == 1 else faces[index + k]
+            table = data[face]
+            if char not in table['glyphs']:
+                if char.isspace() and char not in ' \xa0':
+                    char = ' '  # Pango draws other spaces at the width of its space glyph here.
+                else:
+                    return None
+            if previous is not None and previous[1] == face and index + k not in boundaries:
+                x += _hb_scale(table['kerning'].get(previous[0] + char, 0), scale, table['upem'])
+            pens.append(x)
+            advance, ops = _cairo_glyph(face, char, scale)
+            if not char.isspace():
+                points = _svg_glyph_points(ops, x / 1024, row * pitch)
+                if points:
+                    glyphs.append((index + k, points))
+            x += _hb_scale(advance, scale, table['upem'])
+            previous = (char, face)
+        lines.append((paragraph, row * pitch, x, index))
+        index += len(paragraph) + 1
+    if not glyphs:
+        return {'width': 0, 'height': 0, 'lines': [], 'em': font_size * TEXT_EM_PER_POINT, 'outline': [],
+                'outline_glyphs': []}
+    xs = [p[0] for _, points in glyphs for p in points]
+    ys = [p[1] for _, points in glyphs for p in points]
+    cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+    curves, owners = [], []
+    for char_index, points in glyphs:
+        local = [((p[0] - cx) * 0.05, -(p[1] - cy) * 0.05, 0.0) for p in points]
+        curves.extend([list(map(list, local[i:i + 4])) for i in range(0, len(local), 4)])
+        owners.append((char_index, len(local) // 4))
+    return {'width': (max(xs) - min(xs)) * 0.05, 'height': (max(ys) - min(ys)) * 0.05,
+            'lines': [{'text': paragraph, 'x': -cx * 0.05, 'y': -(baseline - cy) * 0.05, 'length': width / 1024 * 0.05,
+                       'start': start} for paragraph, baseline, width, start in lines if paragraph],
+            'em': scale / 1024 * 0.05, 'family': 'sans', 'outline': curves, 'outline_glyphs': owners}
+
+
 _TEXT_LAYOUTS = {}
 
 
@@ -7638,7 +7872,7 @@ def _text_layout_key(snapshot):
     numeric = '_number_format' in snapshot or bool(snapshot.get('_tex_glyph'))
     return (snapshot['text'], snapshot['font_size'], snapshot.get('_line_spacing', .3), numeric,
             _is_mono(snapshot.get('font')), snapshot.get('_wrap_width'), bool(snapshot.get('justify')),
-            _snapshot_faces(snapshot))
+            _snapshot_faces(snapshot), _outline_font(snapshot.get('font')), snapshot.get('_runs'))
 
 
 def _text_layout(snapshot):
@@ -7648,7 +7882,9 @@ def _text_layout(snapshot):
         if len(_TEXT_LAYOUTS) > 4096:
             _TEXT_LAYOUTS.clear()
         _TEXT_LAYOUTS[key] = _compute_text_layout(*key)
-    return copy.deepcopy(_TEXT_LAYOUTS[key])
+    # Outline curves are shared and read-only; the rest may be edited by the caller.
+    return {name: value if name in ('outline', 'outline_glyphs') else copy.deepcopy(value)
+            for name, value in _TEXT_LAYOUTS[key].items()}
 
 
 def _text_extent(snapshot):
@@ -7706,8 +7942,13 @@ def _numeric_boxes(text, font_size):
     return boxes
 
 
-def _compute_text_layout(text, font_size, line_spacing, numeric, mono=False, wrap=None, justify=False, faces='r'):
+def _compute_text_layout(text, font_size, line_spacing, numeric, mono=False, wrap=None, justify=False, faces='r',
+                         outline=False, runs=None):
     import re
+    if outline and not numeric and not mono and wrap is None and not justify:
+        layout = _outline_layout(text, font_size, line_spacing, faces, runs)
+        if layout is not None:
+            return layout
     snapshot = {'text': text, 'font_size': font_size, '_line_spacing': line_spacing}
     em = font_size * (TEX_EM_PER_POINT if numeric else TEXT_EM_PER_POINT) / 1000
     lines, ink = [], None
@@ -8052,6 +8293,26 @@ class Text(Mobject):
             options['line_spacing'] = self.__dict__['_line_spacing']
         faces, mono = _snapshot_faces(self.__dict__), _is_mono(self.__dict__.get('font'))
         glyphs, index = [], 0
+        if layout.get('outline_glyphs') is not None:
+            # Community's glyphs are outline paths: place each under this leaf's pose.
+            (a, b), (c, d) = _glyph_matrix(self.__dict__)
+            e, f = self.__dict__.get('glyph_depth') or (0, 0)
+            outline, at, text = layout['outline'], 0, self.__dict__['text']
+            for char_index, count in layout['outline_glyphs']:
+                points = [(a * p[0] + b * p[1], c * p[0] + d * p[1], e * p[0] + f * p[1])
+                          for curve in outline[at:at + count] for p in curve]
+                at += count
+                glyph = _copy_glyph_paint(self, _TextGlyph(text[char_index], font_size=self.__dict__['font_size'],
+                                                           **options))
+                glyph.set_points(points)
+                center = glyph._geometry_center()
+                glyph.curves = [[[p[0] - center[0], p[1] - center[1], p[2] - center[2]] for p in curve]
+                                for curve in glyph.curves]
+                glyph.position = list(self._point_to_world(center))
+                glyph.angle, glyph.geometry_scale, glyph.opacity = self.angle, self.geometry_scale, self.opacity
+                glyph._char_index = char_index
+                glyphs.append(glyph)
+            layout['lines'] = []
         for line in layout['lines']:
             index = line.get('start', index)
             pens = _pen_positions(line['text'], faces, mono, index)
@@ -8138,6 +8399,16 @@ class Text(Mobject):
             return 1
         self._explode()
         return len(self.split())
+
+
+class _TextGlyph(Text, VMobject):
+    """One glyph of a Text: Community's outline path (VMobjectFromSVGPath), with the
+    glyph bookkeeping (character, index, font size) of the preview's Text leaves."""
+    def __iter__(self):
+        return iter([self])
+
+    def __len__(self):
+        return 1
 
 
 class MarkupText(Text):
@@ -18011,7 +18282,12 @@ class Scene:
         self.capture(advance_time=False)
         def lay_out(node):
             if node.get('type') == 'text' and 'layout' not in node:
-                node['layout'] = _text_layout(node)
+                layout = _text_layout(node)
+                outline = layout.pop('outline', None)
+                layout.pop('outline_glyphs', None)
+                node['layout'] = layout
+                if outline and 'glyph_curves' not in node:
+                    node['glyph_curves'] = outline  # Drawn instead of browser text.
             for child in node.get('children', []):
                 lay_out(child)
         for frame in self.frames:
@@ -26686,7 +26962,7 @@ def _flat_points(value):
 
 # Point-list attributes (and the per-frame rigid3d map) whose arrays are pooled at any size; the rest of such a node (its
 # style) is pooled separately as {'$base': index}, so styles repeat across frames once.
-_GEOMETRY_KEYS = frozenset(('curves', 'vertices', 'shaft_curves', 'cloud', 'rigid3d'))
+_GEOMETRY_KEYS = frozenset(('curves', 'vertices', 'shaft_curves', 'cloud', 'rigid3d', 'glyph_curves'))
 
 
 def _pooled_json(result, default):

@@ -19,8 +19,16 @@ async function initPyodide() {
       self.postMessage({ type: 'pyodide-loading' });
       importScripts(PYODIDE_URL + 'pyodide.js');
       const runtime = await loadPyodide({ indexURL: PYODIDE_URL, stdout: () => {}, stderr: () => {} });
-      const response = await fetch(new URL('manim-lite.py', self.location.href));
+      const [response, outlines] = await Promise.all([
+        fetch(new URL('manim-lite.py', self.location.href)),
+        // Liberation Sans glyph outlines for Text; without them text keeps metric layout.
+        fetch(new URL('text-outlines.json', self.location.href)).catch(() => null)
+      ]);
       if (!response.ok) throw new Error('Unable to load the browser animation runtime.');
+      if (outlines && outlines.ok) {
+        runtime.FS.mkdirTree('/manim-lite');
+        runtime.FS.writeFile('/manim-lite/text-outlines.json', await outlines.text());
+      }
       return { runtime, source: await response.text() };
     })().catch(error => { runtimePromise = null; throw error; });
   }

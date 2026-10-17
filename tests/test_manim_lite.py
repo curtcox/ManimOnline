@@ -1852,13 +1852,16 @@ assert isinstance(t.get_value(), (int, float))""")
 
     def test_text_bounds_match_community_liberation_sans_metrics(self):
         # Reference sizes measured with Manim Community 0.22, font='Liberation Sans'.
-        for text,width,height in (('H',.3719,.4586),('Hello',1.4367,.4891),('  Hi  ',.5299,.4833),
-                                  ('acemnorsuvwxz',4.7178,.3648),('gjpqy',1.5643,.6211)):
+        # Outlines make them exact (Pango placement, Cairo's fixed-point glyph paths).
+        for text,width,height in (('H',.372461,.458594),('Hello',1.436475,.489453),('  Hi  ',.529883,.483008),
+                                  ('acemnorsuvwxz',4.717822,.365234),('gjpqy',1.564453,.621289)):
             mob=lite.Text(text)
-            self.assertAlmostEqual(mob.get_width(),width,delta=.012*width+.005)
-            self.assertAlmostEqual(mob.get_height(),height,delta=.02)
+            self.assertAlmostEqual(mob.get_width(),width,delta=1e-6)
+            self.assertAlmostEqual(mob.get_height(),height,delta=1e-6)
             self.assertPointAlmostEqual(mob.get_center(),lite.ORIGIN)
-        self.assertAlmostEqual(lite.Text('H',font_size=96).get_height(),2*lite.Text('H').get_height())
+        # Not exactly twice the 48-point height: Cairo rounds outlines to 1/256 px.
+        self.assertAlmostEqual(lite.Text('H',font_size=96).get_height(),.9173828,delta=1e-7)
+        self.assertAlmostEqual(lite.Text('H').get_height(),.45859375,delta=1e-7)
         layout=lite._text_layout(lite.Text('Hello\nworld!!!').__dict__)
         self.assertEqual([line['text'] for line in layout['lines']],['Hello','world!!!'])
         self.assertAlmostEqual(layout['lines'][0]['y']-layout['lines'][1]['y'],.65)
@@ -1902,7 +1905,7 @@ assert isinstance(t.get_value(), (int, float))""")
         group,formula=estimated['frames'][-1]['mobjects']
         text,number=group['children']
         self.assertEqual((text['layout']['family'],number['layout']['family']),('sans','serif'))
-        self.assertAlmostEqual(text['layout']['em'],48/72)
+        self.assertAlmostEqual(text['layout']['em'],13653/1024*.05)  # Pango's rounded 48/4.8-point em
         self.assertAlmostEqual(number['layout']['em'],48/96)
         self.assertNotIn('layout',formula)
         measured=json.loads(lite.render_scene(source,math_metrics={'x^2':[.9,.8]}))
@@ -8296,15 +8299,16 @@ class Demo(Scene):
         group = result['frames'][15]['mobjects'][0]
         assert_drawn(self, group['children'][0], (-1, 0, 0))
         nested = group['children'][1]['children']
-        # Text is created glyph by glyph (Community's family members with points).
-        self.assertEqual({glyph['opacity'] for glyph in nested[0]['children']}, {0.5})
+        # Text is created glyph by glyph (Community's family members with points): each
+        # outline (9, 10, 18, 5 and 20 curves) is traced halfway.
+        self.assertEqual([len(drawn_points(glyph)) // 4 for glyph in nested[0]['children']], [5, 6, 10, 3, 11])
         assert_drawn(self, nested[1], (-1, -1, 0))
         # Community's default lag_ratio=1 draws the three members in turn.
         group = render(source.format(''))['frames'][15]['mobjects'][0]
         nested = group['children'][1]['children']
         # Seven members (circle, five glyphs, square): halfway, the third glyph is half shown.
-        self.assertEqual((group['children'][0]['type'], [g['opacity'] for g in nested[0]['children']],
-                          len(set(drawn_points(nested[1])))), ('circle', [1, 1, 0.5, 0, 0], 1))
+        self.assertEqual((group['children'][0]['type'], [len(drawn_points(g)) // 4 for g in nested[0]['children']],
+                          len(set(drawn_points(nested[1])))), ('circle', [9, 10, 10, 1, 1], 1))
 
     def test_uncreate_reverses_drawing_and_removes_the_object(self):
         result = render('c = Circle()\nself.add(c)\nself.play(Uncreate(c), run_time=2, rate_func=linear)')
@@ -9422,7 +9426,8 @@ self.play(value.animate.set_value(1),run_time=2,rate_func=linear)""")
             lite._glyph_family(control)
             before = (control.get_center(),control.get_width(),control.get_height())
             lite._glyph_family(shape)
-            glyphs = [member for member in shape.get_family() if member._type in ('text','mathtex')]
+            glyphs = [member for member in shape.get_family()
+                      if member._type in ('text','mathtex') or '_char_index' in member.__dict__]
             self.assertGreaterEqual(len(glyphs),2)
             for glyph in glyphs:
                 self.assertEqual(glyph.__dict__['fill_color'],[lite.RED,lite.BLUE])
@@ -9472,7 +9477,8 @@ self.play(text.animate.set_fill([PURE_RED,PURE_BLUE],opacity=[.2,.8]).set_backgr
             shape.color_using_background_image(image)
             uri = shape.to_dict().get('raster_background')
             lite._glyph_family(shape)
-            glyphs = [member for member in shape.get_family() if member._type in ('text','mathtex')]
+            glyphs = [member for member in shape.get_family()
+                      if member._type in ('text','mathtex') or '_char_index' in member.__dict__]
             self.assertTrue(glyphs)
             for glyph in glyphs:
                 self.assertIs(glyph.get_background_image(),image)
@@ -9666,12 +9672,16 @@ class Demo(Scene):
         width = text.get_width()
         text.apply_matrix([[1, 1], [0, 2 / 3]])
         self.assertEqual(text.glyph_matrix, [1, 1, 0, 2 / 3])
-        # Nonlinear maps move each glyph with its own derivative.
+        # Nonlinear maps bend each glyph's outline points, as in Community.
         wave = lite.Text('wave')
+        before = [point_list(glyph) for glyph in wave]
         wave.apply_function(lambda p: (p[0], p[1] + 0.5 * math.sin(p[0]), 0))
         self.assertEqual(len(wave.children), 4)
-        for glyph in wave:
-            self.assertIn('glyph_matrix', glyph.__dict__)
+        for glyph, points in zip(wave, before):
+            self.assertNotIn('glyph_matrix', glyph.__dict__)
+            # Anchors map exactly; handles follow Community's derivative rule.
+            for moved, point in list(zip(point_list(glyph), points))[::4]:
+                self.assertPointAlmostEqual(moved, (point[0], point[1] + 0.5 * math.sin(point[0]), 0))
         formula = lite.MathTex('x^2').apply_matrix([[2, 0], [0, 1]])
         self.assertEqual(formula.glyph_stretch, [2, 1])
         cloud = lite.PointCloudDot(radius=1)

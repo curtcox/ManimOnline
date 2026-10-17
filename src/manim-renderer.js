@@ -1008,6 +1008,13 @@ const ManimRenderer = {
    * Render text
    */
   renderText(mobject) {
+    if (Array.isArray(mobject.glyph_curves) && mobject.glyph_curves.length) {
+      // Community's Liberation Sans outlines, already laid out by Python (y up).
+      const path = this.renderBezierPath({ ...mobject, curves: mobject.glyph_curves, shaft_curves: undefined,
+        subpath_lengths: undefined, vertices: [] });
+      path.setAttribute('aria-label', mobject.text || '');
+      return path;
+    }
     const text = document.createElementNS(this.SVG_NS, 'text');
     text.setAttribute('x', 0);
     text.setAttribute('y', 0);
