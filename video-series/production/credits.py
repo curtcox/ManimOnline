@@ -10,8 +10,9 @@ from common import *  # noqa: E402,F403
 
 CREDITS = [
     ('Animation', 'Manim Community, from Python code in the series repository'),
-    ('Scripts and code', 'Curt Cox with Claude, an AI model by Anthropic'),
-    ('Narration', "ElevenLabs text-to-speech, from a model of the author's voice"),
+    ('Scripts and code', 'Claude Opus 5.5, an AI model by Anthropic'),
+    ('Direction', 'Curt Cox'),
+    ('Narration', "ElevenLabs text-to-speech, from a model of Curt Cox's voice"),
     ('Source', 'github.com/curtcox/ManimOnline (video-series)'),
 ]
 NOTE = ('Text-to-speech reads names from code as ordinary English words,\n'

@@ -60,7 +60,7 @@ extraction tool reports the narrated word count per segment.
 ## Voice and narration
 
 - One narrator throughout: warm, curious, unhurried, speaking to one viewer ("you").
-  The voice is the author's own ElevenLabs voice, "Curt Cox 2"; do not clone or
+  The voice is Curt Cox's own ElevenLabs voice, "Curt Cox 2"; do not clone or
   imitate any other presenter. It reads at about 185 words per minute, faster than
   the 145 the estimates assume, so measured segments come out about a quarter shorter.
 - Narration is written to be spoken: code is read in plain words ("self dot play",
@@ -106,8 +106,9 @@ The series discloses how it was produced in three places, and they should agree:
 ```text
 How this series was made
 Animation: Manim Community, from Python code in the series repository.
-Scripts and animation code: Curt Cox with Claude, an AI model by Anthropic.
-Narration: ElevenLabs text-to-speech, from a model of the author's voice.
+Scripts, animation code and production tooling: Claude Opus 5.5, an AI model by Anthropic.
+Direction: Curt Cox.
+Narration: ElevenLabs text-to-speech, from a model of Curt Cox's voice.
 Source: https://github.com/curtcox/ManimOnline/tree/main/video-series
 
 Text-to-speech reads names from code as ordinary English words, so the words you hear
