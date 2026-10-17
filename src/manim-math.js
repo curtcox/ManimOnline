@@ -80,6 +80,9 @@ function elementOutline(node, m) {
   }
 }
 
+// MathJax codepoints of ellipses that TeX typesets as three separate dots.
+const DOT_GLYPHS = new Set(['2026', '22EF', '22EE', '22F1']);
+
 const ManimMath = {
   loading: null,
   cache: new Map(),
@@ -163,6 +166,17 @@ const ManimMath = {
           // A nested svg is a clipped piece of a stretchy delimiter: keep it whole.
           if (kid.localName === 'svg') leaves.push(kid);
           else if (!drawable.has(kid.localName)) visit(kid);
+          else if (kid.localName === 'path' && DOT_GLYPHS.has(kid.getAttribute('data-c'))) {
+            // TeX sets \dots, \cdots, \vdots and \ddots as three dot glyphs; MathJax draws one
+            // path of three contours. Split it into one leaf per contour.
+            for (const contour of (kid.getAttribute('d') || '').match(/[Mm][^Mm]*/g) || []) {
+              const piece = kid.cloneNode(false);
+              piece.setAttribute('d', contour);
+              kid.parentNode.insertBefore(piece, kid);
+              leaves.push(piece);
+            }
+            kid.remove();
+          }
           else if (kid.localName !== 'path' || (kid.getAttribute('d') || '').trim()) leaves.push(kid);
         }
       };
@@ -179,13 +193,29 @@ const ManimMath = {
         const m = inverse.multiply(ctm);
         const box = viewport ? ['x', 'y', 'width', 'height'].reduce((result, key) =>
           Object.assign(result, { [key]: Number(leaf.getAttribute(key)) || 0 }), {}) : leaf.getBBox();
-        const xs = [], ys = [];
-        for (const [px, py] of [[box.x, box.y], [box.x + box.width, box.y], [box.x, box.y + box.height],
-          [box.x + box.width, box.y + box.height]]) {
-          xs.push(m.a * px + m.c * py + m.e);
-          ys.push(m.b * px + m.d * py + m.f);
+        const corners = (b, t) => {
+          const xs = [], ys = [];
+          for (const [px, py] of [[b.x, b.y], [b.x + b.width, b.y], [b.x, b.y + b.height], [b.x + b.width, b.y + b.height]]) {
+            xs.push(t.a * px + t.c * py + t.e);
+            ys.push(t.b * px + t.d * py + t.f);
+          }
+          return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+        };
+        let [x0, y0, x1, y1] = corners(box, m);
+        if (viewport) {
+          // The visible ink of a clipped stretchy piece: its content within the viewport.
+          let ink = null;
+          for (const node of leaf.querySelectorAll('path, rect, line, polygon, polyline')) {
+            const ctm = node.getScreenCTM && node.getScreenCTM();
+            if (!ctm) continue;
+            const [a, b, c, d] = corners(node.getBBox(), inverse.multiply(ctm));
+            ink = ink ? [Math.min(ink[0], a), Math.min(ink[1], b), Math.max(ink[2], c), Math.max(ink[3], d)] : [a, b, c, d];
+          }
+          if (ink && ink[0] < x1 && ink[2] > x0 && ink[1] < y1 && ink[3] > y0) {
+            [x0, y0, x1, y1] = [Math.max(x0, ink[0]), Math.max(y0, ink[1]), Math.min(x1, ink[2]), Math.min(y1, ink[3])];
+          }
         }
-        const bbox = [Math.min(...xs), Math.min(...ys), Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)];
+        const bbox = [x0, y0, x1 - x0, y1 - y0];
         if (!bbox.every(Number.isFinite)) return null;
         const tag = kind => {
           const tagged = leaf.closest(`[class*="manim-${kind}-"]`);
@@ -199,9 +229,12 @@ const ManimMath = {
         }
         clone.setAttribute('transform', `matrix(${m.a} ${m.b} ${m.c} ${m.d} ${m.e} ${m.f})`);
         // Community's glyphs are outline paths: send them (formula units) for Python's points.
-        const outline = viewport ? null : elementOutline(leaf, m);
+        // A clipped stretchy piece (rules, extenders) is outlined by its visible box.
+        const outline = viewport ? pathOutline(`M${x0} ${y0}H${x1}V${y1}H${x0}Z`, { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 })
+          : elementOutline(leaf, m);
         result.push({ svg: `<svg xmlns="http://www.w3.org/2000/svg">${clone.outerHTML}</svg>`, bbox,
-          part: tag('part'), sub: tag('sub'), ...(outline && outline.length ? { outline } : {}) });
+          part: tag('part'), sub: tag('sub'), ...(outline && outline.length ? { outline } : {}),
+          ...(viewport ? { viewport: true } : {}) });
       }
       return result;
     } finally {
@@ -372,6 +405,12 @@ const ManimMath = {
         if (size > 2 * 1024 * 1024) throw new Error('Math output is too large. Simplify the formulas.');
         const asset = { svg: svg.outerHTML, viewBox, bbox: this.measure(svg) };
         const leaves = this.glyphLeaves(svg);
+        if (leaves && leaves.some(leaf => leaf.viewport)) {
+          // getBBox counts a clipped stretchy piece's whole geometry; its viewport is the ink.
+          const x0 = Math.min(...leaves.map(l => l.bbox[0])), y0 = Math.min(...leaves.map(l => l.bbox[1]));
+          const x1 = Math.max(...leaves.map(l => l.bbox[0] + l.bbox[2])), y1 = Math.max(...leaves.map(l => l.bbox[1] + l.bbox[3]));
+          asset.bbox = [x0, y0, x1 - x0, y1 - y0];
+        }
         if (leaves) {
           asset.glyphs = leaves;
           size += leaves.reduce((total, glyph) => total + glyph.svg.length, 0);
