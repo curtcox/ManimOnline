@@ -661,5 +661,15 @@ and several sizes; Write/Create trace real outlines and Transform morphs them. W
 on MathTex now traces MathJax glyph paths. The docstring corpus against Community with
 Liberation Sans registered matches 285 of 375 (remaining: MathTex estimates in native
 runs, Group-root harness artifacts, other fonts/scripts and Pango markup sizes,
-sub/sup, rise, underlines). Still open: Pango markup extras, serif/custom fonts,
-DecimalNumber and MathTex outline points in Python.
+sub/sup, rise, underlines). Still open: serif/custom fonts and exact Computer Modern formula outlines.
+
+Follow-up (2026-10-17): DecimalNumber/Integer now use Computer Modern outlines exactly as
+dvisvgm writes them, with Community's arrange/minus/comma layout (widths, centers and points
+match). MathTex glyphs get MathJax outline points from the browser, so Create, Write and
+Transform act on formula outlines (MathJax's TeX fonts, close to but not Computer Modern).
+MarkupText follows Pango for sizes, big/small, sub/sup, rise, tt, underline/strikethrough
+paths (in Pango's drawing order) and CSS color names; only low/error underline styles are
+approximated. Compact frames ship partial outlines as the pooled whole outline plus a
+progress, so text-heavy Write/Create scenes stay small (a 30-line Code Write: 9 MB, was
+22 MB before outlines). Docstring corpus against Liberation-font Community: 289 of 375; the
+animation-chain fuzz suites e301-e305 and e401-e410 match 1,822 of 1,823 scenes.
