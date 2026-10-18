@@ -2,10 +2,12 @@ importScripts('src/examples.js', 'offline-assets.js');
 const CACHE = OfflineAssets.VERSION;
 const scope = self.registration.scope;
 const assets = OfflineAssets.urls(scope);
+// The editor and gallery open offline from these; Python and math also need OfflineAssets.runtime.
+const installAssets = OfflineAssets.installUrls(scope);
 
-async function missingFiles(cache) {
-  const results = await Promise.all(assets.map(url => cache.match(url)));
-  return assets.filter((_, index) => !results[index]);
+async function missingFiles(cache, urls = assets) {
+  const results = await Promise.all(urls.map(url => cache.match(url)));
+  return urls.filter((_, index) => !results[index]);
 }
 
 self.addEventListener('install', event => {
@@ -21,6 +23,11 @@ self.addEventListener('install', event => {
         const saved = await caches.match(url);
         if (saved && saved.ok && saved.type !== 'opaque') await cache.put(url, saved);
         else await cache.addAll([new Request(url, { mode: 'cors', cache: 'reload' })]);
+      }));
+      // Runtimes are not downloaded here (see OfflineAssets.runtime), only carried over.
+      await Promise.all(OfflineAssets.runtime.map(async url => {
+        const saved = await caches.match(url);
+        if (saved && saved.ok && saved.type !== 'opaque') await cache.put(url, saved);
       }));
     } catch (error) {
       await caches.delete(CACHE);
@@ -43,7 +50,7 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('message', event => {
   if (event.data?.type === 'activate-update') { self.skipWaiting(); return; }
-  if (!['offline-status', 'repair-offline'].includes(event.data?.type)) return;
+  if (!['offline-status', 'repair-offline', 'cache-runtime'].includes(event.data?.type)) return;
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
     if (event.data.type === 'repair-offline') {
@@ -51,8 +58,15 @@ self.addEventListener('message', event => {
         await cache.addAll((await missingFiles(cache)).map(url => new Request(url, { mode: 'cors', cache: 'reload' })));
       } catch (_) { /* Report incomplete setup; retain files that are still valid. */ }
     }
+    if (event.data.type === 'cache-runtime') {
+      // Sent after a live render: the browser has just downloaded these, so allow its HTTP cache.
+      try {
+        await cache.addAll((await missingFiles(cache, OfflineAssets.runtime)).map(url => new Request(url, { mode: 'cors' })));
+      } catch (_) { /* Retried after the next render or by Save Python offline. */ }
+    }
     const missing = await missingFiles(cache);
-    event.ports[0]?.postMessage({ version: CACHE, ready: missing.length === 0, missing: missing.length });
+    const installed = !(await missingFiles(cache, installAssets)).length;
+    event.ports[0]?.postMessage({ version: CACHE, ready: missing.length === 0, missing: missing.length, installed });
   })());
 });
 
@@ -62,7 +76,7 @@ self.addEventListener('fetch', event => {
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
     const cached = await cache.match(key);
-    if (cached && (event.request.mode !== 'navigate' || !(await missingFiles(cache)).length)) return cached;
+    if (cached && (event.request.mode !== 'navigate' || !(await missingFiles(cache, installAssets)).length)) return cached;
     try {
       const response = await fetch(event.request);
       if (response.ok && response.type !== 'opaque') await cache.put(key, response.clone());

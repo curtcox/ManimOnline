@@ -7,7 +7,7 @@ const { ExampleCatalog } = require('../src/examples.js');
 
 function harness() {
   const handlers = {}, stores = new Map();
-  let online = true, failURL = '', claims = 0, activations = 0;
+  let online = true, failURL = '', claims = 0, activations = 0, observe = () => {};
   const caches = {
     match: async url => {
       for (const store of stores.values()) if (store.has(url)) return store.get(url).clone();
@@ -29,6 +29,7 @@ function harness() {
     delete: async name => stores.delete(name)
   };
   const fetch = async request => {
+    observe(request.url);
     if (!online || request.url === failURL) throw new Error('Offline');
     return new Response(request.url.endsWith('index.html') ? '<html>editor</html>' : 'asset');
   };
@@ -43,7 +44,7 @@ function harness() {
     handlers[type]({ ...args, waitUntil: promise => result = promise, respondWith: promise => result = promise });
     return result;
   };
-  return { stores, run, setOnline: value => online = value, fail: url => failURL = url, get claims() { return claims; }, get activations() { return activations; } };
+  return { stores, run, onFetch: callback => observe = callback, setOnline: value => online = value, fail: url => failURL = url, get claims() { return claims; }, get activations() { return activations; } };
 }
 
 test('offline manifest covers gallery, editor dependencies, and every local script', () => {
@@ -79,6 +80,7 @@ test('complete install supports fresh offline navigation, workers, math, and gal
   assert.equal(h.claims, 1);
   assert.ok(!h.stores.has('manimonline-offline-old'));
   assert.ok(h.stores.has('unrelated-cache'));
+  await h.run('message', { data: { type: 'cache-runtime' }, ports: [] });
   h.setOnline(false);
   for (const url of Assets.urls('https://example.test/ManimOnline/')) {
     const response = await h.run('fetch', { request: { method: 'GET', mode: 'cors', url } });
@@ -89,6 +91,26 @@ test('complete install supports fresh offline navigation, workers, math, and gal
   let status;
   await h.run('message', { data: { type: 'offline-status' }, ports: [{ postMessage: value => status = value }] });
   assert.equal(status.ready, true);
+});
+
+test('install skips Python and math runtimes until a live render asks for them', async () => {
+  const h = harness();
+  const requested = [];
+  h.onFetch(url => requested.push(url));
+  await h.run('install');
+  await h.run('activate');
+  assert.equal(h.activations, 1);
+  for (const url of Assets.runtime) assert.ok(!requested.includes(url), url);
+  assert.ok(Assets.runtime.some(url => /pyodide\.asm\.wasm$/.test(url)));
+  h.setOnline(false);
+  const page = await h.run('fetch', { request: { method: 'GET', mode: 'navigate', url: 'https://example.test/ManimOnline/' } });
+  assert.equal(await page.text(), '<html>editor</html>', 'editor and gallery still open offline');
+  let status;
+  await h.run('message', { data: { type: 'offline-status' }, ports: [{ postMessage: value => status = value }] });
+  assert.deepEqual([status.ready, status.installed, status.missing], [false, true, Assets.runtime.length]);
+  h.setOnline(true);
+  await h.run('message', { data: { type: 'cache-runtime' }, ports: [{ postMessage: value => status = value }] });
+  assert.deepEqual([status.ready, status.installed, status.missing], [true, true, 0]);
 });
 
 test('failed preparation deletes incomplete new cache and preserves the old version', async () => {
@@ -103,18 +125,20 @@ test('failed preparation deletes incomplete new cache and preserves the old vers
 
 test('upgrades reuse pinned remote files when the CDN is unavailable', async () => {
   const h = harness();
-  const old = new Map(Assets.remote.map(url => [url, new Response('saved runtime')]));
+  const pinned = [...Assets.remote, ...Assets.runtime];
+  const old = new Map(pinned.map(url => [url, new Response('saved runtime')]));
   h.stores.set('manimonline-offline-old', old);
   h.fail(Assets.remote.at(-1));
   await h.run('install');
   assert.equal(h.activations, 1);
   const cached = h.stores.get(Assets.VERSION);
-  for (const url of Assets.remote) assert.equal(await cached.get(url).text(), 'saved runtime');
+  for (const url of pinned) assert.equal(await cached.get(url).text(), 'saved runtime');
 });
 
 test('partial cache offline provides a recovery page instead of a broken editor', async () => {
   const h = harness();
   await h.run('install');
+  await h.run('message', { data: { type: 'cache-runtime' }, ports: [] });
   h.stores.get(Assets.VERSION).delete(Assets.remote.at(-1));
   h.setOnline(false);
   const response = await h.run('fetch', { request: { method: 'GET', mode: 'navigate', url: 'https://example.test/ManimOnline/' } });

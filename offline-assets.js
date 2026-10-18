@@ -1,7 +1,7 @@
 /** Exact offline dependencies. Bump VERSION whenever any listed local file changes. */
 const OfflineExamples = typeof module !== 'undefined' ? require('./src/examples.js').ExampleCatalog : globalThis.ExampleCatalog;
 const OfflineAssets = {
-  VERSION: 'manimonline-offline-v391',
+  VERSION: 'manimonline-offline-v392',
   local: [
     'gallery.html', 'src/gallery.js', 'src/gallery.css', 'src/gallery-updates.js', 'src/video-links.js',
     ...OfflineExamples.map(example => example.cover),
@@ -88,8 +88,11 @@ const OfflineAssets = {
     'examples/foreground_scene.py', 'examples/lifecycle_scene.py', 'examples/order_scene.py', 'examples/layer_scene.py', 'examples/style_scene.py', 'examples/restore_scene.py', 'examples/indicate_scene.py',
     'examples/copy_scene.py', 'examples/connector_scene.py', 'examples/basic_graph.dot'
   ],
-  remote: [
-    'https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js',
+  remote: ['https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js'],
+  // Large runtimes are saved on first use (after the first live render), not at install,
+  // so a phone that only plays pre-rendered samples never downloads them. Still required
+  // for "Ready offline"; upgrades carry saved copies over.
+  runtime: [
     'https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js',
     'https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/input/tex/extensions/html.js',
     ...['pyodide.js', 'pyodide.asm.js', 'pyodide.asm.wasm', 'python_stdlib.zip', 'pyodide-lock.json']
@@ -100,7 +103,8 @@ const OfflineAssets = {
     'https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pygments-2.17.2-py3-none-any.whl',
     'https://cdn.jsdelivr.net/pyodide/v0.27.0/full/networkx-3.4.2-py3-none-any.whl',
     'https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pillow-10.2.0-cp312-cp312-pyodide_2024_0_wasm32.whl'],
-  urls(scope) { return [...this.local.map(path => new URL(path, scope).href), ...this.remote]; },
+  installUrls(scope) { return [...this.local.map(path => new URL(path, scope).href), ...this.remote]; },
+  urls(scope) { return [...this.installUrls(scope), ...this.runtime]; },
   key(request, scope) {
     if (request.method !== 'GET') return null;
     const url = new URL(request.url);

@@ -1068,6 +1068,47 @@ const Modl = (() => {
     if (panning?.pointerId === ev.pointerId) endPan();
   });
 
+  // Touch: one finger drags nodes or pans as above; a second finger pinches (zoom and pan
+  // about the fingers' midpoint). touch-action keeps the browser from zooming the page.
+  const touches = new Map();
+  let pinch = null;
+  $svg.style.touchAction = 'none';
+  function pinchState() {
+    const [a, b] = [...touches.values()];
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y) };
+  }
+  $svg.addEventListener('pointerdown', ev => {
+    if (ev.pointerType !== 'touch' || destroyed) return;
+    touches.set(ev.pointerId, svgPointFromEvent(ev));
+    // On a phone the letterbox around the drawing is large; let a finger there pan too.
+    if (touches.size === 1 && ev.target === $svg) startPan(ev);
+    if (touches.size !== 2) return;
+    ev.stopPropagation();
+    ev.preventDefault();
+    if (dragging) endDrag({ pointerId: dragging.pointerId, type: 'pointercancel' });
+    if (panning) endPan();
+    pinch = { ...pinchState(), viewport: { ...viewport } };
+  }, true);
+  $svg.addEventListener('pointermove', ev => {
+    if (!touches.has(ev.pointerId)) return;
+    touches.set(ev.pointerId, svgPointFromEvent(ev));
+    if (!pinch || touches.size !== 2 || destroyed) return;
+    const now = pinchState();
+    const next = { ...pinch.viewport };
+    if (pinch.d > 0) zoomViewport(next, now.d / pinch.d, pinch.x, pinch.y);
+    next.tx += now.x - pinch.x;
+    next.ty += now.y - pinch.y;
+    if (![next.tx, next.ty].every(Number.isFinite)) return;
+    viewport = next;
+    applyViewportTransform();
+    onFrame($svg, { ...viewport });
+  });
+  for (const type of ['pointerup', 'pointercancel']) {
+    $svg.addEventListener(type, ev => {
+      if (touches.delete(ev.pointerId) && touches.size < 2) pinch = null;
+    });
+  }
+
 
     $svg.addEventListener('wheel', event => {
       event.preventDefault();

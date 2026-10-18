@@ -126,8 +126,24 @@ async function ready(page, type) {
       await mobile.waitForFunction(() => document.querySelector('#minimal video').currentTime > .2);
       assert.equal(await mobile.locator('#minimal .preview-error').count(), 0);
       await mobile.screenshot({ path: `/tmp/manimonline-gallery-${engine}.png` });
+      // Phone editors play a sample's pre-rendered MP4 and start Python only when the scene
+      // must run live (here: an edit). A missing video falls back to rendering live.
+      const pythonRequests = [];
+      mobile.on('request', request => { if (/pyodide|unified-worker/.test(request.url())) pythonRequests.push(request.url()); });
+      await mobile.goto(new URL('?example=copy', base).href);
+      await mobile.waitForFunction(() => document.querySelector('.sample-video video')?.currentTime > .2);
+      assert.equal(await mobile.locator('#view-preview').getAttribute('aria-pressed'), 'true');
+      assert.equal(await mobile.locator('.manim-player').count(), 0);
+      assert.deepEqual(pythonRequests, [], 'sample video plays without loading Python');
+      await mobile.evaluate(() => ace.edit('editor').setValue(ace.edit('editor').getValue() + '\n', 1));
+      await ready(mobile, 'manim');
+      assert.equal(await mobile.locator('.sample-video').count(), 0);
+      assert.ok(pythonRequests.length > 0, 'an edit renders live');
+      await mobile.goto(new URL('?example=minimal', base).href);
+      await ready(mobile, 'manim');
+      assert.equal(await mobile.locator('.sample-video').count(), 0);
       await mobileContext.close();
-      console.log(`${engine}: gallery covers, playback, filters, editor links, reload, stale loads, and mobile passed`);
+      console.log(`${engine}: gallery covers, playback, filters, editor links, reload, stale loads, mobile and phone video-first passed`);
     } finally { await browser.close(); }
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

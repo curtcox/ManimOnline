@@ -106,6 +106,14 @@ from display geometry; capture must use their sampled state, including held stag
   The player stage takes the frame aspect there; its full-screen button falls back to
   filling the window (iPhone Safari). Never add inline SVG to the player controls: page
   code treats the first `#review svg` as the frame. Diagram fitting skips a hidden preview.
+  Phone `?example=` loads of Manim samples show the gallery MP4 (`showSampleVideo`) and
+  start no worker until an edit, Render, scene name, renderer change or export; a video
+  error renders live. `OfflineAssets.runtime` (Pyodide, MathJax) is not fetched at install:
+  the page fires `manim-rendered` and offline.js asks the worker to `cache-runtime`.
+  Navigation needs only `installUrls`; "Ready offline" still needs the runtime too.
+  Diagram touch: modl pinches in modl.js (touch-action none, letterbox pans); Graphviz
+  uses `touchPanZoom()` as svg-pan-zoom's customEventsHandler. tests/browser/touch.cjs
+  drives CDP touch (Chromium only).
 - Keep Python execution in a worker so a main-thread timeout can terminate
   runaway code. A Promise timeout inside a blocked worker cannot interrupt it.
 - Isolate each source execution namespace and ignore stale render results.

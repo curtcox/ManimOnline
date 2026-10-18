@@ -45,6 +45,7 @@ jobs:
           node --check tests/browser/modl-zoom.cjs
           node --check tests/browser/gallery.cjs
           node --check tests/browser/upgrade.cjs
+          node --check tests/browser/touch.cjs
   browsers:
     runs-on: ubuntu-latest
     strategy:
@@ -74,3 +75,5 @@ jobs:
         run: node tests/browser/modl-zoom.cjs http://localhost:8000/ ${{ matrix.browser }}
       - name: Sharing
         run: node tests/browser/sharing.cjs http://localhost:8000/ ${{ matrix.browser }}
+      - name: Touch gestures (Chromium only; other engines skip)
+        run: node tests/browser/touch.cjs http://localhost:8000/ ${{ matrix.browser }}

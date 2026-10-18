@@ -431,13 +431,16 @@ with a straight-segment SVG representation.
 
 ## Offline use
 
-On HTTPS or localhost, the site saves the editor, supported examples, Python
-runtime, and MathTex library. Stay connected until the toolbar says **Ready
-offline**. Then reload the same site to edit and render DOT or supported Manim
+On HTTPS or localhost, the site saves the editor, gallery and supported examples
+when first opened. The Python runtime and MathTex library (several MB) are saved
+after the first live Manim render, so a phone that only watches pre-rendered
+samples never downloads them. Until then the toolbar (under **More** on phones)
+says **Diagrams ready offline**: DOT, modl and the gallery work offline, and
+**Save Python offline** downloads the rest. Stay connected until it says **Ready
+offline**; then reload the same site to edit and render DOT or supported Manim
 scenes, select gallery examples, and export frames without a connection.
-Preparation downloads the runtime even if you are editing DOT. Browser storage
-limits or a failed CDN request can prevent setup; use **Retry offline setup**
-after reconnecting. Browser storage may be cleared or evicted later.
+Browser storage limits or a failed CDN request can prevent setup; use **Retry
+offline setup** after reconnecting. Browser storage may be cleared or evicted later.
 
 Only the listed application assets are cached. External source links, URL
 shortening, and arbitrary Python packages still need a connection. Source links
@@ -506,6 +509,7 @@ node tests/browser/modl-zoom.cjs http://localhost:8000/ chromium firefox webkit
 node tests/browser/sharing.cjs http://localhost:8000/ chromium firefox webkit
 node tests/browser/gallery.cjs http://localhost:8000/ chromium firefox webkit
 node tests/browser/upgrade.cjs chromium firefox webkit
+node tests/browser/touch.cjs http://localhost:8000/ chromium
 ```
 
 The language check runs real Graphviz, modl and Pyodide/Manim previews, plus HashBin OAuth return, quote, save, reload, legacy modl/inline CID loading, and stale-load protection against a mocked service. It spends no account funds and does not prove live HashBin registration or service availability. Playwright's Firefox build may fail to launch on recent macOS with “Could not find profile folder”; CI runs the browser matrix on Ubuntu.
@@ -529,8 +533,12 @@ catalog, then verifies automatic activation, edit preservation, and offline
 gallery browsing. It isolates local application upgrades; the unit suite covers
 pinned CDN cache reuse and incomplete offline setup.
 The gallery check verifies every shipped cover, real MP4 playback, filtering,
-editor links for all three languages, edited-source reloads, stale loads, and
-the narrow-screen layout. Gallery covers and sources are included in offline
+editor links for all three languages, edited-source reloads, stale loads, the
+narrow-screen layout, and that a phone editor plays a sample's MP4 without
+requesting Python until an edit (or a missing video) needs a live render.
+The touch check sends real touch input through Chromium's DevTools protocol:
+one finger pans and two fingers pinch-zoom Graphviz and modl previews without
+zooming the page. Other engines skip it. Gallery covers and sources are included in offline
 setup; video previews need a connection and are not downloaded during setup.
 
 To refresh gallery media after changing a sample or the rendering runtime, serve

@@ -54,7 +54,7 @@ async function run(engine) {
       else if (file === 'offline-assets.js') {
         // This test isolates local-application upgrades; pinned runtime/CDN reuse
         // and readiness failures are covered by tests/offline.test.js.
-        body = fs.readFileSync(path.join(root,file),'utf8') + '\nOfflineAssets.remote = []; OfflineAssets.optional = [];';
+        body = fs.readFileSync(path.join(root,file),'utf8') + '\nOfflineAssets.remote = []; OfflineAssets.runtime = []; OfflineAssets.optional = [];';
       } else {
         const location = path.resolve(root, file);
         if (!location.startsWith(root + path.sep)) throw Error('Invalid path');
