@@ -1,7 +1,7 @@
 /** Exact offline dependencies. Bump VERSION whenever any listed local file changes. */
 const OfflineExamples = typeof module !== 'undefined' ? require('./src/examples.js').ExampleCatalog : globalThis.ExampleCatalog;
 const OfflineAssets = {
-  VERSION: 'manimonline-offline-v390',
+  VERSION: 'manimonline-offline-v391',
   local: [
     'gallery.html', 'src/gallery.js', 'src/gallery.css', 'src/gallery-updates.js', 'src/video-links.js',
     ...OfflineExamples.map(example => example.cover),

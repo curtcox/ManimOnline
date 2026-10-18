@@ -35,4 +35,12 @@ h2 { font-size: 19px; line-height: 1.35; margin: 9px 0 18px; }
 .watch:hover { text-decoration: underline; }
 .preview-error { color: #9d2f2f; font-size: 13px; line-height: 1.5; }
 footer { max-width: 1328px; padding: 0 24px 36px; margin: auto; color: #58667b; font-size: 14px; }
-@media (max-width: 600px) { main { padding: 28px 16px; } header { padding: 20px 16px; } .filters { flex-direction: column; } .grid { grid-template-columns: 1fr; gap: 20px; } }
+/* Phones: get the first sample on screen without scrolling. */
+@media (max-width: 600px) {
+  main { padding: 16px 16px 28px; } header { padding: 14px 16px; } .brand { font-size: 19px; }
+  .eyebrow, .intro .note:not(:last-child) { display: none; }
+  h1 { font-size: 28px; margin: 4px 0 8px; } .intro > p:not(.eyebrow) { margin: 8px 0; line-height: 1.5; }
+  .filters { gap: 10px; padding-top: 10px; } .filters > div { gap: 6px; min-width: 0; }
+  .filters > div:last-child { flex: 0 0 42%; } input, select { padding: 10px; width: 100%; }
+  #sample-count { margin: 12px 0; } .grid { grid-template-columns: 1fr; gap: 20px; }
+}

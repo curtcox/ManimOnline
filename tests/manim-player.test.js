@@ -6,8 +6,13 @@ const vm = require('node:vm');
 function setup(frames = 31) {
   const callbacks = new Map();
   let nextId = 0;
+  const makeClassList = () => {
+    const names = new Set();
+    return { contains: name => names.has(name), toggle(name, on = !names.has(name)) { if (on) names.add(name); else names.delete(name); return on; } };
+  };
+  const listeners = new Map();
   const makeElement = () => ({
-    children: [], attributes: {},
+    children: [], attributes: {}, classList: makeClassList(), style: { setProperty() {} }, isConnected: true,
     append(...children) { this.children.push(...children); },
     appendChild(child) { this.children.push(child); },
     replaceChildren(...children) { this.children = children; },
@@ -15,7 +20,12 @@ function setup(frames = 31) {
     remove() { this.removed = true; }
   });
   const context = {
-    window: {}, document: { createElement: makeElement },
+    window: {},
+    document: {
+      createElement: makeElement, documentElement: makeElement(), fullscreenElement: null, fullscreenEnabled: false,
+      addEventListener(type, listener) { listeners.set(type, [...(listeners.get(type) || []), listener]); },
+      removeEventListener(type, listener) { listeners.set(type, (listeners.get(type) || []).filter(other => other !== listener)); }
+    },
     performance: { now: () => 1000 },
     requestAnimationFrame: callback => { const id = ++nextId; callbacks.set(id, callback); return id; },
     cancelAnimationFrame: id => callbacks.delete(id),
@@ -27,7 +37,7 @@ function setup(frames = 31) {
   const player = new context.window.ManimPlayer(makeElement(), {
     frames: Array.from({ length: frames }, () => ({ mobjects: [] })), fps: 15
   }, svg => displayed.push(svg));
-  return { player, displayed, tick(now) {
+  return { player, displayed, listeners, document: context.document, tick(now) {
     const [id, callback] = callbacks.entries().next().value;
     callbacks.delete(id);
     callback(now);
@@ -73,4 +83,24 @@ test('a static scene stays on its only frame', () => {
   const { player, callbacks } = setup(1);
   assert.equal(player.playing, false);
   assert.equal(callbacks.size, 0);
+});
+
+test('full screen falls back to filling the window and Escape or destroy undo it', () => {
+  const { player, listeners, document } = setup();
+  assert.equal(player.fullButton.attributes['aria-label'], 'Full screen');
+  player.toggleFullscreen();
+  assert.ok(player.root.classList.contains('manim-player-full'));
+  assert.ok(document.documentElement.classList.contains('manim-player-filling'));
+  assert.equal(player.fullButton.attributes['aria-label'], 'Exit full screen');
+  assert.equal(player.fullButton.attributes['aria-pressed'], 'true');
+  player.setWindowFill(true);
+  assert.equal(listeners.get('keydown').length, 1, 'repeated requests add one Escape listener');
+  listeners.get('keydown')[0]({ key: 'Escape' });
+  assert.ok(!player.root.classList.contains('manim-player-full'));
+  assert.equal(listeners.get('keydown').length, 0);
+  player.toggleFullscreen();
+  player.destroy();
+  assert.ok(!document.documentElement.classList.contains('manim-player-filling'));
+  assert.equal(listeners.get('keydown').length, 0);
+  assert.equal(listeners.get('fullscreenchange').length, 0);
 });

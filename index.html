@@ -413,30 +413,56 @@
     .manim-controls input { flex: 1; min-width: 40px; }
     .manim-controls button { padding: 5px 10px; cursor: pointer; }
     .manim-controls span { white-space: nowrap; }
-    @media (max-width: 760px) {
-      body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: auto; }
-      #options { position: relative; left: 0 !important; right: auto; order: 0; box-sizing: border-box;
-        width: 100%; max-height: 35vh; max-height: 35dvh; overflow: auto; padding: 8px; gap: 8px; transition: none; }
+    /* A background image, not inline SVG: page code looks up the frame as the first #review svg. */
+    .manim-controls .manim-fullscreen { width: 34px; background: #f8f9fa url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23212529' stroke-width='2'%3E%3Cpath d='M1 6V1h5M10 1h5v5M15 10v5h-5M6 15H1v-5'/%3E%3C/svg%3E") center / 16px no-repeat; }
+    .manim-player:fullscreen, .manim-player.manim-player-full { position: fixed; inset: 0; z-index: 2000; }
+    html.manim-player-filling, html.manim-player-filling body { overflow: hidden; }
+    #view-tabs, #more-toggle { display: none; }
+    /* Phones (portrait, or landscape with little height): the preview comes first.
+       Preview and Code share the screen as tabs; rarely used controls sit behind More. */
+    @media (max-width: 760px), (max-height: 500px) {
+      body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
+      #options { position: relative; left: 0 !important; right: auto; order: 0; box-sizing: border-box; width: 100%;
+        flex: 0 0 auto; padding: 6px 8px; gap: 6px 8px; transition: none; }
+      #options:not(.more-open) > :not(.phone-bar):not(#pyodide-status) { display: none !important; }
+      #options.more-open { max-height: 60vh; max-height: 60dvh; overflow: auto; }
+      #options button { padding: 0 12px; border: 1px solid #ced4da; border-radius: 6px; background: white; color: #212529;
+        font: 500 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; cursor: pointer; }
+      #options button:disabled { color: #868e96; background: #f1f3f5; }
+      #view-tabs { display: flex; order: -3; }
+      #view-tabs button { min-height: 40px; padding: 0 12px; border: 1px solid #ced4da; background: white; color: #495057;
+        font: 600 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; cursor: pointer; }
+      #view-tabs button:first-child { border-radius: 6px 0 0 6px; }
+      #view-tabs button:last-child { border-radius: 0 6px 6px 0; border-left: none; }
+      #view-tabs button[aria-pressed="true"] { background: #343a40; border-color: #343a40; color: white; }
+      #options .manim-options.phone-bar, #options .modl-options { order: -2; }
+      #more-toggle { display: block; order: -1; margin-left: auto; }
+      #more-toggle::after { content: ' ▾'; }
+      #options.more-open #more-toggle::after { content: ' ▴'; }
+      #example-status:empty { display: none; }
       #options label { flex-wrap: wrap; }
-      #options select, #options input[type="button"], #options button, #download { min-height: 44px; box-sizing: border-box; }
+      #options select, #options input[type="button"], #options button, #download { min-height: 40px; box-sizing: border-box; }
       #options .graphviz-options { flex-wrap: wrap; gap: 8px; }
       #options input[type="text"] { min-height: 36px; font-size: 16px; max-width: 100%; box-sizing: border-box; }
       #shareurl { max-width: 100%; box-sizing: border-box; }
-      #editor-toggle { position: relative; top: auto; transform: none; order: 1; flex: 0 0 auto; background: #252525; }
-      #toggle-btn { width: auto; min-width: 100px; height: 44px; font-size: 14px; border-radius: 0; }
-      #editor { position: relative; order: 2; top: auto; bottom: auto; left: 0;
-        width: 100% !important; height: 32vh; height: 32dvh; min-height: 160px; flex: 0 0 auto; transition: none; }
+      .wide-only { display: none; }
+      #editor-toggle, #splitter, .github-fork-ribbon-wrapper { display: none !important; }
+      #editor { position: relative; order: 1; top: auto; bottom: auto; left: 0;
+        width: 100% !important; flex: 1 1 0; min-height: 0; transition: none; }
       #editor.collapsed { display: none; }
-      #splitter, .github-fork-ribbon-wrapper { display: none !important; }
-      #review { position: relative; order: 3; top: auto !important; bottom: auto; left: 0 !important;
-        right: auto; width: 100%; min-height: 220px; flex: 1 0 220px; overflow: auto; transition: none; }
+      #review { position: relative; order: 2; top: auto !important; bottom: auto; left: 0 !important;
+        right: auto; width: 100%; flex: 1 1 0; min-height: 0; overflow: auto; transition: none; }
+      body:not(.presentation) #editor:not(.collapsed) ~ #review { display: none; }
+      body.presentation #view-tabs { display: none; }
       #review img { max-width: 100%; height: auto; }
-      .manim-controls { flex-wrap: wrap; padding: 8px; gap: 8px; }
-      .manim-controls button { min-height: 44px; }
-      .manim-controls input { min-height: 44px; }
-      .manim-controls span { margin-left: auto; }
-      #status { pointer-events: none; }
-      body.presentation #editor-toggle { display: none; }
+      /* The frame keeps its aspect with the controls directly beneath it. */
+      .manim-player { justify-content: center; }
+      .manim-stage { flex: 0 1 auto; aspect-ratio: var(--frame-aspect, 16 / 9); }
+      .manim-player:fullscreen .manim-stage, .manim-player.manim-player-full .manim-stage { flex: 1 1 0; aspect-ratio: auto; }
+      .manim-controls { padding: 6px 8px; gap: 8px; }
+      .manim-controls button { min-height: 40px; min-width: 40px; }
+      .manim-controls input { min-height: 40px; }
+      #status { display: none; }
     }
   </style>
 </head>
@@ -462,6 +488,10 @@ class HelloWorld(Scene):
         self.wait(1)</pre>
   <div id="splitter"></div>
   <div id="options">
+    <div id="view-tabs" class="phone-bar" role="group" aria-label="Show">
+      <button type="button" id="view-preview" aria-pressed="true">Preview</button>
+      <button type="button" id="view-code" aria-pressed="false">Code</button>
+    </div>
     <span id="type-indicator" class="manim">Manim</span>
     <label>Renderer:
       <select id="renderer-mode" aria-label="Renderer">
@@ -472,12 +502,13 @@ class HelloWorld(Scene):
       </select>
     </label>
     <span id="pyodide-status" class="hidden" role="status" aria-live="polite">Python loading...</span>
-    <span class="manim-options">
-      <button id="render-animation" type="button">Render animation</button>
-      <button id="cancel-render" type="button" hidden>Cancel render</button>
+    <span class="manim-options phone-bar">
+      <button id="render-animation" type="button">Render<span class="wide-only"> animation</span></button>
+      <button id="cancel-render" type="button" hidden>Cancel<span class="wide-only"> render</span></button>
     </span>
+    <button type="button" id="more-toggle" class="phone-bar" aria-expanded="false" aria-controls="options">More</button>
 
-    <span class="modl-options hidden" aria-label="modl viewport">
+    <span class="modl-options hidden phone-bar" aria-label="modl viewport">
       <button id="modl-zoom-out" type="button" aria-label="Zoom out">−</button>
       <button id="modl-zoom-in" type="button" aria-label="Zoom in">+</button>
       <button id="modl-reset-view" type="button">Reset view</button>
@@ -488,7 +519,7 @@ class HelloWorld(Scene):
     <a id="video-series" href="https://www.youtube.com/playlist?list=PLXaiuWr3VAhk" target="_blank" rel="noopener"
       title="Drawing with Code: a video series about Manim and ManimOnline, on YouTube">Video series ↗</a>
     <a id="video-link" target="_blank" rel="noopener" hidden></a>
-    <span id="example-status" role="status" aria-live="polite"></span>
+    <span id="example-status" class="phone-bar" role="status" aria-live="polite"></span>
 
     <label class="manim-options" id="scene-option">
       Scene:
@@ -593,7 +624,7 @@ class HelloWorld(Scene):
   <script src="src/share-links.js?v=4"></script>
   <script src="src/manim-renderer.js?v=outlines-1"></script>
   <script src="src/manim-client.js"></script>
-  <script src="src/manim-player.js?v=mathtex-1"></script>
+  <script src="src/manim-player.js?v=fullscreen-3"></script>
   <script src="src/examples.js"></script>
   <script src="src/video-links.js?v=1"></script>
   <script src="src/manim-math.js?v=9"></script>
@@ -621,15 +652,32 @@ class HelloWorld(Scene):
     let isCollapsed = false;
     let isDragging = false;
     let currentSplitPercentage = 50;
-    const mobileLayout = window.matchMedia('(max-width: 760px)');
+    // Keep in sync with the phone @media rule above.
+    const mobileLayout = window.matchMedia('(max-width: 760px), (max-height: 500px)');
+    const viewPreview = document.getElementById('view-preview');
+    const viewCode = document.getElementById('view-code');
+    const moreToggle = document.getElementById('more-toggle');
     function updateToggleLabel() {
-      toggleBtn.textContent = mobileLayout.matches ? (isCollapsed ? 'Show code' : 'Hide code') : (isCollapsed ? '▶' : '◀');
+      toggleBtn.textContent = isCollapsed ? '▶' : '◀';
       toggleBtn.setAttribute('aria-expanded', String(!isCollapsed));
       toggleBtn.setAttribute('aria-label', isCollapsed ? 'Show code editor' : 'Hide code editor');
+      viewPreview.setAttribute('aria-pressed', String(isCollapsed));
+      viewCode.setAttribute('aria-pressed', String(!isCollapsed));
       ace.edit('editor').getSession().setUseWrapMode(mobileLayout.matches);
     }
     mobileLayout.addEventListener('change', updateToggleLabel);
-    updateToggleLabel();
+    // On phones Preview and Code are tabs: the collapsed editor means the preview is showing.
+    function showCode(visible) {
+      if (visible === isCollapsed) toggleBtn.click();
+    }
+    viewPreview.addEventListener('click', () => showCode(false));
+    viewCode.addEventListener('click', () => showCode(true));
+    function setMoreOpen(open) {
+      optionsElement.classList.toggle('more-open', open);
+      moreToggle.setAttribute('aria-expanded', String(open));
+      moreToggle.textContent = open ? 'Less' : 'More';
+    }
+    moreToggle.addEventListener('click', () => setMoreOpen(!optionsElement.classList.contains('more-open')));
     new ResizeObserver(() => {
       ace.edit('editor').resize();
       resizeSVG();
@@ -730,12 +778,16 @@ class HelloWorld(Scene):
 
       setTimeout(resizeSVG, 300);
     });
+    // Phone visitors mostly watch, so they start on the preview.
+    if (mobileLayout.matches) toggleBtn.click();
+    updateToggleLabel();
 
     window.addEventListener('resize', resizeSVG);
 
     function resizeSVG() {
       const svg = document.querySelector('#review svg');
-      if (svg && currentType === 'graphviz') {
+      // A hidden preview (the phone Code tab) has no size; fitting then would scale to zero.
+      if (svg && currentType === 'graphviz' && reviewElement.clientWidth && reviewElement.clientHeight) {
         try {
           const panZoom = svgPanZoom(svg);
           panZoom.resize();
@@ -1006,7 +1058,10 @@ class HelloWorld(Scene):
       }
 
       const scheduler = new RenderScheduler({ detect: detectAndUpdateType, render });
-      renderAnimationButton.addEventListener('click', render);
+      renderAnimationButton.addEventListener('click', () => {
+        if (mobileLayout.matches) showCode(false);
+        render();
+      });
       cancelRenderButton.addEventListener('click', () => {
         scheduler.cancel();
         invalidateRender();
@@ -1456,6 +1511,7 @@ class HelloWorld(Scene):
         history.replaceState(null, '', url);
         if (callbackRevision === renderRevision && callback.snapshot) applyLoadedSource(callback.snapshot);
         hashbinPanel.status.textContent = callback.error || 'Connected to HashBin. Choose Save to HashBin to review the cost.';
+        setMoreOpen(true);
         if (callback.snapshot) return;
       }
       const params = new URLSearchParams(location.search.substring(1));

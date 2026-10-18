@@ -100,6 +100,12 @@ from display geometry; capture must use their sampled state, including held stag
 - Extend the existing static architecture before introducing another stack.
   Full Manim, video encoding, LaTeX, and offline support are not proven here.
 - Preserve the explicit Render animation/Cancel render controls and their stale-result guards.
+- Phones (`(max-width: 760px), (max-height: 500px)`, mirrored by `mobileLayout` in index.html)
+  start on the preview: Preview/Code tabs reuse the editor toggle, and only `.phone-bar`
+  toolbar items show until More opens. Keep new rarely used controls out of `.phone-bar`.
+  The player stage takes the frame aspect there; its full-screen button falls back to
+  filling the window (iPhone Safari). Never add inline SVG to the player controls: page
+  code treats the first `#review svg` as the frame. Diagram fitting skips a hidden preview.
 - Keep Python execution in a worker so a main-thread timeout can terminate
   runaway code. A Promise timeout inside a blocked worker cannot interrupt it.
 - Isolate each source execution namespace and ignore stale render results.
