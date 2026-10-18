@@ -183,6 +183,11 @@ Workflow:
    ```bash
    node video-series/tools/qr-links.mjs --check
    ```
+   The checker verifies the downloaded bytes. If HashBin responds with HTTP 429,
+   it prints `WAIT`, honors `Retry-After`, and retries the same file (up to three times).
+   The content host allows 30 requests per IP per minute, so checking all 62 links
+   can take about two minutes. Only HTTP 404 is reported as `MISSING`; exhausted
+   rate limits and other failures remain separate unconfirmed results.
 5. Make the QR images for the production scenes (needs `pip install segno`):
    ```bash
    python3 video-series/tools/make_qr_svgs.py

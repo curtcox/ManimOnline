@@ -15,6 +15,7 @@
  * --upload folder's files on https://hashbin.org/upload stores the same bytes in one go.
  */
 import { createHash } from 'node:crypto';
+import { checkLinks } from './check-links.mjs';
 import { createRequire } from 'node:module';
 import { mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -114,22 +115,8 @@ if (uploadIndex >= 0) {
 }
 
 if (args.includes('--check')) {
-  let missing = 0;
-  for (const row of rows) {
-    if (row.inline) { console.log(`ok       ${row.id} inline`); continue; }
-    try {
-      const response = await fetch(`https://256t.us/${row.cid}`);
-      const text = response.ok ? await response.text() : null;
-      const status = text === row.payload ? 'ok' : response.ok ? 'MISMATCH' : `MISSING (HTTP ${response.status})`;
-      if (status !== 'ok') missing++;
-      console.log(`${status.padEnd(8)} ${row.id} ${row.title}`);
-    } catch (error) {
-      missing++;
-      console.log(`ERROR    ${row.id} ${error.message}`);
-    }
-  }
-  console.log(`\n${missing} QR link(s) not yet resolvable`);
-  process.exitCode = missing ? 1 : 0;
+  const result = await checkLinks(rows);
+  process.exitCode = result.unresolved ? 1 : 0;
 } else {
   console.log(`Wrote qr-links.json and qr-links.md for ${rows.length} snippets (${rows.filter(r => !r.inline).length} need uploading).`);
 }
