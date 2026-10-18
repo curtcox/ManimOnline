@@ -14,6 +14,32 @@ A web-based editor for Graphviz DOT diagrams, modl diagrams, and Manim Python an
 - **URL Sharing**: Share diagrams via URL parameters
 - **Export**: Download diagrams as SVG or PNG
 
+## Video series
+
+[Drawing with Code: Manim and ManimOnline](https://www.youtube.com/playlist?list=PLXaiuWr3VAhk) is a narrated YouTube series
+about Manim and this editor. Episodes 1–9 are for beginners who know a little Python;
+episodes 10–12 explain how ManimOnline runs Python in the browser, matches Manim
+Community, and stores code in links. QR codes in the videos open the code on screen
+in the editor; the editor then links back to the chapter that explains it, and gallery
+samples covered by an episode link to that chapter. Scripts, snippets and production
+tooling are in [`video-series/`](video-series/README.md).
+
+| # | Episode |
+|---|---|
+| Trailer | [Drawing with Code: Manim and ManimOnline (Trailer)](https://www.youtube.com/watch?v=xz2KHjntJK4&list=PLXaiuWr3VAhk) |
+| 1 | [An Animation Is a Program](https://www.youtube.com/watch?v=oZYsQfNCl7U&list=PLXaiuWr3VAhk) |
+| 2 | [Mobjects: The Nouns](https://www.youtube.com/watch?v=uNAZ8IUrWGg&list=PLXaiuWr3VAhk) |
+| 3 | [Animations: The Verbs](https://www.youtube.com/watch?v=2gHw0OI5Ewg&list=PLXaiuWr3VAhk) |
+| 4 | [What Is a Shape, Really? Bézier Curves](https://www.youtube.com/watch?v=wLi02QRgJ3k&list=PLXaiuWr3VAhk) |
+| 5 | [Words and Equations: Text, MathTex and Tex](https://www.youtube.com/watch?v=mqY9GnhD5iI&list=PLXaiuWr3VAhk) |
+| 6 | [Things That Change: Updaters and ValueTrackers](https://www.youtube.com/watch?v=1xZ6yq3bn6M&list=PLXaiuWr3VAhk) |
+| 7 | [Graphs, Areas and Slopes](https://www.youtube.com/watch?v=AcSK_JwYSRo&list=PLXaiuWr3VAhk) |
+| 8 | [Cameras and the Third Dimension](https://www.youtube.com/watch?v=g5-rbmAx4pw&list=PLXaiuWr3VAhk) |
+| 9 | [From Sketch to Shareable: ManimOnline Tour](https://www.youtube.com/watch?v=osZ8k7DiIdg&list=PLXaiuWr3VAhk) |
+| 10 | [Python in a Browser Tab: Pyodide and WebAssembly](https://www.youtube.com/watch?v=FwW81F7Zx2o&list=PLXaiuWr3VAhk) |
+| 11 | [Rebuilding an Engine to Match Manim](https://www.youtube.com/watch?v=Pjdinan5Xcg&list=PLXaiuWr3VAhk) |
+| 12 | [Links That Carry Code: Compression, Hashes and QR Codes](https://www.youtube.com/watch?v=u7ArYmhyNxE&list=PLXaiuWr3VAhk) |
+
 ## Usage
 
 Visit the deployed site and start typing:

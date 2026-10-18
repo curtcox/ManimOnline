@@ -1,5 +1,7 @@
 # Episode 11 · Rebuilding an engine to match
 
+Published video: [Rebuilding an Engine to Match Manim · Drawing with Code 11](https://www.youtube.com/watch?v=Pjdinan5Xcg&list=PLXaiuWr3VAhk) · [series playlist](https://www.youtube.com/playlist?list=PLXaiuWr3VAhk)
+
 | | |
 |---|---|
 | Track | Deep dive |

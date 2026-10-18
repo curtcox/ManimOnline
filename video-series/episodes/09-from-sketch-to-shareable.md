@@ -1,5 +1,7 @@
 # Episode 9 · From sketch to shareable
 
+Published video: [From Sketch to Shareable: ManimOnline Tour · Drawing with Code 9](https://www.youtube.com/watch?v=osZ8k7DiIdg&list=PLXaiuWr3VAhk) · [series playlist](https://www.youtube.com/playlist?list=PLXaiuWr3VAhk)
+
 | | |
 |---|---|
 | Track | Main |

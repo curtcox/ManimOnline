@@ -4,7 +4,8 @@ body { margin: 0; }
 a { color: #175ca4; }
 header { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 24px max(24px, calc((100% - 1280px) / 2)); background: #fff; border-bottom: 1px solid #dce3ec; }
 .brand { color: #202c3e; font-size: 21px; font-weight: 750; text-decoration: none; }
-.back { text-decoration: none; font-weight: 600; }
+header nav { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px 22px; }
+.back, .series { text-decoration: none; font-weight: 600; }
 main { max-width: 1328px; margin: auto; padding: 48px 24px; }
 .intro { max-width: 770px; }
 .eyebrow { color: #175ca4; font-weight: 700; letter-spacing: .13em; font-size: 12px; }
@@ -30,6 +31,8 @@ input, select { font: inherit; color: inherit; border: 1px solid #bac6d5; border
 h2 { font-size: 19px; line-height: 1.35; margin: 9px 0 18px; }
 .load { display: inline-block; margin-top: auto; text-decoration: none; background: #edf4ff; padding: 11px 14px; border-radius: 7px; font-size: 14px; font-weight: 650; }
 .load:hover { background: #dceaff; }
+.watch { margin: -6px 0 16px; font-size: 14px; line-height: 1.45; text-decoration: none; }
+.watch:hover { text-decoration: underline; }
 .preview-error { color: #9d2f2f; font-size: 13px; line-height: 1.5; }
 footer { max-width: 1328px; padding: 0 24px 36px; margin: auto; color: #58667b; font-size: 14px; }
 @media (max-width: 600px) { main { padding: 28px 16px; } header { padding: 20px 16px; } .filters { flex-direction: column; } .grid { grid-template-columns: 1fr; gap: 20px; } }

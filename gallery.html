@@ -7,13 +7,17 @@
   <title>Sample gallery · ManimOnline</title>
   <link rel="stylesheet" href="src/gallery.css">
   <script defer src="src/examples.js"></script>
+  <script defer src="src/video-links.js"></script>
   <script defer src="src/gallery.js"></script>
   <script defer src="src/gallery-updates.js"></script>
 </head>
 <body>
   <header>
     <a class="brand" href="./">ManimOnline</a>
-    <a class="back" href="./">Open editor →</a>
+    <nav>
+      <a class="series" href="https://www.youtube.com/playlist?list=PLXaiuWr3VAhk" target="_blank" rel="noopener">Video series ↗</a>
+      <a class="back" href="./">Open editor →</a>
+    </nav>
   </header>
   <main>
     <div class="intro">
@@ -21,6 +25,7 @@
       <h1>Start with a sample.</h1>
       <p>Watch an animation, explore a diagram, then make it your own in the editor.</p>
       <p class="note">Pre-rendered previews need no Python startup. These samples use the supported browser Manim-lite subset.</p>
+      <p class="note">New to Manim? <a href="https://www.youtube.com/playlist?list=PLXaiuWr3VAhk" target="_blank" rel="noopener">Drawing with Code</a> is a video series that builds these ideas step by step; samples it covers link to the matching chapter.</p>
     </div>
     <form class="filters" role="search" onsubmit="return false">
       <div class="search"><label for="sample-search">Find a sample</label><input id="sample-search" type="search" placeholder="Try camera, curves, gradients…" autocomplete="off"></div>

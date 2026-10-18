@@ -1,5 +1,7 @@
 # Episode 1 · An animation is a program
 
+Published video: [An Animation Is a Program · Drawing with Code 1 (Manim)](https://www.youtube.com/watch?v=oZYsQfNCl7U&list=PLXaiuWr3VAhk) · [series playlist](https://www.youtube.com/playlist?list=PLXaiuWr3VAhk)
+
 | | |
 |---|---|
 | Track | Main |

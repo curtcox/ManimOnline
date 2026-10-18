@@ -1,5 +1,7 @@
 # Episode 7 · Graphs, areas and slopes
 
+Published video: [Graphs, Areas and Slopes · Drawing with Code 7 (Manim)](https://www.youtube.com/watch?v=AcSK_JwYSRo&list=PLXaiuWr3VAhk) · [series playlist](https://www.youtube.com/playlist?list=PLXaiuWr3VAhk)
+
 | | |
 |---|---|
 | Track | Main |

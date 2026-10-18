@@ -21,8 +21,9 @@ Chapters
 7:41 Recap: the whole journey
 
 This is episode 10 of 12 of Drawing with Code.
-Previous: From Sketch to Shareable: ManimOnline Tour · Drawing with Code 9
-Next: Rebuilding an Engine to Match Manim · Drawing with Code 11
+Previous: From Sketch to Shareable: ManimOnline Tour · Drawing with Code 9: https://www.youtube.com/watch?v=osZ8k7DiIdg&list=PLXaiuWr3VAhk
+Next: Rebuilding an Engine to Match Manim · Drawing with Code 11: https://www.youtube.com/watch?v=Pjdinan5Xcg&list=PLXaiuWr3VAhk
+All episodes: https://www.youtube.com/playlist?list=PLXaiuWr3VAhk
 ManimOnline, the editor: https://curtcox.github.io/ManimOnline/
 Sample gallery: https://curtcox.github.io/ManimOnline/gallery.html
 Manim Community, the Python library: https://www.manim.community/

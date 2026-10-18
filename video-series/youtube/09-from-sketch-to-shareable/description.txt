@@ -24,8 +24,9 @@ Chapters
 7:34 Recap: the end of the main track
 
 This is episode 9 of 12 of Drawing with Code.
-Previous: Cameras and the Third Dimension · Drawing with Code 8 (Manim)
-Next: Python in a Browser Tab: Pyodide and WebAssembly · Drawing with Code 10
+Previous: Cameras and the Third Dimension · Drawing with Code 8 (Manim): https://www.youtube.com/watch?v=g5-rbmAx4pw&list=PLXaiuWr3VAhk
+Next: Python in a Browser Tab: Pyodide and WebAssembly · Drawing with Code 10: https://www.youtube.com/watch?v=FwW81F7Zx2o&list=PLXaiuWr3VAhk
+All episodes: https://www.youtube.com/playlist?list=PLXaiuWr3VAhk
 ManimOnline, the editor: https://curtcox.github.io/ManimOnline/
 Sample gallery: https://curtcox.github.io/ManimOnline/gallery.html
 Manim Community, the Python library: https://www.manim.community/

@@ -1,5 +1,7 @@
 # Episode 2 · Mobjects: the nouns
 
+Published video: [Mobjects: The Nouns · Drawing with Code 2 (Manim)](https://www.youtube.com/watch?v=uNAZ8IUrWGg&list=PLXaiuWr3VAhk) · [series playlist](https://www.youtube.com/playlist?list=PLXaiuWr3VAhk)
+
 | | |
 |---|---|
 | Track | Main |

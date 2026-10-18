@@ -24,8 +24,9 @@ Chapters
 8:25 Recap
 
 This is episode 11 of 12 of Drawing with Code.
-Previous: Python in a Browser Tab: Pyodide and WebAssembly · Drawing with Code 10
-Next: Links That Carry Code: Compression, Hashes and QR Codes · Drawing with Code 12
+Previous: Python in a Browser Tab: Pyodide and WebAssembly · Drawing with Code 10: https://www.youtube.com/watch?v=FwW81F7Zx2o&list=PLXaiuWr3VAhk
+Next: Links That Carry Code: Compression, Hashes and QR Codes · Drawing with Code 12: https://www.youtube.com/watch?v=u7ArYmhyNxE&list=PLXaiuWr3VAhk
+All episodes: https://www.youtube.com/playlist?list=PLXaiuWr3VAhk
 ManimOnline, the editor: https://curtcox.github.io/ManimOnline/
 Sample gallery: https://curtcox.github.io/ManimOnline/gallery.html
 Manim Community, the Python library: https://www.manim.community/

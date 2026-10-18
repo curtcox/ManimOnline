@@ -27,6 +27,15 @@ from the episode scripts, `qr-links.json`, the README's "How this series was mad
 final render. So re-run it after any re-render: chapter times and caption offsets come from the
 stitched segment lengths. Thumbnails are drawn by `production/thumbnails.py`.
 
+The series is published as the playlist https://www.youtube.com/playlist?list=PLXaiuWr3VAhk.
+`episodes.json` records its `playlist_id` and each episode's `video_id`, so descriptions link the
+previous and next episodes and the playlist. Each run also writes `src/video-links.js` for the web
+app: every QR snippet (by HashBin CID) and every gallery sample listed in an episode's `gallery` map
+(sample id → script segment) links to that chapter's start time. The editor shows the link after
+loading such a snippet or sample, and gallery cards show it under the title. After changing a
+description here, paste it into YouTube Studio as well: the published descriptions are not updated
+automatically.
+
 Captions are the narration exactly as written in the scripts ("Manim", where the voice was sent the
 alias "Mannim"), timed word by word. Episodes 0 and 7–12 use ElevenLabs' own character timings;
 episodes 1–6 were narrated before those were saved, so `tools/align_narration.py` timed them with a

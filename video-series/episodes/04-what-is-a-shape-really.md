@@ -1,5 +1,7 @@
 # Episode 4 · What is a shape, really?
 
+Published video: [What Is a Shape, Really? Bézier Curves · Drawing with Code 4 (Manim)](https://www.youtube.com/watch?v=wLi02QRgJ3k&list=PLXaiuWr3VAhk) · [series playlist](https://www.youtube.com/playlist?list=PLXaiuWr3VAhk)
+
 | | |
 |---|---|
 | Track | Main |

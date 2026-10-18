@@ -23,8 +23,9 @@ Chapters
 7:26 Recap
 
 This is episode 2 of 12 of Drawing with Code.
-Previous: An Animation Is a Program · Drawing with Code 1 (Manim)
-Next: Animations: The Verbs · Drawing with Code 3 (Manim)
+Previous: An Animation Is a Program · Drawing with Code 1 (Manim): https://www.youtube.com/watch?v=oZYsQfNCl7U&list=PLXaiuWr3VAhk
+Next: Animations: The Verbs · Drawing with Code 3 (Manim): https://www.youtube.com/watch?v=2gHw0OI5Ewg&list=PLXaiuWr3VAhk
+All episodes: https://www.youtube.com/playlist?list=PLXaiuWr3VAhk
 ManimOnline, the editor: https://curtcox.github.io/ManimOnline/
 Sample gallery: https://curtcox.github.io/ManimOnline/gallery.html
 Manim Community, the Python library: https://www.manim.community/

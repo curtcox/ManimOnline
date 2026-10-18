@@ -1,5 +1,7 @@
 # Episode 5 · Words and equations
 
+Published video: [Words and Equations: Text, MathTex and Tex · Drawing with Code 5 (Manim)](https://www.youtube.com/watch?v=mqY9GnhD5iI&list=PLXaiuWr3VAhk) · [series playlist](https://www.youtube.com/playlist?list=PLXaiuWr3VAhk)
+
 | | |
 |---|---|
 | Track | Main |

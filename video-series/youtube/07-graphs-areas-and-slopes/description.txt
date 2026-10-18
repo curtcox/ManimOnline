@@ -22,8 +22,9 @@ Chapters
 7:11 Recap
 
 This is episode 7 of 12 of Drawing with Code.
-Previous: Things That Change: Updaters and ValueTrackers · Drawing with Code 6 (Manim)
-Next: Cameras and the Third Dimension · Drawing with Code 8 (Manim)
+Previous: Things That Change: Updaters and ValueTrackers · Drawing with Code 6 (Manim): https://www.youtube.com/watch?v=1xZ6yq3bn6M&list=PLXaiuWr3VAhk
+Next: Cameras and the Third Dimension · Drawing with Code 8 (Manim): https://www.youtube.com/watch?v=g5-rbmAx4pw&list=PLXaiuWr3VAhk
+All episodes: https://www.youtube.com/playlist?list=PLXaiuWr3VAhk
 ManimOnline, the editor: https://curtcox.github.io/ManimOnline/
 Sample gallery: https://curtcox.github.io/ManimOnline/gallery.html
 Manim Community, the Python library: https://www.manim.community/

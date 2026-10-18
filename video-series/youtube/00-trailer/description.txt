@@ -12,6 +12,8 @@ Chapters
 1:02 Call to action
 
 This is the trailer of Drawing with Code.
+Start with episode 1: An Animation Is a Program · Drawing with Code 1 (Manim): https://www.youtube.com/watch?v=oZYsQfNCl7U&list=PLXaiuWr3VAhk
+All episodes: https://www.youtube.com/playlist?list=PLXaiuWr3VAhk
 ManimOnline, the editor: https://curtcox.github.io/ManimOnline/
 Sample gallery: https://curtcox.github.io/ManimOnline/gallery.html
 Manim Community, the Python library: https://www.manim.community/

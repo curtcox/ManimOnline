@@ -1,5 +1,7 @@
 # Episode 8 · Cameras and the third dimension
 
+Published video: [Cameras and the Third Dimension · Drawing with Code 8 (Manim)](https://www.youtube.com/watch?v=g5-rbmAx4pw&list=PLXaiuWr3VAhk) · [series playlist](https://www.youtube.com/playlist?list=PLXaiuWr3VAhk)
+
 | | |
 |---|---|
 | Track | Main |

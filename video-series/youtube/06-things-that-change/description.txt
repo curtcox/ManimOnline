@@ -22,8 +22,9 @@ Chapters
 7:18 Recap
 
 This is episode 6 of 12 of Drawing with Code.
-Previous: Words and Equations: Text, MathTex and Tex · Drawing with Code 5 (Manim)
-Next: Graphs, Areas and Slopes · Drawing with Code 7 (Manim)
+Previous: Words and Equations: Text, MathTex and Tex · Drawing with Code 5 (Manim): https://www.youtube.com/watch?v=mqY9GnhD5iI&list=PLXaiuWr3VAhk
+Next: Graphs, Areas and Slopes · Drawing with Code 7 (Manim): https://www.youtube.com/watch?v=AcSK_JwYSRo&list=PLXaiuWr3VAhk
+All episodes: https://www.youtube.com/playlist?list=PLXaiuWr3VAhk
 ManimOnline, the editor: https://curtcox.github.io/ManimOnline/
 Sample gallery: https://curtcox.github.io/ManimOnline/gallery.html
 Manim Community, the Python library: https://www.manim.community/

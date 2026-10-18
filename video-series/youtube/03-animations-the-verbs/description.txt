@@ -22,8 +22,9 @@ Chapters
 7:50 Recap
 
 This is episode 3 of 12 of Drawing with Code.
-Previous: Mobjects: The Nouns · Drawing with Code 2 (Manim)
-Next: What Is a Shape, Really? Bézier Curves · Drawing with Code 4 (Manim)
+Previous: Mobjects: The Nouns · Drawing with Code 2 (Manim): https://www.youtube.com/watch?v=uNAZ8IUrWGg&list=PLXaiuWr3VAhk
+Next: What Is a Shape, Really? Bézier Curves · Drawing with Code 4 (Manim): https://www.youtube.com/watch?v=wLi02QRgJ3k&list=PLXaiuWr3VAhk
+All episodes: https://www.youtube.com/playlist?list=PLXaiuWr3VAhk
 ManimOnline, the editor: https://curtcox.github.io/ManimOnline/
 Sample gallery: https://curtcox.github.io/ManimOnline/gallery.html
 Manim Community, the Python library: https://www.manim.community/

@@ -6,6 +6,8 @@ install. The series is built in the style of narrated math-explainer videos: one
 calm narrator, a dark canvas, intuition before syntax, and every idea shown moving.
 Frequent QR codes open the exact code on screen in ManimOnline.
 
+**Watch the series on YouTube:** [Drawing with Code: Manim and ManimOnline](https://www.youtube.com/playlist?list=PLXaiuWr3VAhk) (playlist, all 13 videos).
+
 This series is independent. It is not affiliated with 3Blue1Brown or Manim Community.
 Do not use 3Blue1Brown's name, logo or "pi creature" characters in titles, thumbnails
 or graphics. Manim's history may be described factually (episode 1 does).
@@ -22,21 +24,21 @@ or graphics. Manim's history may be described factually (episode 1 does).
 
 ## Episodes
 
-| # | Title | Track | Target | QR codes |
-|---|---|---|---|---|
-| 0 | [Trailer: Drawing with code](episodes/00-trailer.md) | – | 1.5 min | 1 |
-| 1 | [An animation is a program](episodes/01-an-animation-is-a-program.md) | Main | 14 min | 5 |
-| 2 | [Mobjects: the nouns](episodes/02-mobjects-the-nouns.md) | Main | 15 min | 6 |
-| 3 | [Animations: the verbs](episodes/03-animations-the-verbs.md) | Main | 16 min | 6 |
-| 4 | [What is a shape, really?](episodes/04-what-is-a-shape-really.md) | Main | 16 min | 5 |
-| 5 | [Words and equations](episodes/05-words-and-equations.md) | Main | 17 min | 5 |
-| 6 | [Things that change](episodes/06-things-that-change.md) | Main | 16 min | 5 |
-| 7 | [Graphs, areas and slopes](episodes/07-graphs-areas-and-slopes.md) | Main | 16 min | 5 |
-| 8 | [Cameras and the third dimension](episodes/08-cameras-and-the-third-dimension.md) | Main | 16 min | 5 |
-| 9 | [From sketch to shareable](episodes/09-from-sketch-to-shareable.md) | Main | 17 min | 5 |
-| 10 | [Python in a browser tab](episodes/10-python-in-a-browser-tab.md) | Deep dive | 17 min | 5 |
-| 11 | [Rebuilding an engine to match](episodes/11-rebuilding-an-engine-to-match.md) | Deep dive | 18 min | 5 |
-| 12 | [Links that carry code](episodes/12-links-that-carry-code.md) | Deep dive | 16 min | 4 |
+| # | Title | Track | Target | QR codes | Video |
+|---|---|---|---|---|---|
+| 0 | [Trailer: Drawing with code](episodes/00-trailer.md) | – | 1.5 min | 1 | [Watch](https://www.youtube.com/watch?v=xz2KHjntJK4&list=PLXaiuWr3VAhk) |
+| 1 | [An animation is a program](episodes/01-an-animation-is-a-program.md) | Main | 14 min | 5 | [Watch](https://www.youtube.com/watch?v=oZYsQfNCl7U&list=PLXaiuWr3VAhk) |
+| 2 | [Mobjects: the nouns](episodes/02-mobjects-the-nouns.md) | Main | 15 min | 6 | [Watch](https://www.youtube.com/watch?v=uNAZ8IUrWGg&list=PLXaiuWr3VAhk) |
+| 3 | [Animations: the verbs](episodes/03-animations-the-verbs.md) | Main | 16 min | 6 | [Watch](https://www.youtube.com/watch?v=2gHw0OI5Ewg&list=PLXaiuWr3VAhk) |
+| 4 | [What is a shape, really?](episodes/04-what-is-a-shape-really.md) | Main | 16 min | 5 | [Watch](https://www.youtube.com/watch?v=wLi02QRgJ3k&list=PLXaiuWr3VAhk) |
+| 5 | [Words and equations](episodes/05-words-and-equations.md) | Main | 17 min | 5 | [Watch](https://www.youtube.com/watch?v=mqY9GnhD5iI&list=PLXaiuWr3VAhk) |
+| 6 | [Things that change](episodes/06-things-that-change.md) | Main | 16 min | 5 | [Watch](https://www.youtube.com/watch?v=1xZ6yq3bn6M&list=PLXaiuWr3VAhk) |
+| 7 | [Graphs, areas and slopes](episodes/07-graphs-areas-and-slopes.md) | Main | 16 min | 5 | [Watch](https://www.youtube.com/watch?v=AcSK_JwYSRo&list=PLXaiuWr3VAhk) |
+| 8 | [Cameras and the third dimension](episodes/08-cameras-and-the-third-dimension.md) | Main | 16 min | 5 | [Watch](https://www.youtube.com/watch?v=g5-rbmAx4pw&list=PLXaiuWr3VAhk) |
+| 9 | [From sketch to shareable](episodes/09-from-sketch-to-shareable.md) | Main | 17 min | 5 | [Watch](https://www.youtube.com/watch?v=osZ8k7DiIdg&list=PLXaiuWr3VAhk) |
+| 10 | [Python in a browser tab](episodes/10-python-in-a-browser-tab.md) | Deep dive | 17 min | 5 | [Watch](https://www.youtube.com/watch?v=FwW81F7Zx2o&list=PLXaiuWr3VAhk) |
+| 11 | [Rebuilding an engine to match](episodes/11-rebuilding-an-engine-to-match.md) | Deep dive | 18 min | 5 | [Watch](https://www.youtube.com/watch?v=Pjdinan5Xcg&list=PLXaiuWr3VAhk) |
+| 12 | [Links that carry code](episodes/12-links-that-carry-code.md) | Deep dive | 16 min | 4 | [Watch](https://www.youtube.com/watch?v=u7ArYmhyNxE&list=PLXaiuWr3VAhk) |
 
 Topics that earned their own episode: Bézier curves and morphing (4), text and
 formulas (5), updaters and ValueTrackers (6), coordinate systems and calculus (7),

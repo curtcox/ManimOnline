@@ -1,5 +1,7 @@
 # Episode 12 · Links that carry code
 
+Published video: [Links That Carry Code: Compression, Hashes and QR Codes · Drawing with Code 12](https://www.youtube.com/watch?v=u7ArYmhyNxE&list=PLXaiuWr3VAhk) · [series playlist](https://www.youtube.com/playlist?list=PLXaiuWr3VAhk)
+
 | | |
 |---|---|
 | Track | Deep dive (series finale) |

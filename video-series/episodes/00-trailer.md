@@ -1,5 +1,7 @@
 # Episode 0 · Trailer: Drawing with code
 
+Published video: [Drawing with Code: Manim and ManimOnline (Trailer)](https://www.youtube.com/watch?v=xz2KHjntJK4&list=PLXaiuWr3VAhk) · [series playlist](https://www.youtube.com/playlist?list=PLXaiuWr3VAhk)
+
 | | |
 |---|---|
 | Track | Trailer |

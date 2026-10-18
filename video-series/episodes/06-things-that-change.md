@@ -1,5 +1,7 @@
 # Episode 6 · Things that change
 
+Published video: [Things That Change: Updaters and ValueTrackers · Drawing with Code 6 (Manim)](https://www.youtube.com/watch?v=1xZ6yq3bn6M&list=PLXaiuWr3VAhk) · [series playlist](https://www.youtube.com/playlist?list=PLXaiuWr3VAhk)
+
 | | |
 |---|---|
 | Track | Main |

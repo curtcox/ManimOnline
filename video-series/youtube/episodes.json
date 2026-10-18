@@ -6,10 +6,12 @@
   "editor": "https://curtcox.github.io/ManimOnline/",
   "gallery": "https://curtcox.github.io/ManimOnline/gallery.html",
   "source": "https://github.com/curtcox/ManimOnline/tree/main/video-series",
+  "playlist_id": "PLXaiuWr3VAhk",
   "tags": ["Manim", "Manim Community", "ManimOnline", "Python", "math animation", "animated math", "Python animation", "learn Python", "creative coding", "Drawing with Code"]
  },
  "episodes": {
   "0": {
+   "video_id": "xz2KHjntJK4",
    "title": "Drawing with Code: Manim and ManimOnline (Trailer)",
    "summary": "A dot becomes a line, a circle, a square, a star, and every frame of it is a few lines of Python. This is Manim, the library behind a whole genre of animated math explanations, and ManimOnline, which runs a Manim-compatible engine inside your web browser: no install, no server.\n\nThirteen episodes take you from your first scene to cameras, 3D, graphs and formulas, then under the hood of the editor itself. Scan the code at the end to edit this trailer's final scene.",
    "tags": ["trailer", "Manim tutorial", "math visualization", "browser Python", "no install"],
@@ -17,6 +19,8 @@
    "thumb_note": "Trailer"
   },
   "1": {
+   "video_id": "oZYsQfNCl7U",
+   "gallery": {"minimal": "1.5"},
    "title": "An Animation Is a Program · Drawing with Code 1 (Manim)",
    "summary": "A screen can't show motion, only still frames. So who draws all the in-between shapes when a square becomes a circle? In Manim, you don't: you describe the change, and the computer draws every frame.\n\nThis episode opens ManimOnline in the browser, tours the editor, reads a first scene line by line (Scene, construct, objects, self.play, self.wait), makes the first edits, and reads an error message without fear.",
    "tags": ["Manim tutorial", "Manim for beginners", "first Manim scene", "self.play", "Python for beginners", "how animation works"],
@@ -24,6 +28,8 @@
    "thumb_note": "Episode 1"
   },
   "2": {
+   "video_id": "uNAZ8IUrWGg",
+   "gallery": {"style": "2.4", "layout": "2.5", "positioning": "2.5", "family": "2.7", "gridlayout": "2.7", "layers": "2.9", "order": "2.9"},
    "title": "Mobjects: The Nouns · Drawing with Code 2 (Manim)",
    "summary": "Everything you see in a Manim scene is a mobject. This episode builds the vocabulary: Manim's coordinate plane and direction constants, a zoo of shapes, stroke, fill and opacity, placing things absolutely and relative to each other, scaling, rotating and measuring.\n\nThen the parts that surprise people: groups that move as one, two names for the same object (and when to copy), and who is drawn on top.",
    "tags": ["Manim mobjects", "Manim shapes", "VGroup", "next_to", "z_index", "Python objects"],
@@ -31,6 +37,8 @@
    "thumb_note": "Episode 2"
   },
   "3": {
+   "video_id": "2gHw0OI5Ewg",
+   "gallery": {"animationtour": "3.4", "indicate": "3.4", "growth": "3.4", "stagger": "3.6", "succession": "3.6"},
    "title": "Animations: The Verbs · Drawing with Code 3 (Manim)",
    "summary": "Every Manim animation is interpolation driven by one number that runs from 0 to 1. Once you see that, rate functions, built-in animations and timing all make sense.\n\nThis episode explains what self.play really does, compares linear, smooth and there-and-back motion, tours the built-in animations, explains why .animate.rotate and Rotate differ (and why a square can shrink to a point), combines animations with AnimationGroup, LaggedStart and Succession, and settles who is on screen after a Transform.",
    "tags": ["Manim animations", "rate functions", "Transform", "ReplacementTransform", "LaggedStart", "interpolation"],
@@ -38,6 +46,8 @@
    "thumb_note": "Episode 3"
   },
   "4": {
+   "video_id": "wLi02QRgJ3k",
+   "gallery": {"bezier": "4.2", "points": "4.5", "morph": "4.6", "shapemorph": "4.6", "partial": "4.8", "corners": "4.8"},
    "title": "What Is a Shape, Really? Bézier Curves · Drawing with Code 4 (Manim)",
    "summary": "How do you store a circle in a computer? Not as a circle. This episode builds a cubic Bézier curve from nothing but repeated linear interpolation (de Casteljau's construction), then shows how anchors and handles join curves smoothly and why cubics are the standard choice.\n\nA Manim outline turns out to be a list of points in groups of four, and that explains how one shape morphs into another: matching point counts, subdivision, and path_arc.",
    "tags": ["Bezier curves", "de Casteljau", "cubic Bezier", "vector graphics", "shape morphing", "computer graphics"],
@@ -45,6 +55,8 @@
    "thumb_note": "Episode 4"
   },
   "5": {
+   "video_id": "mqY9GnhD5iI",
+   "gallery": {"math": "5.2", "texteffects": "5.5", "glyphstyle": "5.5", "formulaparts": "5.6", "annotations": "5.8"},
    "title": "Words and Equations: Text, MathTex and Tex · Drawing with Code 5 (Manim)",
    "summary": "Text and formulas in Manim are shapes too. This episode chooses between Text, MathTex and Tex, shows how a formula becomes vector outlines (in Manim with LaTeX, and in ManimOnline with MathJax), and indexes letters and formula parts to colour and animate them separately.\n\nThen algebra that moves: TransformMatchingTex, aligned lines of working, braces, titles and TransformFromCopy.",
    "tags": ["MathTex", "LaTeX", "math equations", "TransformMatchingTex", "animated algebra", "MathJax"],
@@ -52,6 +64,8 @@
    "thumb_note": "Episode 5"
   },
   "6": {
+   "video_id": "1xZ6yq3bn6M",
+   "gallery": {"updaters": "6.3", "tracker": "6.5", "numbers": "6.5", "redraw": "6.6", "trace": "6.7"},
    "title": "Things That Change: Updaters and ValueTrackers · Drawing with Code 6 (Manim)",
    "summary": "Some things in a scene should follow others: a label that sticks to a dot, a readout that tracks a value, a path traced as something moves. This episode attaches updaters that run every frame, writes time-based updaters with dt, and drives several objects from one ValueTracker.\n\nIt also covers always_redraw and TracedPath, the common updater surprises, and how to choose between updaters, trackers, become and plain animations.",
    "tags": ["Manim updaters", "ValueTracker", "always_redraw", "DecimalNumber", "TracedPath", "dynamic animation"],
@@ -59,6 +73,8 @@
    "thumb_note": "Episode 6"
   },
   "7": {
+   "video_id": "AcSK_JwYSRo",
+   "gallery": {"numberline": "7.2", "axes": "7.3", "plot": "7.4", "riemann": "7.5", "area": "7.6", "secant": "7.7", "calculus": "7.7", "plane": "7.9", "lineartransform": "7.9"},
    "title": "Graphs, Areas and Slopes · Drawing with Code 7 (Manim)",
    "summary": "Number lines, axes and plots, built up to calculus you can watch. This episode converts numbers to points, builds Axes and converts with c2p, plots parametric curves and functions (and explains that plots are sampled), and labels them.\n\nThen the payoff: Riemann rectangles converging to an area, an area with a moving bound, a secant line becoming a tangent as dx shrinks, and what a matrix does to the whole plane.",
    "tags": ["Manim graphs", "Axes", "Riemann sum", "calculus visualization", "derivative", "linear transformation"],
@@ -66,6 +82,8 @@
    "thumb_note": "Episode 7"
   },
   "8": {
+   "video_id": "g5-rbmAx4pw",
+   "gallery": {"movingcamera": "8.2", "autozoom": "8.2", "zoomed": "8.3", "threed": "8.6"},
    "title": "Cameras and the Third Dimension · Drawing with Code 8 (Manim)",
    "summary": "The camera is part of the scene. This episode pans and zooms with MovingCameraScene, shows a magnified inset with ZoomedScene, then steps into 3D: placing the camera with phi and theta, ThreeDAxes, surfaces and solids, and text that stays flat.\n\nIt closes with how to keep a 3D scene readable, and how a 3D frame becomes a flat picture.",
    "tags": ["Manim 3D", "ThreeDScene", "MovingCameraScene", "ZoomedScene", "3D surface", "camera"],
@@ -73,6 +91,8 @@
    "thumb_note": "Episode 8"
   },
   "9": {
+   "video_id": "osZ8k7DiIdg",
+   "gallery": {"scenes": "9.3", "dot": "9.9", "modl": "9.9"},
    "title": "From Sketch to Shareable: ManimOnline Tour · Drawing with Code 9",
    "summary": "A practical tour of the editor for building something real. Find and load examples in the Sample gallery, choose a scene in a file with several, and understand automatic rendering, Render animation, Cancel render and the limits of the preview.\n\nThen export frames and MP4 or WebM videos, share with a link or save permanently with HashBin, work offline, meet the Graphviz and modl modes, build larger scenes in small checkpointed steps, and know when to move to a full Manim install.",
    "tags": ["ManimOnline tutorial", "share code", "export MP4", "Graphviz", "offline web app", "workflow"],
@@ -80,6 +100,7 @@
    "thumb_note": "Episode 9"
   },
   "10": {
+   "video_id": "FwW81F7Zx2o",
    "title": "Python in a Browser Tab: Pyodide and WebAssembly · Drawing with Code 10",
    "summary": "Deep dive 1: how a static website runs Python. Why ManimOnline runs Python in your browser rather than on a server; WebAssembly and Pyodide at a conceptual level; why Python runs in a Web Worker and why only the page can stop it.\n\nThen fresh namespaces, stale-result guards, and one render followed all the way from source code to frame data, SVG and an encoded video.",
    "tags": ["Pyodide", "WebAssembly", "Python in the browser", "Web Worker", "wasm", "web development"],
@@ -87,6 +108,8 @@
    "thumb_note": "Deep dive · 10"
   },
   "11": {
+   "video_id": "Pjdinan5Xcg",
+   "gallery": {"arrowtips": "11.7", "textlayout": "11.8", "vectorfields": "11.9", "graphs": "11.9"},
    "title": "Rebuilding an Engine to Match Manim · Drawing with Code 11",
    "summary": "Deep dive 2: ManimOnline can't run real Manim in the browser, so it brings its own engine, manim-lite. How do you know it's right? This episode defines compatibility as observable behaviour that has to be measured, and shows four ways manim-lite is compared with Manim Community, frame for frame.\n\nAlong the way: surprising behaviours a faithful reimplementation must copy, and a clear statement of what manim-lite is not.",
    "tags": ["compatibility testing", "differential testing", "fuzzing", "reimplementation", "software testing", "manim-lite"],
@@ -94,6 +117,7 @@
    "thumb_note": "Deep dive · 11"
   },
   "12": {
+   "video_id": "u7ArYmhyNxE",
    "title": "Links That Carry Code: Compression, Hashes and QR Codes · Drawing with Code 12",
    "summary": "Deep dive 3, and the series finale: how a link or a QR code can carry a program with no server of its own. Code inside the link, compressed with back-references (the Lempel-Ziv idea); where links run out; cryptographic hashes and the avalanche effect.\n\nThen the anatomy of a HashBin content address, why content-addressed links suit printed QR codes and what can still go wrong, and how the editor keeps itself available offline.",
    "tags": ["QR code", "content addressing", "hash function", "compression", "LZ77", "lz-string"],

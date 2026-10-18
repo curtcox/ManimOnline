@@ -1,5 +1,7 @@
 # Episode 3 · Animations: the verbs
 
+Published video: [Animations: The Verbs · Drawing with Code 3 (Manim)](https://www.youtube.com/watch?v=2gHw0OI5Ewg&list=PLXaiuWr3VAhk) · [series playlist](https://www.youtube.com/playlist?list=PLXaiuWr3VAhk)
+
 | | |
 |---|---|
 | Track | Main |

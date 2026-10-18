@@ -1,5 +1,7 @@
 # Episode 10 · Python in a browser tab
 
+Published video: [Python in a Browser Tab: Pyodide and WebAssembly · Drawing with Code 10](https://www.youtube.com/watch?v=FwW81F7Zx2o&list=PLXaiuWr3VAhk) · [series playlist](https://www.youtube.com/playlist?list=PLXaiuWr3VAhk)
+
 | | |
 |---|---|
 | Track | Deep dive |

@@ -38,7 +38,20 @@
     load.href = example.editorURL;
     load.textContent = 'Load in editor →';
     load.setAttribute('aria-label', `Load ${example.label} in editor`);
-    details.append(language, title, load);
+    details.append(language, title);
+    // Older cached galleries load without video-links.js.
+    const lesson = globalThis.VideoLinks?.examples[example.id];
+    if (lesson) {
+      const watch = document.createElement('a');
+      watch.className = 'watch';
+      watch.href = lesson.url;
+      watch.target = '_blank';
+      watch.rel = 'noopener';
+      watch.textContent = `▶ Video: episode ${lesson.episode} · ${lesson.chapter}`;
+      watch.setAttribute('aria-label', `Watch ${lesson.chapter}, Drawing with Code episode ${lesson.episode}, on YouTube`);
+      details.appendChild(watch);
+    }
+    details.appendChild(load);
     let video;
     if (example.video) {
       video = document.createElement('video');

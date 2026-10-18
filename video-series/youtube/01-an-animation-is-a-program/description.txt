@@ -22,7 +22,8 @@ Chapters
 8:33 Recap and challenge
 
 This is episode 1 of 12 of Drawing with Code.
-Next: Mobjects: The Nouns · Drawing with Code 2 (Manim)
+Next: Mobjects: The Nouns · Drawing with Code 2 (Manim): https://www.youtube.com/watch?v=uNAZ8IUrWGg&list=PLXaiuWr3VAhk
+All episodes: https://www.youtube.com/playlist?list=PLXaiuWr3VAhk
 ManimOnline, the editor: https://curtcox.github.io/ManimOnline/
 Sample gallery: https://curtcox.github.io/ManimOnline/gallery.html
 Manim Community, the Python library: https://www.manim.community/

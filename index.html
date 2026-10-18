@@ -174,7 +174,8 @@
       left: 0 !important;
     }
 
-    #sample-gallery { color: #175ca4; font-weight: 600; padding: 6px 0; }
+    #sample-gallery, #video-series { color: #175ca4; font-weight: 600; padding: 6px 0; }
+    #video-link { color: #175ca4; font-size: 12px; }
     #example-status { color: #495057; font-size: 12px; }
 
     #options label {
@@ -484,6 +485,9 @@ class HelloWorld(Scene):
     </span>
 
     <a id="sample-gallery" href="gallery.html" target="_blank" rel="noopener">Sample gallery ↗</a>
+    <a id="video-series" href="https://www.youtube.com/playlist?list=PLXaiuWr3VAhk" target="_blank" rel="noopener"
+      title="Drawing with Code: a video series about Manim and ManimOnline, on YouTube">Video series ↗</a>
+    <a id="video-link" target="_blank" rel="noopener" hidden></a>
     <span id="example-status" role="status" aria-live="polite"></span>
 
     <label class="manim-options" id="scene-option">
@@ -591,6 +595,7 @@ class HelloWorld(Scene):
   <script src="src/manim-client.js"></script>
   <script src="src/manim-player.js?v=mathtex-1"></script>
   <script src="src/examples.js"></script>
+  <script src="src/video-links.js?v=1"></script>
   <script src="src/manim-math.js?v=9"></script>
   <script src="src/manim-typst.js?v=2"></script>
   <script src="src/manim-export.js?v=1"></script>
@@ -795,7 +800,18 @@ class HelloWorld(Scene):
           shareURLEl.value = link;
         }
       });
+      // Series QR codes and gallery samples link to the video chapter that explains them.
+      const videoLink = document.getElementById('video-link');
+      function showVideoLink(entry) {
+        videoLink.hidden = !entry;
+        if (!entry) return;
+        const name = entry.episode === 0 ? 'trailer' : `episode ${entry.episode}`;
+        videoLink.href = entry.url;
+        videoLink.textContent = `▶ Video: ${name} · ${entry.chapter}`;
+        videoLink.title = `Watch this in Drawing with Code ${name}, “${entry.chapter}”, on YouTube`;
+      }
       function applyLoadedSource(snapshot, cid = null) {
+        showVideoLink(cid && globalThis.VideoLinks?.snippets[cid]);
         const url = new URL(location.href);
         for (const key of ['example', 'raw', 'compressed', 'url', 'type', 'scene', 'engine', 'format', 'modlpos']) url.searchParams.delete(key);
         if (snapshot.type) url.searchParams.set('type', snapshot.type === 'graphviz' ? 'dot' : snapshot.type);
@@ -959,8 +975,9 @@ class HelloWorld(Scene):
       const exampleLoader = new ExampleLoader({
         onStatus: message => { exampleStatus.textContent = message; },
         onError: error => { exampleStatus.textContent = error.message; },
-        onLoad: source => {
+        onLoad: (source, example) => {
           savedHashbin = null;
+          showVideoLink(globalThis.VideoLinks?.examples[example.id]);
           modlPositions = Object.create(null);
           sceneNameInput.value = '';
           // Loading an example opts into automatic detection, even from a typed link.
