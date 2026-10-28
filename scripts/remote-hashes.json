@@ -1,0 +1,14 @@
+{
+  "https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js": "95f4d1cbf099f57161b664bc048426ec3df92637801a4c79116e83315aa787e7",
+  "https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js": "d4295dc33744836935c1399feece5159577b34c5c8ffb9f1c6324cd82e03a882",
+  "https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/input/tex/extensions/html.js": "e3647c848f26ad228d07043f1e63c56a646da9d20a6c0f180a4067fa9e10facc",
+  "https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pyodide.js": "3b186043eee532fc586ea1b52a4bdeb67844777a84cee81738b98bac7b11f07a",
+  "https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pyodide.asm.js": "adf46cdb1c1b3fbc7fa68e2b015368156f9c9ccce91880e8150cca909e541b1a",
+  "https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pyodide.asm.wasm": "bde4193eb41f6356126d4b21077fee498cef393009eaf27a3a4ba798c571e591",
+  "https://cdn.jsdelivr.net/pyodide/v0.27.0/full/python_stdlib.zip": "1c86cd198ab1de5d9e1ad7fea4c88f1eeca917f059c01764523e7b7acab81dde",
+  "https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pyodide-lock.json": "92bc66cf0095ea9dbbdab7f86dd6a1c51dc0e1a21f8ed90794304dc5f220dc64",
+  "https://cdn.jsdelivr.net/pyodide/v0.27.0/full/numpy-2.0.2-cp312-cp312-pyodide_2024_0_wasm32.whl": "a6ccf853fa81e17c00ef594298410284a9cdde836efd7664dcc28c3b7ecad819",
+  "https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pygments-2.17.2-py3-none-any.whl": "d33d7d828bd7865ea43848c51b28567772ab880ed7dd016d7efeeff8d63a0409",
+  "https://cdn.jsdelivr.net/pyodide/v0.27.0/full/networkx-3.4.2-py3-none-any.whl": "38aebb557935823b60c7b0ab97929d33b663525711423fee0e2ef47f70637ec1",
+  "https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pillow-10.2.0-cp312-cp312-pyodide_2024_0_wasm32.whl": "f64cf341b63ea818598febda483c44a39babda536f213eb14381c66e1ab1ff34"
+}

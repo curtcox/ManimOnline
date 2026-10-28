@@ -9,9 +9,14 @@ const HashBinDocuments = {
     const length = this.cidLength(value);
     if (value.length !== 8 + (length <= 64 ? Math.ceil(length * 4 / 3) : 86)) return false;
     // Reject noncanonical base64 trailing bits, so ordinary source hashes stay source.
-    const rest = this.decode64(value.slice(8));
-    const encoded = btoa(String.fromCharCode(...rest)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    return encoded === value.slice(8);
+    return this.encode64(this.decode64(value.slice(8))) === value.slice(8);
+  },
+  encode64(bytes) { return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); },
+  /** A CID is a six-byte length plus the inline bytes (≤64) or their SHA-512, so content servers cannot substitute documents. */
+  async verify(cid, bytes) {
+    if (!this.isCID(cid) || this.cidLength(cid) !== bytes.length) throw new Error('HashBin content does not match its CID.');
+    const content = bytes.length <= 64 ? bytes : new Uint8Array(await crypto.subtle.digest('SHA-512', bytes));
+    if (this.encode64(content) !== cid.slice(8)) throw new Error('HashBin content does not match its CID.');
   },
   cid(input) {
     const text = input.trim().replace(/^#/, '');
@@ -62,9 +67,13 @@ const HashBinDocuments = {
   }
 };
 
+/** Pinned so a later SDK change cannot reach this app; upgrade deliberately. */
+const HASHBIN_SDK_URL = 'https://hashbin.org/sdk/v0.2.0/hashbin.js';
+
+/** Saves go through HashBin Publish, so this origin never holds a HashBin credential. */
 class HashBinStore {
   constructor({ clientId, redirectUri, storage, transactionStorage, fetchSource = (...args) => fetch(...args),
-    loadSDK = () => import('https://hashbin.org/sdk/hashbin.js'), timeout = 20000, timers = globalThis } = {}) {
+    loadSDK = () => import(HASHBIN_SDK_URL), timeout = 20000, timers = globalThis } = {}) {
     Object.assign(this, { clientId, redirectUri, storage, transactionStorage, fetchSource, loadSDK, timeout, timers });
   }
   async bounded(work) {
@@ -83,88 +92,60 @@ class HashBinStore {
       if (HashBinDocuments.cidLength(cid) <= 64) return HashBinDocuments.parse(new TextDecoder('utf-8', { fatal: true }).decode(HashBinDocuments.decode64(cid.slice(8))));
       const response = await this.fetchSource(`https://256t.us/${cid}`, { signal });
       if (!response.ok) throw new Error(response.status === 404 ? 'Saved source was not found. It may have expired or been deleted.' : `HashBin load failed (HTTP ${response.status}).`);
-      return HashBinDocuments.parse(await response.text());
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      await HashBinDocuments.verify(cid, bytes);
+      return HashBinDocuments.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
     });
   }
   async init() {
-    if (this.oauth) return this.oauth;
-    if (!this.clientId) throw new Error('HashBin sign-in needs a registered client ID.');
+    if (this.client) return this.client;
+    if (!this.clientId) throw new Error('HashBin saving needs a registered client ID.');
     if (!this.initializing) this.initializing = this.bounded(async () => {
       const { HashBinClient } = await this.loadSDK();
-      this.oauth = new HashBinClient({ clientId: this.clientId, redirectUri: this.redirectUri,
+      this.client = new HashBinClient({ clientId: this.clientId, redirectUri: this.redirectUri,
         baseUrl: 'https://hashbin.org', contentBaseUrl: 'https://256t.us', storage: this.storage, transactionStorage: this.transactionStorage,
         fetch: this.fetchSource });
-      return this.oauth;
+      return this.client;
     }).finally(() => { this.initializing = null; });
     return this.initializing;
   }
-  async connected() { return Boolean((await this.init()).getTokens()?.refreshToken); }
-  async connect(snapshot) {
-    if (!this.transactionStorage) throw new Error('Enable session storage to preserve your source during sign-in.');
-    const oauth = await this.init();
-    const request = await this.bounded(() => oauth.authorize({ scopes: ['content:write', 'balance:read'], mode: 'manual' }));
-    this.transactionStorage.setItem('manimonline:hashbin:return:' + request.state, JSON.stringify({ snapshot, createdAt: Date.now() }));
-    return request.url;
+  /** Call synchronously from a click after init(), so the approval popup is allowed. A blocked popup redirects. */
+  publish(payload, snapshot) {
+    if (!this.client) return Promise.reject(new Error('HashBin is still loading. Try again.'));
+    // A redirect cancelled on HashBin comes back without the SDK's clientState; keep a copy to restore.
+    const pending = `hashbin:pending-publish:${this.clientId}`;
+    if (HashBinDocuments.bytes(payload).length <= 512 * 1024) try { this.transactionStorage?.setItem(pending, JSON.stringify(snapshot)); } catch (_) { /* Popup saves still work. */ }
+    return this.client.publish(payload, { contentType: 'application/json', clientState: { snapshot } }).then(async result => {
+      if (result.redirected) return result;
+      this.transactionStorage?.removeItem(pending);
+      if (!HashBinDocuments.isCID(result.cid)) throw new Error('HashBin returned an invalid CID.');
+      await HashBinDocuments.verify(result.cid, HashBinDocuments.bytes(payload));
+      return result;
+    }, error => { this.transactionStorage?.removeItem(pending); throw new Error(this.message(error)); });
   }
-  async callback(search) {
-    const params = new URLSearchParams(search);
-    const state = params.get('state');
-    if (!state || (!params.has('code') && !params.has('error'))) return null;
-    const key = 'manimonline:hashbin:return:' + state;
-    let saved;
-    try { saved = JSON.parse(this.transactionStorage?.getItem(key) || 'null'); } catch (_) { /* Invalid transaction. */ }
-    this.transactionStorage?.removeItem(key);
-    if (!saved || Date.now() - saved.createdAt > 30 * 60 * 1000) return { error: 'HashBin sign-in could not be restored in this tab. Connect again.' };
+  message(error) {
+    if (error.message === 'access_denied') return 'The save was cancelled on HashBin.';
+    if (error.message === 'Publish window closed.') return 'The HashBin window was closed before the save was approved.';
+    return error.message;
+  }
+  /** Completes a redirect save; the SDK verifies the CID against the stored bytes. Failures return the pending snapshot. */
+  async published(hash) {
+    if (!new URLSearchParams(hash.replace(/^#/, '')).has('hashbin_publish')) return null;
+    const key = `hashbin:pending-publish:${this.clientId}`;
+    let pending = null;
+    try { pending = JSON.parse(this.transactionStorage?.getItem(key) || 'null'); this.transactionStorage?.removeItem(key); } catch (_) { /* Nothing to restore. */ }
     try {
-      if (params.has('error')) throw new Error(params.get('error') === 'access_denied' ? 'HashBin access was not approved.' : 'HashBin sign-in failed.');
-      const oauth = await this.init();
-      await this.bounded(() => oauth.handleCallback({ search }));
-      return { snapshot: saved.snapshot, connected: true };
-    } catch (error) { return { snapshot: saved.snapshot, error: error.message }; }
+      const { cid, clientState } = await (await this.init()).handlePublishCallback({ hash });
+      return { cid, snapshot: clientState?.snapshot };
+    } catch (error) { return { error: this.message(error), snapshot: pending }; }
   }
-  async authed(path, options = {}) {
-    const oauth = await this.init();
-    options.signal?.throwIfAborted();
-    if (!oauth.getTokens()?.refreshToken) throw new Error('Connect to HashBin before saving.');
-    if ((oauth.getTokens().expiresAt || 0) <= Date.now() + 30000) await oauth.refreshAccessToken();
-    options.signal?.throwIfAborted();
-    let response = await oauth.authorizedFetch(path, options);
-    if (response.status === 401) {
-      await oauth.refreshAccessToken();
-      options.signal?.throwIfAborted();
-      response = await oauth.authorizedFetch(path, options);
-    }
-    if (response.status === 401) { oauth.clearTokens(); throw new Error('HashBin sign-in expired. Connect again.'); }
-    return response;
-  }
-  async json(response) {
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.message || data.error || `HashBin request failed (HTTP ${response.status}).`);
-    return data;
-  }
-  async quote(payload) {
-    return this.bounded(async signal => {
-      // Sequential authenticated calls also work with older SDKs using single-use refresh tokens.
-      const settings = await this.json(await this.authed('/api/account/settings', { signal }));
-      const balance = await this.json(await this.authed('/api/balance', { signal }));
-      const months = Number(settings.default_retention_months || 1);
-      const size = HashBinDocuments.bytes(payload).length;
-      const quote = size <= 64 ? { cost_cents: 0 } : await this.json(await this.fetchSource('https://hashbin.org/api/payments/calculate', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal,
-        body: JSON.stringify({ size_bytes: size, retention_months: months })
-      }));
-      if (!Number.isFinite(months) || months <= 0 || !Number.isFinite(quote.cost_cents) || quote.cost_cents < 0 || !Number.isFinite(balance.balance_cents)) throw new Error('HashBin returned an invalid price quote.');
-      return { months, cost: quote.cost_cents, balance: balance.balance_cents, size };
-    });
-  }
-  async save(payload) {
-    return this.bounded(async signal => {
-      const body = new FormData();
-      body.append('content', new Blob([payload], { type: 'application/json' }), 'diagram.json');
-      const data = await this.json(await this.authed('/api/content', { method: 'POST', body, signal }));
-      if (!HashBinDocuments.isCID(data.cid)) throw new Error('HashBin returned an invalid CID.');
-      return data;
-    });
+  /** Editors cached before HashBin Publish still call this while their worker upgrades; there is no OAuth return now. */
+  async callback() { return null; }
+  /** Earlier versions kept OAuth tokens on this shared origin. Revoke them server-side; clearing alone leaves copies valid. */
+  async retireLegacyTokens() {
+    if (!this.clientId || !this.storage?.getItem(`hashbin:tokens:${this.clientId}`)) return false;
+    await this.bounded(async () => (await this.init()).disconnect());
+    return true;
   }
 }
 if (typeof module !== 'undefined') module.exports = { HashBinDocuments, HashBinStore };

@@ -44,20 +44,25 @@ test('all three languages round trip exact Unicode source and preview options', 
   assert.throws(() => Docs.serialize({src:'a',type:'unknown'}), /language/);
 });
 
-test('inline loads are offline; remote loads use 256t.us and expose errors without replacing source', async () => {
+const served = text => ({ ok: true, arrayBuffer: async () => new TextEncoder().encode(text).buffer });
+test('inline loads are offline; remote loads use 256t.us, verify the CID and expose errors without replacing source', async () => {
   let calls = 0;
-  const store = new HashBinStore({ fetchSource: async (url, { signal }) => { calls++; assert.ok(signal instanceof AbortSignal); assert.match(url, /^https:\/\/256t\.us\//); return {ok:true,text:async()=> 'from manim import *\n' + '#'.repeat(65)}; } });
+  const remote = 'from manim import *\n' + '#'.repeat(65);
+  let body = remote;
+  const store = new HashBinStore({ fetchSource: async (url, { signal }) => { calls++; assert.ok(signal instanceof AbortSignal); assert.match(url, /^https:\/\/256t\.us\//); return served(body); } });
   assert.equal((await store.load(cidFor('a -> b'))).src, 'a -> b');
   assert.equal(calls, 0);
-  assert.ok((await store.load(cidFor('x'.repeat(65)))).src.startsWith('from manim'));
+  assert.ok((await store.load(cidFor(remote))).src.startsWith('from manim'));
   assert.equal(calls, 1);
+  body = remote.replace('manim', 'forged');
+  await assert.rejects(store.load(cidFor(remote)), /does not match its CID/);
   store.fetchSource = async () => ({ok:false,status:404});
   await assert.rejects(store.load(cidFor('x'.repeat(65))), /expired/);
   await assert.rejects(store.load('bad'), /valid/);
 });
 
 test('deadline includes a stalled fetch or response body even if abort is ignored', async () => {
-  for (const fetchSource of [() => new Promise(()=>{}), async () => ({ok:true,text:()=>new Promise(()=>{})})]) {
+  for (const fetchSource of [() => new Promise(()=>{}), async () => ({ok:true,arrayBuffer:()=>new Promise(()=>{})})]) {
     let expire, signal, cleared;
     const store = new HashBinStore({ fetchSource: (url, options) => { signal = options.signal; return fetchSource(); }, timers: { setTimeout: cb => {expire = cb;return 1;}, clearTimeout: id => {cleared = id;} } });
     const pending = store.load(cidFor('x'.repeat(65)));
@@ -69,48 +74,51 @@ test('deadline includes a stalled fetch or response body even if abort is ignore
   }
 });
 
-test('quote and upload use authenticated endpoints, multipart JSON and validated CIDs', async () => {
+test('saves through HashBin Publish with the pinned SDK and verify the returned CID', async () => {
   const payload = Docs.serialize({src:'a -> b',type:'modl'});
-  const cid = cidFor(payload);
-  const calls = [];
-  const store = new HashBinStore({fetchSource: async (url, options) => {
-    assert.equal(url, 'https://hashbin.org/api/payments/calculate');
-    assert.equal(JSON.parse(options.body).retention_months, 2);
-    return response({cost_cents:3});
-  }});
-  let renewals = 0;
-  let tokens = {refreshToken:'hidden',accessToken:'hidden',expiresAt:0};
-  store.oauth = { getTokens:()=>tokens, refreshAccessToken:async()=>{renewals++;tokens.expiresAt = Date.now()+100000;}, authorizedFetch:async(path, options) => {
-    calls.push(path);
-    if (path.endsWith('settings')) return response({default_retention_months:'2'});
-    if (path.endsWith('balance')) return response({balance_cents:100});
-    assert.equal(path, '/api/content');
-    assert.equal(await options.body.get('content').text(), payload);
-    assert.equal(options.body.get('content').type, 'application/json');
-    return response({cid});
-  }};
-  assert.deepEqual(await store.quote(payload), {months:2,cost:3,balance:100,size:Buffer.byteLength(payload)});
-  assert.equal((await store.save(payload)).cid, cid);
-  assert.equal(renewals, 1);
-  assert.deepEqual(calls, ['/api/account/settings','/api/balance','/api/content']);
+  const snapshot = {src:'a -> b',type:'modl',pos:{}};
+  let options;
+  const store = new HashBinStore({ clientId: 'test', loadSDK: async () => ({ HashBinClient: class { publish(content, opts) { assert.equal(content, payload); options = opts; return Promise.resolve({ cid: cidFor(payload) }); } } }) });
+  await assert.rejects(store.publish(payload, snapshot), /still loading/);
+  await store.init();
+  assert.equal((await store.publish(payload, snapshot)).cid, cidFor(payload));
+  assert.equal(options.contentType, 'application/json');
+  assert.deepEqual(options.clientState, { snapshot });
+  store.client.publish = async () => ({ cid: cidFor(payload + ' ') });
+  await assert.rejects(store.publish(payload, snapshot), /does not match its CID/);
+  await assert.rejects(new HashBinStore().init(), /registered client ID/);
+  assert.match(require('node:fs').readFileSync(require('node:path').join(__dirname, '../src/hashbin.js'), 'utf8'), /hashbin\.org\/sdk\/v0\.2\.0\/hashbin\.js/);
 });
 
-test('sign-in preserves the latest source and restores it after success or denial', async () => {
+test('redirect saves restore the source after approval or cancellation', async () => {
   const values = new Map();
-  const transactionStorage = {setItem:(k,v)=>values.set(k,v),getItem:k=>values.get(k),removeItem:k=>values.delete(k)};
-  const store = new HashBinStore({transactionStorage});
-  let callbackSearch;
-  store.oauth = { authorize:async()=>({state:'random-state',url:'https://hashbin.org/oauth/authorize'}),handleCallback:async({search})=>{callbackSearch=search;} };
+  const transactionStorage = {setItem:(k,v)=>values.set(k,v),getItem:k=>values.get(k) ?? null,removeItem:k=>values.delete(k)};
   const snapshot = {src:'π -> λ',type:'modl',pos:{a:[12,34]}};
-  assert.equal(await store.connect(snapshot), 'https://hashbin.org/oauth/authorize');
-  const success = await store.callback('?code=code&state=random-state');
-  assert.deepEqual(success.snapshot, snapshot);
-  assert.ok(success.connected);
-  assert.ok(callbackSearch.includes('code=code'));
-  await store.connect(snapshot);
-  const denied = await store.callback('?error=access_denied&state=random-state');
-  assert.deepEqual(denied.snapshot, snapshot);
-  assert.match(denied.error, /not approved/);
+  const payload = Docs.serialize(snapshot);
+  let outcome = 'approve';
+  const store = new HashBinStore({ clientId: 'test', transactionStorage, loadSDK: async () => ({ HashBinClient: class {
+    publish() { return Promise.resolve({ redirected: true }); }
+    async handlePublishCallback({ hash }) { assert.match(hash, /hashbin_publish=s/); if (outcome !== 'approve') throw new Error('access_denied'); return { cid: cidFor(payload), clientState: { snapshot } }; }
+  } }) });
+  await store.init();
+  assert.equal(await store.published('#' + cidFor('a')), null);
+  assert.deepEqual(await store.publish(payload, snapshot), { redirected: true });
+  assert.deepEqual(await store.published('#hashbin_publish=s&cid=x'), { cid: cidFor(payload), snapshot });
+  await store.publish(payload, snapshot);
+  outcome = 'cancel';
+  assert.deepEqual(await store.published('#hashbin_publish=s&error=access_denied'), { error: 'The save was cancelled on HashBin.', snapshot });
   assert.equal(values.size, 0);
-  assert.match((await store.callback('?code=code&state=missing')).error, /restored/);
 });
+
+test('tokens left by the earlier OAuth flow are revoked server-side before they are cleared', async () => {
+  const values = new Map();
+  const storage = {setItem:(k,v)=>values.set(k,v),getItem:k=>values.get(k) ?? null,removeItem:k=>values.delete(k)};
+  let loaded = 0, revoked = 0;
+  const store = new HashBinStore({ clientId: 'test', storage, loadSDK: async () => { loaded++; return { HashBinClient: class { async disconnect() { revoked++; values.clear(); } } }; } });
+  assert.equal(await store.retireLegacyTokens(), false);
+  assert.equal(loaded, 0);
+  storage.setItem('hashbin:tokens:test', '{"refreshToken":"old"}');
+  assert.equal(await store.retireLegacyTokens(), true);
+  assert.equal(revoked, 1);
+});
+test('editors cached before HashBin Publish can still start during an upgrade', async () => { assert.equal(await new HashBinStore().callback('?code=old&state=old'), null); });

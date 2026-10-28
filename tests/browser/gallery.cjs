@@ -16,6 +16,7 @@ async function ready(page, type) {
 (async () => {
   for (const engine of engines) {
     const browser = await playwright[engine].launch({ headless: true });
+    const csp = require('./csp.cjs')(browser);
     try {
       const context = await browser.newContext({ serviceWorkers: 'block' });
       const page = await context.newPage();
@@ -144,6 +145,7 @@ async function ready(page, type) {
       assert.equal(await mobile.locator('.sample-video').count(), 0);
       await mobileContext.close();
       console.log(`${engine}: gallery covers, playback, filters, editor links, reload, stale loads, mobile and phone video-first passed`);
+      csp.check();
     } finally { await browser.close(); }
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

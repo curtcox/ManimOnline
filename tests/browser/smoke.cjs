@@ -275,6 +275,7 @@ async function renderManim(browser, source, verifyRaster = false) {
     let browser;
     try {
       browser = await playwright[name].launch();
+      const csp = require('./csp.cjs')(browser);
       await checkDot(browser);
       const manim = await checkManim(browser, MANIM);
       const numpy = await checkManim(browser, NUMPY).catch(error => { throw new Error('NumPy scene: ' + error.message); });
@@ -306,6 +307,7 @@ async function renderManim(browser, source, verifyRaster = false) {
       const viewport = await checkManim(browser, GLYPH_VIEWPORT, 'viewport');
       if (!viewport.viewportPaintMatches) throw new Error('Formula viewport gradient endpoints differ from browser coordinates');
       const depth = await checkManim(browser, THREE_D).catch(error => { throw new Error('3D scene: ' + error.message); });
+      csp.check();
       console.log(name + ': DOT ok; Manim ' + manim.frames + ' frames, ' + manim.paths +
                   ' shapes; NumPy scene ' + numpy.frames + ' frames, ' + numpy.paths +
                   ' shapes; 3D scene ' + depth.frames + ' frames, ' + depth.paths +

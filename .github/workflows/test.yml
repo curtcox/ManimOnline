@@ -19,6 +19,7 @@ jobs:
       - run: python3 -m pip install numpy pillow pygments
       - run: python3 -m unittest discover -s tests -v
       - run: node --test tests/*.test.js
+      - run: node scripts/update-offline-hashes.mjs --check
       - run: |
           node --check src/unified-worker.js
           node --check src/manim-client.js
@@ -38,6 +39,10 @@ jobs:
           node --check src/modl.js
           node --check src/hashbin.js
           node --check src/hashbin-panel.js
+          node --check src/editor.js
+          node --check offline-hashes.js
+          node --check scripts/update-offline-hashes.mjs
+          node --check tests/browser/csp.cjs
           node --check offline-assets.js
           node --check service-worker.js
           node --check tests/browser/smoke.cjs

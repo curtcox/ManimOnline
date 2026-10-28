@@ -1,12 +1,31 @@
-importScripts('src/examples.js', 'offline-assets.js');
+importScripts('src/examples.js', 'offline-assets.js', 'offline-hashes.js');
 const CACHE = OfflineAssets.VERSION;
 const scope = self.registration.scope;
 const assets = OfflineAssets.urls(scope);
 // The editor and gallery open offline from these; Python and math also need OfflineAssets.runtime.
 const installAssets = OfflineAssets.installUrls(scope);
+const hex = buffer => [...new Uint8Array(buffer)].map(b => b.toString(16).padStart(2, '0')).join('');
+const types = { html: 'text/html', js: 'text/javascript', css: 'text/css', json: 'application/json', svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp', mp4: 'video/mp4', webm: 'video/webm', wasm: 'application/wasm', zip: 'application/zip', whl: 'application/zip' };
+const type = url => types[/\.([a-z0-9]+)$/.exec(new URL(url).pathname)?.[1]] || 'text/plain';
 
+// Cache Storage is shared by every app on this origin, so bytes must match the pinned hash
+// before they are stored or served. Headers are rebuilt rather than trusted.
+async function verified(response, url) {
+  const expected = OfflineHashes[url] || (url.startsWith(scope) ? OfflineHashes[url.slice(scope.length)] : undefined);
+  if (!response?.ok || response.type === 'opaque' || !expected) return null;
+  const body = await response.arrayBuffer();
+  if (hex(await crypto.subtle.digest('SHA-256', body)) !== expected) return null;
+  return new Response(body, { status: 200, headers: { 'Content-Type': type(url) } });
+}
+async function download(cache, urls, init) {
+  await Promise.all(urls.map(async url => {
+    const checked = await verified(await fetch(new Request(url, init)), url);
+    if (!checked) throw new Error('Offline file did not match its pinned hash: ' + url);
+    await cache.put(url, checked);
+  }));
+}
 async function missingFiles(cache, urls = assets) {
-  const results = await Promise.all(urls.map(url => cache.match(url)));
+  const results = await Promise.all(urls.map(async url => verified(await cache.match(url), url)));
   return urls.filter((_, index) => !results[index]);
 }
 
@@ -16,18 +35,18 @@ self.addEventListener('install', event => {
     try {
       // CORS responses are readable; opaque responses cannot prove readiness.
       const local = OfflineAssets.local.map(path => new URL(path, scope).href);
-      await cache.addAll(local.map(url => new Request(url, { mode: 'cors', cache: 'reload' })));
+      await download(cache, local, { mode: 'cors', cache: 'reload' });
       // Pinned remote runtimes do not change with an application release. Reuse
       // already saved copies so an upgrade does not depend on CDN availability.
       await Promise.all(OfflineAssets.remote.map(async url => {
-        const saved = await caches.match(url);
-        if (saved && saved.ok && saved.type !== 'opaque') await cache.put(url, saved);
-        else await cache.addAll([new Request(url, { mode: 'cors', cache: 'reload' })]);
+        const saved = await verified(await caches.match(url), url);
+        if (saved) await cache.put(url, saved);
+        else await download(cache, [url], { mode: 'cors', cache: 'reload' });
       }));
       // Runtimes are not downloaded here (see OfflineAssets.runtime), only carried over.
       await Promise.all(OfflineAssets.runtime.map(async url => {
-        const saved = await caches.match(url);
-        if (saved && saved.ok && saved.type !== 'opaque') await cache.put(url, saved);
+        const saved = await verified(await caches.match(url), url);
+        if (saved) await cache.put(url, saved);
       }));
     } catch (error) {
       await caches.delete(CACHE);
@@ -55,13 +74,13 @@ self.addEventListener('message', event => {
     const cache = await caches.open(CACHE);
     if (event.data.type === 'repair-offline') {
       try {
-        await cache.addAll((await missingFiles(cache)).map(url => new Request(url, { mode: 'cors', cache: 'reload' })));
+        await download(cache, await missingFiles(cache), { mode: 'cors', cache: 'reload' });
       } catch (_) { /* Report incomplete setup; retain files that are still valid. */ }
     }
     if (event.data.type === 'cache-runtime') {
       // Sent after a live render: the browser has just downloaded these, so allow its HTTP cache.
       try {
-        await cache.addAll((await missingFiles(cache, OfflineAssets.runtime)).map(url => new Request(url, { mode: 'cors' })));
+        await download(cache, await missingFiles(cache, OfflineAssets.runtime), { mode: 'cors' });
       } catch (_) { /* Retried after the next render or by Save Python offline. */ }
     }
     const missing = await missingFiles(cache);
@@ -75,11 +94,14 @@ self.addEventListener('fetch', event => {
   if (!key) return;
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
-    const cached = await cache.match(key);
+    const cached = await verified(await cache.match(key), key);
+    // A missing or altered entry is never served; offline status reports it until repaired.
+    if (!cached) await cache.delete(key);
     if (cached && (event.request.mode !== 'navigate' || !(await missingFiles(cache, installAssets)).length)) return cached;
     try {
       const response = await fetch(event.request);
-      if (response.ok && response.type !== 'opaque') await cache.put(key, response.clone());
+      const copy = await verified(response.clone(), key);
+      if (copy) await cache.put(key, copy);
       return response;
     } catch (error) {
       if (event.request.mode !== 'navigate') throw error;

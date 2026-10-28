@@ -3,10 +3,13 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const Assets = require('../offline-assets.js');
+const { createHash } = require('node:crypto');
+const body = url => url.endsWith('index.html') ? '<html>editor</html>' : 'asset';
+const sha = text => createHash('sha256').update(text).digest('hex');
 const { ExampleCatalog } = require('../src/examples.js');
 
 function harness() {
-  const handlers = {}, stores = new Map();
+  const handlers = {}, stores = new Map(), scope = 'https://example.test/ManimOnline/';
   let online = true, failURL = '', claims = 0, activations = 0, observe = () => {};
   const caches = {
     match: async url => {
@@ -18,6 +21,7 @@ function harness() {
       return {
         match: async url => store.get(url)?.clone(),
         put: async (url, response) => store.set(url, response),
+        delete: async url => store.delete(url),
         addAll: async requests => {
           const values = await Promise.all(requests.map(async request => [request.url, await fetch(request)]));
           if (values.some(([, response]) => !response.ok)) throw new Error('Bad response');
@@ -31,11 +35,14 @@ function harness() {
   const fetch = async request => {
     observe(request.url);
     if (!online || request.url === failURL) throw new Error('Offline');
-    return new Response(request.url.endsWith('index.html') ? '<html>editor</html>' : 'asset');
+    return new Response(body(request.url));
   };
+  // The harness's pinned hashes describe its fake bodies; real ones come from offline-hashes.js.
+  const hashes = {};
+  for (const url of [...Assets.urls(scope), ...Assets.optional]) hashes[url] = sha(body(url));
   vm.runInNewContext(fs.readFileSync('service-worker.js', 'utf8'), {
-    OfflineAssets: Assets, importScripts() {}, caches, fetch, Request, Response,
-    URL, self: { registration: { scope: 'https://example.test/ManimOnline/' },
+    OfflineAssets: Assets, OfflineHashes: hashes, importScripts() {}, caches, fetch, Request, Response, crypto,
+    URL, self: { registration: { scope },
       addEventListener: (name, handler) => handlers[name] = handler,
       clients: { claim: async () => claims++ }, skipWaiting() { activations++; } }
   });
@@ -126,13 +133,37 @@ test('failed preparation deletes incomplete new cache and preserves the old vers
 test('upgrades reuse pinned remote files when the CDN is unavailable', async () => {
   const h = harness();
   const pinned = [...Assets.remote, ...Assets.runtime];
-  const old = new Map(pinned.map(url => [url, new Response('saved runtime')]));
+  const old = new Map(pinned.map(url => [url, new Response('asset')]));
   h.stores.set('manimonline-offline-old', old);
   h.fail(Assets.remote.at(-1));
   await h.run('install');
   assert.equal(h.activations, 1);
   const cached = h.stores.get(Assets.VERSION);
-  for (const url of pinned) assert.equal(await cached.get(url).text(), 'saved runtime');
+  for (const url of pinned) assert.equal(await cached.get(url).text(), 'asset');
+});
+
+test('altered cache entries written by other apps on the origin are never carried over or served', async () => {
+  const h = harness();
+  const poisoned = [...Assets.remote, ...Assets.runtime];
+  h.stores.set('manimonline-offline-old', new Map(poisoned.map(url => [url, new Response('globalThis.poisoned = true')])));
+  await h.run('install');
+  const cache = h.stores.get(Assets.VERSION);
+  for (const url of Assets.remote) assert.equal(await cache.get(url).text(), 'asset', url);
+  for (const url of Assets.runtime) assert.ok(!cache.has(url), url);
+  const script = 'https://example.test/ManimOnline/src/manim-player.js';
+  cache.set(script, new Response('globalThis.poisoned = true'));
+  h.setOnline(false);
+  await assert.rejects(h.run('fetch', { request: { method: 'GET', mode: 'cors', url: script } }));
+  assert.ok(!cache.has(script));
+  h.setOnline(true);
+  assert.equal(await (await h.run('fetch', { request: { method: 'GET', mode: 'cors', url: script } })).text(), 'asset');
+  assert.equal(await cache.get(script).text(), 'asset');
+});
+
+test('offline-hashes.js is current for every offline file', () => {
+  const hashes = require('../offline-hashes.js');
+  for (const path of Assets.local) assert.equal(hashes[path], sha(fs.readFileSync(path)), path);
+  for (const url of [...Assets.remote, ...Assets.runtime, ...Assets.optional]) assert.match(hashes[url] || '', /^[0-9a-f]{64}$/, url);
 });
 
 test('partial cache offline provides a recovery page instead of a broken editor', async () => {

@@ -3,6 +3,8 @@
   const grid = document.getElementById('sample-grid');
   const search = document.getElementById('sample-search');
   const type = document.getElementById('sample-type');
+  // Filtering is live; the form never submits.
+  document.querySelector('form.filters')?.addEventListener('submit', event => event.preventDefault());
   const names = { manim: 'MANIM ANIMATION', graphviz: 'GRAPHVIZ DOT', modl: 'MODL DIAGRAM' };
   const cards = [];
   // A previous service worker may supply a catalog containing only id/label/path.

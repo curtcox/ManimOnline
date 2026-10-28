@@ -1,5 +1,5 @@
 // Three-language rendering and HashBin UI round trips with a deterministic service.
-// Real Pyodide/Graphviz/modl run; only HashBin authentication, pricing/storage are mocked.
+// Real Pyodide/Graphviz/modl run; only HashBin Publish approval and storage are mocked.
 // Usage: node tests/browser/languages.cjs [baseUrl] [chromium|firefox|webkit ...]
 const { strict: assert } = require('node:assert');
 const { createHash } = require('node:crypto');
@@ -16,17 +16,24 @@ function cidFor(text) {
   prefix.writeUIntBE(bytes.length, 0, 6);
   return prefix.toString('base64url') + (bytes.length <= 64 ? bytes : createHash('sha512').update(bytes).digest()).toString('base64url');
 }
+// Stands in for the pinned SDK: popup approval, a blocked popup's redirect round trip, and revocation.
 const sdk = `export class HashBinClient {
  constructor(options) { this.options = options; }
- getTokens() { return JSON.parse(localStorage.getItem('hashbin-test-tokens') || 'null'); }
- clearTokens() { localStorage.removeItem('hashbin-test-tokens'); }
- async authorize(options) {
-  if (options.mode !== 'manual' || options.scopes.join(' ') !== 'content:write balance:read') throw Error('bad authorization');
-  return {state:'test-state',url:'https://hashbin.org/oauth/authorize?redirect_uri='+encodeURIComponent(this.options.redirectUri)+'&state=test-state'};
+ publish(content, { contentType, clientState }) {
+  if (contentType !== 'application/json') throw Error('bad content type');
+  return window.__hashbinUpload(content).then(({ cid }) => {
+   if (localStorage.getItem('hashbin-test-mode') !== 'redirect') return { cid };
+   sessionStorage.setItem('hashbin-test-state', JSON.stringify(clientState));
+   location.href = this.options.redirectUri + '#hashbin_publish=test&cid=' + cid;
+   return { redirected: true };
+  });
  }
- async handleCallback() { localStorage.setItem('hashbin-test-tokens',JSON.stringify({refreshToken:'mock',accessToken:'mock',expiresAt:Date.now()+3600000})); }
- async refreshAccessToken() { return this.getTokens(); }
- async authorizedFetch(path, options) { return fetch('https://hashbin.org'+path,{...options,headers:{...options?.headers,Authorization:'Bearer mock'}}); }
+ async handlePublishCallback({ hash }) {
+  const clientState = JSON.parse(sessionStorage.getItem('hashbin-test-state'));
+  sessionStorage.removeItem('hashbin-test-state');
+  return { cid: new URLSearchParams(hash.slice(1)).get('cid'), clientState };
+ }
+ async disconnect() { localStorage.removeItem('hashbin:tokens:' + this.options.clientId); localStorage.setItem('hashbin-test-revoked', this.options.clientId); }
 }`;
 async function ready(page, type) {
   const selector = type === 'graphviz' ? '#review svg g.node' : type === 'modl' ? '#review svg [data-node-id]' : '.manim-player svg';
@@ -36,47 +43,22 @@ async function ready(page, type) {
 }
 async function run(engine) {
   const browser = await playwright[engine].launch({headless:true});
+  const csp = require('./csp.cjs')(browser);
   try {
     const context = await browser.newContext({ serviceWorkers: 'block' });
     const docs = new Map();
-    let uploads = 0, authorizations = 0, releaseSlow;
-    // WebKit interception can omit uploaded file bytes. Inspect the actual Blob
-    // at the mocked service boundary instead of parsing browser-specific multipart.
-    await context.exposeBinding('__hashbinUpload', async (_, payload, authorization) => {
-      assert.equal(authorization, 'Bearer mock');
+    let uploads = 0, releaseSlow;
+    await context.exposeBinding('__hashbinUpload', async (_, payload) => {
       const cid = cidFor(payload);
       docs.set(cid, payload);
       uploads++;
-      return { cid, cost_cents: 1 };
+      return { cid };
     });
-    await context.addInitScript(() => {
-      const nativeFetch = window.fetch.bind(window);
-      window.fetch = async (url, options) => {
-        if (String(url) === 'https://hashbin.org/api/content') {
-          const data = await window.__hashbinUpload(await options.body.get('content').text(), options.headers.Authorization);
-          return new Response(JSON.stringify(data), { status: 201, headers: { 'Content-Type': 'application/json' } });
-        }
-        return nativeFetch(url, options);
-      };
-    });
-    const allow = {'access-control-allow-origin':'*','access-control-allow-headers':'Authorization, Content-Type','access-control-allow-methods':'GET, POST, OPTIONS'};
+    const allow = {'access-control-allow-origin':'*'};
     await context.route('https://hashbin.org/**', async route => {
-      const request = route.request(), url = new URL(request.url());
-      if (request.method() === 'OPTIONS') return route.fulfill({status:204,headers:allow});
-      if (url.pathname === '/sdk/hashbin.js') return route.fulfill({body:sdk,contentType:'text/javascript',headers:allow});
-      if (url.pathname === '/oauth/authorize') {
-        authorizations++;
-        assert.equal(url.searchParams.get('redirect_uri'), new URL(base).origin + new URL(base).pathname.replace(/index\.html$/, ''));
-        // WebKit's interception cannot fulfill a redirect status; navigate from
-        // a tiny approval stand-in while preserving the tab's session storage.
-        return route.fulfill({contentType:'text/html',body:'<script>location.href='+JSON.stringify(base+'?code=test-code&state=test-state')+';</script>'});
-      }
-      let data;
-      if (url.pathname === '/api/account/settings') data = { default_retention_months: '2' };
-      else if (url.pathname === '/api/balance') data = {balance_cents:100};
-      else if (url.pathname === '/api/payments/calculate') data = {cost_cents:1};
-      else throw new Error('Unexpected HashBin path: '+url.pathname);
-      await route.fulfill({json:data,headers:allow});
+      const url = new URL(route.request().url());
+      if (url.pathname === '/sdk/v0.2.0/hashbin.js') return route.fulfill({body:sdk,contentType:'text/javascript',headers:allow});
+      throw new Error('Unexpected HashBin path: '+url.pathname);
     });
     await context.route('https://256t.us/**', async route => {
       const cid = new URL(route.request().url()).pathname.slice(1);
@@ -89,6 +71,7 @@ async function run(engine) {
       page.on('pageerror', error => { if (!/ResizeObserver loop/.test(String(error))) errors.push(String(error)); });
       await page.goto(base+'#'+encodeURIComponent(source[type]));
       await ready(page,type);
+      if (type === 'modl') await csp.probe(page);
       if (type === 'manim') {
         await page.locator('#scene-name').fill('Second');
         await page.locator('#scene-name').press('Enter');
@@ -122,20 +105,26 @@ async function run(engine) {
         await page.locator('#modl-reset-view').click();
         assert.equal(await page.locator('#modl-zoom').textContent(),'1×');
       }
+      if (type === 'modl') {
+        // Tokens from the earlier OAuth flow are revoked server-side, then cleared.
+        const clientId = await page.evaluate(() => document.querySelector('meta[name="hashbin-client-id"]').content);
+        await page.evaluate(id => localStorage.setItem('hashbin:tokens:' + id, '{"refreshToken":"old"}'), clientId);
+        await page.reload();
+        await ready(page,type);
+        await page.waitForFunction(id => localStorage.getItem('hashbin-test-revoked') === id && !localStorage.getItem('hashbin:tokens:' + id), clientId);
+        // A blocked popup falls back to a redirect; the source and layout survive it.
+        await page.evaluate(() => localStorage.setItem('hashbin-test-mode', 'redirect'));
+      }
       await page.locator('#hashbin-save').click();
       await page.locator('#hashbin-confirm:not([disabled])').waitFor();
-      if (type === 'modl') {
-        assert.equal(await page.locator('#hashbin-confirm').textContent(),'Connect to HashBin');
-        await page.locator('#hashbin-confirm').click();
-        await page.waitForFunction(() => document.querySelector('#hashbin-status')?.textContent.startsWith('Connected'));
-        await ready(page,type);
-        assert.equal(await page.evaluate(() => ace.edit('editor').getValue()),source[type]);
-        await page.locator('#hashbin-save').click();
-        await page.locator('#hashbin-confirm:not([disabled])').waitFor();
-      }
-      assert.match(await page.locator('#hashbin-message').textContent(), /Cost: \$0.01/);
+      assert.match(await page.locator('#hashbin-message').textContent(), /approve the save on hashbin\.org/);
       await page.locator('#hashbin-confirm').click();
       await page.waitForFunction(() => document.querySelector('#hashbin-status').textContent === 'Saved to HashBin.');
+      await page.evaluate(() => localStorage.removeItem('hashbin-test-mode'));
+      if (type === 'modl') {
+        await ready(page,type);
+        assert.equal(await page.evaluate(() => ace.edit('editor').getValue()),source[type]);
+      }
       const url = page.url(), cid = new URL(url).hash.slice(1), payload = JSON.parse(docs.get(cid));
       assert.equal(payload.src,source[type]);
       assert.equal(payload.type,type);
@@ -156,7 +145,6 @@ async function run(engine) {
       await page.close();
     }
     assert.equal(uploads,3);
-    assert.equal(authorizations,1);
     const page = await context.newPage();
     const legacy = JSON.stringify({format:'hashbin-diagram',version:1,src:'a square red A\na -> b',pos:{a:[100,100],b:[300,200]}});
     const legacyCID = cidFor(legacy); docs.set(legacyCID,legacy);
@@ -168,7 +156,7 @@ async function run(engine) {
     await page.locator('#hashbin-load').click();
     await ready(page,'graphviz');
     assert.equal(await page.evaluate(() => ace.edit('editor').getValue()),'digraph{a->b}');
-    const slowCID = cidFor('slow '.repeat(20)); docs.set(slowCID,legacy);
+    const slowCID = cidFor('slow '.repeat(20)); docs.set(slowCID,'slow '.repeat(20));
     await page.locator('#hashbin-cid').fill(slowCID);
     await page.locator('#hashbin-load').click();
     while (!releaseSlow) await new Promise(resolve => setTimeout(resolve,10));
@@ -176,7 +164,25 @@ async function run(engine) {
     releaseSlow();
     await ready(page,'graphviz');
     assert.equal(await page.evaluate(() => ace.edit('editor').getValue()),'digraph{newer->edit}');
+    // Content servers cannot substitute documents behind a CID.
+    const forged = JSON.stringify({format:'hashbin-diagram',version:1,src:'a square green A',pos:{}}); docs.set(cidFor(forged), forged.replace('green','red'));
+    await page.locator('#hashbin-cid').fill(cidFor(forged));
+    await page.locator('#hashbin-load').click();
+    await page.waitForFunction(() => /does not match its CID/.test(document.querySelector('#hashbin-status').textContent));
+    assert.equal(await page.evaluate(() => ace.edit('editor').getValue()),'digraph{newer->edit}');
+    // A CID link opened in the same tab asks before replacing typed edits.
+    await page.locator('#editor textarea').focus();
+    await page.keyboard.type(' ');
+    page.once('dialog', dialog => dialog.dismiss());
+    await page.evaluate(cid => { location.hash = cid; }, legacyCID);
+    await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => ace.edit('editor').getValue()).then(value => value.includes('digraph{newer->edit}')), true);
+    page.once('dialog', dialog => dialog.accept());
+    await page.evaluate(cid => { location.hash = cid; }, inline);
+    await ready(page,'graphviz');
+    assert.equal(await page.evaluate(() => ace.edit('editor').getValue()),'digraph{a->b}');
     await page.close();
+    csp.check();
     console.log(engine+': Graphviz, modl, Manim and HashBin round trips passed (mock service)');
   } finally { await browser.close(); }
 }

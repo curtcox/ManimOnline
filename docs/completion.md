@@ -7,7 +7,7 @@ curtcox/modl parser and SVG editor, including node dragging, pan/zoom, image/lin
 nodes and retained positions. HashBin documents preserve the source, language,
 scene/Graphviz settings and modl positions; legacy modl documents and plain-source
 inline/remote CIDs load too. Loads have deadlines, size bounds and stale-edit guards.
-OAuth restores source before returning to the save-cost review.
+Saves are approved on HashBin Publish; redirect saves restore the source.
 
 The registered **Manim Online** client is `app_ea30117c-555b-4759-b01a-e75dc402d177`.
 A live read-only authorization request accepted

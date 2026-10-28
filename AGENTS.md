@@ -10,12 +10,14 @@ compatibility layer, not a server running full Manim Community.
 ## Read first
 
 1. `README.md` for local serving instructions and public status.
-2. `index.html` for editor setup, rendering integration, and output controls.
+2. `index.html` and `src/editor.js` for editor setup, rendering integration, and output controls.
+   Keep scripts out of HTML: the Content-Security-Policy meta allows no inline script.
    `src/modl.js` is adapted from curtcox/modl's deployed parser and SVG editor;
    keep its quoting, vocab, image nodes and stored positions compatible.
-   `src/hashbin.js` handles shared three-language documents, 256t CIDs and OAuth;
+   `src/hashbin.js` handles shared three-language documents, verified 256t CIDs and
+   HashBin Publish saves through the pinned SDK (no tokens on this shared origin);
    `src/hashbin-panel.js` owns the load/save controls. Preserve source and options
-   through sign-in, quote before upload, and discard loads after newer edits.
+   through redirect saves, and discard loads after newer edits.
    The public HashBin client ID is in index.html; the exact production return
    address https://curtcox.github.io/ManimOnline/ must be registered on HashBin.
 3. `src/manim-lite.py` for the compatibility API and timed frame generation.
@@ -46,7 +48,8 @@ compatibility layer, not a server running full Manim Community.
  timestamps come from frame indices, never wall-clock time. Keep moov before mdat.
    `offline-assets.js`, `service-worker.js`, and `src/offline.js` manage offline files.
    Bump `OfflineAssets.VERSION` whenever a listed local asset changes, including
-   `index.html`, runtime scripts, or gallery sources, to avoid serving old cached code.
+   `index.html`, runtime scripts, or gallery sources, to avoid serving old cached code,
+   then run `node scripts/update-offline-hashes.mjs`: the worker serves only hash-matching bytes.
 7. `examples/multiple_scenes.py` for selection and geometry transform checks.
 8. `examples/creation_and_rotation.py` for stroke creation and orbital motion.
 9. `examples/layout_scene.py` for relative positioning and animated arrangements.
@@ -134,8 +137,8 @@ prove Pyodide loading or browser playback. Report which checks actually ran.
 `tests/browser/smoke.cjs` (Playwright; CI job `browsers`) renders DOT and Manim in
 Chromium, Firefox and WebKit; see README for the local command.
 `tests/browser/languages.cjs` additionally renders all three languages and checks
-HashBin OAuth/source restoration, quote/upload/reload, legacy/inline CIDs and stale
-loads with a mocked service. Run it with the same URL/browser arguments. These
+HashBin Publish popup/redirect saves, legacy token revocation, reload, legacy/inline
+and forged CIDs, stale loads and the Content-Security-Policy with a mocked service. Run it with the same URL/browser arguments. These
 checks do not prove live HashBin app registration or spend account funds.
 `tests/browser/modl-zoom.cjs` uses the same URL/browser arguments for deep zoom,
 fractional dragging, background/middle panning, pointer cancellation, wheel modes,
