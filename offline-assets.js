@@ -1,11 +1,11 @@
 /** Exact offline dependencies. Bump VERSION whenever any listed local file changes. */
 const OfflineExamples = typeof module !== 'undefined' ? require('./src/examples.js').ExampleCatalog : globalThis.ExampleCatalog;
 const OfflineAssets = {
-  VERSION: 'manimonline-offline-v394',
+  VERSION: 'manimonline-offline-v396',
   local: [
     'gallery.html', 'src/gallery.js', 'src/gallery.css', 'src/gallery-updates.js', 'src/video-links.js',
     ...OfflineExamples.map(example => example.cover),
-    'src/modl.js', 'src/hashbin.js', 'src/hashbin-panel.js', 'examples/basic_diagram.modl',
+    'src/modl.js', 'src/hashbin.js', 'src/hashbin-panel.js', 'vendor/hashbin-sdk-v0.3.0.mjs', 'vendor/hashbin-cache-v0.3.0.js', 'examples/basic_diagram.modl',
     'examples/data_pipeline.modl', 'examples/design_feedback.modl', 'examples/site_navigation.modl',
     'examples/team_responsibilities.modl', 'examples/diagram_styles.modl',
     'examples/decision_flow.dot', 'examples/service_architecture.dot', 'examples/build_dependencies.dot',
@@ -79,7 +79,7 @@ const OfflineAssets = {
     'examples/rounded_rectangle_scene.py',
     'index.html', 'ace/ace.js', 'ace/theme-twilight.js', 'ace/mode-python.js', 'ace/mode-dot.js',
     'viz-global.js', 'svg-pan-zoom.min.js', 'src/detector.js', 'src/render-scheduler.js', 'src/unified-worker.js',
-    'src/manim-lite.py', 'src/text-outlines.json', 'src/manim-client.js', 'src/manim-renderer.js', 'src/manim-player.js',
+    'src/manim-lite.py', 'src/text-outlines.json', 'src/manim-sandbox.js', 'src/manim-client.js', 'src/manim-renderer.js', 'src/manim-player.js',
     'src/manim-math.js', 'src/manim-typst.js', 'src/manim-export.js', 'src/manim-video.js', 'src/examples.js', 'src/offline.js', 'src/share-links.js', 'src/editor.js',
     'examples/minimal_scene.py', 'examples/math_scene.py', 'examples/multiple_scenes.py',
     'examples/creation_and_rotation.py', 'examples/layout_scene.py', 'examples/staggered_scene.py',

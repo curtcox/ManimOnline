@@ -16,8 +16,10 @@ function cidFor(text) {
   prefix.writeUIntBE(bytes.length, 0, 6);
   return prefix.toString('base64url') + (bytes.length <= 64 ? bytes : createHash('sha512').update(bytes).digest()).toString('base64url');
 }
-// Stands in for the pinned SDK: popup approval, a blocked popup's redirect round trip, and revocation.
-const sdk = `export class HashBinClient {
+// Stands in for the vendored SDK: popup approval, a blocked popup's redirect round trip, and revocation.
+// The sandbox is the real one.
+const sdk = `export { createSandbox } from './hashbin-sdk-v0.3.0.mjs?real';
+export class HashBinClient {
  constructor(options) { this.options = options; }
  publish(content, { contentType, clientState }) {
   if (contentType !== 'application/json') throw Error('bad content type');
@@ -55,11 +57,8 @@ async function run(engine) {
       return { cid };
     });
     const allow = {'access-control-allow-origin':'*'};
-    await context.route('https://hashbin.org/**', async route => {
-      const url = new URL(route.request().url());
-      if (url.pathname === '/sdk/v0.2.0/hashbin.js') return route.fulfill({body:sdk,contentType:'text/javascript',headers:allow});
-      throw new Error('Unexpected HashBin path: '+url.pathname);
-    });
+    await context.route('**/vendor/hashbin-sdk-v0.3.0.mjs', route => route.fulfill({body:sdk,contentType:'text/javascript'}));
+    await context.route('https://hashbin.org/**', async route => { throw new Error('Unexpected HashBin path: '+new URL(route.request().url()).pathname); });
     await context.route('https://256t.us/**', async route => {
       const cid = new URL(route.request().url()).pathname.slice(1);
       if (cid === cidFor('slow '.repeat(20))) await new Promise(resolve => { releaseSlow = resolve; });

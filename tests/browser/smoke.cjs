@@ -17,6 +17,17 @@ const MANIM = [
   '        self.play(Transform(square, Circle(color=GREEN)), run_time=0.5)',
   '',
 ].join('\n');
+// Regression check for SN-2026-002: the scene fails unless its code runs in an opaque origin.
+const ISOLATION = [
+  'from manim import *',
+  'import js',
+  '',
+  'class Origin(Scene):',
+  '    def construct(self):',
+  '        if str(js.self.origin) != "null": raise RuntimeError("not isolated: " + str(js.self.origin))',
+  '        self.play(Create(Square()), Create(Circle()))',
+  '',
+].join('\n');
 const NUMPY = [
   'from manim import *',
   '',
@@ -306,6 +317,8 @@ async function renderManim(browser, source, verifyRaster = false) {
       if (!(db0>dr0+40 && dr1>db1+40 && dg0===0 && dg1===0 && da0===255 && da1===255)) throw new Error('Glyph gradient direction pixels: '+JSON.stringify(direction.rasterPixels));
       const viewport = await checkManim(browser, GLYPH_VIEWPORT, 'viewport');
       if (!viewport.viewportPaintMatches) throw new Error('Formula viewport gradient endpoints differ from browser coordinates');
+      // Scenes, including ones from links, must run in an opaque origin, apart from this app's storage.
+      await checkManim(browser, ISOLATION).catch(error => { throw new Error('Isolation scene: ' + error.message); });
       const depth = await checkManim(browser, THREE_D).catch(error => { throw new Error('3D scene: ' + error.message); });
       csp.check();
       console.log(name + ': DOT ok; Manim ' + manim.frames + ' frames, ' + manim.paths +

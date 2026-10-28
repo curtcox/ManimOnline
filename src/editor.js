@@ -443,7 +443,8 @@
       document.getElementById('modl-zoom-in').addEventListener('click', () => modlPreview?.zoom(1.2));
       document.getElementById('modl-reset-view').addEventListener('click', () => modlPreview?.resetView());
       frameFormat.addEventListener('change', () => { exportStatus.textContent = ''; });
-      const manimClient = new ManimClient({ onStatus: text => {
+      // Scenes, including ones from links, render in HashBin's opaque-origin sandbox.
+      const manimClient = new ManimClient({ workerFactory: ManimSandbox.factory(), onStatus: text => {
         pyodideStatus.textContent = text;
         pyodideStatus.className = 'loading';
       }});

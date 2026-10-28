@@ -8,7 +8,8 @@ function requiresPillow(source) {
   return /\b(?:PIL|StreamLines|get_colored_background_image|color_using_background_image|match_background_image|background_image)\b/.test(source);
 }
 
-/** Python lives in this worker; the main thread enforces its hard deadline. */
+/** Python lives in this worker, inside HashBin's opaque-origin sandbox (src/manim-sandbox.js);
+    the main thread enforces its hard deadline. */
 let runtimePromise;
 const PYODIDE_URL = 'https://cdn.jsdelivr.net/pyodide/v0.27.0/full/';
 const NETWORKX_WHEEL = PYODIDE_URL + 'networkx-3.4.2-py3-none-any.whl';
@@ -17,12 +18,14 @@ async function initPyodide() {
   if (!runtimePromise) {
     runtimePromise = (async () => {
       self.postMessage({ type: 'pyodide-loading' });
-      importScripts(PYODIDE_URL + 'pyodide.js');
+      // The editor fetches these through its verified offline cache. Defining _createPyodideModule
+      // first stops Pyodide loading its runtime by URL.
+      await hashbinSandbox.importScripts(PYODIDE_URL + 'pyodide.js', PYODIDE_URL + 'pyodide.asm.js');
       const runtime = await loadPyodide({ indexURL: PYODIDE_URL, stdout: () => {}, stderr: () => {} });
       const [response, outlines] = await Promise.all([
-        fetch(new URL('manim-lite.py', self.location.href)),
+        fetch(new URL('manim-lite.py', hashbinSandbox.base)),
         // Liberation Sans glyph outlines for Text; without them text keeps metric layout.
-        fetch(new URL('text-outlines.json', self.location.href)).catch(() => null)
+        fetch(new URL('text-outlines.json', hashbinSandbox.base)).catch(() => null)
       ]);
       if (!response.ok) throw new Error('Unable to load the browser animation runtime.');
       if (outlines && outlines.ok) {

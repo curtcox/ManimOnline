@@ -1,22 +1,14 @@
-importScripts('src/examples.js', 'offline-assets.js', 'offline-hashes.js');
+importScripts('src/examples.js', 'offline-assets.js', 'offline-hashes.js', 'vendor/hashbin-cache-v0.3.0.js');
 const CACHE = OfflineAssets.VERSION;
 const scope = self.registration.scope;
 const assets = OfflineAssets.urls(scope);
 // The editor and gallery open offline from these; Python and math also need OfflineAssets.runtime.
 const installAssets = OfflineAssets.installUrls(scope);
-const hex = buffer => [...new Uint8Array(buffer)].map(b => b.toString(16).padStart(2, '0')).join('');
-const types = { html: 'text/html', js: 'text/javascript', css: 'text/css', json: 'application/json', svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp', mp4: 'video/mp4', webm: 'video/webm', wasm: 'application/wasm', zip: 'application/zip', whl: 'application/zip' };
-const type = url => types[/\.([a-z0-9]+)$/.exec(new URL(url).pathname)?.[1]] || 'text/plain';
-
 // Cache Storage is shared by every app on this origin, so bytes must match the pinned hash
 // before they are stored or served. Headers are rebuilt rather than trusted.
-async function verified(response, url) {
-  const expected = OfflineHashes[url] || (url.startsWith(scope) ? OfflineHashes[url.slice(scope.length)] : undefined);
-  if (!response?.ok || response.type === 'opaque' || !expected) return null;
-  const body = await response.arrayBuffer();
-  if (hex(await crypto.subtle.digest('SHA-256', body)) !== expected) return null;
-  return new Response(body, { status: 200, headers: { 'Content-Type': type(url) } });
-}
+// (HashBin SDK v0.3.0 verified cache, vendored.)
+const hashFor = HashBinCache.lookup(OfflineHashes, scope);
+const verified = (response, url) => HashBinCache.verify(response, hashFor(url), url);
 async function download(cache, urls, init) {
   await Promise.all(urls.map(async url => {
     const checked = await verified(await fetch(new Request(url, init)), url);

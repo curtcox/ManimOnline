@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <!-- Scripts only from this site and pinned paths; keep in step with new runtimes. connect-src stays open for ?url= sources. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/ https://cdn.jsdelivr.net/npm/mathjax@3.2.2/ https://cdn.jsdelivr.net/npm/@myriaddreamin/ https://hashbin.org/sdk/v0.2.0/ 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob:; font-src 'self' data: https://cdn.jsdelivr.net; connect-src 'self' https: data: blob:; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-IMEqdP+AkCKdxhM3X7mQM4pV/chykJXPvdtndD+XeH8=' blob: https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/ https://cdn.jsdelivr.net/npm/mathjax@3.2.2/ https://cdn.jsdelivr.net/npm/@myriaddreamin/ 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob:; font-src 'self' data: https://cdn.jsdelivr.net; connect-src 'self' https: data: blob:; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
   <title>ManimOnline</title>
@@ -627,7 +627,8 @@ class HelloWorld(Scene):
   <script src="src/render-scheduler.js?v=1"></script>
   <script src="src/share-links.js?v=4"></script>
   <script src="src/manim-renderer.js?v=outlines-1"></script>
-  <script src="src/manim-client.js"></script>
+  <script src="src/manim-sandbox.js?v=1"></script>
+  <script src="src/manim-client.js?v=2"></script>
   <script src="src/manim-player.js?v=fullscreen-3"></script>
   <script src="src/examples.js"></script>
   <script src="src/video-links.js?v=1"></script>
