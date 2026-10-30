@@ -18,7 +18,7 @@ function cidFor(text) {
 }
 // Stands in for the vendored SDK: popup approval, a blocked popup's redirect round trip, and revocation.
 // The sandbox is the real one.
-const sdk = `export { createSandbox } from './hashbin-sdk-v0.3.0.mjs?real';
+const sdk = `export { createSandbox } from './hashbin-sdk-v0.4.0.mjs?real';
 export class HashBinClient {
  constructor(options) { this.options = options; }
  publish(content, { contentType, clientState }) {
@@ -57,7 +57,7 @@ async function run(engine) {
       return { cid };
     });
     const allow = {'access-control-allow-origin':'*'};
-    await context.route('**/vendor/hashbin-sdk-v0.3.0.mjs', route => route.fulfill({body:sdk,contentType:'text/javascript'}));
+    await context.route('**/vendor/hashbin-sdk-v0.4.0.mjs', route => route.fulfill({body:sdk,contentType:'text/javascript'}));
     await context.route('https://hashbin.org/**', async route => { throw new Error('Unexpected HashBin path: '+new URL(route.request().url()).pathname); });
     await context.route('https://256t.us/**', async route => {
       const cid = new URL(route.request().url()).pathname.slice(1);

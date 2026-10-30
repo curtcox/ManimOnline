@@ -686,6 +686,7 @@ function sandboxPrelude(config) {
   };
   self.hashbinSandbox = Object.freeze({
     base: config.base,
+    origin: config.origin,
     // Module scripts: dynamic import of the fetched text.
     import: async url => import(await scriptURL(url)),
     // Classic scripts: fetched, then run synchronously with importScripts.
@@ -703,9 +704,22 @@ function sandboxPrelude(config) {
  * proxy: URL prefixes the page fetches on the worker's behalf (GET only, without credentials).
  * base: the URL that relative paths in the worker resolve against.
  */
-export function createSandbox({ source, proxy = [], base = globalThis.location?.href, fetch: fetchImpl = globalThis.fetch?.bind(globalThis), container = globalThis.document?.body } = {}) {
+export function createSandbox({ source, proxy = [], base = globalThis.location?.href, fetch: fetchImpl = globalThis.fetch?.bind(globalThis), container = globalThis.document?.body, origin = 'opaque', clientId, runDomain = 'hashbin.app', workerType = 'classic', timeout = 15000 } = {}) {
   if (!source) throw new Error('source is required');
   if (!container) throw new Error('createSandbox() requires a document.');
+  if (!['opaque', 'hosted'].includes(origin)) throw new Error('origin must be opaque or hosted.');
+  if (!['classic', 'module'].includes(workerType) || (origin === 'opaque' && workerType !== 'classic')) throw new Error('Module workers require origin: hosted.');
+  if (!Number.isFinite(timeout) || timeout <= 0) throw new Error('timeout must be positive.');
+  let expectedOrigin = 'null';
+  if (origin === 'hosted') {
+    if (!/^app_[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(clientId || '')) throw new Error('A UUID clientId is required for hosted mode.');
+    if (typeof runDomain !== 'string' || !/^[a-z0-9]+(?:[.-][a-z0-9]+)*(?::\d{1,5})?$/.test(runDomain)) throw new Error('A configured runDomain is required for hosted mode.');
+    const hostname = new URL(`https://${runDomain}`).hostname;
+    const protocol = hostname === 'localhost' || hostname.endsWith('.localhost') ? 'http:' : 'https:';
+    expectedOrigin = new URL(`${protocol}//a${clientId.slice(4).replaceAll('-', '')}.${runDomain}`).origin;
+    const pageOrigin = container.ownerDocument.defaultView?.location.origin || globalThis.location?.origin;
+    if (expectedOrigin === pageOrigin) throw new Error('Hosted sandbox must be cross-origin to the embedding page.');
+  }
   const prefixes = proxy.map(prefix => new URL(prefix, base).href);
   const allowed = url => {
     try {
@@ -716,15 +730,25 @@ export function createSandbox({ source, proxy = [], base = globalThis.location?.
   const channel = new MessageChannel();
   const port = channel.port1;
   const frame = container.ownerDocument.createElement('iframe');
-  let closed = false;
+  let closed = false, ready = false, booted = false, timer;
+  const queued = [];
   const sandbox = {
     frame,
     onmessage: null,
     onerror: null,
-    postMessage(data, transfer = []) { if (!closed) port.postMessage(data, transfer); },
-    terminate() { closed = true; port.close(); frame.remove(); }
+    postMessage(data, transfer = []) {
+      if (closed) return;
+      if (origin === 'hosted' && !booted) queued.push([data, transfer]);
+      else port.postMessage(data, transfer);
+    },
+    terminate() { closed = true; clearTimeout(timer); queued.length = 0; port.close(); channel.port2.close(); frame.remove(); }
   };
-  const fail = message => { if (!closed) sandbox.onerror?.({ message, preventDefault() {} }); };
+  const fail = message => {
+    if (closed) return;
+    const event = { message, ...(origin === 'hosted' ? { code: 'sandbox_unavailable' } : {}), preventDefault() {} };
+    if (origin === 'hosted') sandbox.terminate();
+    sandbox.onerror?.(event);
+  };
   const respond = async ({ id, url }) => {
     try {
       if (typeof url !== 'string' || !allowed(url)) throw new Error('Sandbox request blocked.');
@@ -736,23 +760,47 @@ export function createSandbox({ source, proxy = [], base = globalThis.location?.
       if (!closed) port.postMessage({ type: 'hashbin:sandbox:response', id, error: String(error?.message || error) });
     }
   };
-  port.onmessage = ({ data }) => {
+  const workerSource = async () => `(${sandboxPrelude})(${JSON.stringify({ base: new URL(base).href, proxy: prefixes, origin: expectedOrigin })});\n${await source}`;
+  port.onmessage = async ({ data }) => {
     if (closed) return;
+    if (origin === 'hosted' && data?.type === 'hashbin:sandbox:ready') {
+      if (ready) return;
+      if (data.origin !== expectedOrigin) { fail('Hosted sandbox reported an unexpected origin.'); return; }
+      ready = true;
+      try { const text = await workerSource(); if (!closed) port.postMessage({ type: 'hashbin:sandbox:boot', source: text, workerType }); }
+      catch (error) { fail(String(error?.message || error)); }
+      return;
+    }
+    if (origin === 'hosted' && data?.type === 'hashbin:sandbox:started') {
+      if (!ready || booted) return;
+      booted = true; clearTimeout(timer);
+      for (const [data, transfer] of queued.splice(0)) port.postMessage(data, transfer);
+      return;
+    }
     if (data?.type === 'hashbin:sandbox:fetch') { respond(data); return; }
     if (data?.type === 'hashbin:sandbox:error') { fail(String(data.message)); return; }
     sandbox.onmessage?.({ data });
   };
-  // No allow-same-origin: the frame and its worker get an opaque origin.
-  frame.setAttribute('sandbox', 'allow-scripts');
+  // allow-scripts + allow-same-origin is safe ONLY because hosted mode's frame
+  // is cross-origin to this page. The explicit check above enforces that boundary.
+  frame.setAttribute('sandbox', origin === 'hosted' ? 'allow-scripts allow-same-origin' : 'allow-scripts');
   frame.setAttribute('aria-hidden', 'true');
   frame.tabIndex = -1;
   frame.title = 'Code sandbox';
   frame.style.display = 'none';
-  frame.srcdoc = `<!doctype html><meta charset="utf-8"><script>${SANDBOX_BOOTSTRAP}</script>`;
+  if (origin === 'hosted') {
+    frame.src = `${expectedOrigin}/frame/v0.4.0`;
+    frame.addEventListener('error', () => fail('Hosted sandbox could not load.'), { once: true });
+    timer = setTimeout(() => fail('Hosted sandbox timed out.'), timeout);
+  } else frame.srcdoc = `<!doctype html><meta charset="utf-8"><script>${SANDBOX_BOOTSTRAP}</script>`;
   frame.addEventListener('load', async () => {
     try {
-      const text = `(${sandboxPrelude})(${JSON.stringify({ base: new URL(base).href, proxy: prefixes })});\n${await source}`;
-      if (!closed) frame.contentWindow.postMessage({ type: 'hashbin:sandbox:boot', source: text }, '*', [channel.port2]);
+      if (origin === 'hosted') {
+        if (!closed) frame.contentWindow.postMessage({ type: 'hashbin:sandbox:connect' }, expectedOrigin, [channel.port2]);
+      } else {
+        const text = await workerSource();
+        if (!closed) frame.contentWindow.postMessage({ type: 'hashbin:sandbox:boot', source: text }, '*', [channel.port2]);
+      }
     } catch (error) { fail(String(error?.message || error)); }
   }, { once: true });
   container.append(frame);

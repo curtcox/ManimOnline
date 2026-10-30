@@ -1,4 +1,4 @@
-importScripts('src/examples.js', 'offline-assets.js', 'offline-hashes.js', 'vendor/hashbin-cache-v0.3.0.js');
+importScripts('src/examples.js', 'offline-assets.js', 'offline-hashes.js', 'vendor/hashbin-cache-v0.4.0.js');
 const CACHE = OfflineAssets.VERSION;
 const scope = self.registration.scope;
 const assets = OfflineAssets.urls(scope);
@@ -6,7 +6,7 @@ const assets = OfflineAssets.urls(scope);
 const installAssets = OfflineAssets.installUrls(scope);
 // Cache Storage is shared by every app on this origin, so bytes must match the pinned hash
 // before they are stored or served. Headers are rebuilt rather than trusted.
-// (HashBin SDK v0.3.0 verified cache, vendored.)
+// (HashBin SDK v0.4.0 verified cache, vendored.)
 const hashFor = HashBinCache.lookup(OfflineHashes, scope);
 const verified = (response, url) => HashBinCache.verify(response, hashFor(url), url);
 async function download(cache, urls, init) {

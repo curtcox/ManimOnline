@@ -5,7 +5,7 @@ const OfflineAssets = {
   local: [
     'gallery.html', 'src/gallery.js', 'src/gallery.css', 'src/gallery-updates.js', 'src/video-links.js',
     ...OfflineExamples.map(example => example.cover),
-    'src/modl.js', 'src/hashbin.js', 'src/hashbin-panel.js', 'vendor/hashbin-sdk-v0.3.0.mjs', 'vendor/hashbin-cache-v0.3.0.js', 'examples/basic_diagram.modl',
+    'src/modl.js', 'src/hashbin.js', 'src/hashbin-panel.js', 'vendor/hashbin-sdk-v0.4.0.mjs', 'vendor/hashbin-cache-v0.4.0.js', 'examples/basic_diagram.modl',
     'examples/data_pipeline.modl', 'examples/design_feedback.modl', 'examples/site_navigation.modl',
     'examples/team_responsibilities.modl', 'examples/diagram_styles.modl',
     'examples/decision_flow.dot', 'examples/service_architecture.dot', 'examples/build_dependencies.dot',

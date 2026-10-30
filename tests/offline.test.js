@@ -42,7 +42,7 @@ function harness() {
   for (const url of [...Assets.urls(scope), ...Assets.optional]) hashes[url] = sha(body(url));
   // The vendored HashBin cache helper is the one real import; the others are provided directly.
   const context = { Request, Response, crypto, URL };
-  vm.runInNewContext(fs.readFileSync('vendor/hashbin-cache-v0.3.0.js', 'utf8'), context);
+  vm.runInNewContext(fs.readFileSync('vendor/hashbin-cache-v0.4.0.js', 'utf8'), context);
   vm.runInNewContext(fs.readFileSync('service-worker.js', 'utf8'), {
     OfflineAssets: Assets, OfflineHashes: hashes, HashBinCache: context.HashBinCache, importScripts() {}, caches, fetch, Request, Response, crypto,
     URL, self: { registration: { scope },

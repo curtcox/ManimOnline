@@ -27,8 +27,8 @@ compatibility layer, not a server running full Manim Community.
    scene code never runs with this shared origin (SN-2026-002; `tests/browser/smoke.cjs` checks it).
    Pyodide, `manim-lite.py` and `text-outlines.json` reach the worker through the sandbox proxy,
    from the verified offline cache. The index CSP keeps the SDK bootstrap hash and `blob:` in
-   `script-src`; the sandbox inherits it. The SDK v0.3.0 release is vendored in `vendor/` (also
-   `hashbin-cache-v0.3.0.js` for the service worker); `tests/hashbin.test.js` checks both against
+   `script-src`; the sandbox inherits it. The SDK v0.4.0 release is vendored in `vendor/` (also
+   `hashbin-cache-v0.4.0.js` for the service worker); `tests/hashbin.test.js` checks both against
    the release SRI hashes. Upgrade by vendoring a newer release, never by editing these files.
 5. `src/manim-renderer.js`, `src/manim-player.js`, and `src/detector.js`.
    `src/render-scheduler.js` coalesces editor/scene edits and cancels stale callbacks.

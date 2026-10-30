@@ -67,8 +67,8 @@ const HashBinDocuments = {
   }
 };
 
-/** The immutable v0.3.0 release, vendored byte for byte (tests check its SRI hash). Upgrade deliberately. */
-const HASHBIN_SDK_URL = '../vendor/hashbin-sdk-v0.3.0.mjs';
+/** The immutable v0.4.0 release, vendored byte for byte (tests check its SRI hash). Upgrade deliberately. */
+const HASHBIN_SDK_URL = '../vendor/hashbin-sdk-v0.4.0.mjs';
 const loadHashBinSDK = () => import(HASHBIN_SDK_URL);
 
 /** Saves go through HashBin Publish, so this origin never holds a HashBin credential. */
