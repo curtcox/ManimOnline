@@ -1,7 +1,7 @@
 /** Exact offline dependencies. Bump VERSION whenever any listed local file changes. */
 const OfflineExamples = typeof module !== 'undefined' ? require('./src/examples.js').ExampleCatalog : globalThis.ExampleCatalog;
 const OfflineAssets = {
-  VERSION: 'manimonline-offline-v396',
+  VERSION: 'manimonline-offline-domain-a193498cc2e7',
   local: [
     'gallery.html', 'src/gallery.js', 'src/gallery.css', 'src/gallery-updates.js', 'src/video-links.js',
     ...OfflineExamples.map(example => example.cover),
@@ -77,7 +77,7 @@ const OfflineAssets = {
     'examples/point_array_scene.py',
     'examples/subpath_scene.py',
     'examples/rounded_rectangle_scene.py',
-    'index.html', 'ace/ace.js', 'ace/theme-twilight.js', 'ace/mode-python.js', 'ace/mode-dot.js',
+    'index.html', 'src/domain-migration.js', 'ace/ace.js', 'ace/theme-twilight.js', 'ace/mode-python.js', 'ace/mode-dot.js',
     'viz-global.js', 'svg-pan-zoom.min.js', 'src/detector.js', 'src/render-scheduler.js', 'src/unified-worker.js',
     'src/manim-lite.py', 'src/text-outlines.json', 'src/manim-sandbox.js', 'src/manim-client.js', 'src/manim-renderer.js', 'src/manim-player.js',
     'src/manim-math.js', 'src/manim-typst.js', 'src/manim-export.js', 'src/manim-video.js', 'src/examples.js', 'src/offline.js', 'src/share-links.js', 'src/editor.js',

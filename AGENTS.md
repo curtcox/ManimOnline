@@ -19,7 +19,7 @@ compatibility layer, not a server running full Manim Community.
    `src/hashbin-panel.js` owns the load/save controls. Preserve source and options
    through redirect saves, and discard loads after newer edits.
    The public HashBin client ID is in index.html; the exact production return
-   address https://curtcox.github.io/ManimOnline/ must be registered on HashBin.
+   address https://manim.hashbin.page/ must be registered on HashBin.
 3. `src/manim-lite.py` for the compatibility API and timed frame generation.
 4. `src/unified-worker.js` and `src/manim-client.js` for execution and deadlines.
    `src/manim-sandbox.js` starts the worker with the HashBin SDK's `createSandbox()`: a classic

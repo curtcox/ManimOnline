@@ -1879,3 +1879,7 @@ cover default and nonuniform viewport fitting. Browser smoke compares foreground
 and background gradient endpoints with native SVG coordinate transforms on tall
 delimiters, independently of the renderer's matrix arithmetic. Percentage viewport
 lengths, exact glyph outlines/bounds and 3D glyph paint remain open.
+
+## Canonical HashBin address
+
+The production app is [https://manim.hashbin.page/](https://manim.hashbin.page/). The GitHub Pages copy is kept for moving old drafts through **Move saved work** or **Download backup**. Transfers copy only this app's documents and public settings, keep the old copy, and never copy HashBin credentials or Python filesystem permissions. Deployment is managed by [HashBin's first-party deployment tool](https://github.com/curtcox/hashbin.org/blob/main/scripts/deploy-owned-apps.mjs).
