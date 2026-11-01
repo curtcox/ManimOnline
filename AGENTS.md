@@ -1505,3 +1505,7 @@ Bump the `?v=` query on index.html script tags when a page script changes (brows
 Compact frames send partially drawn bezier outlines as the pooled whole outline plus
 `partial` (renderer `partialCurves` = `_partial_cubics(points, 0, progress)`); keep both in
 sync. Pose/progress keys (`_FRAME_VOLATILE_KEYS`) stay out of pooled bases.
+
+## URL identity and draft recovery
+
+Explicit program, source, example and CID URLs always load their document, independent of browser drafts. Never gate URL loading on a replacement confirmation. The bare homepage opens the default document. Preserve local drafts separately with LocalDrafts and offer Resume saved work. Opening or running a URL must not overwrite saved work; edits retain the previous draft for recovery. Keep stale-load guards and execution isolation.

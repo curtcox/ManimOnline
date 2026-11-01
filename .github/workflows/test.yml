@@ -64,6 +64,10 @@ jobs:
           node-version: '22'
       - run: npm install --no-save playwright
       - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: URL identity and draft recovery
+        run: node tests/browser/url-state.cjs
+        env:
+          BROWSER: ${{ matrix.browser }}
       - name: Serve site
         run: |
           python3 -m http.server 8000 > /tmp/manimonline-http.log 2>&1 &

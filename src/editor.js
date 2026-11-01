@@ -279,9 +279,10 @@
         videoLink.title = `Watch this in Drawing with Code ${name}, “${entry.chapter}”, on YouTube`;
       }
       // Typing marks unsaved work; loads and saves clear it, so links never silently replace it.
-      let typed = false;
+      const drafts = new LocalDrafts({storage:storage('localStorage'),key:'manimonline:draft'});
+      drafts.mount(document.getElementById('options'), snapshot => { applyLoadedSource(snapshot); });
       function applyLoadedSource(snapshot, cid = null) {
-        typed = false;
+        drafts.opened();
         showVideoLink(cid && globalThis.VideoLinks?.snippets[cid]);
         const url = new URL(location.href);
         for (const key of ['example', 'raw', 'compressed', 'url', 'type', 'scene', 'engine', 'format', 'modlpos']) url.searchParams.delete(key);
@@ -936,11 +937,10 @@
           editor.getSession().setValue(decodeURIComponent(event.state.content));
         }
       };
-      editor.commands.on('afterExec', event => { if (!event.command.readOnly) typed = true; });
+      editor.commands.on('afterExec', event => { if (!event.command.readOnly) drafts.attempt(sourceSnapshot(),true); });
       window.addEventListener('hashchange', () => {
-        if (!HashBinDocuments.isCID(location.hash.slice(1))) return;
-        if (typed && !confirm('This link opens different source. Replace your unsaved edits?')) return;
-        hashbinPanel.load(location.hash);
+        // Full navigation reuses URL precedence and cancels every stale render/load.
+        drafts.attempt(sourceSnapshot()); hashbinPanel.cancelLoad(); invalidateRender(); scheduler.cancel(); location.reload();
       });
 
       sceneNameInput.addEventListener('input', () => {

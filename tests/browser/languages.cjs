@@ -169,14 +169,12 @@ async function run(engine) {
     await page.locator('#hashbin-load').click();
     await page.waitForFunction(() => /does not match its CID/.test(document.querySelector('#hashbin-status').textContent));
     assert.equal(await page.evaluate(() => ace.edit('editor').getValue()),'digraph{newer->edit}');
-    // A CID link opened in the same tab asks before replacing typed edits.
-    await page.locator('#editor textarea').focus();
-    await page.keyboard.type(' ');
-    page.once('dialog', dialog => dialog.dismiss());
+    // Same-tab CID navigation loads the linked source and retains typed edits for recovery.
+    await page.locator('#editor textarea').focus(); await page.keyboard.type(' ');
     await page.evaluate(cid => { location.hash = cid; }, legacyCID);
-    await page.waitForTimeout(300);
-    assert.equal(await page.evaluate(() => ace.edit('editor').getValue()).then(value => value.includes('digraph{newer->edit}')), true);
-    page.once('dialog', dialog => dialog.accept());
+    await ready(page,'modl');
+    assert.equal(await page.evaluate(() => ace.edit('editor').getValue()),JSON.parse(legacy).src);
+    assert.match(await page.evaluate(() => localStorage.getItem('manimonline:draft')),/newer->edit/);
     await page.evaluate(cid => { location.hash = cid; }, inline);
     await ready(page,'graphviz');
     assert.equal(await page.evaluate(() => ace.edit('editor').getValue()),'digraph{a->b}');
