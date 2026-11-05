@@ -101,7 +101,7 @@ async function run(engine) {
     await gallery.locator('#offline-update').waitFor({state:'visible',timeout:90000});await gallery.locator('#offline-update').click();
     // Upgrades activate without closing tabs or clearing storage. Both documents
     // reload through the existing controllerchange/source-preservation hooks.
-    await editor.waitForSelector('#sample-gallery', {timeout:30000}).catch(async error => {
+    await editor.waitForFunction(()=>globalThis.ManimOnline&&document.body.dataset.ready==='true',null,{timeout:30000}).catch(async error => {
       console.error(await editor.evaluate(async () => ({ status: document.querySelector('#offline-status').textContent,
         caches: await caches.keys(), registration: (await navigator.serviceWorker.getRegistrations()).map(r => ({ active:r.active?.state, waiting:r.waiting?.state, installing:r.installing?.state })) })));
       throw error;
@@ -110,6 +110,9 @@ async function run(engine) {
     assert.equal(await editor.locator('#example-picker').count(), 0);
     await editor.waitForSelector('#review svg g.node');
     assert.equal(await editor.evaluate(() => ace.edit('editor').getValue()), edits);
+    // Firefox restores form controls after reload; a retained language filter is valid.
+    await gallery.locator('#offline-update').waitFor({state:'hidden',timeout:30000});
+    await gallery.locator('#sample-type').selectOption('');
     await gallery.waitForFunction(count => document.querySelectorAll('.card').length === count &&
       document.querySelector('#minimal .load')?.getAttribute('href').includes('example=minimal'), ExampleCatalog.length, {timeout:90000});
     await gallery.locator('#sample-type').selectOption('graphviz');
