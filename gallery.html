@@ -4,20 +4,22 @@
   <meta charset="utf-8">
   <!-- Scripts only from this site and pinned paths; keep in step with new runtimes. connect-src stays open for ?url= sources. -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/ https://cdn.jsdelivr.net/npm/mathjax@3.2.2/ https://cdn.jsdelivr.net/npm/@myriaddreamin/ 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob:; font-src 'self' data: https://cdn.jsdelivr.net; connect-src 'self' https: data: blob:; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="Browse playable Manim animation samples and diagram previews, then load any sample into ManimOnline.">
   <title>Sample gallery · ManimOnline</title>
-  <link rel="stylesheet" href="src/gallery.css">
-  <script defer src="src/examples.js"></script>
+  <link rel="stylesheet" href="vendor/fragment-kit-v0.3.3/src/ui/kit.css"><link rel="stylesheet" href="vendor/fragment-kit-v0.3.3/src/gallery/gallery.css"><link rel="stylesheet" href="src/gallery.css"><link rel="stylesheet" href="src/gallery-kit.css?v=3">
+  <script defer src="src/gallery-catalog.js?v=3"></script>
   <script defer src="src/video-links.js"></script>
-  <script defer src="src/gallery.js"></script>
-  <script defer src="src/gallery-updates.js"></script>
+  <script type="module" src="src/gallery.js?v=3"></script>
+  <script type="module" src="src/gallery-updates.js?v=3"></script>
+
 </head>
 <body>
   <header>
     <a class="brand" href="./">ManimOnline</a>
     <nav>
       <a class="series" href="https://www.youtube.com/playlist?list=PLXaiuWr3VAhk" target="_blank" rel="noopener">Video series ↗</a>
+      <a href="docs/">Docs ↗</a>
       <a class="back" href="./">Open editor →</a>
     </nav>
   </header>
@@ -29,13 +31,7 @@
       <p class="note">Pre-rendered previews need no Python startup. These samples use the supported browser Manim-lite subset.</p>
       <p class="note">New to Manim? <a href="https://www.youtube.com/playlist?list=PLXaiuWr3VAhk" target="_blank" rel="noopener">Drawing with Code</a> is a video series that builds these ideas step by step; samples it covers link to the matching chapter.</p>
     </div>
-    <form class="filters" role="search">
-      <div class="search"><label for="sample-search">Find a sample</label><input id="sample-search" type="search" placeholder="Try camera, curves, gradients…" autocomplete="off"></div>
-      <div><label for="sample-type">Language</label><select id="sample-type"><option value="all">All languages</option><option value="manim">Manim animations</option><option value="graphviz">Graphviz DOT</option><option value="modl">modl diagrams</option></select></div>
-    </form>
-    <p id="sample-count" role="status" aria-live="polite"></p>
-    <div id="sample-grid" class="grid"></div>
-    <p id="no-samples" hidden>No samples match. Try a different search or language.</p>
+    <section id="gallery" aria-label="Examples"></section>
     <noscript>Enable JavaScript to browse the gallery. You can still <a href="./">open the editor</a>.</noscript>
   </main>
   <footer>Built for experimenting. Load a sample to edit its source, render, and export.</footer>

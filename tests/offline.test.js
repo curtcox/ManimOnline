@@ -1,199 +1,46 @@
-const { test } = require('node:test');
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const vm = require('node:vm');
-const Assets = require('../offline-assets.js');
-const { createHash } = require('node:crypto');
-const body = url => url.endsWith('index.html') ? '<html>editor</html>' : 'asset';
-const sha = text => createHash('sha256').update(text).digest('hex');
-const { ExampleCatalog } = require('../src/examples.js');
-
-function harness() {
-  const handlers = {}, stores = new Map(), scope = 'https://example.test/ManimOnline/';
-  let online = true, failURL = '', claims = 0, activations = 0, observe = () => {};
-  const caches = {
-    match: async url => {
-      for (const store of stores.values()) if (store.has(url)) return store.get(url).clone();
-    },
-    open: async name => {
-      if (!stores.has(name)) stores.set(name, new Map());
-      const store = stores.get(name);
-      return {
-        match: async url => store.get(url)?.clone(),
-        put: async (url, response) => store.set(url, response),
-        delete: async url => store.delete(url),
-        addAll: async requests => {
-          const values = await Promise.all(requests.map(async request => [request.url, await fetch(request)]));
-          if (values.some(([, response]) => !response.ok)) throw new Error('Bad response');
-          values.forEach(([url, response]) => store.set(url, response));
-        }
-      };
-    },
-    keys: async () => [...stores.keys()],
-    delete: async name => stores.delete(name)
-  };
-  const fetch = async request => {
-    observe(request.url);
-    if (!online || request.url === failURL) throw new Error('Offline');
-    return new Response(body(request.url));
-  };
-  // The harness's pinned hashes describe its fake bodies; real ones come from offline-hashes.js.
-  const hashes = {};
-  for (const url of [...Assets.urls(scope), ...Assets.optional]) hashes[url] = sha(body(url));
-  // The vendored HashBin cache helper is the one real import; the others are provided directly.
-  const context = { Request, Response, crypto, URL };
-  vm.runInNewContext(fs.readFileSync('vendor/hashbin-cache-v0.4.0.js', 'utf8'), context);
-  vm.runInNewContext(fs.readFileSync('service-worker.js', 'utf8'), {
-    OfflineAssets: Assets, OfflineHashes: hashes, HashBinCache: context.HashBinCache, importScripts() {}, caches, fetch, Request, Response, crypto,
-    URL, self: { registration: { scope },
-      addEventListener: (name, handler) => handlers[name] = handler,
-      clients: { claim: async () => claims++ }, skipWaiting() { activations++; } }
-  });
-  const run = (type, args = {}) => {
-    let result;
-    handlers[type]({ ...args, waitUntil: promise => result = promise, respondWith: promise => result = promise });
-    return result;
-  };
-  return { stores, run, onFetch: callback => observe = callback, setOnline: value => online = value, fail: url => failURL = url, get claims() { return claims; }, get activations() { return activations; } };
+const{test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),{createHash}=require('node:crypto');
+const Assets=require('../offline-assets.js'),{createRuntime,CACHE}=require('../src/offline-runtime.js'),{ExampleCatalog}=require('../src/examples.js');
+const sha=value=>createHash('sha256').update(value).digest('hex');
+function harness(){
+ const stores=new Map(),calls=[];let online=true,poison=false,fail='';
+ const caches={open:async name=>{if(!stores.has(name))stores.set(name,new Map());const values=stores.get(name);return{match:async key=>values.get(key)?.clone(),put:async(key,value)=>values.set(key,value.clone()),delete:async key=>values.delete(key)};},match:async key=>{for(const store of stores.values())if(store.has(key))return store.get(key).clone();}};
+ const context={Response,crypto,URL};vm.runInNewContext(fs.readFileSync('vendor/hashbin-cache-v0.4.0.js','utf8'),context);
+ const manifest={runtime:Assets.runtime,optional:Assets.optional,runtimeHashes:Object.fromEntries([...Assets.runtime,...Assets.optional].map(url=>[url,sha('runtime')]))};
+ const runtime=createRuntime({manifest,scope:'https://example.test/ManimOnline/',caches,verify:context.HashBinCache.verify,fetch:async request=>{const url=typeof request==='string'?request:request.url;calls.push(url);if(!online||url===fail)throw Error('Offline');return new Response(poison?'altered':'runtime');}});
+ return{runtime,stores,calls,caches,setOnline:value=>online=value,setPoison:value=>poison=value,fail:value=>fail=value};
 }
-
-test('offline manifest covers gallery, editor dependencies, and every local script', () => {
-  for (const file of Assets.local) assert.ok(fs.existsSync(file), file);
-  for (const example of ExampleCatalog) {
-    assert.ok(Assets.local.includes(example.path));
-    assert.ok(Assets.local.includes(example.cover));
-  }
-  for (const file of ['gallery.html', 'src/gallery.js', 'src/gallery.css']) assert.ok(Assets.local.includes(file));
-  const html = fs.readFileSync('index.html', 'utf8');
-  for (const [, path] of html.matchAll(/<script src="([^"?]+)(?:\?[^" ]*)?"/g)) {
-    assert.ok((path.startsWith('https:') ? Assets.remote : Assets.local).includes(path), path);
-  }
+test('application allowlist contains every example, cover, local script and generated document',()=>{
+ for(const file of Assets.assets.filter(file=>!file.startsWith('https:')))assert.ok(fs.existsSync(file),file);
+ for(const example of ExampleCatalog){assert.ok(Assets.assets.includes(example.path));assert.ok(Assets.assets.includes(example.cover));assert.ok(!Assets.assets.includes(example.video));}
+ for(const [,path]of fs.readFileSync('index.html','utf8').matchAll(/<script(?: type="module")? src="([^"?]+)(?:\?[^"]*)?"/g))assert.ok(Assets.assets.includes(path),path);
+ for(const file of Assets.assets.filter(file=>!file.startsWith('https:')))assert.equal(Assets.hashes[file],sha(fs.readFileSync(file)),file);
 });
-
-test('cache keys respect project scope, normalize navigation and versions, and exclude sharing/source URLs', () => {
-  const scope = 'https://example.test/ManimOnline/';
-  assert.equal(Assets.key({ method: 'GET', mode: 'navigate', url: scope + '?scene=Demo' }, scope), scope + 'index.html');
-  assert.equal(Assets.key({ method: 'GET', url: scope + 'src/manim-player.js?v=2' }, scope), scope + 'src/manim-player.js');
-  for (const url of ['https://api.allorigins.win/get?secret=1', scope + 'custom.py', 'https://example.test/other/index.html', Assets.remote[0] + '?x=1']) {
-    assert.equal(Assets.key({ method: 'GET', url }, scope), null);
-  }
-  assert.equal(Assets.key({ method: 'POST', url: scope + 'index.html' }, scope), null);
+test('Python/math and optional wheels are deferred and separately pinned',()=>{
+ assert.ok(Assets.runtime.some(url=>url.endsWith('pyodide.asm.wasm')));
+ for(const url of [...Assets.runtime,...Assets.optional]){assert.ok(!Assets.assets.includes(url));assert.match(Assets.runtimeHashes[url],/^[a-f0-9]{64}$/);}
+ assert.match(Assets.optional[0],/numpy-.*\.whl$/);assert.ok(CACHE.startsWith('manimonline-'));
 });
-
-test('complete install supports fresh offline navigation, workers, math, and gallery fetches', async () => {
-  const h = harness();
-  await h.run('install');
-  assert.equal(h.activations, 1);
-  h.stores.set('manimonline-offline-old', new Map());
-  h.stores.set('unrelated-cache', new Map());
-  await h.run('activate');
-  assert.equal(h.claims, 1);
-  assert.ok(!h.stores.has('manimonline-offline-old'));
-  assert.ok(h.stores.has('unrelated-cache'));
-  await h.run('message', { data: { type: 'cache-runtime' }, ports: [] });
-  h.setOnline(false);
-  for (const url of Assets.urls('https://example.test/ManimOnline/')) {
-    const response = await h.run('fetch', { request: { method: 'GET', mode: 'cors', url } });
-    assert.equal(response.status, 200, url);
-  }
-  const response = await h.run('fetch', { request: { method: 'GET', mode: 'navigate', url: 'https://example.test/ManimOnline/?scene=Demo' } });
-  assert.equal(await response.text(), '<html>editor</html>');
-  let status;
-  await h.run('message', { data: { type: 'offline-status' }, ports: [{ postMessage: value => status = value }] });
-  assert.equal(status.ready, true);
+test('readiness requires every runtime asset; explicit preparation never downloads optional wheels',async()=>{
+ const h=harness();await h.runtime.carry();assert.deepEqual(h.calls,[]);assert.equal((await h.runtime.status()).ready,false);
+ await h.runtime.download();assert.equal((await h.runtime.status()).ready,true);assert.deepEqual(h.calls,Assets.runtime);
 });
-
-test('install skips Python and math runtimes until a live render asks for them', async () => {
-  const h = harness();
-  const requested = [];
-  h.onFetch(url => requested.push(url));
-  await h.run('install');
-  await h.run('activate');
-  assert.equal(h.activations, 1);
-  for (const url of Assets.runtime) assert.ok(!requested.includes(url), url);
-  assert.ok(Assets.runtime.some(url => /pyodide\.asm\.wasm$/.test(url)));
-  h.setOnline(false);
-  const page = await h.run('fetch', { request: { method: 'GET', mode: 'navigate', url: 'https://example.test/ManimOnline/' } });
-  assert.equal(await page.text(), '<html>editor</html>', 'editor and gallery still open offline');
-  let status;
-  await h.run('message', { data: { type: 'offline-status' }, ports: [{ postMessage: value => status = value }] });
-  assert.deepEqual([status.ready, status.installed, status.missing], [false, true, Assets.runtime.length]);
-  h.setOnline(true);
-  await h.run('message', { data: { type: 'cache-runtime' }, ports: [{ postMessage: value => status = value }] });
-  assert.deepEqual([status.ready, status.installed, status.missing], [true, true, 0]);
+test('upgrades carry only matching immutable bytes and leave unrelated caches untouched',async()=>{
+ const h=harness(),old=new Map(Assets.runtime.map(url=>[url,new Response('runtime')]));old.set(Assets.runtime[0],new Response('altered'));
+ h.stores.set('manimonline-offline-old',old);h.stores.set('sibling-cache',new Map([['secret',new Response('private')]]));
+ await h.runtime.carry();assert.equal((await h.runtime.status()).missing,1);assert.deepEqual(h.calls,[]);assert.ok(h.stores.has('sibling-cache'));
+ await h.runtime.download();assert.equal(h.calls.length,1);assert.equal((await h.runtime.status()).ready,true);
 });
-
-test('failed preparation deletes incomplete new cache and preserves the old version', async () => {
-  const h = harness();
-  h.stores.set('manimonline-offline-old', new Map());
-  h.fail(Assets.remote.at(-1));
-  await assert.rejects(h.run('install'));
-  assert.equal(h.activations, 0);
-  assert.ok(!h.stores.has(Assets.VERSION));
-  assert.ok(h.stores.has('manimonline-offline-old'));
+test('altered cached runtime is refused offline and repaired only with verified network bytes',async()=>{
+ const h=harness();await h.runtime.download();h.stores.get(CACHE).set(Assets.runtime[0],new Response('poisoned'));h.setOnline(false);
+ assert.equal((await h.runtime.status()).ready,false);await assert.rejects(h.runtime.respond(Assets.runtime[0]),/Offline/);
+ h.setOnline(true);h.setPoison(true);await assert.rejects(h.runtime.respond(Assets.runtime[0]),/verification/);assert.equal((await h.runtime.status()).ready,false);
+ h.setPoison(false);assert.equal(await(await h.runtime.respond(Assets.runtime[0])).text(),'runtime');assert.equal((await h.runtime.status()).ready,true);
 });
-
-test('upgrades reuse pinned remote files when the CDN is unavailable', async () => {
-  const h = harness();
-  const pinned = [...Assets.remote, ...Assets.runtime];
-  const old = new Map(pinned.map(url => [url, new Response('asset')]));
-  h.stores.set('manimonline-offline-old', old);
-  h.fail(Assets.remote.at(-1));
-  await h.run('install');
-  assert.equal(h.activations, 1);
-  const cached = h.stores.get(Assets.VERSION);
-  for (const url of pinned) assert.equal(await cached.get(url).text(), 'asset');
+test('a failed preparation retains valid bytes and never promises full readiness',async()=>{
+ const h=harness();h.fail(Assets.runtime[2]);await assert.rejects(h.runtime.download());assert.equal((await h.runtime.status()).ready,false);assert.equal(h.stores.get(CACHE).size,2);
+ h.fail('');await h.runtime.download();h.setOnline(false);for(const url of Assets.runtime)assert.equal(await(await h.runtime.respond(url)).text(),'runtime');
 });
-
-test('altered cache entries written by other apps on the origin are never carried over or served', async () => {
-  const h = harness();
-  const poisoned = [...Assets.remote, ...Assets.runtime];
-  h.stores.set('manimonline-offline-old', new Map(poisoned.map(url => [url, new Response('globalThis.poisoned = true')])));
-  await h.run('install');
-  const cache = h.stores.get(Assets.VERSION);
-  for (const url of Assets.remote) assert.equal(await cache.get(url).text(), 'asset', url);
-  for (const url of Assets.runtime) assert.ok(!cache.has(url), url);
-  const script = 'https://example.test/ManimOnline/src/manim-player.js';
-  cache.set(script, new Response('globalThis.poisoned = true'));
-  h.setOnline(false);
-  await assert.rejects(h.run('fetch', { request: { method: 'GET', mode: 'cors', url: script } }));
-  assert.ok(!cache.has(script));
-  h.setOnline(true);
-  assert.equal(await (await h.run('fetch', { request: { method: 'GET', mode: 'cors', url: script } })).text(), 'asset');
-  assert.equal(await cache.get(script).text(), 'asset');
-});
-
-test('offline-hashes.js is current for every offline file', () => {
-  const hashes = require('../offline-hashes.js');
-  for (const path of Assets.local) assert.equal(hashes[path], sha(fs.readFileSync(path)), path);
-  for (const url of [...Assets.remote, ...Assets.runtime, ...Assets.optional]) assert.match(hashes[url] || '', /^[0-9a-f]{64}$/, url);
-});
-
-test('partial cache offline provides a recovery page instead of a broken editor', async () => {
-  const h = harness();
-  await h.run('install');
-  await h.run('message', { data: { type: 'cache-runtime' }, ports: [] });
-  h.stores.get(Assets.VERSION).delete(Assets.remote.at(-1));
-  h.setOnline(false);
-  const response = await h.run('fetch', { request: { method: 'GET', mode: 'navigate', url: 'https://example.test/ManimOnline/' } });
-  assert.equal(response.status, 503);
-  assert.match(await response.text(), /Connect to finish offline setup/);
-  let status;
-  await h.run('message', { data: { type: 'offline-status' }, ports: [{ postMessage: value => status = value }] });
-  assert.equal(status.ready, false);
-  assert.equal(status.missing, 1);
-  await h.run('message', { data: { type: 'repair-offline' }, ports: [{ postMessage: value => status = value }] });
-  assert.equal(status.ready, false);
-  h.setOnline(true);
-  await h.run('message', { data: { type: 'repair-offline' }, ports: [{ postMessage: value => status = value }] });
-  assert.equal(status.ready, true);
-  assert.equal(status.missing, 0);
-});
-
-test('optional NumPy wheel is cacheable but not required for readiness', () => {
-  const scope = 'https://example.test/ManimOnline/';
-  const wheel = Assets.optional[0];
-  assert.match(wheel, /numpy-.*\.whl$/);
-  assert.equal(Assets.key({ method: 'GET', url: wheel, mode: 'cors' }, scope), wheel);
-  assert.ok(!Assets.urls(scope).includes(wheel));
+test('optional wheels are verified on demand and excluded from readiness',async()=>{
+ const h=harness();await h.runtime.download();const count=h.calls.length;assert.equal(h.runtime.includes(Assets.optional[0]),true);await h.runtime.respond(Assets.optional[0]);assert.equal(h.calls.length,count+1);
+ h.stores.get(CACHE).delete(Assets.optional[0]);assert.equal((await h.runtime.status()).ready,true);
 });

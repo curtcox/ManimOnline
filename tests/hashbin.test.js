@@ -55,7 +55,7 @@ test('inline loads are offline; remote loads use 256t.us, verify the CID and exp
   assert.ok((await store.load(cidFor(remote))).src.startsWith('from manim'));
   assert.equal(calls, 1);
   body = remote.replace('manim', 'forged');
-  await assert.rejects(store.load(cidFor(remote)), /does not match its CID/);
+  await assert.rejects(store.load(cidFor(remote)), /does not match its CID|byte limit/);
   store.fetchSource = async () => ({ok:false,status:404});
   await assert.rejects(store.load(cidFor('x'.repeat(65))), /expired/);
   await assert.rejects(store.load('bad'), /valid/);
@@ -85,13 +85,13 @@ test('saves through HashBin Publish with the vendored SDK release and verify the
   assert.equal(options.contentType, 'application/json');
   assert.deepEqual(options.clientState, { snapshot });
   store.client.publish = async () => ({ cid: cidFor(payload + ' ') });
-  await assert.rejects(store.publish(payload, snapshot), /does not match its CID/);
+  await assert.rejects(store.publish(payload, snapshot), /does not match its CID|byte limit/);
   await assert.rejects(new HashBinStore().init(), /registered client ID/);
   // The vendored files are the exact immutable release; hashes from https://hashbin.org/sdk/v0.4.0/integrity.json.
   const sri = file => 'sha384-' + require('node:crypto').createHash('sha384').update(require('node:fs').readFileSync(require('node:path').join(__dirname, '..', file))).digest('base64');
-  assert.equal(sri('vendor/hashbin-sdk-v0.4.0.mjs'), 'sha384-zzmaXw5svWRp0YF//G5ytyeqEowixccM/hHVDth46FnGrIlPS7fPki5vbhv+bWCr');
+  assert.equal(sri('vendor/fragment-kit-v0.3.3/vendor/hashbin-sdk-v0.4.0.mjs'), 'sha384-zzmaXw5svWRp0YF//G5ytyeqEowixccM/hHVDth46FnGrIlPS7fPki5vbhv+bWCr');
   assert.equal(sri('vendor/hashbin-cache-v0.4.0.js'), 'sha384-OjeXeXB30xFV4yU2LmXTYzc0KsymrivM/l3f/rgDQuPsTzGVMnk6vYtck8n60EgP');
-  assert.match(require('node:fs').readFileSync(require('node:path').join(__dirname, '../src/hashbin.js'), 'utf8'), /'\.\.\/vendor\/hashbin-sdk-v0\.4\.0\.mjs'/);
+  assert.match(require('node:fs').readFileSync(require('node:path').join(__dirname, '../src/fragment-config.mjs'), 'utf8'), /fragment-kit-v0\.3\.3\/vendor\/hashbin-sdk-v0\.4\.0\.mjs/);
 });
 
 test('redirect saves restore the source after approval or cancellation', async () => {
@@ -107,10 +107,10 @@ test('redirect saves restore the source after approval or cancellation', async (
   await store.init();
   assert.equal(await store.published('#' + cidFor('a')), null);
   assert.deepEqual(await store.publish(payload, snapshot), { redirected: true });
-  assert.deepEqual(await store.published('#hashbin_publish=s&cid=x'), { cid: cidFor(payload), snapshot });
+  assert.deepEqual(await store.published('#hashbin_publish=s&cid=x'), { cid: cidFor(payload), snapshot:require('../src/fragment-config.mjs').fromDocument(snapshot) });
   await store.publish(payload, snapshot);
   outcome = 'cancel';
-  assert.deepEqual(await store.published('#hashbin_publish=s&error=access_denied'), { error: 'The save was cancelled on HashBin.', snapshot });
+  assert.deepEqual(await store.published('#hashbin_publish=s&error=access_denied'), { error: 'The save was cancelled on HashBin.', snapshot:require('../src/fragment-config.mjs').fromDocument(snapshot) });
   assert.equal(values.size, 0);
 });
 

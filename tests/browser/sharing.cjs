@@ -21,7 +21,7 @@ async function check(engine) {
     await page.goto(base+'#'+encodeURIComponent('digraph{a->b}'));
     await page.waitForFunction(()=>document.querySelectorAll('#review svg g.node').length===2,null,{timeout:120000});
     await page.locator('#share').click();
-    const sourceLink = await page.locator('#shareurl').inputValue();
+    const sourceLink = await page.locator('#share-link').inputValue();
     for (const [name, result, expected] of [
       ['proxy timeout',{status:522,body:'error code: 522'},/AllOrigins .*HTTP 522.*Retry later/],
       ['rate limit',{json:{contents:'Error: rate limit exceeded',status:{http_code:502}}},/is.gd .*rate limit exceeded.*Wait at least one minute/],
@@ -33,34 +33,33 @@ async function check(engine) {
       ['untrusted provider text',{json:{contents:'Error: <img src=x onerror=alert(1)>'}},/is.gd .*<img/]
     ]) {
       response = result;
-      await page.locator('#shorten-share').click();
-      await page.waitForFunction(()=>!document.querySelector('#shorten-share').disabled);
+      await page.locator('#share-shorten').click();
+      await page.waitForFunction(()=>!document.querySelector('#share-shorten').disabled);
       const message = await page.locator('#share-status').textContent();
       assert.match(message,expected,name);
       assert.match(message,/source link above is still ready to copy/);
-      assert.equal(await page.locator('#shareurl').inputValue(),sourceLink,name);
+      assert.equal(await page.locator('#share-link').inputValue(),sourceLink,name);
       assert.equal(await page.locator('#share-status img').count(),0);
     }
     await context.setOffline(true);
     const beforeOffline = requestCount;
-    await page.locator('#shorten-share').click();
-    await page.waitForFunction(()=>!document.querySelector('#shorten-share').disabled);
+    await page.locator('#share-shorten').click();
+    await page.waitForFunction(()=>!document.querySelector('#share-shorten').disabled);
     assert.match(await page.locator('#share-status').textContent(),/offline.*Reconnect/);
     assert.equal(requestCount,beforeOffline);
     await context.setOffline(false);
     response = {json:{contents:'https://is.gd/example'}};
-    await page.locator('#shorten-share').click();
+    await page.locator('#share-shorten').click();
     await page.waitForFunction(()=>document.querySelector('#share-status').textContent==='Short link ready.');
-    assert.equal(await page.locator('#shareurl').inputValue(),'https://is.gd/example');
-    await page.locator('#share').click();
+    assert.equal(await page.locator('#share-link').inputValue(),'https://is.gd/example');
+    await page.locator('#share-dialog .fk-close').click();await page.locator('#share').click();
     response = 'pending';
-    await page.locator('#shorten-share').click();
+    await page.locator('#share-shorten').click();
     for (let i=0;i<100&&!pendingRoute;i++) await new Promise(resolve=>setTimeout(resolve,20));
     assert.ok(pendingRoute,'pending proxy request');
-    await page.evaluate(()=>ace.edit('editor').setValue('digraph{newer->edit}',-1));
+    await page.locator('#share-dialog .fk-close').click();await page.evaluate(()=>ace.edit('editor').setValue('digraph{newer->edit}',-1));
     await pendingRoute.fulfill({status:522,body:'late error'}).catch(()=>{});
-    assert.equal(await page.locator('#share-status').textContent(),'');
-    assert.equal(await page.locator('#shareurl').inputValue(),'');
+    assert.equal(await page.locator('#share-dialog').isVisible(),false);await page.locator('#share').click();assert.ok((await page.locator('#share-link').inputValue()).includes('compressed='));assert.equal(await page.locator('#share-status').textContent(),'');
     assert.deepEqual(errors,[]);
     console.log(engine+': shortening diagnostics, source-link fallback, retry and stale-error checks passed');
   } finally { await browser.close(); }

@@ -1,0 +1,12 @@
+{
+  "slug": "manim",
+  "name": "ManimOnline",
+  "storagePrefix": "manimonline",
+  "canonicalOrigin": "https://manim.hashbin.page/",
+  "recoveryOrigin": "https://curtcox.github.io/ManimOnline/",
+  "repo": "curtcox/ManimOnline",
+  "docs": "https://curtcox.github.io/ManimOnline/docs/",
+  "gallery": "https://curtcox.github.io/ManimOnline/gallery.html",
+  "documentType": "manim-editor",
+  "sandboxBootstrapHash": "sha256-IMEqdP+AkCKdxhM3X7mQM4pV/chykJXPvdtndD+XeH8="
+}

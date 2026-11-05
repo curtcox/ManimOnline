@@ -1,10 +1,34 @@
+import {LocalDrafts,RenderScheduler,HashBinPanel,createShell,mountMobileTabs,createShareDialog,createQrDialog,readResponse,text} from '../vendor/fragment-kit-v0.3.3/src/index.js';
+import {config,type,urlState,HashBinDocuments,HashBinStore,ShareLinks,ShareClient,LZString,fromDocument,loadHashBinSDK} from './fragment-config.mjs';
+import {initOffline} from './offline-client.mjs';
+Object.assign(globalThis,{HashBinDocuments,HashBinStore,ShareLinks,ShareClient,LZString,loadHashBinSDK});
+const shell=createShell({config});
+shell.header.querySelector('.fk-brand').href=new URL('./',location.href).href;
+shell.header.querySelector('.fk-more').id='more-toggle';
+const oldMore=document.querySelectorAll('#more-toggle')[1];oldMore.remove();
+const options=document.getElementById('options');
+for(const id of ['shareurl','shorten-share','share-status','hashbin-save','hashbin-cid','hashbin-load','hashbin-status','hashbin-dialog','offline-status','offline-action','view-tabs'])document.getElementById(id)?.remove();
+shell.drawer.body.append(options);shell.status.id='app-status';
+const oldGallery=document.getElementById('sample-gallery'),resourceGallery=[...shell.drawer.body.querySelectorAll('a')].find(link=>link.textContent==='Gallery ↗');resourceGallery.id='sample-gallery';resourceGallery.href=oldGallery.getAttribute('href');oldGallery.remove();
+const workspace=document.createElement('main');workspace.id='workspace';
+for(const id of ['editor-toggle','editor','splitter','review','status'])workspace.append(document.getElementById(id));
+document.body.append(workspace);
+document.querySelector('.github-fork-ribbon-wrapper')?.remove();
+shell.toolbar.append(document.querySelector('.render-controls.phone-bar'),document.getElementById('type-indicator'));
+const shareButton=document.getElementById('share');shell.toolbar.append(shareButton);
+const qrButton=document.createElement('button');qrButton.id='qr';qrButton.textContent='QR';shell.toolbar.append(qrButton);
+const tabBar=document.createElement('div');tabBar.id='panel-tabs';shell.toolbar.after(tabBar);
+let tabs;
+const resizeWorkspace=()=>document.documentElement.style.setProperty('--workspace-top',(tabBar.getBoundingClientRect().bottom)+'px');
+new ResizeObserver(resizeWorkspace).observe(document.body);new ResizeObserver(resizeWorkspace).observe(shell.toolbar);
+let autoRun=true,navigationRevision=0,applying=false,qrSave=false;
 /* Editor orchestration, loaded last so every helper script is available. Indentation is kept from its inline origin. */
     const editorElement = document.getElementById('editor');
     const reviewElement = document.getElementById('review');
     const optionsElement = document.getElementById('options');
     // Wrapped controls must not cover the preview when the panel is narrow.
     new ResizeObserver(() => {
-      reviewElement.style.top = `${optionsElement.offsetHeight}px`;
+      reviewElement.style.top = '0px';
       resizeSVG();
     }).observe(optionsElement);
     const toggleBtn = document.getElementById('toggle-btn');
@@ -20,30 +44,16 @@
     let currentSplitPercentage = 50;
     // Keep in sync with the phone @media rule above.
     const mobileLayout = window.matchMedia('(max-width: 760px), (max-height: 500px)');
-    const viewPreview = document.getElementById('view-preview');
-    const viewCode = document.getElementById('view-code');
     const moreToggle = document.getElementById('more-toggle');
     function updateToggleLabel() {
       toggleBtn.textContent = isCollapsed ? '▶' : '◀';
       toggleBtn.setAttribute('aria-expanded', String(!isCollapsed));
       toggleBtn.setAttribute('aria-label', isCollapsed ? 'Show code editor' : 'Hide code editor');
-      viewPreview.setAttribute('aria-pressed', String(isCollapsed));
-      viewCode.setAttribute('aria-pressed', String(!isCollapsed));
       ace.edit('editor').getSession().setUseWrapMode(mobileLayout.matches);
     }
     mobileLayout.addEventListener('change', updateToggleLabel);
-    // On phones Preview and Code are tabs: the collapsed editor means the preview is showing.
-    function showCode(visible) {
-      if (visible === isCollapsed) toggleBtn.click();
-    }
-    viewPreview.addEventListener('click', () => showCode(false));
-    viewCode.addEventListener('click', () => showCode(true));
-    function setMoreOpen(open) {
-      optionsElement.classList.toggle('more-open', open);
-      moreToggle.setAttribute('aria-expanded', String(open));
-      moreToggle.textContent = open ? 'Less' : 'More';
-    }
-    moreToggle.addEventListener('click', () => setMoreOpen(!optionsElement.classList.contains('more-open')));
+    function showCode(visible) { if(mobileLayout.matches){tabs?.select(visible?0:1);return;}if (visible === isCollapsed) toggleBtn.click(); }
+    function setMoreOpen(open) { if(open&&!shell.drawer.dialog.open)shell.drawer.open();else if(!open)shell.drawer.dialog.close(); }
     new ResizeObserver(() => {
       ace.edit('editor').resize();
       resizeSVG();
@@ -145,7 +155,7 @@
       setTimeout(resizeSVG, 300);
     });
     // Phone visitors mostly watch, so they start on the preview.
-    if (mobileLayout.matches) toggleBtn.click();
+
     updateToggleLabel();
 
     window.addEventListener('resize', resizeSVG);
@@ -230,7 +240,6 @@
         engineEl = document.querySelector("#engine select"),
         rawEl = document.querySelector("#raw input"),
         shareEl = document.querySelector("#share"),
-        shareURLEl = document.querySelector("#shareurl"),
         errorEl = document.querySelector("#error");
 
       const renderAnimationButton = document.getElementById('render-animation');
@@ -248,24 +257,22 @@
       const storage = kind => { try { return window[kind]; } catch (_) { return null; } };
       const hashbinStore = new HashBinStore({
         clientId: document.querySelector('meta[name="hashbin-client-id"]').content,
-        redirectUri: location.origin + location.pathname.replace(/index\.html$/, ''),
-        storage: storage('localStorage'), transactionStorage: storage('sessionStorage')
+        legacyStorage: storage('localStorage'), transactionStorage: storage('sessionStorage')
       });
       function sourceSnapshot() {
         const src = editor.getValue();
         const type = rendererMode.value === 'auto' ? ContentDetector.detect(src).type : rendererMode.value;
-        return { src, type, scene: sceneNameInput.value, engine: engineEl.value,
+        return { src, autorun:autoRun, type: type==='unknown'?'graphviz':type, mode:rendererMode.value, scene: sceneNameInput.value, engine: engineEl.value,
           outputFormat: formatEl.value, pos: modlPositions };
       }
-      const hashbinPanel = new HashBinPanel({ store: hashbinStore, getSnapshot: sourceSnapshot,
+      const hashbinPanel = new HashBinPanel({ store: hashbinStore, urlState, container:shell.drawer.body, getSnapshot: sourceSnapshot,
         getFingerprint: currentShareFingerprint,
-        onLoad: applyLoadedSource,
+        onLoad: (doc,cid)=>applyLoadedSource(doc,cid,{cancel:false}),
         onSaved: (cid, fingerprint, link) => {
+          urlState.cancel();lastOpened=link;
           savedHashbin = { cid, fingerprint };
           history.pushState(null, '', link);
-          clearShare();
-          shareURLEl.style.display = 'inline';
-          shareURLEl.value = link;
+          clearShare();if(qrSave){qrSave=false;hashbinPanel.dialog.close();qrDialog.open(link);}
         }
       });
       // Series QR codes and gallery samples link to the video chapter that explains them.
@@ -280,67 +287,33 @@
       }
       // Typing marks unsaved work; loads and saves clear it, so links never silently replace it.
       const drafts = new LocalDrafts({storage:storage('localStorage'),key:'manimonline:draft'});
-      drafts.mount(document.getElementById('options'), snapshot => { applyLoadedSource(snapshot); });
-      function applyLoadedSource(snapshot, cid = null) {
-        drafts.opened();
-        showVideoLink(cid && globalThis.VideoLinks?.snippets[cid]);
-        const url = new URL(location.href);
-        for (const key of ['example', 'raw', 'compressed', 'url', 'type', 'scene', 'engine', 'format', 'modlpos']) url.searchParams.delete(key);
-        if (snapshot.type) url.searchParams.set('type', snapshot.type === 'graphviz' ? 'dot' : snapshot.type);
-        url.hash = cid || encodeURIComponent(snapshot.src);
-        history.replaceState(null, '', url);
-        modlPositions = HashBinDocuments.positions(snapshot.pos);
-        sceneNameInput.value = snapshot.scene || '';
-        if (['dot','circo','fdp','nop','nop2','neato','sfdp','twopi','osage','patchwork'].includes(snapshot.engine)) engineEl.value = snapshot.engine;
-        else engineEl.value = 'dot';
-        if (['svg','png','json','xdot','plain','ps'].includes(snapshot.outputFormat)) formatEl.value = snapshot.outputFormat;
-        else formatEl.value = 'svg';
-        editor.setValue(snapshot.src, -1);
-        detectAndUpdateType();
-        savedHashbin = cid ? { cid, fingerprint: currentShareFingerprint() } : null;
-        render();
+      drafts.mount(shell.drawer.body, snapshot => { applyLoadedSource(snapshot); });
+      function applyLoadedSource(value, cid = null, {run=autoRun,write=true,cancel=true}={}) {
+        const snapshot=fromDocument(value);
+        if(cancel){navigationRevision++;hashbinPanel.cancelLoad();}urlState.cancel();scheduler.cancel();exampleLoader.cancel();invalidateRender();
+        autoRun=run;applying=true;drafts.opened();showVideoLink(cid&&globalThis.VideoLinks?.snippets[cid]);
+        modlPositions=HashBinDocuments.positions(snapshot.pos);sceneNameInput.value=snapshot.scene;engineEl.value=snapshot.engine;formatEl.value=snapshot.outputFormat;
+        rendererMode.value=snapshot.mode;
+        editor.setValue(snapshot.src,-1);applying=false;detectAndUpdateType();
+        savedHashbin=cid?{cid,fingerprint:currentShareFingerprint()}:null;
+        if(write)updateState();
+        if(autoRun)render();
       }
-      const shareClient = new ShareClient();
-      const shortenShare = document.getElementById('shorten-share');
-      const shareStatus = document.getElementById('share-status');
-      let shareSnapshot = null;
-      let shareFingerprint = '';
       function currentShareFingerprint() {
-        return JSON.stringify([editor.getSession().getDocument().getValue(),
-          rendererMode.value, sceneNameInput.value, engineEl.value, formatEl.value, modlPositions]);
+        return JSON.stringify([editor.getSession().getDocument().getValue(),rendererMode.value,sceneNameInput.value,engineEl.value,formatEl.value,modlPositions]);
       }
-      function clearShare() {
-        shareClient.cancel();
-        shareSnapshot = null;
-        shareFingerprint = '';
-        shareURLEl.value = '';
-        shareURLEl.style.display = 'none';
-        shortenShare.hidden = true;
-        shortenShare.disabled = false;
-        shareStatus.textContent = '';
-      }
-      shortenShare.addEventListener('click', async () => {
-        if (!shareSnapshot) return;
-        const snapshot = shareSnapshot;
-        shortenShare.disabled = true;
-        shareStatus.textContent = 'Shortening link…';
-        const result = await shareClient.shorten(snapshot);
-        if (snapshot !== shareSnapshot || !result) return;
-        shareURLEl.value = result.url;
-        shortenShare.disabled = false;
-        shareStatus.textContent = result.shortened ? 'Short link ready.' : result.error.message;
-      });
+      function clearShare() {}
+      hashbinPanel.dialog.addEventListener('close',()=>{qrSave=false;});
+      const shareDialog=createShareDialog({config,urlState,container:document.body,getSnapshot:()=>urlState.documents.normalize(sourceSnapshot()),onSave:()=>{shareDialog.dialog.close();shell.drawer.dialog.close();hashbinPanel.openSave();}});
+      const qrDialog=createQrDialog({config,urlState,onLoad:outcome=>openURL(outcome.kind==='cid'?urlState.link(location.href,outcome.cid):outcome.href),onSave:()=>{qrSave=true;qrDialog.dialog.close();return hashbinPanel.openSave();}});
+      shareDialog.dialog.querySelector('p[role=status]').id='share-status';shareDialog.dialog.querySelectorAll('button').forEach(button=>{if(button.textContent==='Shorten link')button.id='share-shorten';});
+      shareEl.addEventListener('click',()=>{shareDialog.open();const run=shareDialog.dialog.querySelector('#share-run');run.checked=autoRun;run.dispatchEvent(new Event('change'));});
+      qrButton.addEventListener('click',()=>qrDialog.open(urlState.build(sourceSnapshot(),{run:autoRun,view:new URL(location.href).searchParams.get('view')||undefined}).href));
       const rendererMode = document.getElementById('renderer-mode');
       let exportingPNG = false;
       const frameFormat = document.getElementById('manim-export-format');
       const exportStatus = document.getElementById('export-status');
-      window.addEventListener('offline-before-reload', () => {
-        const url = new URL(location.href);
-        for (const parameter of ['example', 'raw', 'compressed', 'url']) url.searchParams.delete(parameter);
-        url.hash = encodeURIComponent(editor.getSession().getDocument().getValue());
-        applySceneToURL(url);
-        history.replaceState(null, '', url);
-      });
+      window.addEventListener('offline-before-reload',()=>{drafts.attempt(sourceSnapshot());urlState.cancel();updateState();});
       let videoExport = null;
       function saveBlob(blob, name) {
         const url = URL.createObjectURL(blob);
@@ -452,10 +425,11 @@
 
       const exampleStatus = document.getElementById('example-status');
       const exampleLoader = new ExampleLoader({
+        fetchSource:async url=>{const response=await fetch(url);if(!response.ok)return response;const source=text(await readResponse(response,config.maxBytes));return {ok:true,text:async()=>source};},
         onStatus: message => { exampleStatus.textContent = message; },
         onError: error => { exampleStatus.textContent = error.message; },
         onLoad: (source, example) => {
-          savedHashbin = null;
+          drafts.opened();savedHashbin = null;rendererMode.value='auto';autoRun=true;
           showVideoLink(globalThis.VideoLinks?.examples[example.id]);
           modlPositions = Object.create(null);
           sceneNameInput.value = '';
@@ -466,7 +440,7 @@
           }
           url.hash = encodeURIComponent(source);
           history.replaceState(null, '', url);
-          editor.getSession().setValue(source);
+          applying=true;editor.getSession().setValue(source);applying=false;updateState();
           if (example.video && mobileLayout.matches) showSampleVideo(example);
           else render();
         }
@@ -504,7 +478,7 @@
 
       function invalidateRender() {
         hashbinPanel.cancelLoad();
-        if (shareSnapshot && shareFingerprint !== currentShareFingerprint()) clearShare();
+
         renderRevision++;
         if (videoExport) videoExport.abort();
         exportStatus.textContent = '';
@@ -517,6 +491,7 @@
 
       const scheduler = new RenderScheduler({ detect: detectAndUpdateType, render });
       renderAnimationButton.addEventListener('click', () => {
+        autoRun=true;updateState();
         if (mobileLayout.matches) showCode(false);
         render();
       });
@@ -529,17 +504,7 @@
         show_status('Render cancelled. Choose Render animation to retry.');
         renderAnimationButton.focus();
       });
-      rendererMode.addEventListener('change', () => {
-        exampleLoader.cancel();
-        const url = new URL(location.href);
-        // Preserve the latest edits even when the previous render failed.
-        for (const parameter of ['example', 'raw', 'compressed', 'url']) url.searchParams.delete(parameter);
-        url.hash = encodeURIComponent(editor.getSession().getDocument().getValue());
-        if (rendererMode.value === 'auto') url.searchParams.delete('type');
-        else url.searchParams.set('type', rendererMode.value === 'graphviz' ? 'dot' : rendererMode.value);
-        history.replaceState(null, '', url);
-        render();
-      });
+      rendererMode.addEventListener('change', () => {navigationRevision++;exampleLoader.cancel();updateState();if(autoRun)render();else detectAndUpdateType();});
 
       function show_status(text, hide) {
         hide = hide || 0;
@@ -599,30 +564,12 @@
         svgImage.src = svgXml;
       }
 
-      function copyShareURL(e) {
-        clearShare();
-        const code = editor.getSession().getDocument().getValue();
-        const mode = rendererMode.value;
-        shareSnapshot = ShareLinks.build({ url: location.href, code, mode,
-          type: mode === 'auto' ? ContentDetector.detect(code).type : mode,
-          scene: sceneNameInput.value, engine: engineEl.value, format: formatEl.value,
-          positions: modlPositions,
-          compress: typeof LZString === 'undefined' ? null : text => LZString.compressToEncodedURIComponent(text) });
-        shareFingerprint = currentShareFingerprint();
-        shareURLEl.style.display = 'inline';
-        shareURLEl.value = shareSnapshot.fallback;
-        shareURLEl.select();
-        shortenShare.hidden = false;
-        shareStatus.textContent = 'Source link ready to copy.';
-      }
-
       // Detect content type and update UI
       function detectAndUpdateType() {
         const code = editor.getSession().getDocument().getValue();
 
         // Check URL override first
-        const urlType = ContentDetector.getTypeFromURL();
-        rendererMode.value = urlType || 'auto';
+        const urlType = rendererMode.value==='auto'?null:rendererMode.value;
         if (urlType) {
           updateTypeIndicator(urlType);
           return urlType;
@@ -909,16 +856,7 @@
       }
 
       function updateState() {
-        const updatedUrl = new URL(window.location)
-        for (const parameter of ['example', 'raw', 'compressed', 'url', 'modlpos']) updatedUrl.searchParams.delete(parameter);
-        const content = encodeURIComponent(editor.getSession().getDocument().getValue());
-        updatedUrl.hash = savedHashbin?.fingerprint === currentShareFingerprint() ? savedHashbin.cid : content;
-        if (currentType === 'modl' && Object.keys(modlPositions).length) updatedUrl.searchParams.set('modlpos', JSON.stringify(modlPositions));
-        applySceneToURL(updatedUrl);
-        if (currentType === 'graphviz') {
-          updatedUrl.searchParams.set("engine", engineEl.value)
-        }
-        history.replaceState({ "content": content, "type": currentType }, "", updatedUrl.toString())
+        try {urlState.cancel();const href=savedHashbin?.fingerprint===currentShareFingerprint()?urlState.link(location.href,savedHashbin.cid):urlState.build(sourceSnapshot(),{run:autoRun,view:new URL(location.href).searchParams.get('view')||undefined}).href;history.replaceState(null,'',href);lastOpened=href;}catch(error){show_error(error);}
       }
 
       // Set editor theme based on detected type
@@ -926,35 +864,26 @@
 
       // Debounced change handler
       editor.getSession().on("change", function () {
-        exampleLoader.cancel();
-        invalidateRender();
-        sceneNamesList.replaceChildren();
-        scheduler.schedule();
+        if(applying)return;drafts.attempt(sourceSnapshot(),true);hashbinPanel.cancelLoad();navigationRevision++;urlState.cancel();exampleLoader.cancel();
+        invalidateRender();sceneNamesList.replaceChildren();
+        try{lastOpened=urlState.write(sourceSnapshot(),{run:autoRun,view:new URL(location.href).searchParams.get('view')||undefined});}catch(error){show_error(error);return;}
+        if(autoRun)scheduler.schedule();
       });
 
-      window.onpopstate = function (event) {
-        if (event.state != null && event.state.content != undefined) {
-          editor.getSession().setValue(decodeURIComponent(event.state.content));
-        }
-      };
-      editor.commands.on('afterExec', event => { if (!event.command.readOnly) drafts.attempt(sourceSnapshot(),true); });
-      window.addEventListener('hashchange', () => {
-        // Full navigation reuses URL precedence and cancels every stale render/load.
-        drafts.attempt(sourceSnapshot()); hashbinPanel.cancelLoad(); invalidateRender(); scheduler.cancel(); location.reload();
-      });
-
+      window.addEventListener('popstate',()=>openURL(location.href));
+      window.addEventListener('hashchange',()=>openURL(location.href));
+      editor.commands.on('afterExec',event=>{if(!event.command.readOnly)drafts.attempt(sourceSnapshot(),true);});
       sceneNameInput.addEventListener('input', () => {
         exampleLoader.cancel();
         invalidateRender();
-        scheduler.schedule({ detect: false });
+        navigationRevision++;try{lastOpened=urlState.write(sourceSnapshot(),{run:autoRun,view:new URL(location.href).searchParams.get('view')||undefined});}catch(error){show_error(error);return;}if(autoRun)scheduler.schedule({ detect: false });
       });
       sceneNameInput.addEventListener('keydown', event => {
-        if (event.key === 'Enter') render();
+        if (event.key === 'Enter') {autoRun=true;render();}
       });
-      formatEl.addEventListener("change", render);
-      engineEl.addEventListener("change", render);
+      for(const select of [formatEl,engineEl])select.addEventListener('change',()=>{navigationRevision++;updateState();if(autoRun)render();});
       rawEl.addEventListener("change", render);
-      shareEl.addEventListener("click", copyShareURL);
+
 
       HTMLOptionsCollection.prototype.indexOf = function (name) {
         for (let i = 0; i < this.length; i++) {
@@ -965,78 +894,36 @@
         return -1;
       };
 
-      // URL parameter parsing
-      hashbinStore.retireLegacyTokens().catch(() => { /* Retried on the next load. */ });
-      const publishRevision = renderRevision;
-      const published = await hashbinStore.published(location.hash);
-      if (published) {
-        history.replaceState(null, '', location.pathname + location.search);
-        if (publishRevision === renderRevision && published.snapshot) applyLoadedSource(published.snapshot, published.cid || null);
-        hashbinPanel.status.textContent = published.error || 'Saved to HashBin.';
-        setMoreOpen(true);
-        if (published.snapshot) return;
+      tabs=mountMobileTabs({container:tabBar,panels:[{label:'Code',panel:editorElement},{label:'Preview',panel:reviewElement}],onChange:()=>{resizeWorkspace();requestAnimationFrame(()=>{editor.resize();resizeSVG();});}});
+      tabs.select(1);
+      let lastOpened;
+      async function openURL(href,{initial=false}={}) {
+        if(!initial&&lastOpened===href)return;lastOpened=href;
+        const revision=++navigationRevision;urlState.cancel();scheduler.cancel();exampleLoader.cancel();invalidateRender();
+        try{
+          const intent=urlState.parse(href);autoRun=intent.run;
+          document.body.classList.toggle('presentation',new URL(href).searchParams.has('presentation')||Boolean(intent.view));
+          if(intent.kind==='publish'){
+            const result=await hashbinStore.published(intent.hash);if(revision!==navigationRevision)return;
+            if(result?.snapshot)applyLoadedSource(result.snapshot,result.cid??null,{run:intent.run&&result.snapshot.autorun,cancel:false});
+            if(result){hashbinPanel.status.textContent=result.error||'Saved to HashBin.';setMoreOpen(true);}
+          }else if(intent.kind==='source')applyLoadedSource(intent.doc,null,{run:intent.run,cancel:false});
+          else if(intent.kind==='example'){drafts.opened();await exampleLoader.load(intent.id);}
+          else if(intent.kind==='cid'){
+            hashbinPanel.status.textContent='Loading from HashBin…';
+            const doc=await hashbinStore.load(intent.cid);if(revision!==navigationRevision)return;
+            applyLoadedSource(doc,intent.cid,{run:intent.run,cancel:false});hashbinPanel.status.textContent='Loaded from HashBin.';
+          }else if(intent.kind==='remote'){
+            const response=await fetch(intent.url);if(!response.ok)throw Error('Source load failed (HTTP '+response.status+').');
+            const source=text(await readResponse(response,config.maxBytes));if(revision!==navigationRevision)return;
+            const query=new URL(href);query.searchParams.delete('url');query.hash=encodeURIComponent(source);
+            applyLoadedSource(urlState.parse(query.href).doc,null,{run:intent.run,cancel:false});
+          }else if(initial){rendererMode.value='auto';detectAndUpdateType();if(autoRun)render();}
+        }catch(error){if(revision===navigationRevision){show_error(error);hashbinPanel.status.textContent=error.message;}}
       }
-      const params = new URLSearchParams(location.search.substring(1));
-      try { modlPositions = HashBinDocuments.positions(JSON.parse(params.get('modlpos') || '{}')); } catch (_) { /* Ignore invalid layout. */ }
-      sceneNameInput.value = params.get('scene') || '';
-
-      if (params.has('engine')) {
-        const engine = params.get('engine');
-        const index = engineEl.options.indexOf(engine);
-        if (index > -1) {
-          engineEl.selectedIndex = index;
-        }
-      }
-
-      if (params.has('format')) {
-        const format = params.get('format');
-        const index = formatEl.options.indexOf(format);
-        if (index > -1) {
-          formatEl.selectedIndex = index;
-        }
-      }
-
-      if (params.has("presentation")) {
-        document.body.classList.add("presentation");
-      }
-
-      if (params.has('example')) {
-        await exampleLoader.load(params.get('example'));
-      } else if (params.has('raw')) {
-        editor.getSession().setValue(params.get('raw'));
-        render();
-      } else if (params.has('compressed')) {
-        const compressed = params.get('compressed');
-        editor.getSession().setValue(LZString.decompressFromEncodedURIComponent(compressed));
-        render();
-      } else if (params.has('url')) {
-        const url = params.get('url');
-        const revision = renderRevision;
-        let ok = false;
-        fetch(url)
-          .then(res => {
-            ok = res.ok;
-            return res.text();
-          })
-          .then(res => {
-            if (revision !== renderRevision) return;
-            if (!ok) {
-              throw { message: res };
-            }
-            editor.getSession().setValue(res);
-            render();
-          }).catch(e => {
-            if (revision === renderRevision) show_error(e);
-          });
-      } else if (HashBinDocuments.isCID(location.hash.slice(1))) {
-        hashbinPanel.load(location.hash);
-      } else if (location.hash.length > 1) {
-        editor.getSession().setValue(decodeURIComponent(location.hash.substring(1)));
-        render();
-      } else if (editor.getValue()) {
-        // Initial render with default content
-        detectAndUpdateType();
-        render();
-      }
-
+      globalThis.ManimOnline={editor,snapshot:sourceSnapshot,openURL,render};
+      document.body.dataset.ready='true';
+      hashbinStore.retireLegacyTokens().catch(()=>{});
+      initOffline(shell);
+      await openURL(location.href,{initial:true});
     })(document);

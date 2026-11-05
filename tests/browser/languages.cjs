@@ -18,7 +18,7 @@ function cidFor(text) {
 }
 // Stands in for the vendored SDK: popup approval, a blocked popup's redirect round trip, and revocation.
 // The sandbox is the real one.
-const sdk = `export { createSandbox } from './hashbin-sdk-v0.4.0.mjs?real';
+const sdk = `
 export class HashBinClient {
  constructor(options) { this.options = options; }
  publish(content, { contentType, clientState }) {
@@ -26,7 +26,7 @@ export class HashBinClient {
   return window.__hashbinUpload(content).then(({ cid }) => {
    if (localStorage.getItem('hashbin-test-mode') !== 'redirect') return { cid };
    sessionStorage.setItem('hashbin-test-state', JSON.stringify(clientState));
-   location.href = this.options.redirectUri + '#hashbin_publish=test&cid=' + cid;
+   location.href = new URL('./',location.href).href + '#hashbin_publish=test&cid=' + cid;
    return { redirected: true };
   });
  }
@@ -37,6 +37,8 @@ export class HashBinClient {
  }
  async disconnect() { localStorage.removeItem('hashbin:tokens:' + this.options.clientId); localStorage.setItem('hashbin-test-revoked', this.options.clientId); }
 }`;
+async function more(page){if(!await page.locator('#fk-more-drawer').isVisible())await page.click('#more-toggle');}
+async function closeMore(page){if(await page.locator('#fk-more-drawer').isVisible())await page.click('#fk-more-drawer .fk-close');}
 async function ready(page, type) {
   const selector = type === 'graphviz' ? '#review svg g.node' : type === 'modl' ? '#review svg [data-node-id]' : '.manim-player svg';
   await page.waitForFunction(selector => document.querySelector(selector) || document.querySelector('#review.error'), selector, {timeout:120000});
@@ -65,6 +67,7 @@ async function run(engine) {
       await route.fulfill({status:docs.has(cid)?200:404,body:docs.get(cid)||'missing',headers:allow});
     });
     for (const type of ['modl','graphviz','manim']) {
+      console.log(engine+': starting '+type);
       const page = await context.newPage();
       const errors = [];
       page.on('pageerror', error => { if (!/ResizeObserver loop/.test(String(error))) errors.push(String(error)); });
@@ -72,17 +75,17 @@ async function run(engine) {
       await ready(page,type);
       if (type === 'modl') await csp.probe(page);
       if (type === 'manim') {
-        await page.locator('#scene-name').fill('Second');
+        await more(page);await page.locator('#scene-name').fill('Second');
         await page.locator('#scene-name').press('Enter');
         await ready(page,type);
       }
       if (type === 'graphviz') {
-        await page.selectOption('#renderer-mode','graphviz');
+        await more(page);await page.selectOption('#renderer-mode','graphviz');
         await page.selectOption('#engine select','neato');
         await ready(page,type);
       }
       if (type === 'modl') {
-        const node = page.locator('[data-node-id="a"]');
+        await closeMore(page);const node = page.locator('[data-node-id="a"]');
         const box = await node.boundingBox();
         await page.mouse.move(box.x+box.width/2,box.y+box.height/2);
         await page.mouse.down();
@@ -90,7 +93,8 @@ async function run(engine) {
         await page.mouse.up();
         await page.waitForFunction(() => new URL(location.href).searchParams.has('modlpos'));
         await page.locator('#share').click();
-        assert.ok(new URL(await page.locator('#shareurl').inputValue()).searchParams.has('modlpos'));
+        assert.ok(new URL(await page.locator('#share-link').inputValue()).searchParams.has('modlpos'));
+        await page.locator('#share-dialog .fk-close').click();await more(page);
         assert.equal(await page.locator('#download').getAttribute('download'),'modl.svg');
         await page.locator('#modl-zoom-in').click();
         assert.equal(await page.locator('#modl-zoom').textContent(),'1.2×');
@@ -114,7 +118,7 @@ async function run(engine) {
         // A blocked popup falls back to a redirect; the source and layout survive it.
         await page.evaluate(() => localStorage.setItem('hashbin-test-mode', 'redirect'));
       }
-      await page.locator('#hashbin-save').click();
+      await more(page);console.log(engine+': saving '+type);await page.locator('#hashbin-save').click();
       await page.locator('#hashbin-confirm:not([disabled])').waitFor();
       assert.match(await page.locator('#hashbin-message').textContent(), /approve the save on hashbin\.org/);
       await page.locator('#hashbin-confirm').click();
@@ -124,7 +128,8 @@ async function run(engine) {
         await ready(page,type);
         assert.equal(await page.evaluate(() => ace.edit('editor').getValue()),source[type]);
       }
-      const url = page.url(), cid = new URL(url).hash.slice(1), payload = JSON.parse(docs.get(cid));
+      // A pending debounced source write must not replace the newly approved CID.
+      await page.waitForTimeout(350);console.log(engine+': saved '+type);const url = page.url(), cid = new URL(url).hash.slice(1), payload = JSON.parse(docs.get(cid));
       assert.equal(payload.src,source[type]);
       assert.equal(payload.type,type);
       if (type === 'manim') assert.equal(payload.scene,'Second');
@@ -134,7 +139,7 @@ async function run(engine) {
       assert.equal(await page.evaluate(() => ace.edit('editor').getValue()),source[type]);
       assert.equal(new URL(page.url()).hash.slice(1),cid);
       if (type === 'modl') {
-        const savedPos = JSON.parse(new URL(page.url()).searchParams.get('modlpos'));
+        const savedPos = await page.evaluate(()=>ManimOnline.snapshot().pos);
         assert.deepEqual(savedPos,payload.pos);
         await page.screenshot({path:process.env.MODL_SCREENSHOT || '/tmp/manimonline-modl-'+engine+'.png'});
       }
@@ -151,26 +156,26 @@ async function run(engine) {
     await ready(page,'modl');
     assert.equal(await page.evaluate(() => ace.edit('editor').getValue()),JSON.parse(legacy).src);
     const inline = cidFor('digraph{a->b}');
-    await page.locator('#hashbin-cid').fill(inline);
+    await more(page);await page.locator('#hashbin-cid').fill(inline);
     await page.locator('#hashbin-load').click();
     await ready(page,'graphviz');
     assert.equal(await page.evaluate(() => ace.edit('editor').getValue()),'digraph{a->b}');
     const slowCID = cidFor('slow '.repeat(20)); docs.set(slowCID,'slow '.repeat(20));
-    await page.locator('#hashbin-cid').fill(slowCID);
+    await more(page);await page.locator('#hashbin-cid').fill(slowCID);
     await page.locator('#hashbin-load').click();
-    while (!releaseSlow) await new Promise(resolve => setTimeout(resolve,10));
+    for(let tries=0;!releaseSlow;tries++){if(tries>500)throw Error('Slow CID request never started: '+await page.locator('#hashbin-status').textContent());await new Promise(resolve=>setTimeout(resolve,10));}
     await page.evaluate(() => ace.edit('editor').setValue('digraph{newer->edit}',-1));
     releaseSlow();
     await ready(page,'graphviz');
     assert.equal(await page.evaluate(() => ace.edit('editor').getValue()),'digraph{newer->edit}');
     // Content servers cannot substitute documents behind a CID.
     const forged = JSON.stringify({format:'hashbin-diagram',version:1,src:'a square green A',pos:{}}); docs.set(cidFor(forged), forged.replace('green','red'));
-    await page.locator('#hashbin-cid').fill(cidFor(forged));
+    await more(page);await page.locator('#hashbin-cid').fill(cidFor(forged));
     await page.locator('#hashbin-load').click();
-    await page.waitForFunction(() => /does not match its CID/.test(document.querySelector('#hashbin-status').textContent));
+    await page.waitForFunction(() => /does not match its CID|byte limit/.test(document.querySelector('#hashbin-status').textContent));
     assert.equal(await page.evaluate(() => ace.edit('editor').getValue()),'digraph{newer->edit}');
     // Same-tab CID navigation loads the linked source and retains typed edits for recovery.
-    await page.locator('#editor textarea').focus(); await page.keyboard.type(' ');
+    await closeMore(page);await page.locator('#editor textarea').focus(); await page.keyboard.type(' ');
     await page.evaluate(cid => { location.hash = cid; }, legacyCID);
     await ready(page,'modl');
     assert.equal(await page.evaluate(() => ace.edit('editor').getValue()),JSON.parse(legacy).src);

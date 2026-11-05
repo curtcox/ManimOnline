@@ -1,120 +1,22 @@
-/* Gallery playback reads bundled media only; Python stays in the editor. */
-(() => {
-  const grid = document.getElementById('sample-grid');
-  const search = document.getElementById('sample-search');
-  const type = document.getElementById('sample-type');
-  // Filtering is live; the form never submits.
-  document.querySelector('form.filters')?.addEventListener('submit', event => event.preventDefault());
-  const names = { manim: 'MANIM ANIMATION', graphviz: 'GRAPHVIZ DOT', modl: 'MODL DIAGRAM' };
-  const cards = [];
-  // A previous service worker may supply a catalog containing only id/label/path.
-  // Derive the gallery fields instead of making links and images from undefined.
-  for (const entry of ExampleCatalog) {
-    const type = entry.type || (entry.path.endsWith('.py') ? 'manim' : entry.path.endsWith('.dot') ? 'graphviz' : 'modl');
-    const example = { ...entry, type,
-      cover: entry.cover || `gallery/previews/${entry.id}.png`,
-      video: entry.video ?? (type === 'manim' ? `gallery/previews/${entry.id}.mp4` : null),
-      editorURL: entry.editorURL || `./?url=${encodeURIComponent(entry.path)}`
-    };
-    const card = document.createElement('article');
-    card.className = 'card';
-    card.id = example.id;
-    const preview = document.createElement('div');
-    preview.className = 'preview';
-    const cover = document.createElement('img');
-    cover.src = example.cover;
-    cover.alt = `Preview of ${example.label}`;
-    cover.loading = 'lazy';
-    cover.width = 480;
-    cover.height = 270;
-    preview.appendChild(cover);
-    const details = document.createElement('div');
-    details.className = 'details';
-    const language = document.createElement('p');
-    language.className = 'language';
-    language.textContent = names[example.type];
-    const title = document.createElement('h2');
-    title.textContent = example.label;
-    const load = document.createElement('a');
-    load.className = 'load';
-    load.href = example.editorURL;
-    load.textContent = 'Load in editor →';
-    load.setAttribute('aria-label', `Load ${example.label} in editor`);
-    details.append(language, title);
-    // Older cached galleries load without video-links.js.
-    const lesson = globalThis.VideoLinks?.examples[example.id];
-    if (lesson) {
-      const watch = document.createElement('a');
-      watch.className = 'watch';
-      watch.href = lesson.url;
-      watch.target = '_blank';
-      watch.rel = 'noopener';
-      watch.textContent = `▶ Video: episode ${lesson.episode} · ${lesson.chapter}`;
-      watch.setAttribute('aria-label', `Watch ${lesson.chapter}, Drawing with Code episode ${lesson.episode}, on YouTube`);
-      details.appendChild(watch);
-    }
-    details.appendChild(load);
-    let video;
-    if (example.video) {
-      video = document.createElement('video');
-      video.preload = 'none';
-      video.poster = example.cover;
-      video.controls = true;
-      video.muted = true;
-      video.playsInline = true;
-      video.hidden = true;
-      video.setAttribute('aria-label', `${example.label} animation preview`);
-      const button = document.createElement('button');
-      button.className = 'play';
-      button.type = 'button';
-      button.textContent = '▶ Play preview';
-      button.setAttribute('aria-label', `Play ${example.label} preview`);
-      button.addEventListener('click', () => {
-        video.src = example.video;
-        video.hidden = false;
-        cover.hidden = true;
-        button.hidden = true;
-        video.focus();
-        video.play().catch(() => { /* Native controls allow retry if autoplay is blocked. */ });
-      });
-      video.addEventListener('play', () => {
-        for (const other of grid.querySelectorAll('video')) if (other !== video) other.pause();
-      });
-      video.addEventListener('error', () => {
-        cover.hidden = false;
-        video.hidden = true;
-        button.hidden = false;
-        button.textContent = '↻ Retry preview';
-        if (!details.querySelector('.preview-error')) {
-          const error = document.createElement('p');
-          error.className = 'preview-error';
-          error.setAttribute('role', 'status');
-          error.textContent = 'Preview could not play. Retry, or load the sample in the editor.';
-          details.appendChild(error);
-        }
-      });
-      video.addEventListener('playing', () => details.querySelector('.preview-error')?.remove());
-      preview.append(video, button);
-    }
-    card.append(preview, details);
-    grid.appendChild(card);
-    cards.push({ card, example, video });
-  }
-  function filter() {
-    const query = search.value.trim().toLowerCase();
-    let count = 0;
-    for (const { card, example, video } of cards) {
-      card.hidden = !(type.value === 'all' || example.type === type.value) ||
-        !`${example.label} ${example.type} ${example.id}`.toLowerCase().includes(query);
-      if (card.hidden) video?.pause(); else count++;
-    }
-    document.getElementById('sample-count').textContent = `${count} of ${cards.length} samples`;
-    document.getElementById('no-samples').hidden = count !== 0;
-  }
-  search.addEventListener('input', filter);
-  type.addEventListener('change', filter);
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) for (const { video } of cards) video?.pause();
-  });
-  filter();
-})();
+import{mountGallery}from'../vendor/fragment-kit-v0.3.3/src/index.js';
+const samples=globalThis.ManimGalleryCatalog,container=document.getElementById('gallery');
+// Ordinary example links preserve the app's phone MP4 fast path and older cached editors.
+const state={build:doc=>{const example=samples.find(sample=>sample.document===doc);return{href:new URL(example.editorURL||('./?url='+encodeURIComponent(example.path)),location.href).href};}};
+mountGallery({container,catalog:samples.map(sample=>({...sample,cover:'gallery/covers/'+sample.id+'.png'})),urlState:state});
+container.querySelector('input').id='sample-search';const tags=container.querySelector('select');tags.id='sample-type';tags.options[0].textContent='All languages';
+container.querySelector('[role=status]').id='sample-count';const grid=container.querySelector('.fk-gallery-grid');grid.id='sample-grid';
+const names={manim:'MANIM ANIMATION',graphviz:'GRAPHVIZ DOT',modl:'MODL DIAGRAM'};
+function decorate(){for(const card of grid.children){const example=samples.find(sample=>sample.label===card.querySelector('h2').textContent);if(!example||card.dataset.preview)continue;card.dataset.preview='true';card.id=example.id;card.classList.add('card');
+ const cover=card.querySelector('img'),link=card.querySelector('a'),preview=document.createElement('div');preview.className='preview';preview.append(cover);card.prepend(preview);
+ const details=document.createElement('div');details.className='details';for(const node of [...card.childNodes])if(node!==preview)details.append(node);card.append(details);
+ const language=document.createElement('p');language.className='language';language.textContent=names[example.type];details.prepend(language);link.classList.add('load');link.textContent='Load in editor →';link.setAttribute('aria-label','Load '+example.label+' in editor');
+ const lesson=globalThis.VideoLinks?.examples[example.id];if(lesson){const watch=document.createElement('a');watch.className='watch';watch.href=lesson.url;watch.target='_blank';watch.rel='noopener';watch.textContent='▶ Video: episode '+lesson.episode+' · '+lesson.chapter;link.before(watch);}
+ if(!example.video)continue;const video=document.createElement('video');video.preload='none';video.poster=example.cover;video.controls=true;video.muted=true;video.playsInline=true;video.hidden=true;video.setAttribute('aria-label',example.label+' animation preview');
+ const button=document.createElement('button');button.className='play';button.type='button';button.textContent='▶ Play preview';button.setAttribute('aria-label','Play '+example.label+' preview');
+ button.onclick=()=>{video.src=example.video;video.hidden=false;cover.hidden=true;button.hidden=true;video.focus();video.play().catch(()=>{});};
+ video.onplay=()=>{for(const other of grid.querySelectorAll('video'))if(other!==video)other.pause();};
+ video.onerror=()=>{cover.hidden=false;video.hidden=true;button.hidden=false;button.textContent='↻ Retry preview';if(!details.querySelector('.preview-error')){const error=document.createElement('p');error.className='preview-error';error.setAttribute('role','status');error.textContent='Preview could not play. Retry, or load the sample in the editor.';details.append(error);}};
+ video.onplaying=()=>details.querySelector('.preview-error')?.remove();preview.append(video,button);
+}}
+new MutationObserver(records=>{for(const record of records)for(const node of record.removedNodes)node.querySelector?.('video')?.pause();decorate();}).observe(grid,{childList:true});decorate();
+document.addEventListener('visibilitychange',()=>{if(document.hidden)for(const video of grid.querySelectorAll('video'))video.pause();});

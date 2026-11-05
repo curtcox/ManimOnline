@@ -46,7 +46,7 @@ async function ready(page, type) {
       assert.equal(await page.locator('#minimal video').evaluate(video => video.paused), true);
       console.log(`${engine}: gallery video playback and single-preview playback passed`);
       await page.locator('#sample-search').fill('nothing-matches-this');
-      assert.equal(await page.locator('#no-samples').isVisible(), true);
+      assert.equal(await page.locator('.card').count()===0, true);
       await page.locator('#sample-search').fill('');
       await page.locator('#sample-type').selectOption('graphviz');
       assert.equal(await page.locator('.card:visible').count(), ExampleCatalog.filter(example => example.type === 'graphviz').length);
@@ -56,7 +56,7 @@ async function ready(page, type) {
       assert.equal(await page.locator('#example-picker').count(), 0);
       assert.equal(await page.locator('#sample-gallery').getAttribute('href'), 'gallery.html');
       const popupReady = page.waitForEvent('popup');
-      await page.locator('#sample-gallery').click();
+      await page.click('#more-toggle');await page.locator('#sample-gallery').click();await page.locator('#fk-more-drawer .fk-close').click();
       const popup = await popupReady;
       await popup.waitForSelector('.card');
       assert.equal(await page.evaluate(() => ace.edit('editor').getValue()), sourceFor('dot'));
@@ -74,7 +74,7 @@ async function ready(page, type) {
       }
       console.log(`${engine}: every Graphviz and modl gallery link loaded and rendered`);
       for (const [id, type] of [['modl', 'modl'], ['minimal', 'manim']]) {
-        await page.goto(new URL(`?example=${id}&type=dot&scene=Old#old-source`, base).href);
+        await page.goto(new URL(`?example=${id}&type=dot&scene=Old`, base).href);
         await ready(page, type);
         assert.equal(await page.evaluate(() => ace.edit('editor').getValue()), sourceFor(id));
         assert.equal(await page.locator('#renderer-mode').inputValue(), 'auto');
@@ -133,9 +133,10 @@ async function ready(page, type) {
       mobile.on('request', request => { if (/pyodide|unified-worker/.test(request.url())) pythonRequests.push(request.url()); });
       await mobile.goto(new URL('?example=copy', base).href);
       await mobile.waitForFunction(() => document.querySelector('.sample-video video')?.currentTime > .2);
-      assert.equal(await mobile.locator('#view-preview').getAttribute('aria-pressed'), 'true');
+      assert.equal(await mobile.getByRole('tab',{name:'Preview',exact:true}).getAttribute('aria-selected'), 'true');
       assert.equal(await mobile.locator('.manim-player').count(), 0);
       assert.deepEqual(pythonRequests, [], 'sample video plays without loading Python');
+      await mobile.click('#more-toggle');assert.equal(await mobile.locator('#renderer-mode').isVisible(),true);assert.equal(await mobile.locator('#scene-name').isVisible(),true);assert.equal(await mobile.locator('#manim-export-format').isVisible(),true);await mobile.locator('#fk-more-drawer .fk-close').click();
       await mobile.evaluate(() => ace.edit('editor').setValue(ace.edit('editor').getValue() + '\n', 1));
       await ready(mobile, 'manim');
       assert.equal(await mobile.locator('.sample-video').count(), 0);
