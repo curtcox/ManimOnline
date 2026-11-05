@@ -29,7 +29,7 @@
     "https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pillow-10.2.0-cp312-cp312-pyodide_2024_0_wasm32.whl": "f64cf341b63ea818598febda483c44a39babda536f213eb14381c66e1ab1ff34"
   },
   "prefix": "manimonline-offline",
-  "version": "manimonline-offline-6740f99ef06db2f5",
+  "version": "manimonline-offline-035868e5f82fac2e",
   "assets": [
     "ace/ace.js",
     "ace/mode-dot.js",
@@ -846,7 +846,7 @@
     "src/fragment-config.mjs": "6993f0ad4d5796d0d510a0d467800a400f269a35a9a61cf7bf91bfa7917fecf6",
     "src/gallery-catalog.js": "c82ca459249b323e7c9c736b59af8efb05c8b93f7d7d35f7cd8ed6e750e14edc",
     "src/gallery-kit.css": "af95a96597721947568b14c47c8d548df701610c8f88e413271b59409b57062e",
-    "src/gallery-updates.js": "7db37ea6e27f32c7a1924b3bee5e0cc250eeb09eaee12ba4856836a5c6b4a4a6",
+    "src/gallery-updates.js": "e505d4c48b77c83176b73dd7129c892c2bcf2fce45715ada843c27c55011c24f",
     "src/gallery.css": "edc91c94dd498ef43032288695c9ef53ee92cda8d80818a0e4b586eb078be39d",
     "src/gallery.js": "11689f8de7a76cb1faaeb318c20ce8e4e236d7e2a6a098b4cff0972f37de6e99",
     "src/manim-client.js": "cea6ed64199b5343d82ba0a5d9c3a4b585f79a0f00ff5b4be091a65829bbe820",

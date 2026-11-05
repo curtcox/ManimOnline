@@ -83,6 +83,7 @@ async function run(engine) {
     await editor.evaluate(source => ace.edit('editor').setValue(source, -1), edits);
     modern = true;
     const gallery = await context.newPage();
+    await gallery.addInitScript(()=>{globalThis.__galleryDocument=crypto.randomUUID();});
     await gallery.goto(new URL('gallery.html',base).href, {waitUntil:'domcontentloaded'});
     // The old worker serves its metadata-free catalog, while new gallery code
     // and covers come from the network. Hold the worker update to prove this state.
@@ -97,6 +98,7 @@ async function run(engine) {
     assert.equal(await linked.evaluate(() => ace.edit('editor').getValue()), fs.readFileSync(path.join(root,'examples/basic_graph.dot'),'utf8'));
     assert.equal(await linked.locator('#example-picker').count(), 1);
     console.log(`${engine}: gallery link loads DOT in the historical editor`);
+    const previousGalleryDocument=await gallery.evaluate(()=>globalThis.__galleryDocument);
     release();
     await gallery.locator('#offline-update').waitFor({state:'visible',timeout:90000});await gallery.locator('#offline-update').click();
     // Upgrades activate without closing tabs or clearing storage. Both documents
@@ -111,7 +113,7 @@ async function run(engine) {
     await editor.waitForSelector('#review svg g.node');
     assert.equal(await editor.evaluate(() => ace.edit('editor').getValue()), edits);
     // Firefox restores form controls after reload; a retained language filter is valid.
-    await gallery.locator('#offline-update').waitFor({state:'hidden',timeout:30000});
+    await gallery.waitForFunction(previous=>globalThis.__galleryDocument!==previous,previousGalleryDocument,{timeout:30000});
     await gallery.locator('#sample-type').selectOption('');
     await gallery.waitForFunction(count => document.querySelectorAll('.card').length === count &&
       document.querySelector('#minimal .load')?.getAttribute('href').includes('example=minimal'), ExampleCatalog.length, {timeout:90000});
