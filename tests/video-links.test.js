@@ -46,5 +46,5 @@ test('gallery links name existing samples and the episodes that map them', () =>
 });
 
 test('the link data is cached for offline use', () => {
-  assert.ok(OfflineAssets.local.includes('src/video-links.js'));
+  assert.ok(OfflineAssets.assets.includes('src/video-links.js'));
 });

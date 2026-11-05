@@ -11,7 +11,8 @@ const output = path.join(root, 'gallery/previews');
 const base = process.argv[2] || 'http://localhost:8000/';
 const selected = process.argv.slice(3);
 const runtimeFiles = ['src/manim-lite.py', 'src/text-outlines.json', 'src/unified-worker.js', 'src/manim-renderer.js',
-  'src/manim-math.js', 'src/manim-typst.js', 'src/manim-video.js', 'src/modl.js', 'viz-global.js'];
+  'src/manim-math.js', 'src/manim-typst.js', 'src/manim-video.js', 'src/modl.js', 'viz-global.js',
+  'src/manim-client.js','src/manim-sandbox.js','vendor/fragment-kit-v0.3.3/vendor/hashbin-sdk-v0.4.0.mjs'];
 const digest = files => createHash('sha256').update(Buffer.concat(files.map(file => fs.readFileSync(path.join(root, file))))).digest('hex');
 const runtime = digest(runtimeFiles);
 fs.mkdirSync(output, { recursive: true });
@@ -25,11 +26,11 @@ const manifest = fs.existsSync(manifestPath) ? JSON.parse(fs.readFileSync(manife
     // Start on the gallery origin without executing editor source or loading gallery media.
     await page.route('**/gallery.html', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><head></head><body></body></html>' }));
     await page.goto(new URL('gallery.html', base).href);
-    for (const file of ['src/manim-client.js', 'src/manim-renderer.js', 'src/manim-math.js',
+    for (const file of ['src/manim-sandbox.js','src/manim-client.js', 'src/manim-renderer.js', 'src/manim-math.js',
       'src/manim-typst.js', 'src/manim-export.js', 'src/manim-video.js', 'src/modl.js', 'viz-global.js']) {
       await page.addScriptTag({ url: new URL(file, base).href });
     }
-    await page.evaluate(() => { window.galleryClient = new ManimClient(); });
+    await page.evaluate(() => { window.galleryClient = new ManimClient({workerFactory:ManimSandbox.factory()}); });
     for (const example of ExampleCatalog) {
       if (selected.length && !selected.includes(example.id)) continue;
       const sourceHash = digest([example.path]);

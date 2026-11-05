@@ -1,0 +1,8 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#236c60"><title>Offline use · ManimOnline</title><link rel="stylesheet" href="../src/docs.css?v=1"></head><body><header><a class="brand" href="../">ManimOnline</a><a href="../gallery.html">Sample gallery ↗</a></header><main>
+<!-- Generated from docs/offline.md by npm run docs. -->
+<h1>Offline use</h1>
+<p>Application files, gallery covers and documentation use Fragment Kit's hash-verified atomic cache. Gallery MP4 previews load only when requested and remain outside offline readiness.</p>
+<p>Python and MathJax remain deferred: opening a gallery animation on a phone plays its MP4 without downloading Python. After a live render, ManimOnline saves the pinned runtime in a separate verified cache. More → Save Python offline also prepares it. “Diagrams ready offline” means the application is saved but Python is still incomplete. “Available offline” requires both the application and every required Python/math asset.</p>
+<p>NumPy, Pillow, Pygments and networkx wheels are cached after actual use and excluded from readiness. External resources requested by user scenes are not made offline automatically.</p>
+<p>Cache reads and carry-over from older versions verify every byte against the pinned hashes. Repair retries incomplete files. Updates wait for activation; Update and reload preserves source and all preview settings before reloading.</p>
+</main></body></html>

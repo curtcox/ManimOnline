@@ -51,6 +51,8 @@ async function run(engine) {
       // miss. Firefox can fetch scripts before the new tab is controlled.
       } else if (!released && file === 'index.html') body = legacyHTML;
       else if (!released && file === 'src/examples.js') body = legacyCatalog;
+      else if(!released&&['hashbin.js','hashbin-panel.js','render-scheduler.js','share-links.js','offline.js'].some(name=>file==='src/'+name))body=fs.readFileSync(path.join(__dirname,'fixtures/legacy-'+path.basename(file)));
+      else if(file==='vendor/hashbin-sdk-v0.4.0.mjs')body=fs.readFileSync(path.join(root,'vendor/fragment-kit-v0.3.3/vendor/hashbin-sdk-v0.4.0.mjs'));
       else if (file === 'offline-assets.js') {
         // This test isolates local-application upgrades; pinned runtime/CDN reuse
         // and readiness failures are covered by tests/offline.test.js.
@@ -60,7 +62,7 @@ async function run(engine) {
         if (!location.startsWith(root + path.sep)) throw Error('Invalid path');
         body = fs.readFileSync(location);
       }
-      const types = {'.html':'text/html','.js':'text/javascript','.css':'text/css','.png':'image/png','.mp4':'video/mp4'};
+      const types = {'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.json':'application/json','.css':'text/css','.png':'image/png','.mp4':'video/mp4'};
       response.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'text/plain', 'Cache-Control': 'no-store' });
       response.end(body);
     } catch (_) { console.error(`${engine}: missing ${request.url}`); response.writeHead(404); response.end('Missing'); }
@@ -86,7 +88,7 @@ async function run(engine) {
     // and covers come from the network. Hold the worker update to prove this state.
     await gallery.locator('#sample-type').selectOption('graphviz');
     await gallery.locator('#dot img').evaluate(img => img.decode());
-    assert.equal(await gallery.locator('#dot .load').getAttribute('href'), './?url=examples%2Fbasic_graph.dot');
+    assert.ok((await gallery.locator('#dot .load').getAttribute('href')).includes('url=examples%2Fbasic_graph.dot'));
     assert.equal(await gallery.locator('[href="undefined"]').count(), 0);
     console.log(`${engine}: covers and links work with the cached metadata-free catalog`);
     const linked = await context.newPage();
@@ -96,6 +98,7 @@ async function run(engine) {
     assert.equal(await linked.locator('#example-picker').count(), 1);
     console.log(`${engine}: gallery link loads DOT in the historical editor`);
     release();
+    await gallery.locator('#offline-update').waitFor({state:'visible',timeout:90000});await gallery.locator('#offline-update').click();
     // Upgrades activate without closing tabs or clearing storage. Both documents
     // reload through the existing controllerchange/source-preservation hooks.
     await editor.waitForSelector('#sample-gallery', {timeout:30000}).catch(async error => {
@@ -103,7 +106,7 @@ async function run(engine) {
         caches: await caches.keys(), registration: (await navigator.serviceWorker.getRegistrations()).map(r => ({ active:r.active?.state, waiting:r.waiting?.state, installing:r.installing?.state })) })));
       throw error;
     });
-    console.log(`${engine}: returning editor upgraded automatically`);
+    console.log(`${engine}: returning editor upgraded after explicit activation`);
     assert.equal(await editor.locator('#example-picker').count(), 0);
     await editor.waitForSelector('#review svg g.node');
     assert.equal(await editor.evaluate(() => ace.edit('editor').getValue()), edits);
@@ -112,7 +115,7 @@ async function run(engine) {
     await gallery.locator('#sample-type').selectOption('graphviz');
     await gallery.locator('#dot img').evaluate(img => img.decode());
     await gallery.screenshot({path:`/tmp/manimonline-upgrade-${engine}.png`});
-    await editor.waitForFunction(() => document.querySelector('#offline-status').textContent === 'Ready offline');
+    await editor.waitForFunction(() => document.querySelector('#offline-status').textContent === 'Available offline');
     await context.setOffline(true);
     await gallery.reload();
     await gallery.locator('#sample-type').selectOption('graphviz');

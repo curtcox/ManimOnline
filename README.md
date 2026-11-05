@@ -1887,3 +1887,15 @@ The production app is [https://manim.hashbin.page/](https://manim.hashbin.page/)
 ### URLs and saved work
 
 Program URLs always open the linked document, regardless of browser history or local drafts. The homepage opens the default example. Use **Resume saved work** in the editor controls to recover local drafts. Viewing or running a link keeps saved work; editing it retains the previous draft for recovery.
+
+## Shared application tools
+
+The buildless editor vendors immutable Fragment Kit v0.3.3 for URL/document/CID handling, HashBin Publish, QR generation and loading, drafts, shortening, offline application caching, shell/mobile tabs and gallery filtering. Node 22.12+ and npm ci are tooling requirements only; no production bundler is used. The original Manim-lite API, renderers, opaque worker isolation and preview media producer remain app-owned.
+
+Run npm test, npm run test:python, npm run check and npm run test:contracts. Browser contracts and native suites run Chromium, Firefox and WebKit in Linux CI. For local native browser checks, run node scripts/fetch-runtime.mjs, PORT=8000 node tests/browser/server.cjs, then BROWSER=chromium npm run test:browser. The test server mirrors verified immutable CDN bytes; production retains the original pinned URLs. Local macOS Firefox may fail to launch; report only browsers that actually run.
+
+The app-owned adapter reads v1 as well as deployed raw/compressed/source, example, CID, three-language envelope and Publish return forms. Writers retain the deployed format until the entire fleet has shipped v1 readers. Source identity includes renderer mode, scene, Graphviz engine/output and fractional modl positions. Unknown versions and malformed links fail visibly. Explicit links never overwrite drafts; Resume saved work is separate.
+
+Python and MathJax remain deferred and use a separate verified runtime cache. Gallery videos are lazy and optional package wheels stay outside readiness. Diagrams ready offline describes the saved application; Available offline requires all pinned required runtime bytes too. Updates wait for explicit activation and preserve the complete source/settings before reload. See docs/index.html, docs/sharing.html and docs/offline.html.
+
+The public client ID and canonical/recovery origins are unchanged. Publish retains no credentials here; its confirmation click calls the initialized SDK synchronously. New session transaction writes use manimonline:, while legacy reads are restricted to this app client. CI checks the pin against the published release, and deployment runs the complete gates before publishing. Generated domain notices still come from hashbin.org.

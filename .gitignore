@@ -2,8 +2,13 @@ __pycache__/
 *.py[cod]
 media/
 node_modules/
-package-lock.json
 video-series/build/
 .DS_Store
 
 /test-results/*-draft-recovery.png
+
+/test-results/
+/playwright-report/
+/.pyodide-cache/
+
+/.runtime-cache/

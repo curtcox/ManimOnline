@@ -1,0 +1,44 @@
+{
+  "files": {
+    "LICENSE-graphvizonline": {
+      "sha256": "4ee8a9de2b6edcf927a4d1f6063d47c0dd7eba2ac566c040be82917404e5964f",
+      "integrity": "sha384-2Mek3a1ImqMR7CnkV+ARP8gfugILaG1KXPkgBD+kwyg/3JN69SjCJh6sceBwix4V"
+    },
+    "LICENSE-hashbin": {
+      "sha256": "4b98ca359e198179443e1cd7c604f6cc579e7879122583352fbaa1bddb11ae53",
+      "integrity": "sha384-GOeKcWU4MVHsnzXr3OMGX1Mb2lD+uU8PyenxD5UgMEytr3ijBcNBOSk2gsrrMMcL"
+    },
+    "LICENSE-jsQR": {
+      "sha256": "c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08",
+      "integrity": "sha384-HzQXqscuy26vWaM3g6T9a2KCggp/Ln7XUf8hlV9wrRqAGOYtROlr9P0JP+MpNNCc"
+    },
+    "LICENSE-lz-string": {
+      "sha256": "433fc9dfe659dbfb1e91eed8351f13651e97bfa3ac6d03394c3d63f61d4bbc80",
+      "integrity": "sha384-CIkTU7Rjl7UVlXnPF5iJfp+y7yKZyJnH7ozMJ8DTY6iOb4vCeVCl8S/52JICL92m"
+    },
+    "hashbin-sdk-v0.4.0.mjs": {
+      "sha256": "82f25ffe41a0ff79a060fb593754a286e1c85c2502878ab387c3d0045b749fa5",
+      "integrity": "sha384-zzmaXw5svWRp0YF//G5ytyeqEowixccM/hHVDth46FnGrIlPS7fPki5vbhv+bWCr"
+    },
+    "jsqr/jsQR.js": {
+      "sha256": "bc40c8a15196236b2314db0856f72ca0b49980cd5413b8c852a7349f5fee0859",
+      "integrity": "sha384-b5Ya4Bq3qCyz39m2ISh+4DxjAIljdeFwK/BsXLuj9gugaNwAcj/ia15fxNZL9Nlx"
+    },
+    "jsqr/package.json": {
+      "sha256": "5f4b2aaf2cea32c3fcca55067df5b5d8f9a5b58a05a84f4e2fdc87b275b3d9f3",
+      "integrity": "sha384-PPh3QVV6WN5RemEx8p2ujI2jnsfwl8/Mga798asz4zwCTT0IhR3Kx+JH2E8b9Va+"
+    },
+    "lz-string-1.5.0.js": {
+      "sha256": "95f4d1cbf099f57161b664bc048426ec3df92637801a4c79116e83315aa787e7",
+      "integrity": "sha384-0d+Gr7vM4Drod8E3hXKgciWJSWbjD/opKLLygI9ktiWbuvlDwQLzU46wJ9s5gsp7"
+    },
+    "lz-string-1.5.0.mjs": {
+      "sha256": "8d9eea78bc561e73090ba11a3bd0e20b322958841e218acb49e82fc00f929b2c",
+      "integrity": "sha384-J4nPYYfd9BGGDUJYm1SXC3HVXoueUc2gxacF0STG0w/1OoQL/VgyefHi5oO5lXAj"
+    },
+    "jsqr/jsQR-fk.js": {
+      "sha256": "551bae92930708f031a8531e80e30f22c56e9dea27c33f4c2c146cde8e4cc40b",
+      "integrity": "sha384-F8wcY17jrteYtNW9RwDNWbC4JgfE4wOTxOw5EaMYi1y6AMYIluKpd0P/vxD/gUco"
+    }
+  }
+}

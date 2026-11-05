@@ -5,9 +5,12 @@
   <meta charset="UTF-8">
   <!-- Scripts only from this site and pinned paths; keep in step with new runtimes. connect-src stays open for ?url= sources. -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-IMEqdP+AkCKdxhM3X7mQM4pV/chykJXPvdtndD+XeH8=' blob: https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/ https://cdn.jsdelivr.net/npm/mathjax@3.2.2/ https://cdn.jsdelivr.net/npm/@myriaddreamin/ 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob:; font-src 'self' data: https://cdn.jsdelivr.net; connect-src 'self' https: data: blob:; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+  <meta name="theme-color" content="#3f519f">
+  <link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon.svg">
   <title>ManimOnline</title>
+  <meta name="deployment-marker" content="manim-fragment-kit-v0.3.3">
   <!-- HashBin's Manim Online app. Public ID, no secret; see README for other deployments. -->
   <meta name="hashbin-client-id" content="app_ea30117c-555b-4759-b01a-e75dc402d177">
   <style type="text/css" media="screen">
@@ -422,56 +425,11 @@
     .manim-controls .manim-fullscreen { width: 34px; background: #f8f9fa url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23212529' stroke-width='2'%3E%3Cpath d='M1 6V1h5M10 1h5v5M15 10v5h-5M6 15H1v-5'/%3E%3C/svg%3E") center / 16px no-repeat; }
     .manim-player:fullscreen, .manim-player.manim-player-full { position: fixed; inset: 0; z-index: 2000; }
     html.manim-player-filling, html.manim-player-filling body { overflow: hidden; }
-    #view-tabs, #more-toggle { display: none; }
-    /* Phones (portrait, or landscape with little height): the preview comes first.
-       Preview and Code share the screen as tabs; rarely used controls sit behind More. */
-    @media (max-width: 760px), (max-height: 500px) {
-      body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
-      #options { position: relative; left: 0 !important; right: auto; order: 0; box-sizing: border-box; width: 100%;
-        flex: 0 0 auto; padding: 6px 8px; gap: 6px 8px; transition: none; }
-      #options:not(.more-open) > :not(.phone-bar):not(#pyodide-status) { display: none !important; }
-      #options.more-open { max-height: 60vh; max-height: 60dvh; overflow: auto; }
-      #options button { padding: 0 12px; border: 1px solid #ced4da; border-radius: 6px; background: white; color: #212529;
-        font: 500 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; cursor: pointer; }
-      #options button:disabled { color: #868e96; background: #f1f3f5; }
-      #view-tabs { display: flex; order: -3; }
-      #view-tabs button { min-height: 40px; padding: 0 12px; border: 1px solid #ced4da; background: white; color: #495057;
-        font: 600 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; cursor: pointer; }
-      #view-tabs button:first-child { border-radius: 6px 0 0 6px; }
-      #view-tabs button:last-child { border-radius: 0 6px 6px 0; border-left: none; }
-      #view-tabs button[aria-pressed="true"] { background: #343a40; border-color: #343a40; color: white; }
-      #options .manim-options.phone-bar, #options .modl-options { order: -2; }
-      #more-toggle { display: block; order: -1; margin-left: auto; }
-      #more-toggle::after { content: ' ▾'; }
-      #options.more-open #more-toggle::after { content: ' ▴'; }
-      #example-status:empty { display: none; }
-      #options label { flex-wrap: wrap; }
-      #options select, #options input[type="button"], #options button, #download { min-height: 40px; box-sizing: border-box; }
-      #options .graphviz-options { flex-wrap: wrap; gap: 8px; }
-      #options input[type="text"] { min-height: 36px; font-size: 16px; max-width: 100%; box-sizing: border-box; }
-      #shareurl { max-width: 100%; box-sizing: border-box; }
-      .wide-only { display: none; }
-      #editor-toggle, #splitter, .github-fork-ribbon-wrapper { display: none !important; }
-      #editor { position: relative; order: 1; top: auto; bottom: auto; left: 0;
-        width: 100% !important; flex: 1 1 0; min-height: 0; transition: none; }
-      #editor.collapsed { display: none; }
-      #review { position: relative; order: 2; top: auto !important; bottom: auto; left: 0 !important;
-        right: auto; width: 100%; flex: 1 1 0; min-height: 0; overflow: auto; transition: none; }
-      body:not(.presentation) #editor:not(.collapsed) ~ #review { display: none; }
-      body.presentation #view-tabs { display: none; }
-      #review img { max-width: 100%; height: auto; }
-      /* The frame keeps its aspect with the controls directly beneath it. */
-      .manim-player { justify-content: center; }
-      .manim-stage { flex: 0 1 auto; aspect-ratio: var(--frame-aspect, 16 / 9); }
-      .manim-player:fullscreen .manim-stage, .manim-player.manim-player-full .manim-stage { flex: 1 1 0; aspect-ratio: auto; }
-      .manim-controls { padding: 6px 8px; gap: 8px; }
-      .manim-controls button { min-height: 40px; min-width: 40px; }
-      .manim-controls input { min-height: 40px; }
-      #status { display: none; }
-    }
   .draft-recovery{width:min(580px,calc(100vw - 28px));max-height:90dvh;overflow:auto;padding:24px;border:1px solid #aabbbd;border-radius:12px;background:#fff;color:#263e49}.draft-recovery select{width:100%;min-height:40px;font-size:16px}.draft-recovery pre{max-height:35vh;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}.draft-recovery button,#resume-work{min-height:40px}.draft-recovery p{font-size:14px;line-height:1.5}#draft-recovery-status{font-size:12px}
 
 </style>
+  <link rel="stylesheet" href="vendor/fragment-kit-v0.3.3/src/ui/kit.css">
+  <link rel="stylesheet" href="src/app.css?v=fragment-kit-3">
 </head>
 
 <body>
@@ -509,8 +467,8 @@ class HelloWorld(Scene):
       </select>
     </label>
     <span id="pyodide-status" class="hidden" role="status" aria-live="polite">Python loading...</span>
-    <span class="manim-options phone-bar">
-      <button id="render-animation" type="button">Render<span class="wide-only"> animation</span></button>
+    <span class="render-controls phone-bar">
+      <button id="render-animation" type="button">Render</button>
       <button id="cancel-render" type="button" hidden>Cancel<span class="wide-only"> render</span></button>
     </span>
     <button type="button" id="more-toggle" class="phone-bar" aria-expanded="false" aria-controls="options">More</button>
@@ -617,19 +575,16 @@ class HelloWorld(Scene):
   </div>
 
   <script src="ace/ace.js" type="text/javascript" charset="utf-8"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"
-    integrity="sha512-qtX0GLM3qX8rxJN1gyDfcnMFFrKvixfoEOwbBib9VafR5vbChV5LeE5wSI/x+IlCkTY5ZFddFDCCfaVJJNnuKQ=="
-    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script src="viz-global.js"></script>
   <script src="svg-pan-zoom.min.js" type="text/javascript" charset="utf-8"></script>
   <script src="src/modl.js?v=2"></script>
-  <script src="src/hashbin.js?v=1"></script>
-  <script src="src/hashbin-panel.js?v=1"></script>
+
+
   <script src="src/detector.js?v=3"></script>
-  <script src="src/render-scheduler.js?v=1"></script>
-  <script src="src/share-links.js?v=4"></script>
+
+
   <script src="src/manim-renderer.js?v=outlines-1"></script>
-  <script src="src/manim-sandbox.js?v=1"></script>
+  <script src="src/manim-sandbox.js?v=fragment-kit-3"></script>
   <script src="src/manim-client.js?v=2"></script>
   <script src="src/manim-player.js?v=fullscreen-3"></script>
   <script src="src/examples.js"></script>
@@ -638,8 +593,8 @@ class HelloWorld(Scene):
   <script src="src/manim-typst.js?v=2"></script>
   <script src="src/manim-export.js?v=1"></script>
   <script src="src/manim-video.js?v=1"></script>
-  <script src="src/offline.js?v=2"></script>
-  <script src="src/local-drafts.js?v=1"></script><script src="src/editor.js?v=2"></script>
+
+<script type="module" src="src/editor.js?v=fragment-kit-3"></script>
 <script type="module" src="src/domain-migration.js"></script>
 </body>
 

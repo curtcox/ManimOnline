@@ -1,0 +1,261 @@
+{
+  "repo": "ManimOnline",
+  "slug": "manim",
+  "commit": "9e772748c1a2ac1732fbcd5371996927d59e4215",
+  "example": {
+    "id": "modl",
+    "source": "# Nodes: id [size] [shape] [color] [url] [text...]\neditor square blue Edit source\npreview circle green Preview diagram\nsaved diamond purple Save to HashBin\n\n# Edges: from -> to [size] [style] [color] [url] [text...]\neditor -> preview solid teal Render\npreview -> saved dashed purple Save\nsaved -> editor dotted orange Load\n",
+    "raw": "{\"format\":\"hashbin-diagram\",\"version\":1,\"src\":\"# Nodes: id [size] [shape] [color] [url] [text...]\\neditor square blue Edit source\\npreview circle green Preview diagram\\nsaved diamond purple Save to HashBin\\n\\n# Edges: from -> to [size] [style] [color] [url] [text...]\\neditor -> preview solid teal Render\\npreview -> saved dashed purple Save\\nsaved -> editor dotted orange Load\\n\",\"type\":\"modl\",\"pos\":{}}",
+    "expected": {
+      "src": "# Nodes: id [size] [shape] [color] [url] [text...]\neditor square blue Edit source\npreview circle green Preview diagram\nsaved diamond purple Save to HashBin\n\n# Edges: from -> to [size] [style] [color] [url] [text...]\neditor -> preview solid teal Render\npreview -> saved dashed purple Save\nsaved -> editor dotted orange Load\n",
+      "type": "modl",
+      "pos": {},
+      "scene": "",
+      "engine": "dot",
+      "outputFormat": "svg"
+    }
+  },
+  "sourceFiles": {
+    "README.md": "2033cccd8c33c2c23f0c029096ac23433e4621e00d143e2434d01f924833733b",
+    "docs/completion.md": "7edbd8607ef76b86a6f7c76ed858a1affe4594348f087753957df95e663d3f34",
+    "docs/modl-deep-zoom.md": "4a24d864a0411f4a7b51eb6e2d26a9430772739039f2db26608210c1231306b2",
+    "docs/rendering.md": "ab4a215135a391d9b50b1120b5bc09b017817999a9bef3691459c0e0549003e3",
+    "index.html": "c54ed8b8024d53ae061bd87f825ba2e55b4d931d658742ff286f7c79d6b33821",
+    "offline-assets.js": "a240a6e962bedc66d3ce489ef2cc141e6c33299cc45d717d2e9678dfa86ea1e7",
+    "service-worker.js": "43eebc85ca9c1b840d20eb70e7f5881beaa41186de80cc11755a91a8a2d61b65",
+    "src/detector.js": "6d478d8ffcf889a0d3c0d3a75685067425819f2089ddf845fa5f2cc96e0ee337",
+    "src/domain-migration.js": "220464e56996e52965418130af0ce95b5a49a54a44241d76b07888a21e6b5cda",
+    "src/editor.js": "89887edbed0178fe3abf3a51e28b82a5c491396f99366d5b6355b96d4d21418f",
+    "src/examples.js": "7f4276ad786caa32b83b7f0a33a38fde7f1b12b094c6138b49b237fd6e18c190",
+    "src/gallery-updates.js": "0acff3488558e3aa8d7640c1d194cc5e0c97f3cb0eed82b5353102ad2ebb89e5",
+    "src/gallery.js": "dbf037968bd2b69b315ed389fbb5f37a2ec766809cbd48950d96c06718c4ba9a",
+    "src/hashbin-panel.js": "f94903a085185ad30f9617a73b3382856b1f58555bf0c0b0a4ba9056598932fc",
+    "src/hashbin.js": "e1bbdda3a3171942a6215fcd0517cf71690e975726b113ac68b9e79b9bd4db49",
+    "src/local-drafts.js": "63b3e2ab8ad18a3088ff40386bb64e3a2d133ae32fbc7968a662b9069023cb85",
+    "src/manim-client.js": "cea6ed64199b5343d82ba0a5d9c3a4b585f79a0f00ff5b4be091a65829bbe820",
+    "src/manim-export.js": "11296f846cf2d69aca4d2447e51527314a5094d25a5900597f3c152ce97fb0f6",
+    "src/manim-math.js": "1cf316790e3e3d44b13744c91b7374e9f88244038447501323a9d554bd5f5afc",
+    "src/manim-player.js": "198c319a608f51cd5b7930ff31f305df286fb87441a8e602d19f037f406d520a",
+    "src/manim-renderer.js": "339c0bcebbc0ef87d796e3a0e2bb09c161eb835629f377c0b35d10b5cba6d17a",
+    "src/manim-sandbox.js": "09cd8f461accab894f0d7dbaf5a26921f6a1d489aa8995ee0a0e170b5ad4982d",
+    "src/manim-typst.js": "bad090258bc360e9baab1834d25eed3fab23e8df89bacb49ffa0fe13d2779606",
+    "src/manim-video.js": "2080b46ebba348b3ae348dde55bd46db5c894c938ad107a380cdf0ac59cb854e",
+    "src/modl.js": "c09c569e41e5379bb32ba253ff9bb0fc74905b8ec0b8a6373b827c9c917897be",
+    "src/offline.js": "0d3c40cb87a060dd2a7b202305394300b1eedefbefe6137a435326e954f29be5",
+    "src/render-scheduler.js": "2ca91d13be1f761a79427318a6096cfb55f6b15954d67047704e12c824e253a1",
+    "src/share-links.js": "4f9aeedba28716485a8b71d514b538a778997fba848e66c5377005342a6828a5",
+    "src/text-outlines.json": "e12c886ece373de449e5f62ba495890bd1abc4d4e291644d2cdeb6e22f57d7b1",
+    "src/unified-worker.js": "9b1dc636deb9e4f8ba2a581a9e5e51c90dc160acbe9f6f1c9bfa0179f08e8217",
+    "src/video-links.js": "81acc9ff6782990d4e2d0771514cd013935cfba762f6fbc91f8c25774f7401ca",
+    "tests/browser/csp.cjs": "91c5728327a980c9976be2a7f5925a5e0195d641ec631726eb668fed048ed123",
+    "tests/browser/fixtures/legacy-editor.html": "9a998edaa8a0fd552334ab641b68d9ba0d9874ce7b4ad399fb2aca1ce5d40665",
+    "tests/browser/fixtures/legacy-examples.js": "a031478c9943c6eec0b09c46ea9734ae180787b7f85c2789745ee228dd7df620",
+    "tests/browser/gallery.cjs": "faa25c6cb25cdcc48e5f860a62f2d3bf975c1932264c2255e1f4bc285647f220",
+    "tests/browser/languages.cjs": "fd87513d4ed2b24433c3881025fcf5b9047479eac4b76a78df8e42b3bf80a26c",
+    "tests/browser/modl-zoom.cjs": "e66c203731678505ddc277a8ef21b08c790554248c71bd6cabdfa59005888e2f",
+    "tests/browser/sharing.cjs": "d3d79812394a804f14e586f939d0e171eb206b3eec6856a33857e3a1efee731d",
+    "tests/browser/smoke.cjs": "5970586c9629b15e2ab39179d19057f23997e4fd73e1dab164ff2d8ecabb5643",
+    "tests/browser/touch.cjs": "4308187bdcfdbfc48d96e21c0b4d3b5e1ee2e5d4502d3af36841510ee13a1008",
+    "tests/browser/upgrade.cjs": "263dde995c5d327e02429c94915c76bf2775e92c4ea042b88944961d8daa0673",
+    "tests/browser/url-state.cjs": "b24fd368ed1a34c5b535c64f3bfb0996d2925320e0bbeef89445401c6b52c0ef",
+    "tests/detector.test.js": "ea5af6a9e266c9442d62b68eb374db75755d7e272fe870a987d3425638cb9dc1",
+    "tests/drafts.test.js": "d2acc84e28686018a2edda76f28e0167f219dfa031478b2472ed04b0c6e7e74f",
+    "tests/examples.test.js": "31c33c4411840a702ab07cabd885bf04a92fe0a9c1a8847dfdadec3889a3fbc9",
+    "tests/fixtures/community_reference.json": "da4e8ac02197bd00b4c26532ca4bfe13a011517eb5fc5364c1d77ee8762a128f",
+    "tests/fixtures/png_cases.json": "f521434bfdc3838f6ec0f99e7baea03919b1d149f719f8a01555622438dee985",
+    "tests/fixtures/three_d_frames.json": "201e0cb08adc16e9068eb921134cfe70d2495b98a84eb05d9a3d9c27408f77b0",
+    "tests/hashbin.test.js": "6fb2ae1251c78870d8b83787feca326434bea34725ff46425b045bd36aa09160",
+    "tests/manim-client.test.js": "e13863c29f813f7865fd83a3fc192b23593903b2b8a892a6018bb9596c33cc2d",
+    "tests/manim-export.test.js": "fae6300963f0eb762a4013d9ec1b58293219fb0964932c36423f9969adbe51f6",
+    "tests/manim-math.test.js": "048b26f554afced596ca4f5287479242b4bfb5c373417b58395990509513323a",
+    "tests/manim-player.test.js": "683064b682edbcfa3dcf64bc932ac6f235f12cbb13c8d8986a01c9cb1829e6ac",
+    "tests/manim-renderer-3d.test.js": "91c6e12ff87db02b08299fbaafaee324a42ba52c4336a7e2f686f5809cb121bb",
+    "tests/manim-renderer.test.js": "a601fcab2ca671ea8334fbd3591bfa90c8a14f333ae938ea86038bdfe4ed8bde",
+    "tests/manim-typst.test.js": "453b39a3101b5a84109243cf98dd81e13ac8a3d99ed73e71ff04e6812d6c91c9",
+    "tests/manim-video.test.js": "5a53fdb2d6f92b868f1d670d048e763f6d2e69763d9bc60888df163c9f9625ca",
+    "tests/modl.test.js": "93c0196ccb7dae54e92677640a7a7b3f3cbca7c4a2ae5c81105c9450d77ceecc",
+    "tests/offline.test.js": "f9da228fe86d0694df73fd81af54df463a5c166d19d093358f75a77f329a131c",
+    "tests/qr-links.test.js": "472cc2ea021f7405a56b970201cfa77e73c6b8c66ed07a06e026a9cc903afa8d",
+    "tests/render-scheduler.test.js": "108a8680784fd435ed7c65252a4131c57001f3e53f3d746b786ea47cac4a7495",
+    "tests/share-links.test.js": "ba78fcb02d395cadccbd9dc5eed710c30a5878c18cf7c7a34179fff2d86c3a62",
+    "tests/unified-worker.test.js": "2786b03a29da4cbcbaa66e6ea53f348cbf5d93ae32304cd4d65caafceed1aeba",
+    "tests/video-links.test.js": "e5d78d83507200946ec3dc2017943ab7add6dfb76cf2cb796f200513137bdf73"
+  },
+  "storage": [
+    {
+      "file": "src/domain-migration.js",
+      "key": "pythononline:persistent-home"
+    },
+    {
+      "file": "src/editor.js",
+      "key": "manimonline:draft"
+    },
+    {
+      "file": "tests/browser/languages.cjs",
+      "key": "hashbin-test-mode"
+    },
+    {
+      "file": "tests/browser/languages.cjs",
+      "key": "hashbin-test-state"
+    },
+    {
+      "file": "tests/browser/languages.cjs",
+      "key": "hashbin-test-state"
+    },
+    {
+      "file": "tests/browser/languages.cjs",
+      "key": "hashbin-test-state"
+    },
+    {
+      "file": "tests/browser/languages.cjs",
+      "key": "hashbin:tokens:"
+    },
+    {
+      "file": "tests/browser/languages.cjs",
+      "key": "hashbin-test-revoked"
+    },
+    {
+      "file": "tests/browser/languages.cjs",
+      "key": "hashbin:tokens:"
+    },
+    {
+      "file": "tests/browser/languages.cjs",
+      "key": "hashbin-test-revoked"
+    },
+    {
+      "file": "tests/browser/languages.cjs",
+      "key": "hashbin:tokens:"
+    },
+    {
+      "file": "tests/browser/languages.cjs",
+      "key": "hashbin-test-mode"
+    },
+    {
+      "file": "tests/browser/languages.cjs",
+      "key": "hashbin-test-mode"
+    },
+    {
+      "file": "tests/browser/languages.cjs",
+      "key": "manimonline:draft"
+    },
+    {
+      "file": "tests/drafts.test.js",
+      "key": "work"
+    },
+    {
+      "file": "tests/drafts.test.js",
+      "key": "work"
+    },
+    {
+      "file": "tests/drafts.test.js",
+      "key": "work"
+    },
+    {
+      "file": "tests/drafts.test.js",
+      "key": "work"
+    },
+    {
+      "file": "tests/manim-player.test.js",
+      "key": "Escape"
+    }
+  ],
+  "caches": [],
+  "references": [
+    {
+      "file": "README.md",
+      "href": "https://curtcox.github.io/modl/docs/)."
+    },
+    {
+      "file": "README.md",
+      "href": "?example=minimal"
+    },
+    {
+      "file": "src/domain-migration.js",
+      "href": "https://hashbin.org/docs/textpad/app"
+    },
+    {
+      "file": "src/examples.js",
+      "href": "./?example=${encodeURIComponent(example.id)}&url=${encodeURIComponent(example.path)}"
+    },
+    {
+      "file": "tests/browser/gallery.cjs",
+      "href": "?example=${id}&type=dot&scene=Old#old-source"
+    },
+    {
+      "file": "tests/browser/gallery.cjs",
+      "href": "?example=minimal"
+    },
+    {
+      "file": "tests/browser/gallery.cjs",
+      "href": "?example=unlisted"
+    },
+    {
+      "file": "tests/browser/gallery.cjs",
+      "href": "?example=copy"
+    },
+    {
+      "file": "tests/browser/gallery.cjs",
+      "href": "?example=minimal"
+    },
+    {
+      "file": "tests/browser/touch.cjs",
+      "href": "?example=${example}"
+    },
+    {
+      "file": "tests/hashbin.test.js",
+      "href": "https://example.test/ManimOnline/?example=minimal&raw=old#old"
+    },
+    {
+      "file": "tests/share-links.test.js",
+      "href": "https://example.test/ManimOnline/?example=minimal&raw=old&compressed=older&url=external&type=dot&scene=First&engine=neato&format=png#old"
+    },
+    {
+      "file": "tests/share-links.test.js",
+      "href": "https://example.test/?compressed=old"
+    }
+  ],
+  "cases": [
+    {
+      "label": "source fragment",
+      "href": "https://curtcox.github.io/ManimOnline/#%23%20Nodes%3A%20id%20%5Bsize%5D%20%5Bshape%5D%20%5Bcolor%5D%20%5Burl%5D%20%5Btext...%5D%0Aeditor%20square%20blue%20Edit%20source%0Apreview%20circle%20green%20Preview%20diagram%0Asaved%20diamond%20purple%20Save%20to%20HashBin%0A%0A%23%20Edges%3A%20from%20-%3E%20to%20%5Bsize%5D%20%5Bstyle%5D%20%5Bcolor%5D%20%5Burl%5D%20%5Btext...%5D%0Aeditor%20-%3E%20preview%20solid%20teal%20Render%0Apreview%20-%3E%20saved%20dashed%20purple%20Save%0Asaved%20-%3E%20editor%20dotted%20orange%20Load%0A",
+      "kind": "source",
+      "src": "# Nodes: id [size] [shape] [color] [url] [text...]\neditor square blue Edit source\npreview circle green Preview diagram\nsaved diamond purple Save to HashBin\n\n# Edges: from -> to [size] [style] [color] [url] [text...]\neditor -> preview solid teal Render\npreview -> saved dashed purple Save\nsaved -> editor dotted orange Load\n"
+    },
+    {
+      "label": "compressed query",
+      "href": "https://curtcox.github.io/ManimOnline/?compressed=MQAgcg9gJgpgzgLhASyiA2nZAvGBdDOACwEMAHfDAYwgBsIAnA9AVwduYBcYAPTgOkF4AUDCjJOjEHACOLEgxggARrRZKAouM7SIbKjGFlFAN2QwA7iCrIGVWkoDmimADsQABVPmr4ks5IAW2E4EhMxED9AiFc0MjYyBxAAZTClSRAACRJiACFkV2FhUC1HeCQAMwYIQJAAWgA+EAzMHEpMTgBPB2YaeiYMNg4Mbj5BfhExCSlGkGMYM0tdWlRmmBJaEAAlN1gGI28l2dDwtCgcogj4hkSlVPCQtLRZqckGSIhObjRGElcykAAGQgJCgwiAA",
+      "kind": "source",
+      "src": "# Nodes: id [size] [shape] [color] [url] [text...]\neditor square blue Edit source\npreview circle green Preview diagram\nsaved diamond purple Save to HashBin\n\n# Edges: from -> to [size] [style] [color] [url] [text...]\neditor -> preview solid teal Render\npreview -> saved dashed purple Save\nsaved -> editor dotted orange Load\n"
+    },
+    {
+      "label": "document query",
+      "href": "https://curtcox.github.io/ManimOnline/?doc=N4IgZg9gTgtghgFxALhACzgZzQIwJYB2AtACZ5wDmUcMIANCAG4CmUmeEBKAjA5lAGMUIAMQACAHIQSzTMjF4SYgNrsAXswC6K7HAAOWlQIgAbaNuUBXKCYsJmADwQA6V5oA6BZmQTQxmAEdLOChmMRwTSzCAUR9-CGsBZk89UMY8ZgB3MQE8QRMwqmZmAjEABTSM7LJKahhPTDgWJRqYTiU9az0CsQBlJrDfMQAJLDQAIUJPT3FYill5MCgIGDEiAD4xIdU8DQtMBABPAotjMygLa1sVeydXZw8vHz8NsVTmdKz4k0Ut5jgTGIAEolGRQFKVL6vRrNMQkMbeN5dHr9FgNAZKV7ePC+KBwiAIexKaBwAjzMQAGQgcBInnoICOBmEbRIJnpeggmBQwAAvjygA",
+      "kind": "source",
+      "raw": "{\"format\":\"hashbin-diagram\",\"version\":1,\"src\":\"# Nodes: id [size] [shape] [color] [url] [text...]\\neditor square blue Edit source\\npreview circle green Preview diagram\\nsaved diamond purple Save to HashBin\\n\\n# Edges: from -> to [size] [style] [color] [url] [text...]\\neditor -> preview solid teal Render\\npreview -> saved dashed purple Save\\nsaved -> editor dotted orange Load\\n\",\"type\":\"modl\",\"pos\":{}}"
+    },
+    {
+      "label": "document fragment",
+      "href": "https://curtcox.github.io/ManimOnline/#%7B%22format%22%3A%22hashbin-diagram%22%2C%22version%22%3A1%2C%22src%22%3A%22%23%20Nodes%3A%20id%20%5Bsize%5D%20%5Bshape%5D%20%5Bcolor%5D%20%5Burl%5D%20%5Btext...%5D%5Cneditor%20square%20blue%20Edit%20source%5Cnpreview%20circle%20green%20Preview%20diagram%5Cnsaved%20diamond%20purple%20Save%20to%20HashBin%5Cn%5Cn%23%20Edges%3A%20from%20-%3E%20to%20%5Bsize%5D%20%5Bstyle%5D%20%5Bcolor%5D%20%5Burl%5D%20%5Btext...%5D%5Cneditor%20-%3E%20preview%20solid%20teal%20Render%5Cnpreview%20-%3E%20saved%20dashed%20purple%20Save%5Cnsaved%20-%3E%20editor%20dotted%20orange%20Load%5Cn%22%2C%22type%22%3A%22modl%22%2C%22pos%22%3A%7B%7D%7D",
+      "kind": "source",
+      "raw": "{\"format\":\"hashbin-diagram\",\"version\":1,\"src\":\"# Nodes: id [size] [shape] [color] [url] [text...]\\neditor square blue Edit source\\npreview circle green Preview diagram\\nsaved diamond purple Save to HashBin\\n\\n# Edges: from -> to [size] [style] [color] [url] [text...]\\neditor -> preview solid teal Render\\npreview -> saved dashed purple Save\\nsaved -> editor dotted orange Load\\n\",\"type\":\"modl\",\"pos\":{}}"
+    },
+    {
+      "label": "example",
+      "href": "https://curtcox.github.io/ManimOnline/?example=modl",
+      "kind": "example",
+      "id": "modl"
+    },
+    {
+      "label": "CID",
+      "href": "https://curtcox.github.io/ManimOnline/#AAAAAAFDieSZaENUZtennUw3fvvouJh4h5qdoS8yXMLs4Ozop8Qq3k_bOpTdVYKkZHxJ5ez-W_JYtXenZHjmbfPFaLTeVQ",
+      "kind": "cid",
+      "cid": "AAAAAAFDieSZaENUZtennUw3fvvouJh4h5qdoS8yXMLs4Ozop8Qq3k_bOpTdVYKkZHxJ5ez-W_JYtXenZHjmbfPFaLTeVQ"
+    },
+    {
+      "label": "catalog URL",
+      "href": "https://curtcox.github.io/ManimOnline/?example=modl&url=examples%2Fbasic_diagram.modl",
+      "kind": "example",
+      "id": "modl"
+    }
+  ]
+}
