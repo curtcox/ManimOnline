@@ -2,12 +2,13 @@ import {LocalDrafts,RenderScheduler,HashBinPanel,createShell,mountMobileTabs,cre
 import {config,type,urlState,HashBinDocuments,HashBinStore,ShareLinks,ShareClient,LZString,fromDocument,loadHashBinSDK} from './fragment-config.mjs';
 import {initOffline} from './offline-client.mjs';
 Object.assign(globalThis,{HashBinDocuments,HashBinStore,ShareLinks,ShareClient,LZString,loadHashBinSDK});
+const legacyControls=['shareurl','shorten-share','share-status','hashbin-save','hashbin-cid','hashbin-load','hashbin-status','hashbin-dialog','offline-status','offline-action','view-tabs'].map(id=>document.getElementById(id));
 const shell=createShell({config});
 shell.header.querySelector('.fk-brand').href=new URL('./',location.href).href;
 shell.header.querySelector('.fk-more').id='more-toggle';
 const oldMore=document.querySelectorAll('#more-toggle')[1];oldMore.remove();
 const options=document.getElementById('options');
-for(const id of ['shareurl','shorten-share','share-status','hashbin-save','hashbin-cid','hashbin-load','hashbin-status','hashbin-dialog','offline-status','offline-action','view-tabs'])document.getElementById(id)?.remove();
+for(const node of legacyControls)node?.remove();
 shell.drawer.body.append(options);shell.status.id='app-status';
 const oldGallery=document.getElementById('sample-gallery'),resourceGallery=[...shell.drawer.body.querySelectorAll('a')].find(link=>link.textContent==='Gallery ↗');resourceGallery.id='sample-gallery';resourceGallery.href=oldGallery.getAttribute('href');oldGallery.remove();
 const workspace=document.createElement('main');workspace.id='workspace';
