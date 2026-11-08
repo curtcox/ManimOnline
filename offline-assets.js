@@ -29,7 +29,7 @@
     "https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pillow-10.2.0-cp312-cp312-pyodide_2024_0_wasm32.whl": "f64cf341b63ea818598febda483c44a39babda536f213eb14381c66e1ab1ff34"
   },
   "prefix": "manimonline-offline",
-  "version": "manimonline-offline-daf95e7d3404dc19",
+  "version": "manimonline-offline-4ba2f0c0cf272b67",
   "assets": [
     "ace/ace.js",
     "ace/mode-dot.js",
@@ -860,7 +860,7 @@
     "src/manim-video.js": "2080b46ebba348b3ae348dde55bd46db5c894c938ad107a380cdf0ac59cb854e",
     "src/modl.js": "c09c569e41e5379bb32ba253ff9bb0fc74905b8ec0b8a6373b827c9c917897be",
     "src/offline-client.mjs": "ccdb9cb71b905c1db5ddc8645476b6a8eca59794f546df27cbabd61671379855",
-    "src/offline-runtime.js": "b18af7e3cbea41bacabd30d0c5b601435ca93967a2fd325faa6ff584df64b4e7",
+    "src/offline-runtime.js": "58b92e82edbe1bdbb9f09dca60898250a210ff53d5f35571ba22645808bcee47",
     "src/text-outlines.json": "e12c886ece373de449e5f62ba495890bd1abc4d4e291644d2cdeb6e22f57d7b1",
     "src/unified-worker.js": "9b1dc636deb9e4f8ba2a581a9e5e51c90dc160acbe9f6f1c9bfa0179f08e8217",
     "src/video-links.js": "81acc9ff6782990d4e2d0771514cd013935cfba762f6fbc91f8c25774f7401ca",

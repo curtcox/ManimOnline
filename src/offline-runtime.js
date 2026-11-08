@@ -17,7 +17,8 @@
    for(const url of all){if(await read(url))continue;const saved=await checked(await caches.match(url),url);if(saved)await cache.put(url,saved);}
   }
   async function respond(request){const url=typeof request==='string'?request:request.url;const cached=await read(url);if(cached)return cached;
-   const response=await fetch(request),copy=await checked(response.clone(),url);if(!copy)throw Error('Python runtime failed verification.');await(await caches.open(CACHE)).put(url,copy);return response;
+   // Classic scripts arrive as no-cors requests; fetch readable, credential-free bytes for verification.
+   const response=await fetch(request,{mode:'cors',credentials:'omit'}),copy=await checked(response.clone(),url);if(!copy)throw Error('Python runtime failed verification.');await(await caches.open(CACHE)).put(url,copy);return response;
   }
   return{status,download,carry,respond,includes:url=>all.includes(url),cacheName:CACHE};
  }
