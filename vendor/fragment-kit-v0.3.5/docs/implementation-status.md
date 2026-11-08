@@ -1,7 +1,9 @@
 # Implementation status
 
-This is the 0.3.0 release-candidate acceptance snapshot. The master plan's phase definitions
-are acceptance criteria, not a record of actions already performed.
+This is the historical 0.3.0 release-candidate acceptance snapshot. Current release,
+consumer PR, deployment and live acceptance evidence is recorded in
+[todo/rollout-status.md](https://github.com/curtcox/Tools-for-pages-with-state-in-URL-fragments/blob/main/todo/rollout-status.md).
+The master plan's phase definitions are acceptance criteria, not a record of actions already performed.
 
 Local runtime, documentation, baseline corpora, demo, tooling and workflows are
 implemented here. The local acceptance snapshot covers:

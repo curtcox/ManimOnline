@@ -12,7 +12,7 @@ npm run serve
 
 Open http://127.0.0.1:8000/demo/. `npm run demo` regenerates this repository's
 unreleased pinned consumer, cover images and offline manifest. It never rewrites
-other consumer directories. Once v0.3.3 is published, bump the version and demo
+other consumer directories. Once v0.3.4 is published, bump the version and demo
 paths before preparing another runtime release.
 
 `vendor-sync.mjs sync --target APP --to vX.Y.Z` copies a local pinned source or

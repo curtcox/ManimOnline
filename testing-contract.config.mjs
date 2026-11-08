@@ -5,7 +5,7 @@ test.beforeEach(async({context},info)=>{
  await context.route('**/',async route=>{const response=await route.fetch();await route.fulfill({response,body:(await response.text()).replace(/(<pre id="editor">)[\s\S]*?(<\/pre>)/,'$1'+source+'$2')});});
 });
 export default{
- ready:'body[data-ready="true"]',editor:'#editor',status:'#hashbin-status',draftKey:'manimonline:draft',more:'#more-toggle',share:'#share',qr:'#qr',tabs:['Code','Preview'],example:'dot',cachePrefix:'manimonline-offline-',offlineAsset:'src/app.css',kitURL:'./vendor/fragment-kit-v0.3.3/src/index.js',
+ ready:'body[data-ready="true"]',editor:'#editor',status:'#hashbin-status',draftKey:'manimonline:draft',more:'#more-toggle',share:'#share',qr:'#qr',tabs:['Code','Preview'],example:'dot',cachePrefix:'manimonline-offline-',offlineAsset:'src/app.css',kitURL:'./vendor/fragment-kit-v0.3.5/src/index.js',
  isWrittenURL:href=>{const url=new URL(href);return url.hash.length>1||url.searchParams.has('compressed');},
  getSource:page=>page.evaluate(()=>ManimOnline.editor.getValue()),getDocument:page=>page.evaluate(()=>ManimOnline.snapshot()),
  // Generic prose fixtures use forced DOT; real modl layout/drag races run in the native suites.

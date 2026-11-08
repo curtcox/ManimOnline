@@ -16,7 +16,8 @@ export function createDialog(title, { document = globalThis.document, id = `fk-d
   const previous = { value: null };
   close.onclick = () => dialog.close();
   dialog.addEventListener('close', () => { onClose(); if (previous.value?.isConnected) previous.value.focus(); });
-  dialog.append(heading, body, close); document.body.append(dialog);
+  const header = element('div', null, { className: 'fk-dialog-header' }, document);
+  header.append(heading, close); dialog.append(header, body); document.body.append(dialog);
   return { dialog, body, close,
     open() { previous.value = document.activeElement; if (!dialog.open) dialog.showModal(); },
     destroy() { if (dialog.open) dialog.close(); dialog.remove(); } };

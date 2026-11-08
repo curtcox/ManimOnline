@@ -5,7 +5,7 @@ with GnuPlotOnline, then R, PythonOnline, livelier, AudioOnline, pages,
 ManimOnline, apptron, sheets and modl. Each migration needs its own branch/PR,
 its actual engine suites and post-deployment checks.
 
-1. Run `node tools/vendor-sync.mjs sync --target ../GnuPlotOnline --to v0.3.3`.
+1. Run `node tools/vendor-sync.mjs sync --target ../GnuPlotOnline --to v0.3.4`.
    For a published version, use a released CLI or `--source` pinned checkout.
    The destination is immutable: changed existing bytes are an error.
 2. Define app config and a validated DocumentType. Preserve current storage keys.

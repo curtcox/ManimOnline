@@ -7,4 +7,4 @@ self.FragmentKitOfflineConfig={extraCaches:[runtime.cacheName],onMessage:async e
  try{if(event.data.type==='cache-runtime')await runtime.download();event.ports[0]?.postMessage(await runtime.status());}
  catch(error){event.ports[0]?.postMessage({...await runtime.status(),error:error.message});}
 }};
-importScripts('vendor/fragment-kit-v0.3.3/src/offline/sw-core.js');
+importScripts('vendor/fragment-kit-v0.3.5/src/offline/sw-core.js');

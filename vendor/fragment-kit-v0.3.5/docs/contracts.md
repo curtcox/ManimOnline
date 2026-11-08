@@ -1,7 +1,7 @@
 # Runtime contracts
 
 Fragment Kit runs as native ES modules, without a build step. Import
-`vendor/fragment-kit-v0.3.3/src/index.js`; include `src/ui/kit.css` separately.
+`vendor/fragment-kit-v0.3.5/src/index.js`; include `src/ui/kit.css` separately.
 Node 22.12+ can also `require()` these modules. Execution engines, editor setup,
 document validation and sandbox isolation remain application responsibilities.
 
@@ -112,7 +112,7 @@ Generate `offline-assets.js` from an app allowlist with
 `prefix`, `files`, optional pinned `remote` URLs and `cdnFallbacks`. The worker is:
 
 ```js
-importScripts('offline-assets.js', 'vendor/fragment-kit-v0.3.3/src/offline/sw-core.js');
+importScripts('offline-assets.js', 'vendor/fragment-kit-v0.3.5/src/offline/sw-core.js');
 ```
 
 The manifest must load first. Atomic staging downloads and verifies every file
@@ -123,12 +123,30 @@ extra named caches and handle app messages. `preserveCache(name)` can retain app
 `OfflineClient` exposes `init`, `status`, `repair`, `update`, `activateUpdate`.
 The app decides when a waiting worker activates and when to reload.
 
-`createShell` renders resources in the header and More drawer, a toolbar, status
-bar and domain-notice slot. Notices remain owned by hashbin.org. `mountMobileTabs`
-uses real tab/tabpanel semantics and arrow/Home/End keys, switches below 768 px,
-and tracks visualViewport height. Include viewport-fit=cover in the app's HTML.
-Dialogs fill phones below 600 px. Use `--fk-*` variables for themes; respect
-reduced motion, safe areas and 44 px targets.
+`createShell` renders a compact header containing resources, document actions and
+status, plus a More dialog. On phones, status moves into More to keep the
+workspace available; concise primary run/error feedback remains visible in the
+header. Mark a consumer message with `data-fk-primary-status`; legacy `#status`
+is also recognized. Resource links stay in More and also appear on wide screens. `compactShell({header,toolbar,status})` moves existing
+consumer bars into that layout without replacing their controls or listeners.
+The empty domain-notice slot is retained for compatibility; notices are owned by
+hashbin.org and must not be injected as overlays on working editors.
+
+`mountMobileTabs` uses real tab/tabpanel semantics and arrow/Home/End keys. Its
+existing behavior switches below 768 px and tracks visualViewport height.
+Opt into `desktop:true` to show the same controls at every width, including a
+Split tab. `select(index)` shows one panel; `select('split')` shows all panels;
+`getView()` returns that index or `'split'`. `onChange` receives the panel index,
+or `-1` for split, including viewport changes. Initial view is split on desktop
+and the first panel on phones; explicit selections survive resizing. Consumers
+must reconcile app-owned URL/view state and resize their editors/renderers.
+Shared panels expose `data-fk-view="single|split"` on their parent for layout.
+Include viewport-fit=cover in the app's HTML.
+
+Dialogs keep their title and Close button above a separately scrolling body.
+More uses a compact grid; phone dialogs use the available viewport with safe
+areas. Use paired `--fk-text`/`--fk-panel` theme variables for readable controls;
+respect reduced motion and 44 px targets.
 
 ## Versions
 
@@ -136,3 +154,7 @@ Pin exact runtime versions; upgrades are explicit. Major changes cover URL,
 envelope, storage or API breaks. Roll out readers across the fleet before
 switching writers. Release tags never move. Reusable major workflow aliases need
 an explicit repository release policy; exact immutable version tags work as well.
+
+## Consumer contract fixtures
+
+A testing adapter may provide source(text), returning a valid program containing that text. All source identity, draft, Publish, QR and sharing fixtures use this factory for both writes and expected reads. It defaults to the original text. Structured formats can keep their production validator strict, for example source: text => '# apptron snapshot v1\n-- main.sh --\necho '+JSON.stringify(text)+'\n'. The hook supplies test data only; runtime adapters still validate it normally.

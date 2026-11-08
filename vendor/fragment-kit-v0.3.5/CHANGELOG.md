@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.5
+
+* Compact shared chrome and an adapter for existing application action/status bars.
+* Explicit light/dark control colors, denser More menus and an always-visible dialog close control.
+* Keep concise primary run/error feedback visible on phones while details live in More.
+* Optional desktop workspace tabs with single-panel and split views.
+
+## 0.3.4 — 2026-11-04
+
+* Let consumer contract adapters provide valid source fixtures for structured
+  formats such as Apptron txtar, while retaining identity, drafts, Publish,
+  QR, sharing and history assertions against the actual document validator.
+* Existing adapters use the unchanged plain-text fixtures by default.
+
 ## 0.3.3 — 2026-11-04
 
 * Verify Publish redirects against the bounded original transaction bytes and

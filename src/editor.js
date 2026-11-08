@@ -1,26 +1,27 @@
-import {LocalDrafts,RenderScheduler,HashBinPanel,createShell,mountMobileTabs,createShareDialog,createQrDialog,readResponse,text} from '../vendor/fragment-kit-v0.3.3/src/index.js';
+import {LocalDrafts,RenderScheduler,HashBinPanel,createShell,mountMobileTabs,createShareDialog,createQrDialog,readResponse,text} from '../vendor/fragment-kit-v0.3.5/src/index.js';
 import {config,type,urlState,HashBinDocuments,HashBinStore,ShareLinks,ShareClient,LZString,fromDocument,loadHashBinSDK} from './fragment-config.mjs';
 import {initOffline} from './offline-client.mjs';
 Object.assign(globalThis,{HashBinDocuments,HashBinStore,ShareLinks,ShareClient,LZString,loadHashBinSDK});
+const legacyControls=['shareurl','shorten-share','share-status','hashbin-save','hashbin-cid','hashbin-load','hashbin-status','hashbin-dialog','offline-status','offline-action','view-tabs'].map(id=>document.getElementById(id));
 const shell=createShell({config});
 shell.header.querySelector('.fk-brand').href=new URL('./',location.href).href;
 shell.header.querySelector('.fk-more').id='more-toggle';
 const oldMore=document.querySelectorAll('#more-toggle')[1];oldMore.remove();
 const options=document.getElementById('options');
-for(const id of ['shareurl','shorten-share','share-status','hashbin-save','hashbin-cid','hashbin-load','hashbin-status','hashbin-dialog','offline-status','offline-action','view-tabs'])document.getElementById(id)?.remove();
+for(const node of legacyControls)node?.remove();
 shell.drawer.body.append(options);shell.status.id='app-status';
 const oldGallery=document.getElementById('sample-gallery'),resourceGallery=[...shell.drawer.body.querySelectorAll('a')].find(link=>link.textContent==='Gallery ↗');resourceGallery.id='sample-gallery';resourceGallery.href=oldGallery.getAttribute('href');oldGallery.remove();
 const workspace=document.createElement('main');workspace.id='workspace';
 for(const id of ['editor-toggle','editor','splitter','review','status'])workspace.append(document.getElementById(id));
-document.body.append(workspace);
+document.body.append(workspace);shell.status.append(document.getElementById('status'));
 document.querySelector('.github-fork-ribbon-wrapper')?.remove();
 shell.toolbar.append(document.querySelector('.render-controls.phone-bar'),document.getElementById('type-indicator'));
 const shareButton=document.getElementById('share');shell.toolbar.append(shareButton);
 const qrButton=document.createElement('button');qrButton.id='qr';qrButton.textContent='QR';shell.toolbar.append(qrButton);
-const tabBar=document.createElement('div');tabBar.id='panel-tabs';shell.toolbar.after(tabBar);
+const tabBar=document.createElement('div');tabBar.id='panel-tabs';shell.toolbar.prepend(tabBar);
 let tabs;
-const resizeWorkspace=()=>document.documentElement.style.setProperty('--workspace-top',(tabBar.getBoundingClientRect().bottom)+'px');
-new ResizeObserver(resizeWorkspace).observe(document.body);new ResizeObserver(resizeWorkspace).observe(shell.toolbar);
+const resizeWorkspace=()=>document.documentElement.style.setProperty('--workspace-top',(shell.header.getBoundingClientRect().bottom)+'px');
+new ResizeObserver(resizeWorkspace).observe(shell.header);new ResizeObserver(resizeWorkspace).observe(document.body);new ResizeObserver(resizeWorkspace).observe(shell.toolbar);
 let autoRun=true,navigationRevision=0,applying=false,qrSave=false;
 /* Editor orchestration, loaded last so every helper script is available. Indentation is kept from its inline origin. */
     const editorElement = document.getElementById('editor');
@@ -111,49 +112,7 @@ let autoRun=true,navigationRevision=0,applying=false,qrSave=false;
       }
     }
 
-    toggleBtn.addEventListener('click', () => {
-      isCollapsed = !isCollapsed;
-
-      if (isCollapsed) {
-        editorElement.style.transition = 'width 0.3s ease';
-        splitter.style.transition = 'left 0.3s ease, opacity 0.3s ease';
-        reviewElement.style.transition = 'left 0.3s ease';
-        optionsElement.style.transition = 'left 0.3s ease';
-
-        editorElement.classList.add('collapsed');
-        reviewElement.classList.add('expanded');
-        optionsElement.classList.add('expanded');
-        toggleBtn.classList.add('collapsed');
-        splitter.style.opacity = '0';
-        splitter.style.left = '0';
-        updateToggleLabel();
-
-        setTimeout(() => {
-          splitter.style.display = 'none';
-        }, 300);
-      } else {
-        splitter.style.left = '0';
-        splitter.style.opacity = '0';
-        splitter.style.display = 'flex';
-
-        editorElement.style.transition = 'width 0.3s ease';
-        splitter.style.transition = 'left 0.3s ease, opacity 0.3s ease';
-        reviewElement.style.transition = 'left 0.3s ease';
-        optionsElement.style.transition = 'left 0.3s ease';
-
-        setTimeout(() => {
-          editorElement.classList.remove('collapsed');
-          reviewElement.classList.remove('expanded');
-          optionsElement.classList.remove('expanded');
-          toggleBtn.classList.remove('collapsed');
-          updateToggleLabel();
-          updatePanelSizes(currentSplitPercentage);
-          splitter.style.opacity = '1';
-        }, 10);
-      }
-
-      setTimeout(resizeSVG, 300);
-    });
+    toggleBtn.addEventListener('click', () => tabs?.select(tabs.getView()===1?'split':1));
     // Phone visitors mostly watch, so they start on the preview.
 
     updateToggleLabel();
@@ -894,8 +853,8 @@ let autoRun=true,navigationRevision=0,applying=false,qrSave=false;
         return -1;
       };
 
-      tabs=mountMobileTabs({container:tabBar,panels:[{label:'Code',panel:editorElement},{label:'Preview',panel:reviewElement}],onChange:()=>{resizeWorkspace();requestAnimationFrame(()=>{editor.resize();resizeSVG();});}});
-      tabs.select(1);
+      tabs=mountMobileTabs({desktop:true,container:tabBar,panels:[{label:'Code',panel:editorElement},{label:'Preview',panel:reviewElement}],onChange:index=>{isCollapsed=index===1;editorElement.classList.remove('collapsed');reviewElement.classList.remove('expanded');optionsElement.classList.remove('expanded');toggleBtn.classList.toggle('collapsed',isCollapsed);splitter.style.display='';splitter.style.opacity='';updatePanelSizes(currentSplitPercentage);updateToggleLabel();resizeWorkspace();requestAnimationFrame(()=>{editor.resize();resizeSVG();});}});
+      if(mobileLayout.matches)tabs.select(1);
       let lastOpened;
       async function openURL(href,{initial=false}={}) {
         if(!initial&&lastOpened===href)return;lastOpened=href;

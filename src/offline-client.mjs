@@ -1,4 +1,4 @@
-import {OfflineClient} from '../vendor/fragment-kit-v0.3.3/src/index.js';
+import {OfflineClient} from '../vendor/fragment-kit-v0.3.5/src/index.js';
 export function initOffline(shell){
  const status=shell.offlineStatus,repair=document.createElement('button'),update=document.createElement('button');
  repair.id='offline-repair';repair.textContent='Repair offline copy';update.id='offline-update';update.textContent='Update and reload';update.hidden=true;shell.drawer.body.append(repair,update);
