@@ -9,10 +9,11 @@ const base=process.argv[2]||'http://127.0.0.1:8000/',engine=process.argv[3]||'ch
   await page.waitForSelector('body[data-ready="true"]');
   await page.waitForFunction(()=>!!navigator.serviceWorker.controller);
   await page.waitForFunction(()=>document.getElementById('offline-status').textContent==='Diagrams ready offline',null,{timeout:90000});
-  const url='https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js';
-  assert.equal(await page.evaluate(async url=>!!await(await caches.open('manimonline-runtime-v1')).match(url),url),false);
+  // CI mirrors the identical CDN bytes locally; check the cached module in either environment.
+  const cached=()=>page.evaluate(async()=>[...await(await caches.open('manimonline-runtime-v1')).keys()].some(request=>new URL(request.url).pathname.endsWith('/tex-svg.js')));
+  assert.equal(await cached(),false);
   assert.equal(await page.evaluate(async()=>{await ManimMath.load();return MathJax.version;}),'3.2.2');
-  assert.equal(await page.evaluate(async url=>!!await(await caches.open('manimonline-runtime-v1')).match(url),url),true);
+  assert.equal(await cached(),true);
   await context.setOffline(true);await page.reload();await page.waitForSelector('body[data-ready="true"]');
   assert.equal(await page.evaluate(async()=>{await ManimMath.load();return MathJax.version;}),'3.2.2');
   await context.close();console.log(engine+': cold controlled math load and verified offline reload passed');
