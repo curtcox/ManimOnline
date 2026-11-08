@@ -1899,3 +1899,9 @@ The app-owned adapter reads v1 as well as deployed raw/compressed/source, exampl
 Python and MathJax remain deferred and use a separate verified runtime cache. Gallery videos are lazy and optional package wheels stay outside readiness. Diagrams ready offline describes the saved application; Available offline requires all pinned required runtime bytes too. Updates wait for explicit activation and preserve the complete source/settings before reload. See docs/index.html, docs/sharing.html and docs/offline.html.
 
 The public client ID and canonical/recovery origins are unchanged. Publish retains no credentials here; its confirmation click calls the initialized SDK synchronously. New session transaction writes use manimonline:, while legacy reads are restricted to this app client. CI checks the pin against the published release, and deployment runs the complete gates before publishing. Generated domain notices still come from hashbin.org.
+
+## Prepared interface update
+
+This branch prepares Fragment Kit v0.3.5 for compact controls, readable dialogs,
+and single-pane or split workspace views. On phones, status details are in More.
+Shared release publication and site deployment are still pending.

@@ -1,4 +1,4 @@
-import * as kit from '../vendor/fragment-kit-v0.3.3/src/index.js';
+import * as kit from '../vendor/fragment-kit-v0.3.5/src/index.js';
 import * as Detector from './detector.js';
 import appConfig from '../fragment-kit.config.json' with {type:'json'};
 const detect=Detector.default??globalThis.ContentDetector;
@@ -81,5 +81,5 @@ export const ShareLinks={build:({url,code,mode='auto',type:language,scene='',eng
  return Object.freeze({long,fallback});
 }};
 export const LZString={compressToEncodedURIComponent:kit.compress,decompressFromEncodedURIComponent:kit.decompress};
-export const loadHashBinSDK=()=>import('../vendor/fragment-kit-v0.3.3/vendor/hashbin-sdk-v0.4.0.mjs');
-export {ShareClient} from '../vendor/fragment-kit-v0.3.3/src/index.js';
+export const loadHashBinSDK=()=>import('../vendor/fragment-kit-v0.3.5/vendor/hashbin-sdk-v0.4.0.mjs');
+export {ShareClient} from '../vendor/fragment-kit-v0.3.5/src/index.js';

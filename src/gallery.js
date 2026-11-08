@@ -1,4 +1,4 @@
-import{mountGallery}from'../vendor/fragment-kit-v0.3.3/src/index.js';
+import{mountGallery}from'../vendor/fragment-kit-v0.3.5/src/index.js';
 const samples=globalThis.ManimGalleryCatalog,container=document.getElementById('gallery');
 // Ordinary example links preserve the app's phone MP4 fast path and older cached editors.
 const state={build:doc=>{const example=samples.find(sample=>sample.document===doc);return{href:new URL(example.editorURL||('./?url='+encodeURIComponent(example.path)),location.href).href};}};

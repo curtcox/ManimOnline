@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
-import { adapter, ready, expectSource, expectWrittenURL } from './adapter.js';
+import { adapter, ready, expectSource, expectWrittenURL, sourceText } from './adapter.js';
 
 test('generated QR image decodes and loads the linked note through the upload path', async ({ page }) => {
   await ready(page);
-  const href = await adapter.build(page, { src: 'Scanned note ☕' }, true);
+  const href = await adapter.build(page, { src: sourceText('Scanned note ☕') }, true);
   const image = await page.evaluate(async ({ href, kitURL }) => {
     const { encodeQr, qrPng } = await import(kitURL);
     const blob = await qrPng(encodeQr(href));
@@ -12,11 +12,11 @@ test('generated QR image decodes and loads the linked note through the upload pa
   await page.locator(adapter.qr).click();
   await page.locator('#qr-image').setInputFiles({ name: 'note.png', mimeType: 'image/png', buffer: Buffer.from(image) });
   await expect(page.locator(adapter.qrDialog)).toBeHidden();
-  await expectSource(page, 'Scanned note ☕');
+  await expectSource(page, sourceText('Scanned note ☕'));
 });
 test('camera permission is deferred, a fake camera frame decodes, and tracks stop on close', async ({ page }) => {
   await ready(page);
-  const href = await adapter.build(page, { src: 'Camera note' }, true);
+  const href = await adapter.build(page, { src: sourceText('Camera note') }, true);
   await page.evaluate(async ({ href, kitURL }) => {
     const { encodeQr, QrScanner } = await import(kitURL);
     const qr = encodeQr(href), canvas = document.createElement('canvas');
@@ -36,7 +36,7 @@ test('camera permission is deferred, a fake camera frame decodes, and tracks sto
   }, { href, kitURL: adapter.kitURL });
   await page.locator(adapter.qr).click(); expect(await page.evaluate(() => window.cameraRequests)).toBe(0);
   await page.locator('#qr-scan').click();
-  await expectSource(page, 'Camera note');
+  await expectSource(page, sourceText('Camera note'));
   expect(await page.evaluate(() => window.cameraRequests)).toBe(1);
   expect(await page.evaluate(() => window.cameraStopped)).toBe(true);
 });

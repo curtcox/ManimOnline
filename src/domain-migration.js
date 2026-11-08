@@ -1,6 +1,6 @@
 /* eslint-env browser */
 const MAX_BYTES = 12 * 1024 * 1024;
-const KEYS = { pages: ['pagesonline:project'], python: ['pythononline:work'], gnuplot: ['gnuplotonline:document'], audio: ['audioonline:document'], upload: ['hashbin:ghpages:registered-app-client-id'], textpad: ['hashbin:textpad:migrated-text'] };
+const KEYS = { gripeline: ['gripeline:draft', 'gripeline:draft:history'], pages: ['pagesonline:project'], python: ['pythononline:work'], gnuplot: ['gnuplotonline:document'], audio: ['audioonline:document'], upload: ['hashbin:ghpages:registered-app-client-id'], textpad: ['hashbin:textpad:migrated-text'] };
 
 /** Validate an inert draft handoff; credentials and persistence permissions are never transferred. */
 export function validateMigration(payload, slug, app) {
@@ -14,6 +14,17 @@ export function validateMigration(payload, slug, app) {
     if (!allowed.includes(key) || typeof value !== 'string') throw new Error('Only this app’s drafts and public settings can be restored.');
     if (key !== 'hashbin:textpad:migrated-text' && key !== 'hashbin:ghpages:registered-app-client-id') {
       const document = JSON.parse(value);
+      if (slug === 'gripeline') {
+        const drafts = key.endsWith(':history') ? document : [value];
+        if (!Array.isArray(drafts) || drafts.length > 50) throw new Error('Invalid draft history.');
+        for (const draft of drafts) {
+          if (typeof draft !== 'string') throw new Error('Invalid draft history.');
+          const item = JSON.parse(draft);
+          if (!item || typeof item.src !== 'string' || Object.keys(item).some(key => !['src', 'pos'].includes(key))) throw new Error('Only diagram source and positions can be moved.');
+          if (item.pos && (typeof item.pos !== 'object' || Array.isArray(item.pos) || Object.values(item.pos).some(pair => !Array.isArray(pair) || pair.length !== 2 || pair.some(n => typeof n !== 'number' || !Number.isFinite(n))))) throw new Error('Invalid diagram positions.');
+        }
+        continue;
+      }
       if (!document || typeof document !== 'object' || Array.isArray(document)) throw new Error('A saved document is invalid.');
     }
   }
@@ -37,7 +48,7 @@ function download(payload) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** Install the old-origin move notice, or receive a handoff on a canonical app's migration page. */
+/** Offer old-origin transfers in More, or receive an explicitly requested handoff. */
 export function bootMigration(apps) {
   const slug = document.body.dataset.migrationApp;
   if (slug) {
@@ -95,9 +106,9 @@ export function bootMigration(apps) {
     }
     return validateMigration({ format: 'hashbin-origin-migration', version: 1, app: name, href: location.href, storage }, name, app);
   };
-  const notice = document.createElement('aside'); notice.setAttribute('aria-label', 'New app address');
-  notice.style.cssText = 'position:fixed;bottom:12px;right:12px;z-index:10000;max-width:calc(100vw - 48px);padding:12px;background:#fff;color:#111;border:2px solid #167c80;border-radius:8px;font:14px system-ui;box-shadow:0 3px 12px #0003';
-  const text = document.createElement('p'); text.textContent = `This app has moved to ${new URL(app.origin).hostname}.`; text.style.margin = '0 0 8px'; notice.append(text);
+  const notice = document.createElement('details');
+  const summary = document.createElement('summary'); summary.textContent = 'Move saved work'; notice.append(summary);
+  const destination = document.createElement('p'); destination.textContent = `Copy drafts to ${new URL(app.origin).hostname}, or keep a backup file.`; notice.append(destination);
   const move = document.createElement('button'); move.textContent = 'Move saved work'; notice.append(move);
   const backup = document.createElement('button'); backup.textContent = 'Download backup'; backup.style.marginLeft = '8px'; notice.append(backup);
   const problem = document.createElement('p'); problem.setAttribute('role', 'status'); notice.append(problem);
@@ -113,7 +124,14 @@ export function bootMigration(apps) {
     addEventListener('message', receive);
     setTimeout(() => removeEventListener('message', receive), 120000);
   };
-  document.body.append(notice);
+  // Recovery remains available on demand; working editors get no migration overlay.
+  const mount = () => {
+    const menu = document.querySelector('#fk-more-drawer .fk-dialog-body');
+    if (!menu) return;
+    menu.append(notice); document.removeEventListener('click', mount, true);
+  };
+  mount();
+  if (!notice.isConnected) document.addEventListener('click', mount, true);
 }
 
-bootMigration({"pages":{"legacy":"https://curtcox.github.io/pages/","origin":"https://pages.hashbin.page"},"python":{"legacy":"https://curtcox.github.io/PythonOnline/","origin":"https://python.hashbin.page"},"manim":{"legacy":"https://curtcox.github.io/ManimOnline/","origin":"https://manim.hashbin.page"},"gnuplot":{"legacy":"https://curtcox.github.io/GnuplotOnline/","origin":"https://gnuplot.hashbin.page"},"sheets":{"legacy":"https://curtcox.github.io/sheets/index.html","origin":"https://sheets.hashbin.page"},"modl":{"legacy":"https://curtcox.github.io/modl/","origin":"https://modl.hashbin.page"},"diagram":{"legacy":"https://curtcox.github.io/hashbin.org/diagram-oauth.html","origin":"https://diagram.hashbin.page"},"upload":{"legacy":"https://curtcox.github.io/hashbin.org/upload-via-registered-app.html","origin":"https://upload.hashbin.page"},"textpad":{"legacy":"https://hashbin.org/docs/textpad/app","origin":"https://textpad.hashbin.page"},"audio":{"legacy":"https://curtcox.github.io/AudioOnline/","origin":"https://audio.hashbin.page"}});
+bootMigration({"pages":{"legacy":"https://curtcox.github.io/pages/","origin":"https://pages.hashbin.page"},"python":{"legacy":"https://curtcox.github.io/PythonOnline/","origin":"https://python.hashbin.page"},"manim":{"legacy":"https://curtcox.github.io/ManimOnline/","origin":"https://manim.hashbin.page"},"gnuplot":{"legacy":"https://curtcox.github.io/GnuplotOnline/","origin":"https://gnuplot.hashbin.page"},"sheets":{"legacy":"https://curtcox.github.io/sheets/index.html","origin":"https://sheets.hashbin.page"},"gripeline":{"legacy":"https://curtcox.github.io/gripeline/editor/","origin":"https://gripeline.hashbin.page"},"modl":{"legacy":"https://curtcox.github.io/modl/","origin":"https://modl.hashbin.page"},"diagram":{"legacy":"https://curtcox.github.io/hashbin.org/diagram-oauth.html","origin":"https://diagram.hashbin.page"},"upload":{"legacy":"https://curtcox.github.io/hashbin.org/upload-via-registered-app.html","origin":"https://upload.hashbin.page"},"textpad":{"legacy":"https://hashbin.org/docs/textpad/app","origin":"https://textpad.hashbin.page"},"r":{"legacy":"https://curtcox.github.io/R/","origin":"https://r.hashbin.page"},"livelier":{"legacy":"https://curtcox.github.io/livelier/","origin":"https://livelier.hashbin.page"},"apptron":{"legacy":"https://curtcox.github.io/apptron/","origin":"https://apptron.hashbin.page"},"audio":{"legacy":"https://curtcox.github.io/AudioOnline/","origin":"https://audio.hashbin.page"}});

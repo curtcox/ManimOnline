@@ -3,10 +3,11 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const defaultAdapter = {
+  source: text => text,
   ready: 'body[data-ready="true"]', editor: '#source', status: '#app-status', draftKey: 'fragment-notes:document',
   more: '.fk-more', resume: '#resume-work', drafts: '#draft-dialog', restore: '#restore-work',
   share: '#share-open', shareDialog: '#share-dialog', shareLink: '#share-link', qr: '#qr-open', qrDialog: '#qr-dialog',
-  kitURL: './vendor/fragment-kit-v0.3.3/src/index.js', example: 'welcome', tabs: ['Write', 'Read'], cachePrefix: 'fragment-notes-',
+  kitURL: './vendor/fragment-kit-v0.3.5/src/index.js', example: 'welcome', tabs: ['Write', 'Read'], cachePrefix: 'fragment-notes-',
   configureHashBin: async (context, clientId) => {
     await context.route('**/demo/config.js', async route => {
       const response = await route.fetch();
@@ -35,3 +36,6 @@ export async function installHashBinMock(context, source) {
   if (adapter.installHashBinMock) return adapter.installHashBinMock(context, source);
   await context.route('**/vendor/hashbin-sdk-v0.4.0.mjs', route => route.fulfill({ body: source, contentType: 'text/javascript' }));
 }
+
+// Consumers with structured source formats supply valid programs for shared fixtures.
+export const sourceText = text => adapter.source(text);
