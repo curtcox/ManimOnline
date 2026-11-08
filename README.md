@@ -1900,8 +1900,9 @@ Python and MathJax remain deferred and use a separate verified runtime cache. Ga
 
 The public client ID and canonical/recovery origins are unchanged. Publish retains no credentials here; its confirmation click calls the initialized SDK synchronously. New session transaction writes use manimonline:, while legacy reads are restricted to this app client. CI checks the pin against the published release, and deployment runs the complete gates before publishing. Generated domain notices still come from hashbin.org.
 
-## Prepared interface update
+## Compact interface
 
-This branch prepares Fragment Kit v0.3.5 for compact controls, readable dialogs,
-and single-pane or split workspace views. On phones, status details are in More.
-Shared release publication and site deployment are still pending.
+This app uses released Fragment Kit v0.3.5 for compact controls, readable dialogs,
+and individual-pane or split workspace views. On phones, primary feedback stays
+visible while status details are available in More.
+Current deployment evidence is recorded in the [shared rollout status](https://github.com/curtcox/Tools-for-pages-with-state-in-URL-fragments/blob/main/todo/rollout-status.md).
