@@ -6,7 +6,7 @@ function harness(){
  const caches={open:async name=>{if(!stores.has(name))stores.set(name,new Map());const values=stores.get(name);return{match:async key=>values.get(key)?.clone(),put:async(key,value)=>values.set(key,value.clone()),delete:async key=>values.delete(key)};},match:async key=>{for(const store of stores.values())if(store.has(key))return store.get(key).clone();}};
  const context={Response,crypto,URL};vm.runInNewContext(fs.readFileSync('vendor/hashbin-cache-v0.4.0.js','utf8'),context);
  const manifest={runtime:Assets.runtime,optional:Assets.optional,runtimeHashes:Object.fromEntries([...Assets.runtime,...Assets.optional].map(url=>[url,sha('runtime')]))};
- const runtime=createRuntime({manifest,scope:'https://example.test/ManimOnline/',caches,verify:context.HashBinCache.verify,fetch:async request=>{const url=typeof request==='string'?request:request.url;calls.push(url);if(!online||url===fail)throw Error('Offline');return new Response(poison?'altered':'runtime');}});
+ const runtime=createRuntime({manifest,scope:'https://example.test/ManimOnline/',caches,verify:context.HashBinCache.verify,fetch:async(request,options={})=>{if(request.mode==='no-cors'&&(options.mode!=='cors'||options.credentials!=='omit'))return Response.error();const url=typeof request==='string'?request:request.url;calls.push(url);if(!online||url===fail)throw Error('Offline');return new Response(poison?'altered':'runtime');}});
  return{runtime,stores,calls,caches,setOnline:value=>online=value,setPoison:value=>poison=value,fail:value=>fail=value};
 }
 test('application allowlist contains every example, cover, local script and generated document',()=>{
@@ -43,4 +43,13 @@ test('a failed preparation retains valid bytes and never promises full readiness
 test('optional wheels are verified on demand and excluded from readiness',async()=>{
  const h=harness();await h.runtime.download();const count=h.calls.length;assert.equal(h.runtime.includes(Assets.optional[0]),true);await h.runtime.respond(Assets.optional[0]);assert.equal(h.calls.length,count+1);
  h.stores.get(CACHE).delete(Assets.optional[0]);assert.equal((await h.runtime.status()).ready,true);
+});
+
+test('cold cross-origin script loads remain verifiable without credentials',async()=>{
+ const h=harness(),url=Assets.runtime.find(url=>url.endsWith('tex-svg.js'));
+ const request=new Request(url,{mode:'no-cors',credentials:'include'});
+ const response=await h.runtime.respond(request);
+ assert.equal(await response.text(),'runtime');
+ assert.equal(await(await h.runtime.respond(url)).text(),'runtime');
+ assert.equal(h.calls.length,1);
 });
