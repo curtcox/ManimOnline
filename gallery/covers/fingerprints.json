@@ -1,9 +1,9 @@
 {
   "dependencies": {
     "src/examples.js": "7f4276ad786caa32b83b7f0a33a38fde7f1b12b094c6138b49b237fd6e18c190",
-    "src/fragment-config.mjs": "82c5cd4d922081723b375fa7372c188c7f4e50f4ca7b9cc53beac5c315225ad0",
-    "fragment-kit.config.json": "80ad4a0806306509210cbb99bd862e9279513c400ecad57c9c4d788358af1404",
-    "scripts/render-gallery.cjs": "3f9e5dd4c6ed1cede0ee5fb6007f3e72f6aa5a90197c8edee2f57408fd872abc",
+    "src/fragment-config.mjs": "b6423a93d4f24241262d3dabecd8e73e45867526b7dec0927373293ed96176b8",
+    "fragment-kit.config.json": "ee9b5bff7169e3df1285886291c0ad85b22e35ab361626f68871561eb90a9bb9",
+    "scripts/render-gallery.cjs": "9e8ad59f6848cc14f1749bac45f22df86d3c8d803ada3cbcdbbc8b4b91f058f2",
     "gallery/previews/modl.png": "f0eaa61e8235b5a3c825f007ebcc2f8f878ff912816b91ce12a3e99f3b75c9b9",
     "gallery/previews/modlpipeline.png": "1df69eadb7f92fb9fd8ab1bec14f60792f1c7c9f3169b4878ced02ec3456f6ea",
     "gallery/previews/modlfeedback.png": "8e553f97eae240e42d7c019db8f00cf5dc933ae7a314d70959b8d46ac99df7e9",

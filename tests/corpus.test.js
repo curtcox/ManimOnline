@@ -1,4 +1,4 @@
-const{test}=require('node:test'),assert=require('node:assert/strict'),{urlState,HashBinDocuments:D,type,fromDocument,publishTransactions}=require('../src/fragment-config.mjs'),{compress,createUrlState,config}=require('../vendor/fragment-kit-v0.3.5/src/index.js');
+const{test}=require('node:test'),assert=require('node:assert/strict'),{urlState,HashBinDocuments:D,type,fromDocument,publishTransactions}=require('../src/fragment-config.mjs'),{compress,createUrlState,config}=require('../vendor/fragment-kit-v0.4.3/src/index.js');
 const corpus=require('./legacy-urls.json');
 test('harvested source links preserve source and all language options',()=>{
  let count=0;for(const entry of corpus.cases){if(entry.kind!=='source')continue;const doc=fromDocument(urlState.parse(entry.href).doc),expected=entry.raw?D.parse(entry.raw):{src:entry.src};assert.equal(doc.src,expected.src);if(entry.raw)for(const field of ['type','scene','engine','outputFormat'])assert.equal(doc[field],expected[field]);count++;}assert.ok(count>=4);

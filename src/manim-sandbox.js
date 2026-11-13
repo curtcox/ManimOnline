@@ -13,7 +13,7 @@ const ManimSandbox = {
     return this.text;
   },
   // ManimClient needs a worker at once; the SDK loads first, so messages wait in a queue.
-  factory({ loadSDK = () => import('../vendor/fragment-kit-v0.3.5/vendor/hashbin-sdk-v0.4.0.mjs?execution'), base = new URL('src/', location.href).href } = {}) {
+  factory({ loadSDK = () => import('../vendor/fragment-kit-v0.4.3/vendor/hashbin-sdk-v0.4.0.mjs?execution'), base = new URL('src/', location.href).href } = {}) {
     return () => {
       const worker = { onmessage: null, onerror: null, queue: [], sandbox: null, closed: false,
         postMessage(data) { if (this.sandbox) this.sandbox.postMessage(data); else this.queue.push(data); },

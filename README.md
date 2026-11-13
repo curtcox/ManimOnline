@@ -1906,3 +1906,5 @@ This app uses released Fragment Kit v0.3.5 for compact controls, readable dialog
 and individual-pane or split workspace views. On phones, primary feedback stays
 visible while status details are available in More.
 Current deployment evidence is recorded in the [shared rollout status](https://github.com/curtcox/Tools-for-pages-with-state-in-URL-fragments/blob/main/todo/rollout-status.md).
+
+Optional AI: Ask/review/undo, gallery suggestions and model comparison use the published Fragment Kit 0.4.3 entry point. See [AI guidance](docs/ai.md). Budgets start at zero; accepted source waits for explicit Run, Render or Check. The bundled synthetic [suite](ai-suite.json) and [75-result report](ai-comparison.json) measure source assertions and document invariants, not runtime quality or a model winner.

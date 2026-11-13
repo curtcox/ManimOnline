@@ -2,17 +2,18 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <!-- Scripts only from this site and pinned paths; keep in step with new runtimes. connect-src stays open for ?url= sources. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/ https://cdn.jsdelivr.net/npm/mathjax@3.2.2/ https://cdn.jsdelivr.net/npm/@myriaddreamin/ 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob:; font-src 'self' data: https://cdn.jsdelivr.net; connect-src 'self' https: data: blob:; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <!-- Scripts only from this site and pinned paths; keep in step with new runtimes. connect-src stays open for ?url= sources. --> https://api.openai.com https://openrouter.ai https://api.anthropic.com https://generativelanguage.googleapis.com
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/ https://cdn.jsdelivr.net/npm/mathjax@3.2.2/ https://cdn.jsdelivr.net/npm/@myriaddreamin/ 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob:; font-src 'self' data: https://cdn.jsdelivr.net; connect-src 'self' https: data: blob:; worker-src 'self' blob:; frame-src https://ai.hashbin.page; object-src 'none'; base-uri 'self'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="Browse playable Manim animation samples and diagram previews, then load any sample into ManimOnline.">
   <title>Sample gallery · ManimOnline</title>
-  <link rel="stylesheet" href="vendor/fragment-kit-v0.3.5/src/ui/kit.css"><link rel="stylesheet" href="vendor/fragment-kit-v0.3.5/src/gallery/gallery.css"><link rel="stylesheet" href="src/gallery.css"><link rel="stylesheet" href="src/gallery-kit.css?v=3">
+  <link rel="stylesheet" href="vendor/fragment-kit-v0.4.3/src/ui/kit.css"><link rel="stylesheet" href="vendor/fragment-kit-v0.4.3/src/gallery/gallery.css"><link rel="stylesheet" href="src/gallery.css"><link rel="stylesheet" href="src/gallery-kit.css?v=3">
   <script defer src="src/gallery-catalog.js?v=3"></script>
   <script defer src="src/video-links.js"></script>
-  <script type="module" src="src/gallery.js?v=3"></script>
+  <script type="module" src="src/gallery.js?v=4"></script>
   <script type="module" src="src/gallery-updates.js?v=3"></script>
 
+<link rel="stylesheet" href="vendor/fragment-kit-v0.4.3/src/ai/ui/ai.css">
 </head>
 <body>
   <header>

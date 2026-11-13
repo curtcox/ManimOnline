@@ -16,7 +16,7 @@ compatibility layer, not a server running full Manim Community.
    keep its quoting, vocab, image nodes and stored positions compatible.
    `src/fragment-config.mjs` handles shared three-language documents, verified 256t CIDs and
    HashBin Publish saves through the pinned SDK (no tokens on this shared origin);
-   `vendor/fragment-kit-v0.3.5/src/hashbin/panel.js` owns the load/save controls. Preserve source and options
+   `vendor/fragment-kit-v0.4.3/src/hashbin/panel.js` owns the load/save controls. Preserve source and options
    through redirect saves, and discard loads after newer edits.
    The public HashBin client ID is in index.html; the exact production return
    address https://manim.hashbin.page/ must be registered on HashBin.
@@ -31,7 +31,7 @@ compatibility layer, not a server running full Manim Community.
    `hashbin-cache-v0.4.0.js` for the service worker); `tests/hashbin.test.js` checks both against
    the release SRI hashes. Upgrade by vendoring a newer release, never by editing these files.
 5. `src/manim-renderer.js`, `src/manim-player.js`, and `src/detector.js`.
-   `vendor/fragment-kit-v0.3.5/src/core/scheduler.js` coalesces editor/scene edits and cancels stale callbacks.
+   `vendor/fragment-kit-v0.4.3/src/core/scheduler.js` coalesces editor/scene edits and cancels stale callbacks.
    `src/fragment-config.mjs` snapshots local share links and bounds optional shortening.
 6. `docs/rendering.md` for current gaps and next milestones.
    `src/examples.js` contains the editor gallery catalog and stale-load protection.
@@ -1510,4 +1510,4 @@ Explicit program, source, example and CID URLs always load their document, indep
 
 ## Fragment Kit integration
 
-Shared URL/document/CID/Publish, QR, draft, scheduler, shell, mobile tabs and gallery behavior comes from the immutable vendor/fragment-kit-v0.3.5 pin. src/fragment-config.mjs owns three-language validation and legacy writers. Keep the original engines, opaque execution SDK bootstrap, scene lifecycle and preview producer unchanged. src/offline-runtime.js owns deferred verified Python/math and optional package caching; the kit owns atomic application caching. Run npm test, npm run check, npm run test:python, shared contracts and actual browser suites. Workflows use the immutable v2 shared gates. Do not hand-edit src/domain-migration.js or generated gallery/docs/offline files.
+Shared URL/document/CID/Publish, QR, draft, scheduler, shell, mobile tabs and gallery behavior comes from the immutable vendor/fragment-kit-v0.4.3 pin. src/fragment-config.mjs owns three-language validation and legacy writers. Keep the original engines, opaque execution SDK bootstrap, scene lifecycle and preview producer unchanged. src/offline-runtime.js owns deferred verified Python/math and optional package caching; the kit owns atomic application caching. Run npm test, npm run check, npm run test:python, shared contracts and actual browser suites. Workflows use the immutable v2 shared gates. Do not hand-edit src/domain-migration.js or generated gallery/docs/offline files.

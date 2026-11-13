@@ -1,4 +1,8 @@
-import{mountGallery}from'../vendor/fragment-kit-v0.3.5/src/index.js';
+import {mountGalleryAi,aiCallback} from './ai-client.js';
+import {config,type} from './fragment-config.mjs';
+if(aiCallback()) await new Promise(()=>{});
+function mountGallery(options){const gallery=mountOriginalGallery(options);queueMicrotask(()=>void mountGalleryAi({config,type,...options}).catch(error=>{const p=document.createElement('p');p.setAttribute('role','status');p.textContent=error.message;options.container.before(p);}));return gallery;}
+import{mountGallery as mountOriginalGallery}from'../vendor/fragment-kit-v0.4.3/src/index.js';
 const samples=globalThis.ManimGalleryCatalog,container=document.getElementById('gallery');
 // Ordinary example links preserve the app's phone MP4 fast path and older cached editors.
 const state={build:doc=>{const example=samples.find(sample=>sample.document===doc);return{href:new URL(example.editorURL||('./?url='+encodeURIComponent(example.path)),location.href).href};}};

@@ -52,7 +52,7 @@ async function run(engine) {
       } else if (!released && file === 'index.html') body = legacyHTML;
       else if (!released && file === 'src/examples.js') body = legacyCatalog;
       else if(!released&&['hashbin.js','hashbin-panel.js','render-scheduler.js','share-links.js','offline.js'].some(name=>file==='src/'+name))body=fs.readFileSync(path.join(__dirname,'fixtures/legacy-'+path.basename(file)));
-      else if(file==='vendor/hashbin-sdk-v0.4.0.mjs')body=fs.readFileSync(path.join(root,'vendor/fragment-kit-v0.3.5/vendor/hashbin-sdk-v0.4.0.mjs'));
+      else if(file==='vendor/hashbin-sdk-v0.4.0.mjs')body=fs.readFileSync(path.join(root,'vendor/fragment-kit-v0.4.3/vendor/hashbin-sdk-v0.4.0.mjs'));
       else if (file === 'offline-assets.js') {
         // This test isolates local-application upgrades; pinned runtime/CDN reuse
         // and readiness failures are covered by tests/offline.test.js.

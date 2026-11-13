@@ -1,4 +1,6 @@
-import {LocalDrafts,RenderScheduler,HashBinPanel,createShell,mountMobileTabs,createShareDialog,createQrDialog,readResponse,text} from '../vendor/fragment-kit-v0.3.5/src/index.js';
+import {mountClientAi,aiCallback} from './ai-client.js';
+if(aiCallback()) await new Promise(()=>{});
+import {LocalDrafts,RenderScheduler,HashBinPanel,createShell,mountMobileTabs,createShareDialog,createQrDialog,readResponse,text} from '../vendor/fragment-kit-v0.4.3/src/index.js';
 import {config,type,urlState,HashBinDocuments,HashBinStore,ShareLinks,ShareClient,LZString,fromDocument,loadHashBinSDK} from './fragment-config.mjs';
 import {initOffline} from './offline-client.mjs';
 Object.assign(globalThis,{HashBinDocuments,HashBinStore,ShareLinks,ShareClient,LZString,loadHashBinSDK});
@@ -22,6 +24,7 @@ const tabBar=document.createElement('div');tabBar.id='panel-tabs';shell.toolbar.
 let tabs;
 const resizeWorkspace=()=>document.documentElement.style.setProperty('--workspace-top',(shell.header.getBoundingClientRect().bottom)+'px');
 new ResizeObserver(resizeWorkspace).observe(shell.header);new ResizeObserver(resizeWorkspace).observe(document.body);new ResizeObserver(resizeWorkspace).observe(shell.toolbar);
+let aiUI=null,aiHold=false;
 let autoRun=true,navigationRevision=0,applying=false,qrSave=false;
 /* Editor orchestration, loaded last so every helper script is available. Indentation is kept from its inline origin. */
     const editorElement = document.getElementById('editor');
@@ -221,7 +224,7 @@ let autoRun=true,navigationRevision=0,applying=false,qrSave=false;
       function sourceSnapshot() {
         const src = editor.getValue();
         const type = rendererMode.value === 'auto' ? ContentDetector.detect(src).type : rendererMode.value;
-        return { src, autorun:autoRun, type: type==='unknown'?'graphviz':type, mode:rendererMode.value, scene: sceneNameInput.value, engine: engineEl.value,
+        return { src, autorun:autoRun&&!aiHold, type: type==='unknown'?'graphviz':type, mode:rendererMode.value, scene: sceneNameInput.value, engine: engineEl.value,
           outputFormat: formatEl.value, pos: modlPositions };
       }
       const hashbinPanel = new HashBinPanel({ store: hashbinStore, urlState, container:shell.drawer.body, getSnapshot: sourceSnapshot,
@@ -247,7 +250,8 @@ let autoRun=true,navigationRevision=0,applying=false,qrSave=false;
       // Typing marks unsaved work; loads and saves clear it, so links never silently replace it.
       const drafts = new LocalDrafts({storage:storage('localStorage'),key:'manimonline:draft'});
       drafts.mount(shell.drawer.body, snapshot => { applyLoadedSource(snapshot); });
-      function applyLoadedSource(value, cid = null, {run=autoRun,write=true,cancel=true}={}) {
+      function applyLoadedSource(value, cid = null, {run=autoRun,write=true,cancel=true,fromAi=false}={}) {
+        if(!fromAi){aiUI?.cancel();aiHold=false;}
         const snapshot=fromDocument(value);
         if(cancel){navigationRevision++;hashbinPanel.cancelLoad();}urlState.cancel();scheduler.cancel();exampleLoader.cancel();invalidateRender();
         autoRun=run;applying=true;drafts.opened();showVideoLink(cid&&globalThis.VideoLinks?.snippets[cid]);
@@ -256,7 +260,7 @@ let autoRun=true,navigationRevision=0,applying=false,qrSave=false;
         editor.setValue(snapshot.src,-1);applying=false;detectAndUpdateType();
         savedHashbin=cid?{cid,fingerprint:currentShareFingerprint()}:null;
         if(write)updateState();
-        if(autoRun)render();
+        if(autoRun&&!aiHold)render();
       }
       function currentShareFingerprint() {
         return JSON.stringify([editor.getSession().getDocument().getValue(),rendererMode.value,sceneNameInput.value,engineEl.value,formatEl.value,modlPositions]);
@@ -267,7 +271,7 @@ let autoRun=true,navigationRevision=0,applying=false,qrSave=false;
       const qrDialog=createQrDialog({config,urlState,onLoad:outcome=>openURL(outcome.kind==='cid'?urlState.link(location.href,outcome.cid):outcome.href),onSave:()=>{qrSave=true;qrDialog.dialog.close();return hashbinPanel.openSave();}});
       shareDialog.dialog.querySelector('p[role=status]').id='share-status';shareDialog.dialog.querySelectorAll('button').forEach(button=>{if(button.textContent==='Shorten link')button.id='share-shorten';});
       shareEl.addEventListener('click',()=>{shareDialog.open();const run=shareDialog.dialog.querySelector('#share-run');run.checked=autoRun;run.dispatchEvent(new Event('change'));});
-      qrButton.addEventListener('click',()=>qrDialog.open(urlState.build(sourceSnapshot(),{run:autoRun,view:new URL(location.href).searchParams.get('view')||undefined}).href));
+      qrButton.addEventListener('click',()=>qrDialog.open(urlState.build(sourceSnapshot(),{run:autoRun&&!aiHold,view:new URL(location.href).searchParams.get('view')||undefined}).href));
       const rendererMode = document.getElementById('renderer-mode');
       let exportingPNG = false;
       const frameFormat = document.getElementById('manim-export-format');
@@ -450,7 +454,7 @@ let autoRun=true,navigationRevision=0,applying=false,qrSave=false;
 
       const scheduler = new RenderScheduler({ detect: detectAndUpdateType, render });
       renderAnimationButton.addEventListener('click', () => {
-        autoRun=true;updateState();
+        aiHold=false;autoRun=true;updateState();
         if (mobileLayout.matches) showCode(false);
         render();
       });
@@ -463,7 +467,7 @@ let autoRun=true,navigationRevision=0,applying=false,qrSave=false;
         show_status('Render cancelled. Choose Render animation to retry.');
         renderAnimationButton.focus();
       });
-      rendererMode.addEventListener('change', () => {navigationRevision++;exampleLoader.cancel();updateState();if(autoRun)render();else detectAndUpdateType();});
+      rendererMode.addEventListener('change', () => {navigationRevision++;exampleLoader.cancel();updateState();if(autoRun&&!aiHold)render();else detectAndUpdateType();});
 
       function show_status(text, hide) {
         hide = hide || 0;
@@ -565,6 +569,7 @@ let autoRun=true,navigationRevision=0,applying=false,qrSave=false;
 
       // Unified render function
       async function render() {
+        if(aiHold)return;
         scheduler.cancel();
         clearError();
         invalidateRender();
@@ -815,7 +820,7 @@ let autoRun=true,navigationRevision=0,applying=false,qrSave=false;
       }
 
       function updateState() {
-        try {urlState.cancel();const href=savedHashbin?.fingerprint===currentShareFingerprint()?urlState.link(location.href,savedHashbin.cid):urlState.build(sourceSnapshot(),{run:autoRun,view:new URL(location.href).searchParams.get('view')||undefined}).href;history.replaceState(null,'',href);lastOpened=href;}catch(error){show_error(error);}
+        try {urlState.cancel();const href=savedHashbin?.fingerprint===currentShareFingerprint()?urlState.link(location.href,savedHashbin.cid):urlState.build(sourceSnapshot(),{run:autoRun&&!aiHold,view:new URL(location.href).searchParams.get('view')||undefined}).href;history.replaceState(null,'',href);lastOpened=href;}catch(error){show_error(error);}
       }
 
       // Set editor theme based on detected type
@@ -825,8 +830,8 @@ let autoRun=true,navigationRevision=0,applying=false,qrSave=false;
       editor.getSession().on("change", function () {
         if(applying)return;drafts.attempt(sourceSnapshot(),true);hashbinPanel.cancelLoad();navigationRevision++;urlState.cancel();exampleLoader.cancel();
         invalidateRender();sceneNamesList.replaceChildren();
-        try{lastOpened=urlState.write(sourceSnapshot(),{run:autoRun,view:new URL(location.href).searchParams.get('view')||undefined});}catch(error){show_error(error);return;}
-        if(autoRun)scheduler.schedule();
+        try{lastOpened=urlState.write(sourceSnapshot(),{run:autoRun&&!aiHold,view:new URL(location.href).searchParams.get('view')||undefined});}catch(error){show_error(error);return;}
+        if(autoRun&&!aiHold)scheduler.schedule();
       });
 
       window.addEventListener('popstate',()=>openURL(location.href));
@@ -835,13 +840,13 @@ let autoRun=true,navigationRevision=0,applying=false,qrSave=false;
       sceneNameInput.addEventListener('input', () => {
         exampleLoader.cancel();
         invalidateRender();
-        navigationRevision++;try{lastOpened=urlState.write(sourceSnapshot(),{run:autoRun,view:new URL(location.href).searchParams.get('view')||undefined});}catch(error){show_error(error);return;}if(autoRun)scheduler.schedule({ detect: false });
+        navigationRevision++;try{lastOpened=urlState.write(sourceSnapshot(),{run:autoRun&&!aiHold,view:new URL(location.href).searchParams.get('view')||undefined});}catch(error){show_error(error);return;}if(autoRun&&!aiHold)scheduler.schedule({ detect: false });
       });
       sceneNameInput.addEventListener('keydown', event => {
-        if (event.key === 'Enter') {autoRun=true;render();}
+        if (event.key === 'Enter') {aiHold=false;autoRun=true;render();}
       });
-      for(const select of [formatEl,engineEl])select.addEventListener('change',()=>{navigationRevision++;updateState();if(autoRun)render();});
-      rawEl.addEventListener("change", render);
+      for(const select of [formatEl,engineEl])select.addEventListener('change',()=>{navigationRevision++;updateState();if(autoRun&&!aiHold)render();});
+      rawEl.addEventListener("change", ()=>{if(!aiHold)render();});
 
 
       HTMLOptionsCollection.prototype.indexOf = function (name) {
@@ -858,7 +863,7 @@ let autoRun=true,navigationRevision=0,applying=false,qrSave=false;
       let lastOpened;
       async function openURL(href,{initial=false}={}) {
         if(!initial&&lastOpened===href)return;lastOpened=href;
-        const revision=++navigationRevision;urlState.cancel();scheduler.cancel();exampleLoader.cancel();invalidateRender();
+        aiUI?.cancel();const revision=++navigationRevision;urlState.cancel();scheduler.cancel();exampleLoader.cancel();invalidateRender();
         try{
           const intent=urlState.parse(href);autoRun=intent.run;
           document.body.classList.toggle('presentation',new URL(href).searchParams.has('presentation')||Boolean(intent.view));
@@ -877,10 +882,11 @@ let autoRun=true,navigationRevision=0,applying=false,qrSave=false;
             const source=text(await readResponse(response,config.maxBytes));if(revision!==navigationRevision)return;
             const query=new URL(href);query.searchParams.delete('url');query.hash=encodeURIComponent(source);
             applyLoadedSource(urlState.parse(query.href).doc,null,{run:intent.run,cancel:false});
-          }else if(initial){rendererMode.value='auto';detectAndUpdateType();if(autoRun)render();}
+          }else if(initial){rendererMode.value='auto';detectAndUpdateType();if(autoRun&&!aiHold)render();}
         }catch(error){if(revision===navigationRevision){show_error(error);hashbinPanel.status.textContent=error.message;}}
       }
       globalThis.ManimOnline={editor,snapshot:sourceSnapshot,openURL,render};
+      aiUI=await mountClientAi({config,type,urlState,getSnapshot:()=>type.normalize(sourceSnapshot()),getFingerprint:currentShareFingerprint,container:shell.drawer.body,toolbar:shell.toolbar,status:show_status,onApply:doc=>{aiHold=true;const pref=doc.manim.autorun;applyLoadedSource(doc,null,{run:false,write:false,fromAi:true});autoRun=pref;drafts.attempt(sourceSnapshot(),true);updateState();show_status('Change accepted — press Render animation.');}});
       document.body.dataset.ready='true';
       hashbinStore.retireLegacyTokens().catch(()=>{});
       initOffline(shell);

@@ -8,5 +8,80 @@
   "docs": "https://curtcox.github.io/ManimOnline/docs/",
   "gallery": "https://curtcox.github.io/ManimOnline/gallery.html",
   "documentType": "manim-editor",
-  "sandboxBootstrapHash": "sha256-IMEqdP+AkCKdxhM3X7mQM4pV/chykJXPvdtndD+XeH8="
+  "sandboxBootstrapHash": "sha256-IMEqdP+AkCKdxhM3X7mQM4pV/chykJXPvdtndD+XeH8=",
+  "ai": {
+    "deployments": {
+      "https://manim.hashbin.page/": {
+        "connection": "host",
+        "host": "https://ai.hashbin.page/fleet-v0.4.3/"
+      },
+      "https://curtcox.github.io/ManimOnline/": {
+        "connection": "direct"
+      },
+      "http://127.0.0.1:8000/": {
+        "connection": "direct"
+      },
+      "http://localhost/": {
+        "connection": "direct"
+      }
+    },
+    "routes": [
+      "paste",
+      "openai",
+      "openrouter",
+      "anthropic",
+      "gemini",
+      "local",
+      "browser"
+    ],
+    "budget": {
+      "total": 0,
+      "day": 0,
+      "month": 0
+    },
+    "models": [
+      {
+        "ref": "openai:gpt-4.1-mini-2025-04-14",
+        "name": "GPT-4.1 mini",
+        "capabilities": [
+          "generate",
+          "decide"
+        ],
+        "destination": "OpenAI",
+        "pinned": true,
+        "prices": {
+          "input": 0.4,
+          "output": 1.6
+        }
+      },
+      {
+        "ref": "openai:gpt-4.1-2025-04-14",
+        "name": "GPT-4.1",
+        "capabilities": [
+          "generate",
+          "decide"
+        ],
+        "destination": "OpenAI",
+        "pinned": true,
+        "prices": {
+          "input": 2,
+          "output": 8
+        }
+      },
+      {
+        "ref": "openai:gpt-4o-mini-2024-07-18",
+        "name": "GPT-4o mini",
+        "capabilities": [
+          "generate",
+          "decide"
+        ],
+        "destination": "OpenAI",
+        "pinned": true,
+        "prices": {
+          "input": 0.15,
+          "output": 0.6
+        }
+      }
+    ]
+  }
 }

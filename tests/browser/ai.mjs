@@ -1,0 +1,38 @@
+import fs from 'node:fs/promises';import path from 'node:path';import {fileURLToPath} from 'node:url';import {createRequire} from 'node:module';import assert from 'node:assert/strict';import http from 'node:http';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..'),require=createRequire(import.meta.url),{chromium,firefox,webkit}=require('playwright');
+const config=JSON.parse(await fs.readFile(root+'/fragment-kit.config.json','utf8')),suite=JSON.parse(await fs.readFile(root+'/ai-suite.json','utf8')),slug=config.slug;
+const dir=slug==='modl'?'js':'src',suffix=['modl','sheets','apptron','gripeline'].includes(slug)?'js':'mjs';
+const {type,urlState}=await import(root+'/'+dir+'/fragment-config.'+suffix);
+const source=()=>{switch(slug){case'pages':return window.pagesApp.snapshot().src;case'livelier':return LivelierApp.editor.getValue();case'manim':return ManimOnline.editor.getValue();case'apptron':return ApptronOnline.getSource();case'sheets':return SheetsOnline.getSource();case'modl':return ModlApp.getSource();case'gripeline':return document.getElementById('source').value;default:return window.editor.getValue();}};
+const server=http.createServer(async(req,res)=>{try{const pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname);const file=path.resolve(root,'.'+pathname+(pathname.endsWith('/')?'index.html':''));if(!file.startsWith(root+path.sep))throw Error('Path');let data;try{data=await fs.readFile(file);}catch(error){if(slug!=='gripeline')throw error;data=await fs.readFile(path.resolve(root,'../site/_site/editor','.'+pathname+(pathname.endsWith('/')?'index.html':'')));}const ext=path.extname(file);res.setHeader('Content-Type',({'.js':'text/javascript','.mjs':'text/javascript','.json':'application/json','.css':'text/css','.html':'text/html','.svg':'image/svg+xml','.png':'image/png','.wasm':'application/wasm'})[ext]??'application/octet-stream');if(slug==='apptron'){res.setHeader('Cross-Origin-Opener-Policy','same-origin');res.setHeader('Cross-Origin-Embedder-Policy','require-corp');}res.end(data);}catch{res.statusCode=404;res.end('Unavailable');}});
+await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const base='http://127.0.0.1:'+server.address().port+'/';
+const engine=process.env.BROWSER??'chromium',browser=await({chromium,firefox,webkit}[engine]).launch();
+try{
+ const context=await browser.newContext({viewport:{width:360,height:800}});await context.addInitScript(({slug})=>{
+  window.fleetSlug=slug;window.fleetWorkerCalls=[];const post=Worker.prototype.postMessage;Worker.prototype.postMessage=function(data,...rest){window.fleetWorkerCalls.push(JSON.stringify(data));return post.call(this,data,...rest);};
+ },{slug});
+ const page=await context.newPage();let paidRequests=0;page.on('request',request=>{if(/api.openai.com|openrouter.ai\/api|api.anthropic.com|generativelanguage.googleapis.com/.test(request.url()))paidRequests++;});
+ const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error('PAGE:',e.message);});page.on('response',response=>{if(response.status()>=400)console.error('HTTP:',response.status(),response.url());});
+ const c=suite.cases.find(c=>c.kind==='change');await page.goto(urlState.build(c.base,{url:base,run:false}).href);await page.locator('#ask-open').waitFor({timeout:45000});if(slug==='livelier')await page.waitForFunction(()=>Boolean(globalThis.LivelierApp?.ready));
+ const getSource=()=>page.evaluate(({slug})=>{switch(slug){case'pages':return window.pagesApp.snapshot().src;case'livelier':return LivelierApp.editor.getValue();case'manim':return ManimOnline.editor.getValue();case'apptron':return ApptronOnline.getSource();case'sheets':return SheetsOnline.getSource();case'modl':return ModlApp.getSource();case'gripeline':return document.getElementById('source').value;default:return window.editor.getValue();}},{slug});
+ assert.equal(await getSource(),c.base.src,errors.join('\n'));
+ await page.evaluate(()=>{window.fleetWorkerCalls=[];window.fleetPreviewRuns=0;if(globalThis.Preview){const render=Preview.prototype.render;Preview.prototype.render=function(...args){window.fleetPreviewRuns++;return render.apply(this,args);};}});
+ const accepted=c.base.src.replace('Before','Fleet accepted');
+ await page.locator('#ask-open').click();await page.getByLabel('Describe a change').fill('Change Before to Fleet accepted');await page.getByRole('button',{name:'Copy prompt',exact:true}).click();
+ const proposal=type.ai.output==='full'?{...c.base,src:accepted,pages:{...c.base.pages,files:c.base.pages.files.map(file=>file.name===c.base.pages.entry?{...file,text:accepted}:file)}}:{summary:'Change label',edits:[{path:'/src',find:'Before',replace:'Fleet accepted'}]};
+ await page.getByLabel('Paste model reply').fill(JSON.stringify(proposal));await page.getByRole('button',{name:'Review pasted reply'}).click();await fs.mkdir(root+'/test-results',{recursive:true});await page.screenshot({path:root+'/test-results/ai-'+engine+'.png',fullPage:true});await page.getByRole('button',{name:'Accept change',exact:true}).click();assert.equal(await getSource(),accepted);
+ await page.waitForTimeout(1100);assert.equal(await page.evaluate(()=>window.fleetWorkerCalls.some(call=>{const value=JSON.parse(call);return !value.command&&call.includes('Fleet accepted');})),false);assert.equal(await page.evaluate(()=>window.fleetPreviewRuns),0);assert.equal(new URL(page.url()).searchParams.get('run'),'0');
+ const stored=await page.evaluate(()=>Object.entries(localStorage).filter(([key])=>!key.includes('ai:')).map(([,value])=>value).join('\n'));assert.ok(stored.includes('Fleet accepted'),'Accepted edit must be saved as a normal draft');
+ await page.getByRole('button',{name:'Undo AI change',exact:true}).click();assert.equal(await getSource(),c.base.src);assert.equal(new URL(page.url()).searchParams.get('run'),'0');
+ await page.getByLabel('Describe a change').fill('Prepare another change');await page.getByRole('button',{name:'Copy prompt',exact:true}).click();await page.getByLabel('Paste model reply').fill(JSON.stringify(proposal));await page.getByRole('button',{name:'Review pasted reply'}).click();
+ await page.evaluate(()=>dispatchEvent(new PopStateEvent('popstate')));await page.waitForTimeout(100);assert.equal(await page.getByRole('button',{name:'Accept change',exact:true}).isVisible(),false);
+ assert.equal(paidRequests,0);console.log(engine+': '+slug+' accept/undo/draft/explicit-run/navigation/no-paid-load passed');
+ await page.setViewportSize({width:360,height:800});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),'Editor must fit a 360px phone');
+ if(slug!=='gripeline'){
+  await page.goto(base+'gallery.html');await page.getByLabel('What do you want to make?',{exact:true}).fill('example');await page.getByRole('button',{name:'Find a starting point'}).click();await page.locator('#ai-starting-point a').first().waitFor();assert.ok(await page.locator('.fk-gallery-filters input').count());
+  await page.setViewportSize({width:360,height:800});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),'Gallery must fit a 360px phone');
+ }
+ await page.goto(base+'?code=untrusted&state=untrusted');await page.getByRole('alert').waitFor();assert.equal(new URL(page.url()).searchParams.has('code'),false);assert.equal(await page.locator('#ask-open').count(),0);
+ console.log(engine+': '+slug+' gallery, phone and scrubbed callback passed');
+ await context.close();
+}catch(error){console.error(error);process.exitCode=1;}finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

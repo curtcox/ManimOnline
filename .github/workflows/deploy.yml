@@ -18,4 +18,4 @@ jobs:
     uses: curtcox/Tools-for-pages-with-state-in-URL-fragments/.github/workflows/pages.yml@v2
     with:
       path: '.'
-      verify-marker: manim-fragment-kit-v0.3.5
+      verify-marker: manim-fragment-kit-v0.4.3

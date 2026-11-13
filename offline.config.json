@@ -264,8 +264,8 @@
     "src/app.css",
     "src/offline-client.mjs",
     "src/offline-runtime.js",
-    "vendor/fragment-kit-v0.3.5/src",
-    "vendor/fragment-kit-v0.3.5/vendor",
+    "vendor/fragment-kit-v0.4.3/src",
+    "vendor/fragment-kit-v0.4.3/vendor",
     "docs",
     "src/docs.css",
     "src/gallery-catalog.js",
@@ -273,7 +273,10 @@
     "gallery/covers",
     "src/gallery-updates.js",
     "icon.svg",
-    "manifest.webmanifest"
+    "manifest.webmanifest",
+    "ai-suite.json",
+    "src/ai-client.js",
+    "ai-comparison.json"
   ],
   "metadata": {
     "runtime": [
