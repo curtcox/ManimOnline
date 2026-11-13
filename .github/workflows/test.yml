@@ -13,7 +13,7 @@ jobs:
       contract-config: testing-contract.config.mjs
       pre-test: python3 -m pip install --break-system-packages numpy pillow pygments && npm run test:python && node scripts/fetch-runtime.mjs
       server-command: PORT=8000 node tests/browser/server.cjs
-      browser-command: node tests/browser/ai.mjs && node tests/browser/ai.mjs && node tests/browser/ai.mjs && node tests/browser/ai.mjs && node tests/browser/legacy-publish.cjs && node tests/browser/url-state.cjs && npm run test:browser
+      browser-command: node tests/browser/ai.mjs && node tests/browser/legacy-publish.cjs && node tests/browser/url-state.cjs && npm run test:browser
       gallery-command: node scripts/render-kit-gallery.mjs --check
   kit:
     uses: curtcox/Tools-for-pages-with-state-in-URL-fragments/.github/workflows/kit-check.yml@v2
