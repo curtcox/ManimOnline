@@ -29,7 +29,7 @@
     "https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pillow-10.2.0-cp312-cp312-pyodide_2024_0_wasm32.whl": "f64cf341b63ea818598febda483c44a39babda536f213eb14381c66e1ab1ff34"
   },
   "prefix": "manimonline-offline",
-  "version": "manimonline-offline-5575903fd34a9e87",
+  "version": "manimonline-offline-1f662e1e799c1382",
   "assets": [
     "ace/ace.js",
     "ace/mode-dot.js",
@@ -894,7 +894,7 @@
     "gallery/previews/vectorfields.png": "4dc7d5bc4c6de3ce851c5bf314247f98121ba49d401d137269292db148b974a7",
     "gallery/previews/zoomed.png": "ea3161a35c2a55424126a5a44ca0fdd51de6ddc6b76a7906c609c87a3ce1ed63",
     "icon.svg": "8a2f9761aa953328a47ef5dea3eeb4ce6bd7466aa955be4a52d1e904a3552730",
-    "index.html": "c87ed157e002608925fdbe256c8667b92a94c563f09b5b498a086e37f9869662",
+    "index.html": "ddfb792ec151cef96aed840ef90fc215b504018a19cf2d730ad7a1ebe335c5f7",
     "manifest.webmanifest": "0c0dd2d286e6b57325b3d720d09ea31e0ec2b6c30b386f1c04a2288745d35b27",
     "src/ai-client.js": "a8cc0a4e40721d291c63d93effa979eb2beca999f7c6235f32b257f807ce7cc3",
     "src/app.css": "6998e4116a4233dd40ebfad74a4cd46fad5cbd672ac06c83038d99a7b0901b6b",
