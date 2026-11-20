@@ -1,0 +1,14 @@
+.fk-ai-panel { min-width: 0; padding: 20px; color: var(--fk-text); background: var(--fk-panel); }
+.fk-ai-panel h2 { font-size: 1rem; }
+.fk-ai-panel textarea, .fk-ai-panel select, .fk-ai-panel input:not([type=checkbox]), #ai-settings input, #ai-settings select { display: block; width: 100%; max-width: 100%; margin: 8px 0; padding: 10px; min-height: 44px; box-sizing: border-box; color: var(--fk-text); background: var(--fk-panel); border: 1px solid var(--fk-border); border-radius: 6px; }
+.fk-ai-panel label { display: block; margin: 12px 0; }
+.fk-ai-panel button, #ai-settings button, .fk-ai-compare button { min-height: 44px; margin: 4px; }
+.fk-ai-panel pre { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; max-height: 320px; overflow: auto; font-size: .8rem; padding: 12px; border: 1px solid var(--fk-border); }
+.fk-ai-panel p, .fk-ai-compare p { overflow-wrap: anywhere; }
+.fk-ai-panel [hidden] { display: none !important; }
+.fk-ai-actions { display: flex; flex-wrap: wrap; }
+.fk-ai-diff { border-left: 3px solid var(--fk-accent) !important; }
+.fk-ai-destination { color: var(--fk-muted); font-size: .8rem; }
+.fk-ai-compare table { border-collapse: collapse; width: 100%; }
+.fk-ai-compare th, .fk-ai-compare td { padding: 8px; text-align: left; border-bottom: 1px solid var(--fk-border); overflow-wrap: anywhere; }
+@media (max-width: 767px) { .fk-ai-panel { padding: 12px; } .fk-ai-compare table { font-size: .75rem; } }

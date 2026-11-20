@@ -1,0 +1,9 @@
+.fk-gallery { max-width: 1140px; padding: 32px 24px; margin: auto; }
+.fk-gallery-filters { display: flex; flex-wrap: wrap; gap: 12px; }
+.fk-gallery-filters input { flex: 1; min-width: 160px; }
+.fk-gallery-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 24px; }
+.fk-gallery-card { display: flex; flex-direction: column; padding: 16px; background: var(--fk-panel); border: 1px solid var(--fk-border); border-radius: var(--fk-radius); }
+.fk-gallery-card img { width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; border-radius: calc(var(--fk-radius) / 2); }
+.fk-gallery-card h2 { font-size: 1.2rem; }
+.fk-gallery-card small { color: var(--fk-muted); margin-bottom: 16px; }
+.fk-gallery-card a { display: block; margin-top: auto; min-height: 44px; padding: 12px 0; }

@@ -14,8 +14,8 @@
     "gallery": "node scripts/render-kit-gallery.mjs",
     "gallery:manim": "node scripts/render-gallery.cjs",
     "docs": "node scripts/render-docs.mjs",
-    "serve": "node vendor/fragment-kit-v0.4.3/tools/serve.mjs --port 8000",
-    "test:contracts": "playwright test --config vendor/fragment-kit-v0.4.3/testing/playwright.config.js",
+    "serve": "node vendor/fragment-kit-v0.5.0/tools/serve.mjs --port 8000",
+    "test:contracts": "playwright test --config vendor/fragment-kit-v0.5.0/testing/playwright.config.js",
     "test:ai:browser": "node tests/browser/ai.mjs"
   },
   "devDependencies": {

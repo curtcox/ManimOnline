@@ -1,0 +1,9 @@
+main { max-width: 900px; padding: 48px 24px; margin: auto; }
+.eyebrow { letter-spacing: .15em; font-size: .75rem; font-weight: bold; color: var(--fk-accent); }
+h1 { font: 400 clamp(2.8rem, 8vw, 5rem)/1.05 Georgia, serif; letter-spacing: -.04em; margin: 24px 0; }
+.lede { font-size: 1.2rem; color: var(--fk-muted); }
+nav { display: flex; flex-wrap: wrap; gap: 16px; margin: 32px 0 48px; }
+nav a { min-height: 44px; display: inline-flex; align-items: center; }
+section { border-top: 1px solid var(--fk-border); padding: 24px 0; line-height: 1.7; }
+pre { padding: 20px; overflow-x: auto; background: var(--fk-panel); border-radius: var(--fk-radius); font-size: .8rem; }
+li { margin: 12px 0; }

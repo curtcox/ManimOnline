@@ -1,5 +1,5 @@
-import {createAi,createAskPanel,createAiSettings,createCompareModels,createSampleChooser,handleAiCallback} from '../vendor/fragment-kit-v0.4.3/src/ai/index.js';
-import {createDialog,createStorage,element,readResponse,text} from '../vendor/fragment-kit-v0.4.3/src/index.js';
+import {createAi,createAskPanel,createAiSettings,createCompareModels,createSampleChooser,handleAiCallback} from '../vendor/fragment-kit-v0.5.0/src/ai/index.js';
+import {createDialog,createStorage,element,readResponse,text} from '../vendor/fragment-kit-v0.5.0/src/index.js';
 // Process and scrub the sign-in callback before document parsing or runtime startup.
 export function aiCallback(){try{if(globalThis.fragmentKitAiCallback)return true;const callback=handleAiCallback();if(callback)globalThis.fragmentKitAiCallback=true;return callback;}catch(error){globalThis.fragmentKitAiCallback=true;const p=element('p',error.message,{role:'alert'});document.body.replaceChildren(p);return true;}}
 export function configureAi(type){type.ai={describe:type.ai?.describe??'Edit only src. Preserve all settings and attached data. Proposed source is text until the user explicitly runs it.',paths:['/src'],...type.ai};return type;}

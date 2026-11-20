@@ -1,6 +1,6 @@
 import {mountClientAi,aiCallback} from './ai-client.js';
 if(aiCallback()) await new Promise(()=>{});
-import {LocalDrafts,RenderScheduler,HashBinPanel,createShell,mountMobileTabs,createShareDialog,createQrDialog,readResponse,text} from '../vendor/fragment-kit-v0.4.3/src/index.js';
+import {LocalDrafts,RenderScheduler,HashBinPanel,createShell,mountMobileTabs,createShareDialog,createQrDialog,readResponse,text,openLibrary,createLibraryPanel} from '../vendor/fragment-kit-v0.5.0/src/index.js';
 import {config,type,urlState,HashBinDocuments,HashBinStore,ShareLinks,ShareClient,LZString,fromDocument,loadHashBinSDK} from './fragment-config.mjs';
 import {initOffline} from './offline-client.mjs';
 Object.assign(globalThis,{HashBinDocuments,HashBinStore,ShareLinks,ShareClient,LZString,loadHashBinSDK});
@@ -25,7 +25,7 @@ let tabs;
 const resizeWorkspace=()=>document.documentElement.style.setProperty('--workspace-top',(shell.header.getBoundingClientRect().bottom)+'px');
 new ResizeObserver(resizeWorkspace).observe(shell.header);new ResizeObserver(resizeWorkspace).observe(document.body);new ResizeObserver(resizeWorkspace).observe(shell.toolbar);
 let aiUI=null,aiHold=false;
-let autoRun=true,navigationRevision=0,applying=false,qrSave=false;
+let autoRun=true,navigationRevision=0,applying=false,qrSave=false,libraryPanel=null;
 /* Editor orchestration, loaded last so every helper script is available. Indentation is kept from its inline origin. */
     const editorElement = document.getElementById('editor');
     const reviewElement = document.getElementById('review');
@@ -229,7 +229,8 @@ let autoRun=true,navigationRevision=0,applying=false,qrSave=false;
       }
       const hashbinPanel = new HashBinPanel({ store: hashbinStore, urlState, container:shell.drawer.body, getSnapshot: sourceSnapshot,
         getFingerprint: currentShareFingerprint,
-        onLoad: (doc,cid)=>applyLoadedSource(doc,cid,{cancel:false}),
+        onLoad: async (doc,cid)=>{applyLoadedSource(doc,cid,{cancel:false});await libraryPanel?.opened(doc,cid?{kind:'cid',source:cid}:{record:false});},
+        onDetached: result=>{void libraryPanel?.published(result);},
         onSaved: (cid, fingerprint, link) => {
           urlState.cancel();lastOpened=link;
           savedHashbin = { cid, fingerprint };
@@ -249,11 +250,14 @@ let autoRun=true,navigationRevision=0,applying=false,qrSave=false;
       }
       // Typing marks unsaved work; loads and saves clear it, so links never silently replace it.
       const drafts = new LocalDrafts({storage:storage('localStorage'),key:'manimonline:draft'});
-      drafts.mount(shell.drawer.body, snapshot => { applyLoadedSource(snapshot); });
+      const library=await openLibrary({config,type}).catch(error=>{show_error(error);return null;});
+      if(library)libraryPanel=createLibraryPanel({library,store:hashbinStore,urlState,getSnapshot:()=>type.normalize(sourceSnapshot()),getFingerprint:currentShareFingerprint,container:shell.toolbar,drafts,
+        onLoad:doc=>{applyLoadedSource(doc,null,{cancel:false,run:false});hashbinPanel.status.textContent='Library revision loaded — press Render.';}});
+      drafts.mount(shell.drawer.body, snapshot => { applyLoadedSource(snapshot); void libraryPanel?.opened(snapshot,{record:false}); });
       function applyLoadedSource(value, cid = null, {run=autoRun,write=true,cancel=true,fromAi=false}={}) {
         if(!fromAi){aiUI?.cancel();aiHold=false;}
         const snapshot=fromDocument(value);
-        if(cancel){navigationRevision++;hashbinPanel.cancelLoad();}urlState.cancel();scheduler.cancel();exampleLoader.cancel();invalidateRender();
+        if(cancel){navigationRevision++;hashbinPanel.cancelLoad();libraryPanel?.cancelLoad();}urlState.cancel();scheduler.cancel();exampleLoader.cancel();invalidateRender();
         autoRun=run;applying=true;drafts.opened();showVideoLink(cid&&globalThis.VideoLinks?.snippets[cid]);
         modlPositions=HashBinDocuments.positions(snapshot.pos);sceneNameInput.value=snapshot.scene;engineEl.value=snapshot.engine;formatEl.value=snapshot.outputFormat;
         rendererMode.value=snapshot.mode;
@@ -404,6 +408,7 @@ let autoRun=true,navigationRevision=0,applying=false,qrSave=false;
           url.hash = encodeURIComponent(source);
           history.replaceState(null, '', url);
           applying=true;editor.getSession().setValue(source);applying=false;updateState();
+          void libraryPanel?.opened(sourceSnapshot(),{record:false});
           if (example.video && mobileLayout.matches) showSampleVideo(example);
           else render();
         }
@@ -828,7 +833,7 @@ let autoRun=true,navigationRevision=0,applying=false,qrSave=false;
 
       // Debounced change handler
       editor.getSession().on("change", function () {
-        if(applying)return;drafts.attempt(sourceSnapshot(),true);hashbinPanel.cancelLoad();navigationRevision++;urlState.cancel();exampleLoader.cancel();
+        if(applying)return;drafts.attempt(sourceSnapshot(),true);hashbinPanel.cancelLoad();libraryPanel?.cancelLoad();libraryPanel?.changed();navigationRevision++;urlState.cancel();exampleLoader.cancel();
         invalidateRender();sceneNamesList.replaceChildren();
         try{lastOpened=urlState.write(sourceSnapshot(),{run:autoRun&&!aiHold,view:new URL(location.href).searchParams.get('view')||undefined});}catch(error){show_error(error);return;}
         if(autoRun&&!aiHold)scheduler.schedule();
@@ -839,13 +844,15 @@ let autoRun=true,navigationRevision=0,applying=false,qrSave=false;
       editor.commands.on('afterExec',event=>{if(!event.command.readOnly)drafts.attempt(sourceSnapshot(),true);});
       sceneNameInput.addEventListener('input', () => {
         exampleLoader.cancel();
+        libraryPanel?.cancelLoad();
+        libraryPanel?.changed();
         invalidateRender();
         navigationRevision++;try{lastOpened=urlState.write(sourceSnapshot(),{run:autoRun&&!aiHold,view:new URL(location.href).searchParams.get('view')||undefined});}catch(error){show_error(error);return;}if(autoRun&&!aiHold)scheduler.schedule({ detect: false });
       });
       sceneNameInput.addEventListener('keydown', event => {
         if (event.key === 'Enter') {aiHold=false;autoRun=true;render();}
       });
-      for(const select of [formatEl,engineEl])select.addEventListener('change',()=>{navigationRevision++;updateState();if(autoRun&&!aiHold)render();});
+      for(const select of [formatEl,engineEl])select.addEventListener('change',()=>{navigationRevision++;libraryPanel?.changed();updateState();if(autoRun&&!aiHold)render();});
       rawEl.addEventListener("change", ()=>{if(!aiHold)render();});
 
 
@@ -863,30 +870,36 @@ let autoRun=true,navigationRevision=0,applying=false,qrSave=false;
       let lastOpened;
       async function openURL(href,{initial=false}={}) {
         if(!initial&&lastOpened===href)return;lastOpened=href;
-        aiUI?.cancel();const revision=++navigationRevision;urlState.cancel();scheduler.cancel();exampleLoader.cancel();invalidateRender();
+        aiUI?.cancel();const revision=++navigationRevision;urlState.cancel();scheduler.cancel();exampleLoader.cancel();invalidateRender();libraryPanel?.cancelLoad();
         try{
           const intent=urlState.parse(href);autoRun=intent.run;
           document.body.classList.toggle('presentation',new URL(href).searchParams.has('presentation')||Boolean(intent.view));
           if(intent.kind==='publish'){
             const result=await hashbinStore.published(intent.hash);if(revision!==navigationRevision)return;
-            if(result?.snapshot)applyLoadedSource(result.snapshot,result.cid??null,{run:intent.run&&result.snapshot.autorun,cancel:false});
-            if(result){hashbinPanel.status.textContent=result.error||'Saved to HashBin.';setMoreOpen(true);}
-          }else if(intent.kind==='source')applyLoadedSource(intent.doc,null,{run:intent.run,cancel:false});
+            if(result?.kind){ // Detached library/revision export: its CID is not the document's.
+              if(result.snapshot)applyLoadedSource(result.snapshot,null,{run:intent.run&&result.snapshot.autorun,cancel:false});
+              if(result.error)hashbinPanel.status.textContent=result.error;else{void libraryPanel?.published(result);hashbinPanel.status.textContent=result.kind==='library'?'Library exported to HashBin.':'Revision saved to HashBin.';}
+              setMoreOpen(true);
+            }else{
+              if(result?.snapshot)applyLoadedSource(result.snapshot,result.cid??null,{run:intent.run&&result.snapshot.autorun,cancel:false});
+              if(result){hashbinPanel.status.textContent=result.error||'Saved to HashBin.';setMoreOpen(true);}
+            }
+          }else if(intent.kind==='source'){applyLoadedSource(intent.doc,null,{run:intent.run,cancel:false});void libraryPanel?.opened(intent.doc,{kind:'link'});}
           else if(intent.kind==='example'){drafts.opened();await exampleLoader.load(intent.id);}
           else if(intent.kind==='cid'){
             hashbinPanel.status.textContent='Loading from HashBin…';
             const doc=await hashbinStore.load(intent.cid);if(revision!==navigationRevision)return;
-            applyLoadedSource(doc,intent.cid,{run:intent.run,cancel:false});hashbinPanel.status.textContent='Loaded from HashBin.';
+            applyLoadedSource(doc,intent.cid,{run:intent.run,cancel:false});hashbinPanel.status.textContent='Loaded from HashBin.';void libraryPanel?.opened(doc,{kind:'cid',source:intent.cid});
           }else if(intent.kind==='remote'){
             const response=await fetch(intent.url);if(!response.ok)throw Error('Source load failed (HTTP '+response.status+').');
             const source=text(await readResponse(response,config.maxBytes));if(revision!==navigationRevision)return;
             const query=new URL(href);query.searchParams.delete('url');query.hash=encodeURIComponent(source);
-            applyLoadedSource(urlState.parse(query.href).doc,null,{run:intent.run,cancel:false});
-          }else if(initial){rendererMode.value='auto';detectAndUpdateType();if(autoRun&&!aiHold)render();}
+            const doc=urlState.parse(query.href).doc;applyLoadedSource(doc,null,{run:intent.run,cancel:false});void libraryPanel?.opened(doc,{kind:'link'});
+          }else if(initial){rendererMode.value='auto';detectAndUpdateType();void libraryPanel?.opened(sourceSnapshot(),{record:false});if(autoRun&&!aiHold)render();}
         }catch(error){if(revision===navigationRevision){show_error(error);hashbinPanel.status.textContent=error.message;}}
       }
       globalThis.ManimOnline={editor,snapshot:sourceSnapshot,openURL,render};
-      aiUI=await mountClientAi({config,type,urlState,getSnapshot:()=>type.normalize(sourceSnapshot()),getFingerprint:currentShareFingerprint,container:shell.drawer.body,toolbar:shell.toolbar,status:show_status,onApply:doc=>{aiHold=true;const pref=doc.manim.autorun;applyLoadedSource(doc,null,{run:false,write:false,fromAi:true});autoRun=pref;drafts.attempt(sourceSnapshot(),true);updateState();show_status('Change accepted — press Render animation.');}});
+      aiUI=await mountClientAi({config,type,urlState,getSnapshot:()=>type.normalize(sourceSnapshot()),getFingerprint:currentShareFingerprint,container:shell.drawer.body,toolbar:shell.toolbar,status:show_status,onApply:doc=>{aiHold=true;const pref=doc.manim.autorun;applyLoadedSource(doc,null,{run:false,write:false,fromAi:true});autoRun=pref;drafts.attempt(sourceSnapshot(),true);updateState();show_status('Change accepted — press Render animation.');void libraryPanel?.opened(doc,{record:false});}});
       document.body.dataset.ready='true';
       hashbinStore.retireLegacyTokens().catch(()=>{});
       initOffline(shell);
