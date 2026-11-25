@@ -139,6 +139,8 @@ mathematicians would say them.
 ## QR codes
 
 Every QR code is a HashBin link: `https://curtcox.github.io/ManimOnline/#<CID>`.
+The published videos use this GitHub Pages address, which still serves the full editor;
+the production app is now `https://manim.hashbin.page/`.
 Opening it loads the snippet into the editor and renders it. The CID is computed from
 the snippet's bytes, so **the URLs in [`qr-links.md`](qr-links.md) are already final**,
 but they only resolve after the payloads are uploaded.

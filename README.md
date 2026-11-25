@@ -244,7 +244,7 @@ the browser suites in Chromium, Firefox and WebKit; `deploy.yml` publishes after
 - [Completion and acceptance](docs/completion.md)
 - [Sharing and QR codes](docs/sharing.md) · [Offline use](docs/offline.md) · [Optional AI](docs/ai.md)
 - [modl deep zoom](docs/modl-deep-zoom.md)
-- [AGENTS.md](AGENTS.md) for contributors and coding agents; plans live in [`todo/`](todo/).
+- [AGENTS.md](AGENTS.md) for contributors and coding agents.
 - [`examples/`](examples/) holds the gallery scenes; its Markdown files describe the
   broader Manim API and do not imply browser support.
 
