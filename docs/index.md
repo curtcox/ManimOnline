@@ -1,10 +1,12 @@
 # ManimOnline
 
-Edit and render the supported browser Manim-lite subset, Graphviz DOT and modl diagrams. The [gallery](../gallery.html) contains animation previews that play without starting Python.
+Edit and preview Manim scenes (through the Manim-lite browser subset), Graphviz DOT and modl diagrams. The [gallery](../gallery.html) contains animation previews that play without starting Python.
 
+- [Rendering support and limitations](rendering.md)
 - [Sharing and QR codes](sharing.md)
 - [Offline use](offline.md)
-- [Rendering support and limitations](rendering.md)
+- [Optional AI](ai.md)
+- [modl deep zoom](modl-deep-zoom.md)
 - [Completion and acceptance](completion.md)
 
-Use Code and Preview tabs on phones. More contains renderer, scene, diagram layout, export and draft controls. Render explicitly starts Python for a gallery animation; it does not run on the app origin.
+On phones, use the Preview and Code tabs; More contains the renderer, scene, diagram layout, export, sharing and draft controls. Render starts Python for a gallery animation. Scene code always runs in an isolated sandbox, never on the app's origin.

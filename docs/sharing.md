@@ -7,3 +7,5 @@ Source, document, example and CID links open independently of local drafts. Inva
 Old percent fragments, compressed/raw/url queries, saved three-language documents and Publish transactions remain readable. Writers retain the deployed format while v1 readers roll out across the fleet. Fractional modl coordinates are retained.
 
 HashBin requires approval on its own origin. Credentials are never retained here. Opening More prepares the SDK; Review on HashBin starts Publish synchronously in the confirmation click. No remote save occurs without that approval.
+
+The Library (Save, Save as…) keeps named documents and their saved revisions in this browser only. Exporting the library or a revision to HashBin publishes byte-exact content verified against its CID; that export CID never replaces the open document's own CID, and export links cannot open as source.

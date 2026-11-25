@@ -1,28 +1,139 @@
-# [ManimOnline](https://curtcox.github.io/ManimOnline)
+# [ManimOnline](https://manim.hashbin.page/)
 
-A web-based editor for Graphviz DOT diagrams, modl diagrams, and Manim Python animations, with automatic detection and appropriate rendering.
+A static, in-browser editor for three languages, with live previews:
+
+- **Manim** Python scenes, run in the browser by Pyodide through **Manim-lite**, a
+  compatibility layer that follows Manim Community 0.22 closely but is not the full
+  Community engine. See [rendering support and limitations](docs/rendering.md).
+- **Graphviz DOT** diagrams, rendered by viz.js.
+- **modl** diagrams, using the parser and SVG editor adapted from
+  [curtcox/modl](https://github.com/curtcox/modl) (draggable nodes, image/link nodes,
+  deep zoom).
+
+The production app is <https://manim.hashbin.page/>. The GitHub Pages copy at
+<https://curtcox.github.io/ManimOnline/> also serves the
+[documentation](https://curtcox.github.io/ManimOnline/docs/) and
+[gallery](https://curtcox.github.io/ManimOnline/gallery.html), and offers **Move saved
+work** / **Download backup** for drafts saved there before the move. Transfers copy only
+this app's documents and public settings and never copy HashBin credentials.
 
 ## Features
 
-- **Graphviz DOT Support**: Full support for Graphviz DOT language diagrams
-- **modl Support**: Line-based diagrams with draggable nodes, shapes, colors, links, image nodes, and SVG download
-- **Manim-lite animations**: In-browser Python execution with SVG frame playback, play/pause, replay, and seeking
-- **Sample gallery**: Browse searchable pre-rendered animation previews and diagram covers, then load any sample into the editor
-- **Auto-Detection**: Automatically detects DOT, modl, or Manim Python
-- **Renderer selection**: Choose Auto, Manim, Graphviz, or modl when detection is ambiguous
-- **HashBin**: Load and save all three languages by CID, retaining scene/Graphviz settings and modl node positions
-- **URL Sharing**: Share diagrams via URL parameters
-- **Export**: Download diagrams as SVG or PNG
+- Automatic language detection (strings and comments are ignored), with a **Renderer**
+  override (Auto, Manim, Graphviz, modl) that is kept in links.
+- Manim playback with play/pause, replay and seeking; scene selection; export of the
+  current frame as SVG or PNG, or the whole animation as MP4 or WebM (WebCodecs, in memory).
+- Graphviz engine/output selection and SVG/PNG download; modl SVG download.
+- A [sample gallery](gallery.html) of 115 searchable samples (103 Manim, 6 DOT, 6 modl)
+  with pre-rendered covers and MP4 previews that play without starting Python.
+- Source links, QR codes, optional link shortening, HashBin Publish saves and a local
+  library of named documents with revision history.
+- Offline use after the first visit, with a separately cached Python/MathJax runtime.
+- Optional AI review of proposed source changes (off by default, budgets start at zero).
+- A phone layout that opens on the preview.
+
+## Using the editor
+
+Type in the code pane; detection updates after 300 ms of quiet and rendering starts
+after one second. **Render** starts a Manim render immediately (also a retry after an
+error or timeout); **Cancel** stops it and keeps the last completed preview. Changing the
+renderer or pressing Enter in the scene field also renders immediately.
+
+- **Manim:** write a `Scene` subclass after `from manim import *`. Leave the scene field
+  empty to render the first scene in the file, or enter a class name. Previews run at
+  15 fps, up to 120 seconds (1,800 frames), with a 90-second execution deadline and a
+  32 MiB result limit. NumPy, Pillow, Pygments and networkx load only for sources that
+  use them.
+- **Graphviz:** for example `digraph { a -> b }`. Unbraced `a -> b` is detected as modl;
+  add a graph header or force Graphviz for DOT fragments.
+- **modl:** one node or edge per line, for example `a square blue Start`,
+  `b circle green Finish`, `a -> b dashed purple Next`. See the
+  [modl language documentation](https://curtcox.github.io/modl/docs/). Drag nodes to
+  move them; positions (including fractional ones) are saved with links. The view zooms
+  from 0.001× to 1000×: wheel to zoom under the cursor, drag the background or
+  middle-drag to pan, and use **−**, **+** and **Reset view**. See
+  [modl deep zoom](docs/modl-deep-zoom.md) for measurements and limits.
+
+On phones (up to 760 px wide or 500 px tall) the app opens on the preview, with
+**Preview**/**Code** tabs; less common controls are under **More**. Opening a Manim
+gallery sample on a phone plays its MP4 and starts Python only after an edit, **Render**,
+a scene or renderer change, or an export.
+
+**Sample gallery** opens the gallery in a new tab. Search by title or filter by language;
+**Load in editor** (or a `?example=<id>` link) opens a sample. Edits made while a sample
+is loading are kept, and a failed load leaves the current source alone.
+
+## Links, drafts and HashBin
+
+Explicit program, source, example and CID links always open their document, whatever
+drafts the browser holds. The bare homepage opens the default example. Local drafts are
+kept separately: use **Resume saved work** to recover one. Opening or running a link
+never overwrites saved work.
+
+The **Library** keeps named documents with an explicit-save history (**Save**/**Save
+as…**) in this browser's IndexedDB; names and descriptions stay local. The library or a
+single revision can be exported to a file or HashBin and imported again with a preview.
+Loading a library revision waits for **Render**.
+
+**Share** captures the source, renderer, scene, Graphviz options and modl positions in
+a local link, which can be shortened (is.gd through AllOrigins, ten-second limit; the
+source link remains if that fails) or shown as a QR code. Older link formats remain
+readable. See [sharing](docs/sharing.md).
+
+**Save to HashBin** saves the same document through HashBin Publish: **Review on
+HashBin** shows the size, retention, price and balance, and you approve the save on
+hashbin.org. This app never holds a HashBin credential. Blocked popups fall back to a
+redirect (sources up to 512 KiB) that restores the source on return. **Load from
+HashBin** accepts a CID, a `https://256t.us/<cid>` link or a saved editor URL; `#<cid>`
+URLs load automatically. Loads verify the bytes against the CID, are limited to 5 MiB
+and 20 seconds, and are discarded if you edit first. Small content (up to 64 bytes) is
+decoded from the CID itself.
+
+Saved documents use `format: "hashbin-diagram"`, `version: 1`, `src` and `type`
+(`graphviz`, `modl` or `manim`); modl adds `pos`, Manim adds `scene`, and Graphviz adds
+`graphviz: {engine, format}`. The modl-only editor can read modl saves.
+
+The registered **Manim Online** HashBin app uses the public client ID in the
+`hashbin-client-id` meta tag of `index.html`. Its return address
+`https://manim.hashbin.page/` must stay registered; another deployment needs its own
+registered address or client. Rendering and public CID loading need no registration.
+
+## Offline use
+
+The application, gallery covers and documentation are cached atomically, and every byte
+is checked against pinned SHA-256 hashes. Python and MathJax are cached separately after
+the first live render (or **Save Python offline**). The status reads **Diagrams ready
+offline** until that runtime is saved, then **Available offline**. Gallery videos, optional
+package wheels and resources fetched by user scenes are not part of readiness. Updates
+wait for **Update and reload**, which preserves source and preview settings. See
+[offline use](docs/offline.md).
+
+## Security model
+
+All apps on a shared origin share its storage, so the app trusts only hash-verified
+cached bytes and a strict Content-Security-Policy (no inline scripts). Scene code runs in
+a Web Worker inside an opaque-origin sandbox iframe created by the HashBin SDK, so it
+never runs with the app's origin, storage or credentials. Rendered SVG accepts only
+inline base64 raster images, and SVG input rejects DTD entities.
+
+## Optional AI
+
+**Ask** proposes source changes that you review, accept or undo; accepted changes wait for
+an explicit Render. Gallery suggestions and model comparison are also available. Nothing
+is sent without consent, shared links never call a model, and budgets start at zero. See
+[AI guidance](docs/ai.md). The bundled synthetic [suite](ai-suite.json) and
+[comparison report](ai-comparison.json) measure source assertions and document
+invariants, not runtime quality.
 
 ## Video series
 
-[Drawing with Code: Manim and ManimOnline](https://www.youtube.com/playlist?list=PLXaiuWr3VAhk) is a narrated YouTube series
-about Manim and this editor. Episodes 1–9 are for beginners who know a little Python;
+[Drawing with Code: Manim and ManimOnline](https://www.youtube.com/playlist?list=PLXaiuWr3VAhk)
+is a narrated YouTube series. Episodes 1–9 are for beginners who know a little Python;
 episodes 10–12 explain how ManimOnline runs Python in the browser, matches Manim
-Community, and stores code in links. QR codes in the videos open the code on screen
-in the editor; the editor then links back to the chapter that explains it, and gallery
-samples covered by an episode link to that chapter. Scripts, snippets and production
-tooling are in [`video-series/`](video-series/README.md).
+Community, and stores code in links. QR codes in the videos open the code on screen in
+the editor, which links back to the chapter that explains it; gallery samples covered by
+an episode link to that chapter too. Scripts, snippets and production tooling are in
+[`video-series/`](video-series/README.md).
 
 | # | Episode |
 |---|---|
@@ -40,1871 +151,114 @@ tooling are in [`video-series/`](video-series/README.md).
 | 11 | [Rebuilding an Engine to Match Manim](https://www.youtube.com/watch?v=Pjdinan5Xcg&list=PLXaiuWr3VAhk) |
 | 12 | [Links That Carry Code: Compression, Hashes and QR Codes](https://www.youtube.com/watch?v=u7ArYmhyNxE&list=PLXaiuWr3VAhk) |
 
-## Usage
-
-Visit the deployed site and start typing:
-- For Graphviz: Write DOT language code (e.g., `digraph { a -> b }`)
-- For modl: Write nodes and edges on separate lines (e.g., `a square blue Start`, `b circle green Finish`, then `a -> b dashed purple Next`). See the [modl language documentation](https://curtcox.github.io/modl/docs/).
-- For Manim: Write a `Scene` subclass with `from manim import *` (see the supported subset below).
-
-modl's deep-zoom prototype supports **0.001×–1000×** (six orders of magnitude).
-Use the wheel to zoom under the cursor, drag the background to pan, or middle-drag
-anywhere to pan when a node fills the view. Drag nodes to edit their positions;
-**−**, **+** and **Reset view** provide centered zoom and recovery. SVG download
-captures the current viewport and retains all diagram geometry. Node positions,
-including fractional positions, remain compatible with existing links and saves;
-the camera resets when source is re-rendered. Large coordinate origins and dense
-diagrams still have limits: see the [measurements and standalone modl patch](docs/modl-deep-zoom.md).
-
-Choose **Sample gallery** to open the gallery in a new tab, keeping your current
-editor open. Search by title or filter by language. Each sample has a pre-rendered
-cover; animation samples also have a **Play preview** control and native video
-controls for seeking and replay. Videos load only when requested, and playing a
-second preview pauses the first. Browsing needs no Python execution.
-
-The gallery includes six Graphviz and six modl diagrams. Graphviz samples cover
-decision branches, clustered services, build dependencies, record ports, and state
-machines. modl samples cover chained pipelines, feedback loops, navigation,
-team responsibilities, and shapes, sizes, edge styles, and quoted labels.
-
-Choose **Load in editor** on any card to open its source and render it. You can
-edit the loaded code, select a scene, seek, and export as usual. Direct
-`?example=minimal` links also work. Loading clears any earlier scene selection
-and URL input override, then stores the loaded source in the URL so reloading
-preserves edits instead of reloading the original sample.
-If you edit while an example is loading, your newer edits are kept. Loading
-errors leave the current code intact. The gallery uses bundled supported scenes;
-it does not imply support for every Manim API in the broader example documents.
-
-The **Renderer** selector defaults to Auto. It ignores strings and comments when
-detecting source, so diagram labels and Python docstrings do not choose the
-renderer. Choose Manim, Graphviz, or modl to override detection; the choice stays in the
-URL and shared links. Choose Auto to remove the override. Loading an example
-also restores Auto. Detection updates after 300 ms of quiet; rendering starts
-after one second. Changing the renderer or pressing Enter in the scene field
-renders immediately and cancels scheduled work for earlier edits. **Render
-animation** also starts immediately, including a retry after an error or timeout.
-**Cancel render** stops active Manim work without changing the source. It is
-available during Python loading, execution, and formula preparation; the last
-completed preview remains paused. Editing still starts a new render after the
-usual delay.
-
-On screens up to 760 pixels wide, the toolbar, code editor, and preview stack
-vertically. Code wraps to fit the editor; **Hide code** gives the preview more
-space, and **Show code** restores editing. Controls wrap and scroll on short
-screens, and playback controls use larger touch targets. Desktop retains the
-resizable split view. Narrow-screen browser checks cover playback, seeking,
-editor visibility, and switching to DOT; native mobile keyboard/device testing
-is still needed.
-
 ## Development
 
-### HashBin loading and saving
-
-Paste a CID, a `https://256t.us/<cid>` link, or a saved editor URL into **HashBin CID or saved link**, then choose **Load from HashBin**. Opening this site's `#<cid>` URL loads the same source automatically. Existing modl-only `hashbin-diagram` documents (including node positions) and plain source files also load. Content up to 64 bytes is decoded directly from the CID; larger files load from `256t.us`. Loads are limited to 5 MiB and 20 seconds, and edits discard older load results. A failed load leaves the editor source intact.
-
-**Save to HashBin** captures the source and relevant preview settings. Choose **Review on HashBin**: HashBin Publish shows the size, retention, exact price and your balance, and you approve the save on hashbin.org. This site never holds a HashBin credential. If the popup is blocked, sources up to 512 KiB go through a redirect and are restored on return, including after a cancelled save. The HashBin SDK v0.4.0 release is vendored in `vendor/` and checked against the release hashes. Tokens left by the earlier OAuth flow are revoked on the next load. Manim scenes, including ones opened from links, render in the SDK's opaque-origin sandbox, apart from this site's storage. Loads verify the bytes against the CID. Successful saves put the CID in the URL and provide a saved-source link. Editing produces a source link again; it does not update the previously saved document. Saving requires internet access and sufficient HashBin balance. HashBin calls do not block offline rendering.
-
-**Deployment configuration:** the registered **Manim Online** HashBin app uses public client ID `app_ea30117c-555b-4759-b01a-e75dc402d177` in the `hashbin-client-id` meta tag in `index.html`. Its production return address is `https://curtcox.github.io/ManimOnline/` (with the trailing slash, without `index.html`). No client secret belongs in the site. For another deployment or a local save check, register its exact origin/path in [HashBin developer settings](https://hashbin.org/developers), or register a separate app and replace the public client ID. Source rendering and public CID loading do not require registration.
-
-**Shared origin.** Every app under `curtcox.github.io` shares this origin's storage. The service worker stores and serves only files matching the SHA-256 hashes in `offline-hashes.js`, so another app cannot poison the offline cache; run `node scripts/update-offline-hashes.mjs` after changing any offline file (`--fetch` pins a new remote URL). A Content-Security-Policy in `index.html` and `gallery.html` limits scripts to this site and pinned CDN paths. Opening a CID link in the same tab asks before replacing typed edits.
-
-Saved JSON uses `format: "hashbin-diagram"`, `version: 1`, `src`, and `type` (`graphviz`, `modl`, or `manim`). modl adds `pos`; Manim adds `scene`; Graphviz adds `graphviz: {engine, format}`. The modl-only editor can still read the `src`/`pos` fields of modl saves. Local Share links also retain modl positions. modl supports the deployed language parser and SVG editor; it has its own layout rather than using a Graphviz engine. Unbraced `a -> b` is detected as modl; use a DOT graph header or force Graphviz for DOT fragments.
-
-This is a static site that can be served directly. To run locally:
+The site is buildless: serve the checkout as static files. Node 22.12+ and `npm ci` are
+needed only for tooling and tests.
 
 ```bash
-# Using Python
-python -m http.server 8000
-
-# Using Node.js
-npx serve .
+npm ci
 ```
 
-Then open `http://localhost:8000` in your browser.
-
-## Agent orientation
-
-- [AGENTS.md](AGENTS.md): project map and working guidance.
-- [Rendering roadmap](docs/rendering.md): current limitations and next milestones.
-- [Minimal scene](examples/minimal_scene.py): baseline animation input.
-- [Multiple scenes](examples/multiple_scenes.py): scene selection, scale, and rotation.
-- [Creation and rotation](examples/creation_and_rotation.py): outline drawing and a circular orbit.
-- [Layout scene](examples/layout_scene.py): shape spacing and animated row-to-column arrangement.
-- [Staggered scene](examples/staggered_scene.py): delayed reveals, overlapping movement, and staggered fades.
-- [Path scene](examples/path_scene.py): motion along transformed circles, polygon outlines, and lines.
-- [Arc scene](examples/arc_scene.py): open circular paths and clockwise/counterclockwise motion.
-- [Growth scene](examples/growth_scene.py): growth from a point, group growth, and staggered shrinking.
-- [Shape morph scene](examples/shape_morph_scene.py): deform primitive outlines, restore a circle, and finish as a curve.
-- [Morph scene](examples/morph_scene.py): align unequal corner/curve counts, restore, and close an outline.
-- [Bezier scene](examples/bezier_scene.py): trace, follow, deform, and restore cubic curves and mixed paths.
-- [Corner paths](examples/corner_path_scene.py): trace, follow, and deform a connected path.
-- [Scene lifecycle](examples/lifecycle_scene.py): setup-created objects, scene time, and teardown animation.
-- [Foreground scene](examples/foreground_scene.py): keep a grouped overlay above later additions and release it.
-- [Scene order](examples/order_scene.py): reorder whole groups, clear the display, and reuse objects.
-- [Layer scene](examples/layer_scene.py): animated depth changes across transformed groups.
-- [Style scene](examples/style_scene.py): independent fill/outline colors and group opacity changes.
-- [Restore scene](examples/restore_scene.py): saved geometry/styles, animated restoration, and recovery from zero size.
-- [Indicate scene](examples/indicate_scene.py): temporary highlights and staggered emphasis.
-- [Copy scene](examples/copy_scene.py): copy transforms, retained originals, and target cleanup.
-- [Math scene](examples/math_scene.py): vector formulas, highlights, and formula crossfades.
-- [Connector scene](examples/connector_scene.py): endpoint motion on a rotated arrow and checkpoint restoration.
-
-## Supported browser animation subset
-
-Python runs in a Web Worker using Pyodide 0.27.0. The browser loads Python on
-first use, so the first render needs an internet connection. This is a small
-Manim-like runtime, **not the full Manim Community engine**.
-
-- Shapes: `Circle`, `Ellipse`, `Arc`, `Sector`, `AnnularSector`, `Annulus`, `CubicBezier`, `VMobject`, `Dot`, `Square`, `Rectangle`, `RoundedRectangle`, `Line`, `Arrow`, `Triangle`, `Polygon`,
-  `Text`, `MathTex`, and `VGroup`.
-- Scene operations: `add`, `remove`, `play`, and `wait`.
-- Animations: `Create`, `Uncreate`, `Write`, `FadeIn`, `FadeOut`, `GrowFromCenter`,
-  `GrowFromPoint`, `ShrinkToCenter`, `Rotate`,
-  `Rotating`, `MoveAlongPath`, `AnimationGroup`, `LaggedStart`, `Succession`, `Transform`, and
-  `ReplacementTransform`, `TransformFromCopy`, `Restore`, and `Indicate`; chained `.animate.shift()`, `.move_to()`,
-  `.set_color()`, `.set_fill()`, `.set_stroke()`, `.set_opacity()`, `.scale()`, `.rotate()`,
-  `.next_to()`, `.arrange()`, and `.restore()`.
-- Connectors: `Line` and `Arrow` support `get_start()`, `get_end()`,
-  `get_start_and_end()`, `get_vector()`, `get_length()`, `get_unit_vector()`,
-  `get_angle()`, and direct or animated `put_start_and_end_on(start, end)`.
-- Layout: `move_to` centers geometry on a point or another object; `next_to`
-  positions shapes with `direction`, `buff`, `aligned_edge`, `submobject_to_align`,
-  `index_of_submobject_to_align`, and `coor_mask`; `VGroup.arrange`
-  creates rows or columns with optional `center=False`.
-- Geometry: uniform scaling, 2D rotation in radians, optional `about_point`,
-  `get_center()`, and `PI`, `TAU`, and `DEGREES` constants.
-- Paths: `point_from_proportion(alpha)` for circles, arcs, lines, polygons, squares,
-  rectangles, triangles, and VMobject corner/cubic paths, including their 2D geometry transforms.
-- Timing: `run_time`, `linear`/`smooth` rate functions, simultaneous animations,
-  and nested animation groups with staggered starts.
-- Directions support vector addition/subtraction and scalar multiplication,
-  such as `RIGHT * 2`.
-
-`Create` progressively traces primitive shape outlines and fades in their fill;
-`Uncreate` reverses that draw and removes the object. Groups reveal all children
-simultaneously. Text creation and `Write` use fades because glyph paths are not
-available in this runtime. MathTex creation also uses fades. Arrow shafts and heads reveal together. Transforms
-interpolate matching geometry and align supported primitive/corner/cubic/polygon
-outlines for morphing. Text, arrow, and other unsupported outline combinations crossfade.
-`TransformFromCopy(source, target)` animates the target from a snapshot of the
-source while preserving the source. Add the source first to keep it visible;
-only the target is automatically added. Both are snapshotted at playback start.
-The target retains its identity, children, and saved state for later animations.
-An already visible target is animated in place. Sources may animate independently;
-targets must obey the usual one-animation-per-object and group-family rules.
-While tracing, stroke widths scale with the shape and preview size so the
-drawn fraction stays accurate; completed objects use fixed-width strokes.
-Leave the Scene field empty to render the first scene defined in the source,
-or enter a class name to choose another. Successful renders suggest the scene
-names in that file. Press Enter to render immediately; editing the field also
-rerenders after a short delay. The selected name is preserved in the URL as
-`?scene=ClassName` and in shared links. If the class is removed or renamed, clear
-or update the field to resolve the selection error.
-
-Scaling and rotation use the object's center by default. Group centers use
-child bounds; text is center anchored without full font metrics. Animation
-chains interpolate transform values, and an external rotation pivot moves the
-center between endpoints rather than following a circular arc. These are
-preview semantics, not full Manim geometry behavior.
-
-Use `Rotate(object, angle=PI, about_point=ORIGIN)` for rigid circular motion
-around an external pivot, or omit `about_point` to rotate around the object's
-center. `Rotating` defaults to a full turn over five seconds at a constant rate;
-`Rotate` defaults to a half turn over one second with smooth easing. Both accept
-`angle`, `about_point`, `run_time`, and `rate_func`. `OUT` rotates counterclockwise
-and `IN` reverses it; other axes are unsupported. Unlike `.animate.rotate()`,
-these animations sample the circular trajectory at each frame.
-
-`MathTex(r"\frac{a}{b}", font_size=48, color=BLUE)` renders formulas as vector
-paths through MathJax 3.2.2, loaded on first math use. Multiple string arguments
-are joined with `arg_separator=' '`. Fractions, integrals, sums, roots, and AMS
-math are supported; formulas use display math. Scale, rotation, colors, fades,
-groups, and highlights work normally. Transforms to another formula crossfade.
-SVG exports contain the formula paths and need no math fonts or library.
-Creation and writing fade the entire expression. Glyph selection, substring
-color maps, custom templates/macros/packages, `Tex`, and matching-symbol
-transforms are not implemented. Python layout uses the formula anchor, without
-glyph bounds. First math use needs internet access; limits are 4096 characters
-per formula, 64 distinct formulas, and 2 MiB of generated math SVG per preview.
-Characters requiring browser font fallback rather than vector glyphs show an
-unsupported-glyph error.
-
-Connector endpoint queries include the line's own scale, rotation, and position.
-`put_start_and_end_on` accepts finite XY points and preserves styles and saved
-states. Zero-length and zero-scale connectors can be expanded again. Scene code
-sees members of transformed families in world coordinates, as in Community. Curved connectors, boundary
-attachments, and line buffers remain unsupported; arrows use shaft endpoints.
-
-`Dot` is a filled circle with radius 0.08 and no outline by default. Layout
-uses bounding boxes in the XY plane and a default gap of 0.25 units. Text
-bounds use only its center anchor, so layout does not account for text width
-or height. Rotated polygon/line bounds are conservative; arrowheads and stroke
-thickness do not contribute to spacing. Groups can be arranged after rotation
-and nonzero scaling; direction and buffer use screen coordinates while the
-group pose is preserved. Zero-scale groups cannot be arranged. Group children use local
-coordinates; placing a child independently does not resolve its parent's
-transforms. Animated layouts interpolate child positions between arrangements.
-
-`AnimationGroup` starts its children together by default; `LaggedStart` defaults
-to `lag_ratio=0.05`. Each next child starts after the previous child's duration
-times `lag_ratio`. The natural group duration is the latest child end time.
-Group `run_time` (or `play(..., run_time=...)`) rescales the timeline while
-preserving overlap. Group easing changes timeline progress; child easing changes
-each animation's progress. Groups may nest, and `VGroup` is iterable for building
-animation lists. Use independent objects: repeated objects, parent/child overlap,
-and animating a child inside a scene-added group are unsupported. Animate the
-whole added group or keep its children as separate scene objects.
-
-`Succession` runs consecutive, non-overlapping stages (`lag_ratio=1`). Its
-duration is the sum of its children; `run_time` rescales that timeline. Repeated
-objects are allowed across stages. Each stage begins from the previous stage's
-finished geometry and visibility, so two `Rotate` steps accumulate, a replacement
-can be animated next, and future introductions stay hidden until their stage.
-Nested sequences and independent groups are supported. As in Manim, `.animate`
-targets are computed when the builder is created and stored as `mobject.target`, so
-two builders for one object inside a single `Succession` both move to the later
-target; play them separately for consecutive relative steps. `ApplyMethod` targets
-resolve at stage start; explicit `Transform` targets are snapshots made when
-constructed. Animation copies and the real target keep running their updaters
-(including Rotate, growth, Indicate, Wiggle and FadeTransform); MoveAlongPath does not
-suspend the moving object's updaters, as in Manim.
-
-Sequences prepare against a copied scene and commit live changes in stage order
-at completion. A sequence cannot share animated objects with a simultaneous
-animation outside it, and each parallel stage still requires independent object
-families. Root drawing order stays fixed while sampling one play call; removal
-and reintroduction change live order at completion. Read-only path/copy references
-outside the sequence are snapshotted during preparation, so they do not track
-concurrent animations. Overlapping `Succession` stages and automatic scene-family
-restructuring remain unsupported. Completed groups hold their terminal state
-even when a rate function returns to zero.
-
-`MoveAlongPath(object, path)` moves the object's center along a path without
-turning it to face the direction of travel. It defaults to one second with
-smooth easing; use `rate_func=linear` for linear path proportion. Paths are snapshotted
-at animation start. Circles use exact circular sampling from the positive X
-axis counterclockwise; polygon outlines follow their vertex order and close
-back to the first vertex. Square/rectangle paths start at the upper right
-corner; triangles start at their top vertex. Straight edges are sampled by
-distance, so longer edges take proportionally longer. Path sampling is limited
-to the XY plane; connected cubic curves are described below. Groups, text,
-arrowheads and live path updates are unsupported. Separate contours are sampled
-without counting the gap between them; motion jumps across that gap.
-
-`Arc(radius=1, start_angle=0, angle=PI/2, arc_center=ORIGIN)` draws an open
-circular arc. Angles are in radians; positive sweeps go counterclockwise and
-negative sweeps clockwise, up to one full turn. Arcs work with `Create`,
-`Uncreate`, transforms, layout, and `MoveAlongPath`. `get_arc_center()` returns
-the underlying circle center; `move_arc_center_to(point)` moves that center and
-also works in animate chains. `move_to` and default scale/rotation use the
-visible bounding-box center. Arc path sampling follows its starting angle and
-sweep. Fill closes the endpoints with a chord; sectors, 3D arcs, multiple turns,
-and `num_components` are unsupported.
-
-`GrowFromCenter(object)` expands geometry from its bounding-box center;
-`GrowFromPoint(object, point)` expands from a fixed point while moving toward
-its original center. Both restore the original size, rotation, style, and
-position at completion. `ShrinkToCenter(object)` contracts around its center
-and leaves the object in the scene at zero scale; use `remover=True` to remove
-it at completion. These animations work on
-whole groups and accept `run_time` and `rate_func`, defaulting to one second
-with smooth easing. Growth centers are resolved when playback begins. Points and
-centers may lie outside the XY plane, and `point_color` blends from that color.
-Curved growth trajectories are unsupported. Text uses
-its anchor as its center; normal preview stroke-width behavior still applies.
-
-Shapes accept `fill_color`, `stroke_color`, and `stroke_opacity` in addition to
-`color`, `fill_opacity`, and `stroke_width`. `set_fill(color, opacity)` changes
-only the fill; `set_stroke(color, width, opacity)` changes only the outline.
-`set_color(color)` sets both colors without changing their opacity.
-`set_opacity(value)` sets both fill and stroke opacity, making an unfilled
-shape filled as well. Setters recurse into group children by default;
-`family=False` changes only that object's style. Group container styles do not
-override children when rendering. All four setters work in animate chains.
-Opacity must be between zero and one; stroke widths must be nonnegative and
-finite. Fades multiply existing style opacity. Text has no outline by default
-but supports `set_stroke`; arrows use stroke styling for shaft and open head.
-Color interpolation supports six-digit hex strings; other CSS colors switch
-at the animation endpoint. Gradients and background strokes are unsupported.
-
-`object.save_state()` keeps one checkpoint of geometry, styles, and group
-children. A later save replaces it. `object.restore()` returns to it immediately;
-`Restore(object)` or `object.animate.restore()` animates the return using normal
-transform timing. A saved state survives changes to the object's shape type,
-and can restore size after `ShrinkToCenter`. Restore animations snapshot the
-checkpoint when constructed; restoring without one raises an error. The root
-object keeps its identity, while group children are copied, as with transforms.
-Keep working through the restored group instead of retaining old child references.
-Checkpoints do not capture scene membership or camera state and are excluded
-from frame output and SVG export. Removed objects can be reintroduced by a
-Restore animation; a direct restore does not add them to the scene.
-
-`Indicate(object, scale_factor=1.2, color=YELLOW)` temporarily scales an object
-around its center and recolors both fill and stroke. It defaults to one second
-with `there_and_back` easing: the effect peaks halfway through, then returns.
-Fill/stroke opacity and rotation are preserved. Whole groups and text are
-supported, including staggered animation groups. The live object, its children,
-and saved checkpoint remain unchanged; the original appearance is always held
-after the effect ends. Custom `rate_func` controls intermediate progress, but
-an easing that does not return to zero can jump back at completion. The exported
-`there_and_back` uses this runtime's cubic smooth curve; ordinary transforms
-still commit their destination at completion when using this rate function.
-Scale factors must be finite and nonnegative. Preview bounds and color
-interpolation limitations apply to this effect as well.
-
-Animation previews run at
-15 frames per second and are limited to 120 seconds, with a 90-second deadline
-for loading and execution. Editing or Cancel render terminates active Python computation. Choose an
-Export format, then Download. SVG frame and PNG frame save the current frame; PNG pauses playback
-at the displayed frame and exports it at the camera's pixel size (800 × 450 by default) with a black background.
-SVG retains vector formula paths; PNG includes those paths and the browser's rendered text.
-MP4 video (H.264) and WebM video (VP9, or VP8 as a fallback) encode every frame of the
-current render at its exact timestamp with the browser's WebCodecs encoder, so the file
-has the scene's frame rate and duration however long encoding takes. Clicking Download
-again while encoding (shown as Cancel video) cancels it, as does editing or re-rendering.
-Browsers without WebCodecs video encoding, or without the chosen codec, report that
-video export is unavailable. Odd pixel sizes are rounded up to even dimensions. Audio
-added with `add_sound` is not included in the video.
-
-Full LaTeX documents, OpenGL rendering and full NumPy integration
-are not implemented. The broader examples directory includes APIs
-outside this subset. Unsupported operations report Python errors.
-
-Objects accept a finite numeric `z_index` (default 0). `set_z_index(value,
-family=True)` applies it to the object and its descendants; `family=False`
-changes only the object's own value. Drawable shapes are sorted across all group
-boundaries by increasing depth, so higher values appear in front. Equal depths
-keep scene/family insertion order. Group containers have no drawable geometry;
-changing only a container's depth does not change its children. Animated depth
-changes, copies, transforms, and Restore preserve these values. SVG/PNG snapshots
-use the same paint order as the displayed frame. This follows the
-[Manim depth-setting API](https://docs.manim.community/en/stable/reference/manim.mobject.mobject.Mobject.html#manim.mobject.mobject.Mobject.set_z_index).
-`Scene.bring_to_front(*objects)` and `bring_to_back(*objects)` reorder whole
-scene roots, including entire groups, in argument order and add absent roots.
-Repeated arguments appear once. They keep geometry and depth unchanged, so
-`z_index` takes priority over insertion order. `Scene.clear()` removes displayed
-objects without changing their state or deleting earlier frames; the same objects
-can be added or animated again. Ordering a child of an added group or a group
-containing independently added children requires family restructuring and reports
-an explicit error before changing the scene. Broader scene-family restructuring
-remains unsupported.
-
-`add_foreground_mobject(object)` and `add_foreground_mobjects(*objects)` add whole
-roots to `foreground_mobjects` and the scene. Foreground roots stay after ordinary
-roots as later objects and animations are added, so they cover equal-depth objects.
-Re-adding foreground roots moves them to the end of the foreground list, in argument
-order; duplicates appear once. Numeric `z_index` still takes priority, including
-across children of foreground groups. `remove_foreground_mobject(object)` and the
-plural form release the foreground designation while keeping the object visible.
-Later additions can then cover it. `remove`, fade/removal animations, and `clear`
-remove foreground membership too. `bring_to_front` preserves membership;
-`bring_to_back` releases it. Child/group restructuring is rejected atomically.
-See the [Manim Scene API](https://docs.manim.community/en/stable/reference/manim.scene.scene.Scene.html).
-
-Scenes may override `setup()` and `tear_down()`. The runtime calls setup before
-construct and teardown afterward; all three hooks can add objects, play
-animations, and wait. Inherited hooks work normally. A hook error stops rendering
-and propagates to the editor; later hooks are not run. The final seekable frame
-captures the state after teardown.
-
-Read-only `Scene.time` reports elapsed sampled animation time in seconds. Waits
-and the longest parallel animation advance it at 15 fps; durations round up to
-whole frames. Clearing the display does not reset it, and the final still frame
-does not advance it. Time is independent of Python execution/loading and browser
-playback or seeking. The hook order and time concept follow the
-[Manim Scene API](https://docs.manim.community/en/stable/_modules/manim/scene/scene.html).
-
-`VMobject()` supports connected and disconnected XY paths. Build it with
-`set_points_as_corners(points)`, extend it with `add_points_as_corners(points)` or
-`add_line_to(point)`, and reverse it with `reverse_direction()`. These methods
-also work in animate chains. Points are local coordinates and must be finite;
-repeat the first point at the end to close the outline. Empty paths render no
-geometry, and endpoint queries require at least one point.
-
-Corner paths support Create/Uncreate, styles, layout, group/depth ordering,
-transforms, checkpoints, `get_start()`/`get_end()`, and `MoveAlongPath` sampled
-by distance along straight segments. Equal-count point lists interpolate;
-unequal-count corner paths and polygons align through cubic subdivision before
-interpolation. Smoothing and general point-array operations remain unsupported. Separate-contour
-construction and alignment are described below. This uses the
-[Manim corner-path API](https://docs.manim.community/en/stable/reference/manim.mobject.types.vectorized_mobject.VMobject.html?highlight=corner)
-with a straight-segment SVG representation.
-
-## Offline use
-
-On HTTPS or localhost, the site saves the editor, gallery and supported examples
-when first opened. The Python runtime and MathTex library (several MB) are saved
-after the first live Manim render, so a phone that only watches pre-rendered
-samples never downloads them. Until then the toolbar (under **More** on phones)
-says **Diagrams ready offline**: DOT, modl and the gallery work offline, and
-**Save Python offline** downloads the rest. Stay connected until it says **Ready
-offline**; then reload the same site to edit and render DOT or supported Manim
-scenes, select gallery examples, and export frames without a connection.
-Browser storage limits or a failed CDN request can prevent setup; use **Retry
-offline setup** after reconnecting. Browser storage may be cleared or evicted later.
-
-Only the listed application assets are cached. External source links, URL
-shortening, and arbitrary Python packages still need a connection. Source links
-are generated locally and use compression when available. A first-ever visit without a connection cannot
-load the site; connect for the initial setup. If saved files are incomplete on
-an offline reload, the service worker shows a recovery page.
-
-New versions activate automatically once their files are saved. Both the editor
-and gallery check for updates; existing editor tabs preserve their latest source
-and scene selection in the URL before reloading. Gallery links also work with an
-older cached editor while an update is being prepared. Previously saved pinned
-Python/MathJax files are reused, so updates do not redownload unchanged runtimes.
-Maintainers must bump the version in
-`offline-assets.js` when changing a cached local file. The pinned Python assets
-follow the [Pyodide deployment manifest](https://pyodide.org/en/0.27.0/usage/downloading-and-deploying.html).
-
-## Sharing scenes
-
-**Share** immediately selects a source link for copying. It contains the current
-code, selected scene, renderer override, and DOT engine/format when applicable.
-Source links use compression when available and work without a shortening
-service. Old `raw`, `compressed`, or external-source parameters are replaced,
-so a reload uses the latest edits. Changing source or rendering options clears
-the displayed link to avoid copying an outdated version.
-
-**Shorten link** optionally sends that captured source URL through the existing
-AllOrigins/is.gd services. If the request fails, stalls for ten seconds, or
-returns an invalid link, the source link remains available. The status identifies
-the failing service/HTTP status or is.gd's rejection reason when available, and
-gives a next step: reconnect, check browser blockers, retry later, or use
-**Save to HashBin**. Rate-limit errors advise waiting at least one minute;
-oversized URLs advise HashBin. Browsers can hide HTTP details for blocked or
-cross-origin responses; in that case the message describes the unknown cause
-instead of guessing a status code. Editing cancels
-pending shortening and ignores its later response. Tests simulate service
-success/failure; live shortening-service availability is not guaranteed.
-
-## Verification
-
-Core tests use Python and Node. Install the optional runtime packages to exercise
-NumPy points, Pillow images and syntax-highlighted code as well:
-
-```sh
-python3 -m pip install numpy pillow pygments
-python3 -m unittest discover -s tests -v
-node --test tests/*.test.js
+```bash
+npm run serve
 ```
 
-Serve the site locally to check actual Pyodide loading and browser playback.
-Check the default animation, replay/seek, scene selection and URL reload,
-animated scale/rotation, outline drawing and erasure, an orbit, a source edit,
-invalid Python, and
-switching to `digraph { a -> b }`. These unit tests cover the compatibility
-runtime and worker lifecycle; they do not substitute for browser checks.
+Then open <http://localhost:8000/>. `python3 -m http.server 8000` also works.
 
-A Playwright smoke test renders a DOT graph and a Manim scene (with a formula)
-in Chromium, Firefox and WebKit, and reports which video encoders each engine
-offers. CI runs it on every push; locally:
+Shared URL/document/CID handling, HashBin Publish, QR codes, drafts, the local library,
+shortening,
+application caching, the shell and mobile tabs, gallery filtering and AI come from the
+immutable [Fragment Kit](vendor/fragment-kit-v0.5.0/) v0.5.0 pin; upgrade by vendoring a
+new release, never by editing it. Manim-lite, the renderers, worker isolation and the
+preview media producer belong to this app. [AGENTS.md](AGENTS.md) maps the code and its
+invariants.
 
-```sh
-npm install --no-save playwright && npx playwright install chromium firefox webkit
-python3 -m http.server 8000 &
-node tests/browser/smoke.cjs http://localhost:8000/ chromium firefox webkit
-node tests/browser/languages.cjs http://localhost:8000/ chromium firefox webkit
-node tests/browser/modl-zoom.cjs http://localhost:8000/ chromium firefox webkit
-node tests/browser/sharing.cjs http://localhost:8000/ chromium firefox webkit
-node tests/browser/gallery.cjs http://localhost:8000/ chromium firefox webkit
-node tests/browser/upgrade.cjs chromium firefox webkit
-node tests/browser/touch.cjs http://localhost:8000/ chromium
+### Tests
+
+```bash
+npm test
 ```
 
-The language check runs real Graphviz, modl and Pyodide/Manim previews, plus HashBin Publish popup and redirect saves, legacy token revocation, reload, CID verification, legacy modl/inline CID loading, and stale-load protection against a mocked service. It also proves the Content-Security-Policy blocks unlisted script hosts. It spends no account funds and does not prove live HashBin registration or service availability. Playwright's Firefox build may fail to launch on recent macOS with “Could not find profile folder”; CI runs the browser matrix on Ubuntu.
+```bash
+npm run test:python
+```
 
-The modl zoom check uses real SVG painting, pointer gestures, wheel input, image
-loads and SVG-to-canvas exports without CDN dependencies. Add `--benchmark` to
-measure 100/1,000/5,000-node zoom and drag workloads; timings are diagnostics,
-not fixed CI performance assertions. The deep-zoom report explains how to run
-the same check against the optional standalone editor patch.
+```bash
+npm run check
+```
 
-The sharing check simulates shortening-service HTTP failures, rate limits,
-oversized links, unreadable replies, blocked/offline requests, retry success and
-stale errors after editing. It checks the visible cause/recovery message and
-preserved source link without creating real short links.
+`npm test` runs the Node unit tests and `npm run test:python` the Python tests (install
+`numpy pillow pygments` to run the package-backed tests; without them those tests skip).
+`npm run check` syntax-checks scripts and verifies that gallery previews, generated
+docs, gallery and offline files and vendor pins are current. Unit tests do not prove
+Pyodide loading or browser playback.
 
-CI runs Chromium, Firefox, and WebKit as separate jobs, with each browser's
-gallery, rendering, language/HashBin, and sharing checks in separate steps.
-The upgrade check serves a historical cached editor/catalog, opens the new
-gallery before the update can finish, checks covers and links with that old
-catalog, then verifies automatic activation, edit preservation, and offline
-gallery browsing. It isolates local application upgrades; the unit suite covers
-pinned CDN cache reuse and incomplete offline setup.
-The gallery check verifies every shipped cover, real MP4 playback, filtering,
-editor links for all three languages, edited-source reloads, stale loads, the
-narrow-screen layout, and that a phone editor plays a sample's MP4 without
-requesting Python until an edit (or a missing video) needs a live render.
-The touch check sends real touch input through Chromium's DevTools protocol:
-one finger pans and two fingers pinch-zoom Graphviz and modl previews without
-zooming the page. Other engines skip it. Gallery covers and sources are included in offline
-setup; video previews need a connection and are not downloaded during setup.
+Browser suites use Playwright against the test server, which mirrors verified copies of
+the pinned CDN files:
 
-To refresh gallery media after changing a sample or the rendering runtime, serve
-the checkout and run `node scripts/render-gallery.cjs http://localhost:8000/`.
-This uses real Pyodide, measured formulas, SVG rendering, and Chromium's H.264
-encoder to build 10 fps previews up to 480 × 270, preserving custom canvas ratios.
-Add example IDs after the URL to force a selected rebuild. The source/runtime
-fingerprints in `gallery/previews/manifest.json` skip unchanged media. The PNG
-and MP4 files in that directory are intentional site assets; keep temporary
-test screenshots and other generated output outside Git. Bump the offline
-version when refreshing covers or gallery code.
+```bash
+npx playwright install chromium firefox webkit
+```
+
+```bash
+node scripts/fetch-runtime.mjs
+```
+
+```bash
+PORT=8000 node tests/browser/server.cjs
+```
+
+```bash
+BROWSER=chromium npm run test:browser
+```
+
+`test:browser` runs `cold-math`, `gallery`, `smoke`, `languages`, `modl-zoom`, `sharing`,
+`touch` (Chromium only) and `upgrade`. CI also runs `ai.mjs`, `legacy-publish.cjs`,
+`url-state.cjs` and the Fragment Kit contracts (`npm run test:contracts`). Each script
+also accepts `<url> <browser...>` arguments, for example
+`node tests/browser/smoke.cjs http://127.0.0.1:8000/ chromium webkit`. Playwright's
+Firefox may fail to launch on recent macOS ("Could not find profile folder"); CI runs all
+three engines on Ubuntu. Mocked suites spend no HashBin funds and do not prove live
+HashBin registration or shortening-service availability.
+
+### Generated files
+
+- After changing any shipped asset, run `npm run offline` to regenerate
+  `offline-assets.js` (hashes and content version).
+- After editing `docs/*.md`, run `npm run docs` to regenerate `docs/*.html`.
+- After changing a Manim sample or the runtime, serve the checkout and run
+  `node scripts/render-gallery.cjs http://localhost:8000/ [example IDs...]` to rebuild
+  covers and MP4 previews in `gallery/previews/` (unchanged ones are skipped by
+  fingerprint). Then run `node scripts/gallery-catalog.mjs` (writes
+  `src/gallery-catalog.js`) and `npm run gallery` (Fragment Kit covers in
+  `gallery/covers/`) when the catalog or covers change.
+- `src/video-links.js` is generated by `video-series/tools/youtube.py`.
+
+CI (`.github/workflows/test.yml`) runs the shared Fragment Kit gates, the Python tests and
+the browser suites in Chromium, Firefox and WebKit; `deploy.yml` publishes after they pass.
+
+## Documentation
+
+- [Rendering support and limitations](docs/rendering.md)
+- [Completion and acceptance](docs/completion.md)
+- [Sharing and QR codes](docs/sharing.md) · [Offline use](docs/offline.md) · [Optional AI](docs/ai.md)
+- [modl deep zoom](docs/modl-deep-zoom.md)
+- [AGENTS.md](AGENTS.md) for contributors and coding agents; plans live in [`todo/`](todo/).
+- [`examples/`](examples/) holds the gallery scenes; its Markdown files describe the
+  broader Manim API and do not imply browser support.
 
 ## Credits
 
 - Based on [GraphvizOnline](https://github.com/dreampuf/GraphvizOnline) by Dreampuf (BSD-3-Clause)
-- Uses [viz.js](https://github.com/mdaines/viz.js) for Graphviz rendering
-- Uses [Pyodide](https://pyodide.org/) for browser Python execution
-- Uses [ACE Editor](https://ace.c9.io/) for code editing
-- Uses [svg-pan-zoom](https://github.com/ariutta/svg-pan-zoom) for SVG interaction
-- modl parser and SVG editing adapted from [curtcox/modl](https://github.com/curtcox/modl); HashBin integration follows its [OAuth editor](https://github.com/curtcox/modl/blob/main/index.html)
+- [viz.js](https://github.com/mdaines/viz.js) for Graphviz rendering
+- [Pyodide](https://pyodide.org/) for browser Python execution
+- [MathJax](https://www.mathjax.org/) and [typst.ts](https://github.com/Myriad-Dreamin/typst.ts) for formulas
+- [ACE Editor](https://ace.c9.io/) for code editing
+- [svg-pan-zoom](https://github.com/ariutta/svg-pan-zoom) for SVG interaction
+- modl parser and SVG editing adapted from [curtcox/modl](https://github.com/curtcox/modl)
+- Text outlines from Liberation Sans and DejaVu Sans Mono (see `src/text-outlines-LICENSE.txt`)
 
 ## License
 
 BSD-3-Clause (see LICENSE-graphvizonline for GraphvizOnline attribution)
-
-
-### Cubic Bezier paths
-
-`CubicBezier(start_anchor, start_handle, end_handle, end_anchor, **style)` creates
-an open cubic curve. Add a cubic segment to a VMobject's existing endpoint with
-`add_cubic_bezier_curve_to(handle1, handle2, anchor)`. Start an empty VMobject with
-`set_points_as_corners([start])` first. Earlier corners become straight cubic
-segments when a curve is appended. Later `add_line_to`/`add_points_as_corners`
-continue the path with straight segments. `set_points_as_corners` replaces the
-whole path, and `reverse_direction` reverses segment order and control handles.
-Coordinates must be finite and in the XY plane; invalid appends preserve the path.
-
-Curves render as SVG cubic commands with Create/Uncreate, styles, group transforms,
-copy/checkpoints, Restore, and MoveAlongPath. Transform interpolates anchors and handles. Unequal segment counts and
-corner/cubic/polygon path combinations align through subdivision as described below. Sampling uses the cubic parameter within each segment. For several
-segments, their relative durations use lengths estimated with 20 intervals per
-segment. This is approximate and does not produce constant speed within a curve.
-Geometry bounds and transform pivots enclose anchors and handles, rather than
-measuring the visible curve's exact extrema. Arbitrary shape alignment and broader point-array semantics remain open;
-disconnected contours and smoothing are described below.
-See [Manim CubicBezier](https://docs.manim.community/en/stable/reference/manim.mobject.geometry.arc.CubicBezier.html)
-and [path sampling](https://docs.manim.community/en/stable/_modules/manim/mobject/types/vectorized_mobject.html).
-
-
-### Path alignment during transforms
-
-Transform, Restore, ReplacementTransform, TransformFromCopy, and animate chains
-can morph connected corner, cubic, and polygon paths with unequal segment counts.
-Straight edges become cubic segments, and polygons include their closing edge.
-The shorter segment list is subdivided evenly across its existing segments until
-both lists match. De Casteljau splitting preserves the original curve and every
-join; alignment snapshots keep the original geometry pivots, scale, rotation,
-and position. The displayed frame then interpolates paired anchors, handles, and
-styles. Both closed endpoints produce a closed SVG stroke with its usual joins.
-
-Alignment leaves the live source and target unchanged until normal animation
-completion. Transform finishes with the target's original geometry representation
-and preserves the source checkpoint. A one-point path can grow into a segment;
-empty paths still fade because they have no anchor to align. Correspondence follows
-path order; the runtime does not optimize point matching or winding direction.
-Disconnected subpaths, arrow outlines, and nested group-family
-alignment remain open. This follows the curve-subdivision concept in
-[Manim align_points](https://docs.manim.community/en/stable/reference/manim.mobject.types.vectorized_mobject.VMobject.html#manim.mobject.types.vectorized_mobject.VMobject.align_points).
-
-
-### Primitive outline morphing
-
-Circle, Ellipse, Arc, Square, Rectangle, Triangle, and Line can morph into each other and
-into supported corner/cubic/polygon paths. Straight outlines convert exactly to
-cubic segments. Circles and arcs use tangent-matched cubic segments spanning at
-most 45 degrees, with exact anchors and closure for full turns. Circular geometry
-is slightly approximate during these morphs; static shapes, path sampling, and
-same-type primitive transforms retain their previous analytical behavior.
-Tests sample the circular approximation with radial error below 0.0005% of radius.
-
-The conversion keeps original layout/transform pivots, positions, styles, depth,
-and checkpoint behavior. Segment subdivision preserves every straight corner.
-Correspondence follows each shape's existing path order; there is no automatic
-start-point or winding optimization. The target retains its native geometry at
-completion. Arrowheads, text/glyph outlines, and general group-family matching
-remain unsupported and continue to use the existing crossfade behavior.
-Circular control handles follow the tangent construction in
-[Manim Arc](https://docs.manim.community/en/stable/_modules/manim/mobject/geometry/arc.html).
-
-
-Nested VGroup transforms recursively match children in their existing order and
-morph supported outlines. Unequal child counts repeat evenly distributed source
-children, fading additional copies in or out. Empty groups use zero-size,
-transparent counterparts. A shape transforming to a group is wrapped in a neutral
-container so its original transform is retained. Group transforms and pivots are
-interpolated, and completion/restoration keeps the native target representation.
-Child identities are copied at completion as before; scene-added child animation,
-arbitrary Mobject families and automatic correspondence remain open.
-Disconnected path alignment is described below. See **Morph nested groups** in the gallery.
-
-
-Group and VGroup support child add/remove/add_to_back, indexing (including negative
-indices), slicing, iteration, len, split, and a shared submobjects list. Additions
-deduplicate objects and reject non-Mobjects or cycles before mutation. Re-adding a
-child moves it to the end; add_to_back moves it to the beginning. Slices return a
-neutral container referencing the same children, so styling a selection changes
-those live objects. Slices do not inherit the original parent's transforms.
-get_family lists the object and descendants in stable order, deduplicating shared
-objects. Group accepts the runtime's supported geometry/text objects; other Manim
-object classes and scene-family restructuring remain unimplemented. The **Build
-and edit a group** example demonstrates live child editing and whole-group motion.
-
-
-The `config` object supports pixel_width/pixel_height (integer 1–4096),
-frame_height/frame_width (positive finite units), and six-digit hex background_color
-through attributes or dict-style access. Defaults retain this preview's 800 × 450,
-16 × 9 frame. Frame width follows the pixel aspect ratio; setting it adjusts frame
-height. Set config before constructing the scene; Scene snapshots its own camera,
-which supports the same properties and optional camera_config constructor overrides.
-Camera backgrounds are captured per frame. SVG/PNG exports retain the background
-and configured resolution. Config resets for every source, including after errors.
-See **Configure the canvas**. Frame rate remains 15 fps; 3D, config
-files, quality presets, and full ManimConfig/color semantics remain unsupported.
-
-
-MovingCameraScene exposes `self.camera.frame`, an invisible rectangular Mobject.
-Use `.animate.move_to(...)`, `.shift(...)`, `.scale(...)`, `.set_width(...)`, or
-`.set_height(...)` to pan/zoom, and save_state/Restore to return to a prior view.
-Frame samples become camera metadata, never visible geometry; scene objects keep
-their own coordinates. Sequential and parallel animation timelines can include
-the camera. Zoom factors/extents must stay positive and finite, with XY positions.
-Setting width/height preserves aspect ratio. Rotation, 3D views, camera frame
-replacement/removal effects remain unsupported. The **Pan
-and zoom the view** gallery demonstrates focus changes and view restoration.
-
-
-`self.camera.auto_zoom(mobjects, margin=0, only_mobjects_in_frame=False,
-animate=True)` fits the combined XY bounds of one object or an iterable. Pass its
-result to `self.play(...)`, or use animate=False to change the frame immediately.
-The longer relative dimension determines the fit; margin adds to that full
-width/height, preserving aspect ratio. `is_in_frame(object)` includes objects
-partially overlapping the view. `frame_center` reads/sets the view center.
-Camera frames are excluded from fitting. Empty/fully filtered selections and
-nonpositive final extents raise errors without changing the camera. Bounds use
-existing geometry queries: rotated groups/curves may include conservative extra
-space, and text/TeX glyph dimensions are not measured. Use **Fit shapes in the
-view** for animated combined framing, single-object focus, and restoration.
-
-
-Mobjects support `add_updater(callback, index=None, call_updater=False)`,
-remove_updater, clear_updaters, update, suspend_updating and resume_updating.
-Callbacks receive the object and optionally a parameter named `dt` (seconds).
-They run in scene/family order during play/wait at 15 fps. Animated object families
-are suspended while their animation samples; other callbacks can query sampled
-positions to follow them. As in Manim, a moving camera frame's updaters run only
-once the frame is in the scene (`self.add(self.camera.frame)` or an animated frame).
-Callbacks remain Python-only and are excluded from exported frame data. See
-**Follow objects each frame** for a spinner, follower and tracking camera.
-This adds object callbacks, not full scene updaters,
-UpdateFromFunc or custom animation subclasses. Crossfade queries use the more
-visible snapshot; child queries retain this runtime's existing group coordinates.
-
-
-`ValueTracker(value=0)` stores a finite real number without visible geometry.
-get_value/set_value/increment_value, scalar arithmetic and in-place arithmetic are
-supported. Use `tracker.animate.set_value(...)` or increment_value to drive other
-objects' updaters through intermediate values. Trackers are added automatically
-when animated; explicitly add a tracker whose own updater must run during waits.
-For timed dependencies, add the tracker before objects that read it. Copy,
-save_state/Restore, easing, parallel timelines and Succession use the existing
-animation pipeline. Values occupy the tracker's x coordinate. ComplexValueTracker,
-point-array access, and glyph-level numeric display semantics remain unsupported. See
-**Animate a shared value** for two moving shapes and a live connector.
-
-
-`always_redraw(factory)` creates an object and rebuilds its geometry/styles from
-factory() each update. It follows sampled ValueTracker/animation state and supports
-suspend/resume/clear_updaters. The factory must return a supported Mobject.
-`mobject.become(target)` replaces geometry/styles, preserving source identity,
-callbacks, suspension and checkpoint. Existing child identities are retained in
-order where possible; growing/shrinking families add/drop children. Copies own
-their redraw updates but factory closures still refer to the original variables.
-The Python class does not change when becoming a different shape. Optional native
-become fitting/stretch arguments and general scene restructuring remain unsupported.
-See **Rebuild shapes each frame** for changing dimensions, suspension and freezing.
-
-
-`DecimalNumber(number=0)` and `Integer(number=0)` display finite real values
-using centered SVG text. get_value/set_value/increment_value and animated value
-changes are supported; updaters can read a ValueTracker to display each sampled
-value. DecimalNumber defaults to two decimal places; Integer defaults to zero
-and rounds get_value to the nearest integer (ties to even). Formatting options
-include num_decimal_places (0–12), include_sign, group_with_commas,
-show_ellipsis and a plain-text unit suffix. Updates preserve position, scale,
-style and callbacks. Copy, checkpoints and Restore use the existing pipeline.
-Native TeX digit families, measured glyph bounds, edge_to_fix, digit indexing,
-complex values and Variable remain open. See **Show changing numbers** for live
-tracker labels, direct numeric animation and restoration.
-
-
-`TracedPath(point_function, stroke_width=2, stroke_color=WHITE,
-dissipating_time=None)` connects sampled XY positions at 15 fps. Pass a method
-such as dot.get_center or a callable returning a finite point. Add the trace to
-the scene; for an updater-driven source, add the source first so its callback runs
-before tracing. A positive dissipating_time drops one old segment per update
-after that many seconds; None or zero retains the full trail. Suspension pauses
-tracing and its clock; clear_updaters freezes the trail. Copy/checkpoints and
-transforms use the existing path pipeline. Trails use straight sample segments;
-3D points and opacity gradients remain unsupported. **Trace moving points**
-compares a full circular trail with a one-second trail that disappears during wait.
-
-
-`Ellipse(width=2, height=1)` supports independent nonnegative finite dimensions,
-fill/stroke styles, transforms, Create/Uncreate, growth and restoration. Its outline
-can be used by MoveAlongPath or point_from_proportion; like Circle, sampling uses
-angular proportion rather than constant arc-length speed. Rotated ellipse bounds
-use exact analytical extents. Transforms to other supported outlines align cubic
-curves; the final object retains native ellipse SVG geometry after Restore.
-**Follow an ellipse** demonstrates creation, a rotated orbit, circle morphing and
-restoration. Native stretch methods and general point-array editing remain open.
-
-
-`Sector(radius=1)` and `AnnularSector(inner_radius=1, outer_radius=2)` create
-filled circular wedges and ring sectors. Both accept start_angle, signed angle
-(default PI/2, up to one full turn), arc_center and standard styles; fill_opacity
-and stroke_width default to 1 and 0. Finite nonnegative radii include collapsed
-geometry. Their connected outlines follow the inner arc, a radial edge, reversed
-outer arc and closing edge. Create/Uncreate, MoveAlongPath, rotation, growth,
-curve morphing and Restore use the existing cubic path pipeline. get_arc_center
-and move_arc_center_to account for transforms. Bounds and path-speed queries use
-the existing cubic approximation. **Circular and ring sectors** demonstrates
-signed sweeps, outline following, unequal-curve morphing and restoration.
-
-
-`Annulus(inner_radius=1, outer_radius=2)` renders a complete ring with two separate,
-oppositely wound contours and no radial stroke. Fill and stroke default to 1 and
-0; arc_center, standard styles and finite nonnegative radii are supported.
-Create/Uncreate, growth, transforms, same-type radius interpolation and Restore
-use the existing animation pipeline. Path motion traverses the outer contour
-counterclockwise then the inner contour clockwise, jumping across the gap; there
-is no drawn connector. Bounds use the larger radius. mark_paths_closed is accepted
-as a boolean; SVG contours are always closed. Rings morph into other supported outlines with separate contour alignment;
-missing contours collapse at the other outline's final endpoint.
-**Rings with separate contours** shows creation, path following and changing radii.
-
-`RoundedRectangle(corner_radius=0.5, width=4, height=2)` builds a closed cubic
-outline. A finite scalar rounds every corner; a nonempty list/tuple repeats in
-upper-left, lower-left, lower-right, upper-right order. Negative values produce
-concave cuts. Each radius is limited to half the shorter side, following the
-native corner-cut clamp. Dimensions must be finite and nonnegative; zero-sized
-outlines remain stable. Create/Uncreate, path following, morphs to supported
-outlines, styling, copying and Restore use the existing path pipeline. Curves
-approximate circular corners with two cubic segments. General polygon
-round_corners and rectangle grid lines remain open. **Rounded and concave corners**
-demonstrates outline following, per-corner morphing and restoration.
-
-
-`VMobject.start_new_path(point)` begins a separate contour. Continue with
-add_line_to/add_points_as_corners/add_cubic_bezier_curve_to and use close_path()
-to join only the current contour back to its start. has_new_path_started() reports
-an unfinished anchor; get_subpaths() returns independent lists of transformed
-anchors and handles (four points per cubic), excluding an unfinished anchor.
-Starting another contour completes an earlier unfinished anchor as a null curve.
-Reverse direction reverses contour order and winding, completing an unfinished
-anchor first.
-
-The renderer emits separate SVG moves and closes each completed loop. Path motion
-weights curves by length without drawing or traversing a connector across gaps.
-Transforms align contours in order, subdivide each pair independently, and add
-null contours at the final endpoint when one side has fewer contours. Explicit
-contour boundaries survive intermediate coincident endpoints. Annulus participates
-with outer and reversed inner circles; other supported primitives use one contour.
-Native representations return at completion and Restore. Automatic contour
-matching, boolean geometry and full point-array editing remain open.
-**Morph separate contours** follows a square ring, morphs it to Annulus, collapses
-the hole into a rounded rectangle and restores both original contours.
-
-Supported outlines expose `get_points()`, `get_num_points()` and `has_points()`.
-get_points returns world-space anchors/handles as an (n, 3) array, four points
-per completed cubic plus an optional unfinished anchor. Primitive outlines use
-the same cubic conversion as morphing; a single corner anchor stays one point.
-Objects without supported outline geometry return no points.
-
-`VMobject.set_points(points)` replaces raw cubic geometry; append_points extends
-it, add_subpath requires complete four-point groups, and clear_points empties it.
-Arrays must contain complete cubic groups, optionally followed by one new anchor,
-with finite XY coordinates. Mutations validate before changing the object.
-Raw edits use world coordinates and reset position/rotation/scale after baking
-existing geometry, preserving styles, callbacks and checkpoints. start_new_path
-also bakes existing transforms before adding its world-space anchor, so changing
-the bounds does not move earlier rotated curves. append_vectorized_mobject copies
-a supported outline and drops the receiver's unfinished anchor, retaining receiver
-styles. These editing methods work in animate chains and with Restore. As in
-Community, writing into `mob.points` or a `get_points()` array (including slices,
-`+=` and NumPy `out=`) edits the mobject. **Edit cubic point arrays** builds a transformed curve from raw
-points, animates its handles, appends a ring and restores the curve.
-
-`get_subcurve(a,b)` returns an independent exact cubic portion of a supported
-outline. `pointwise_become_partial(source,a,b)` replaces only the receiver's
-geometry and retains its styles, callbacks and checkpoint; it also works in
-animate chains. Fractions allocate equal parameter ranges to each source cubic,
-as in native Manim, rather than weighting by physical distance. De Casteljau
-splitting preserves the selected curve exactly, including transformed geometry.
-Bounds must be finite real values and are clamped to [0,1]; reversed bounds are
-rejected by pointwise_become_partial. get_subcurve permits a reversed interval
-on a closed outline, wrapping through its end/start. `is_closed()` compares the
-first and last anchors; `get_num_curves()` counts completed cubics. A zero-length
-interval becomes a null curve. Disconnected contours stay separate. Full-range
-copy includes an unfinished anchor; a partial selection with no completed source
-curves leaves the receiver unchanged. **Extract and wrap curve highlights**
-shows a precise cubic highlight, a wrapped circular highlight and animated
-partial replacement. General glyph outlines remain open.
-
-`ShowPassingFlash(outline, time_width=.1)` moves an exact cubic-parameter window
-along an outline, introducing the flash and removing it when playback finishes.
-Use a styled copy to keep the original outline visible. Widths are finite,
-nonnegative fractions; values greater than one can reveal the complete outline
-at once. Groups highlight their supported children simultaneously while keeping
-their original transform pivots. The removed object retains its geometry and can
-be reused in `Succession`. Glyphs, arrows and per-child flash delays remain open.
-Try **Traveling outline highlights** (`examples/passing_flash_scene.py`).
-
-`NumberLine(x_range=[minimum, maximum, step])` provides linear numeric
-coordinates with a shaft, ticks and optional numeric labels. A two-item range
-uses step 1; ranges increase and steps are positive. `length` sets the displayed
-shaft length, or `unit_size` sets scene units per number. `number_to_point`/`n2p`
-convert a number (or list/tuple of numbers) to positions; `point_to_number`/`p2n`
-project a point back onto the shaft. Both conversions extrapolate outside the
-range and follow the number line's current shift, rotation and uniform scale.
-`line @ number` and `point @ line` are equivalent shortcuts.
-
-Options include `include_ticks`, `tick_size`, `numbers_with_elongated_ticks`,
-`longer_tick_multiple`, `exclude_origin_tick`, `rotation`, and `include_tip` with
-`tip_width`/`tip_height`. A range crossing zero anchors ticks at multiples of its
-step; other ranges start ticks at the minimum. A tip suppresses a tick exactly at
-the maximum. `get_tick_range`, `get_tick`, `get_tick_marks`, `get_start`/`get_end`,
-`get_length`, `get_unit_size`, `get_unit_vector` and `get_angle` inspect geometry.
-`point_from_proportion` follows the shaft. `set_length` also works in `.animate`.
-
-Use `include_numbers=True` or `numbers_to_include` for labels, with
-`numbers_to_exclude`, `font_size`, `label_direction`, `line_to_number_buff` and
-`decimal_number_config` controlling numeric formatting. `add_numbers` and
-`add_ticks` add independent decoration groups; `.numbers`, `.ticks` and `.tip`
-access the latest matching group/tip. `get_number_mobject` makes a standalone
-label. Adding decorations preserves existing world positions, including on
-transformed lines. Labels use the existing centered SVG numeric text; glyph
-metrics and native TeX label construction remain open. Ticks/labels are bounded
-to 1000 per addition. Inverse conversion and decoration insertion require a
-noncollapsed shaft. NumberLine uses the existing group renderer: animations
-target the complete line, and raw partial-curve APIs do not target its shaft.
-Logarithmic scaling and full NumPy coordinate arrays remain open.
-Try **Follow numeric coordinates** (`examples/number_line_scene.py`).
-
-`Axes(x_range, y_range, x_length, y_length)` combines two NumberLines into a
-linear XY coordinate system, centered on the middle of the coordinate rectangle.
-Ranges may exclude zero. `axis_config` applies to both axes; `x_axis_config` and
-`y_axis_config` override individual options, merging nested numeric formatting
-options. `tips=True` is the default; origin ticks and labels are excluded by
-default. The y-axis is vertical and its numeric labels sit to its left.
-
-`coords_to_point`/`c2p` convert numeric coordinates into current world positions;
-`point_to_coords`/`p2c` invert the current basis. Both follow the parent and child
-axis transforms, including sampled animation frames. Conversion accepts scalar
-x/y (optional zero z), a single coordinate list, batches of coordinate rows or
-paired coordinate lists with scalar broadcasting. Inverse conversion accepts
-one point or point rows. Batches are limited to 1000; collapsed or nearly parallel
-axes cannot be inverted. `axes @ coordinates` and `point @ axes` are shortcuts.
-`get_origin`, `get_x_unit_size` and `get_y_unit_size` inspect the world frame.
-
-`add_coordinates(x_numbers, y_numbers, **number_options)` adds numeric labels,
-defaulting to each axis's ticks. Both additions validate before mutation, and
-existing coordinates stay fixed on transformed axes. `get_axis_labels` returns
-positioned x/y labels; strings use MathTex and existing Mobjects can be supplied.
-`get_x_axis_label`/`get_y_axis_label` accept a direction and buffer.
-`x_axis`, `y_axis`, `axes`, `get_axes`, `get_axis`, `get_x_axis` and `get_y_axis`
-expose the actual child NumberLines. Their own geometry queries use Axes-local
-coordinates, as with existing group children; use c2p/p2c for world positions.
-Animate the complete Axes object. Broader graphing APIs,
-nonlinear scaling, NumPy arrays and 3D coordinates remain open.
-Try **Animate Cartesian coordinates** (`examples/axes_scene.py`), whose sampled
-polyline and marker follow transformed axes through updaters.
-
-`Axes.plot(function, x_range=None)` samples scalar y values into the current
-world coordinate frame. Its default step is the axis tick step divided by
-`num_sampled_graph_points_per_tick` (default 10). A two-item range keeps this
-sampling density; a three-item range supplies an explicit step. Plots are
-independent geometry after construction; use `always_redraw` to follow changed
-parameters or axes. `input_to_graph_point(x, graph)`/`i2gp` evaluate the original
-scalar function at x in the current axes, independently of later graph transforms.
-`plot_parametric_curve(function, t_range=...)` maps XY coordinate functions into
-the axes. Both plotting methods return `ParametricFunction` vector paths.
-
-`ParametricFunction(function, t_range=(0,1))` samples finite XY scene points;
-two-item ranges use step .01. `FunctionGraph(function, x_range=...)` samples
-scalar y values in scene coordinates, defaults to the frame width and uses
-yellow. `get_function` returns the supplied function, and
-`get_point_from_function(t)` queries its original scene coordinates.
-`generate_points` replaces geometry with fresh function samples. Callbacks stay
-out of frame JSON. Sampling includes the exact final parameter and is bounded
-to 10001 points per object.
-
-Smoothing is enabled by default: open paths have natural endpoint conditions,
-and closed paths use periodic cubic joins. `use_smoothing=False` uses straight
-segments. `discontinuities=[...]` with `dt` excludes buffered parameter intervals
-and creates separate contours; overlapping gaps merge. Declare discontinuities
-explicitly—sampling does not detect singularities or adapt to curvature.
-Nonfinite values and nonzero z coordinates fail clearly. Vectorized callbacks,
-nonlinear scaling, color scales, implicit plots and broader graph analysis remain
-open. Existing preview size/deadline limits still apply to dense animations.
-
-VMobjects also provide `set_points_smoothly`, `make_smooth`, `make_jagged` and
-`change_anchor_mode('smooth'/'jagged')`, including `.animate`. These preserve
-contour boundaries, styles and checkpoints. Handle changes compensate for
-changed bounds so transformed anchors remain fixed during animated smoothing.
-Pending anchors are retained; smoothing targets this object's own geometry.
-Try **Plot smooth functions** (`examples/plot_scene.py`) for a changing parabola,
-tracked input, passing highlight and closed parametric loop.
-
-
-`NumberPlane` extends Axes with Cartesian background lines. Unspecified ranges
-span the configured frame; unspecified lengths give one scene unit per numeric
-unit. Axes omit ticks and tips by default, with 24-point numeric labels.
-`background_line_style` sets the major lines (default `BLUE_D`, width 2);
-`faded_line_style` configures subdivisions, defaulting to half the major width
-and opacity. `faded_line_ratio=2` divides each major interval into two; 0 or 1
-omits subdivisions. Line positions follow Manim's origin-relative, open-boundary
-grid convention, including ranges that exclude zero. The grid is limited to
-1000 lines and the ratio must be a nonnegative integer.
-
-`background_lines`, `faded_lines`, `x_lines` and `y_lines` expose local children;
-x_lines are horizontal major lines, y_lines vertical. Labels, plotting and
-coordinate conversions work through inherited Axes methods. `get_vector(coords,
-**style)` makes an independent Arrow from the current numeric origin to coords.
-Use `always_redraw` to follow a moving plane. The accepted
-`make_smooth_after_applying_functions` flag stores metadata; nonlinear
-transform preparation and function application are still open.
-Try **Move a Cartesian grid** (`examples/plane_scene.py`) for animated coordinates,
-a function plot, rotation, scaling, restoration and vector cleanup.
-
-
-`ComplexPlane` extends NumberPlane with complex-valued coordinate conversion.
-`number_to_point`/`n2p` map finite complex-compatible scalars (including real
-numbers) through the current XY frame; `point_to_number`/`p2n` return a Python
-complex number by inverting that frame. Rotation, scaling, translation and
-sampled animation frames use the same conversion as Cartesian axes.
-
-`get_coordinate_labels(*numbers, **number_options)` returns independent,
-world-positioned DecimalNumber labels without attaching them. `add_coordinates`
-attaches labels while keeping existing coordinates fixed. With no arguments,
-labels follow each axis's tick range. Explicit values use the dominant component:
-imaginary magnitude greater than real selects the imaginary axis and appends
-`i`; ties select the real axis. Each label gets independent formatting options.
-`coordinate_labels` returns the latest queried or attached group. Attached
-children use the plane's local coordinates. Copies and saved-state restoration
-retain labels; numeric text uses the existing SVG font renderer.
-Try **Animate complex coordinates** (`examples/complex_scene.py`) for a complex
-value and its conjugate following a rotating plane. Complex function application,
-nonlinear warping, complex ValueTracker values and native TeX digit families
-remain open.
-
-
-Graph calculus uses scalar function providers. `input_to_graph_coords`/`i2gc`
-return `(x, f(x))` in numeric coordinates. `angle_of_tangent(x, graph, dx=1e-8)`
-and `slope_of_tangent` use a forward finite difference, with angles and slopes
-measured in numeric coordinates, independent of the axes' world rotation or
-unequal scale. dx must be finite and nonzero and must change the floating-point
-input; negative dx reverses the returned angle's direction.
-
-`plot_derivative_graph(graph, color=GREEN, **plot_options)` samples numerical
-slopes into a new plot. `plot_antiderivative_graph(graph, y_intercept=0, samples=50,
-**plot_options)` integrates the original scalar provider from zero to each input
-using evenly spaced trapezoids. Negative inputs use signed intervals; samples
-must be an integer between 2 and 10000. Both default to the axes' plotting range
-and accept ordinary plotting options, including declared gaps. Vectorized function
-execution remains unsupported. Integration evaluates the entire interval from
-zero, so declared plotting gaps do not avoid singularities inside that interval.
-These numerical helpers do not perform symbolic differentiation or adaptive
-integration; results depend on step size, resolution and floating-point precision.
-
-Try **Follow a tangent and derivative** (`examples/calculus_scene.py`) for a sine
-curve, its numerical derivative, an integrated approximation and a moving tangent
-with a slope readout. Labeled secants and continuous graph regions are described below.
-
-
-`get_riemann_rectangles(graph, x_range=None, dx=.1)` builds a VGroup of Rectangle
-objects with polygon geometry. Cells follow the axes' XY basis, including world
-rotation or unequal scale. Samples may be `left`, `right` or `center`; rectangles
-start at each partition input and the last interval may extend beyond the upper
-bound. A third x_range item is ignored in favor of dx. `width_scale_factor=1.001`
-overlaps adjacent cells slightly; the chosen sample stays within each cell.
-
-Without a range, cells use the graph's parameter bounds, or their intersection
-with `bounded_graph`. A bounding function's baseline is evaluated at the left
-partition input; otherwise the baseline is zero clamped into the y range.
-`show_signed_area=True` inverts fill colors below the baseline. `color` accepts a
-single six-digit hex color or up to 64 gradient stops. `fill_opacity`,
-`stroke_color`, `stroke_width` and `blend=True` control cell styling. dx and width
-scale must be positive and finite; groups are limited to 1000 cells before
-providers are called. These are independent snapshots; regenerate them to follow
-changing functions or axes. Declared plot gaps do not suppress cell sampling.
-Try **Refine signed area estimates** (`examples/riemann_scene.py`) for refinement
-and the region between two functions. Color types beyond hex strings remain open.
-
-
-`Axes.get_secant_slope_group(x, graph, dx=None)` draws horizontal dx and vertical
-function changes, plus an optional extended secant line. None or zero dx uses a
-tenth of the axis range; negative intervals reverse label sides. Set
-`include_secant_line=False` to omit the extended line, or change its length and
-colors. String/numeric labels use MathTex; supplied Mobjects are copied. Access
-components through dx_line, df_line (also dy_line), dx_label, df_label (also
-dy_label), and secant_line when present. Lines use world horizontal/vertical
-changes even on rotated axes, following the Community convention. Labels shrink
-to fit both changes; font sizes use estimates rather than measured glyph bounds,
-and a zero change collapses labels. Regenerate groups with always_redraw to
-follow changed inputs. Try **Follow a labeled secant** (`examples/secant_scene.py`).
-
-
-`Axes.get_area(graph, x_range=None, color=(BLUE, GREEN), opacity=.3)` returns a
-Polygon filling the region between a plotted curve and numeric y=0. Pass a second
-curve as `bounded_graph` to fill between curves. The default range is the primary
-plot's range; a bounding curve clips that interval to its own range and rejects
-nonoverlapping ranges. Explicit ranges need exactly two finite nondecreasing values.
-Endpoint functions are evaluated exactly, while interior vertices come from the
-existing plotted anchors and control points, following Community's polygon
-construction. Independent graph transforms affect those interior points; redraw
-the plots and regions together when changing axes. Declared plot gaps are joined
-by the polygon, so this helper does not split singular/disconnected regions.
-
-Use a hex color or up to 64 hex gradient stops. Gradients run left to right in
-the polygon's local bounding box, with self-contained SVG paint definitions that
-survive SVG/PNG export. Opacity controls fill and border; pass `stroke_width=0`
-for a borderless region. Regions are independent snapshots and can use
-always_redraw for changing bounds. Try **Fill changing graph regions**
-(`examples/area_scene.py`) for expanding bounds, gradients, a region between
-functions, transformation and cleanup. Adaptive integration and more general
-region topology remain open.
-
-
-`DashedLine(start=LEFT, end=RIGHT, dash_length=.05, dashed_ratio=.5)` creates
-individually addressable Line segments in a VGroup-compatible Line. The dash count
-is at least two, based on span, requested dash length and occupied ratio, and is
-limited to 1000. Open patterns start and end with a dash; ratios from zero to one
-are supported. Transformations and endpoint queries follow the actual child
-geometry. `get_first_handle` and `get_last_handle` query the end segments.
-Endpoint changes stretch the existing family, preserving segment edits and colors;
-regenerate the object to recompute dash count. Copies, restore, group animations,
-and per-segment styling use the existing family pipeline. Curved DashedVMobject construction is described below.
-
-`Line.get_projection(point)` and `NumberLine.get_projection(point)` project onto
-the infinite current world-space shaft, including beyond its endpoints. A collapsed
-shaft returns its start. Axes offers `get_vertical_line(point)` from the x-axis,
-`get_horizontal_line(point)` from the y-axis, and `get_lines_to_point(point)` in
-horizontal/vertical order. The default is DashedLine; pass `line_func=Line` for a
-solid guide. `get_line_from_axis_to_point(index, point)` accepts axis 0 or 1.
-Guides use perpendicular projection onto the current axes, including independently
-rotated shafts, rather than assuming screen vertical/horizontal directions.
-
-Use `line_config` for dash/style options; it is copied before construction.
-The helper's `color` and `stroke_width` override those entries, defaulting to white
-and 2. Guides are world-positioned independent snapshots. Use always_redraw with
-current graph/tracker inputs to follow movement; reading another object's updater
-can see its previous position when that updater runs later. Try **Follow dashed
-coordinate guides** (`examples/guides_scene.py`) for a moving point, a rotating
-coordinate frame and cleanup.
-
-
-`DashedVMobject(outline, num_dashes=15, dashed_ratio=.5, dash_offset=0,
-equal_lengths=True)` creates independent cubic subcurves in a VMobject with
-VGroup behavior. It supports the current line, polygon, circle, ellipse, arc,
-ring and VMobject paths. Source styling and world geometry are copied; use
-`set_color` on the source or result to choose dash colors. The source is unchanged.
-Counts are integers from 0 to 1000; zero returns an empty group. Ratios range from
-zero to one. Negative/positive phase offsets wrap modulo one pattern period.
-
-Open patterns start and end with a dash at zero phase; shifted end pieces are
-clipped or reappear at the beginning. A shifted open pattern can have one extra
-piece. Closed patterns wrap exactly through the seam, including full coverage
-with one dash. Equal-length spacing uses a 20-segment-per-cubic distance lookup;
-`equal_lengths=False` divides the curve parameter instead. Cuts use exact cubic
-subdivision, but length spacing is approximate. Disconnected contours keep their
-separate paths and do not add gap distance to the length calculation.
-
-`Mobject.get_arc_length(sample_points_per_curve=10)` measures its own path using
-straight sampling pieces. The sample count is an integer from 2 to 1000, with a
-200000-segment lookup cap. Containers without their own points return zero.
-Dashes are independent snapshots; regenerate them to follow changing geometry or
-phase. Copies, restore, group morphs and creation/removal use the existing family
-pipeline. Arrow tips, glyph paths and general geometry-bearing families remain
-open. Try **Dash curved paths and shift their phase**
-(`examples/dashed_paths_scene.py`) for a wrapped ring, both spacing modes and
-animated refinement.
-
-
-`TangentLine(path, alpha, length=1, d_alpha=1e-6)` constructs a world-space
-finite-difference tangent on the supported XY outlines. alpha is a finite
-proportion in [0,1]; sampling uses the existing path-query behavior at
-`alpha-d_alpha` and `alpha+d_alpha`, clipped to the endpoints. The tangent is
-centered on the sample chord's midpoint, with the requested nonnegative length.
-At path ends it uses a one-sided chord. Its direction reflects the current source
-geometry and transforms. Source geometry is unchanged and no source reference is
-stored; use always_redraw to follow motion or a changing requested length.
-
-The sampling distance must be positive and finite. Coincident samples, an
-unrepresentable change in proportion, collapsed paths and sampling an entire
-closed path are rejected. Corners and contour jumps give a finite chord rather
-than a unique smooth tangent. Accuracy depends on the sampling distance and the
-existing path sampler. Tiny resolved spans normalize without reciprocal overflow.
-Try **Follow tangents along curved paths** (`examples/tangent_paths_scene.py`)
-for an ellipse and cubic curve with moving markers and growing tangents.
-
-Line, DashedLine and NumberLine expose `get_slope()` and `set_angle(angle,
-about_point=None)`. The slope is tan of the current world angle, with ordinary
-floating-point behavior near vertical. Angle changes rotate around the start by
-default and support animate. `Line.set_length(length)` and inherited DashedLine/
-TangentLine behavior scale around the current center, accepting a finite
-nonnegative length. Positive resizing of a collapsed line needs fresh endpoints
-first. Dashed resizing preserves its existing count and child edits. NumberLine
-keeps its existing positive-length resize validation.
-
-
-### Angle markers
-
-Try **Mark angles between moving lines** (`examples/angle_scene.py`) for a
-rotating ray, a changing degree label, a dotted circular mark and a right-angle
-corner. `Angle` supports quadrant signs, signed clockwise/counterclockwise sweeps,
-automatic or explicit radius, dots and `from_three_points`. `RightAngle` builds
-an elbow mark; `Elbow` also works as an independent path. Parallel or zero-length
-lines produce an empty angle. Use `always_redraw` to follow moving lines.
-Angle now stores its own arc/corner path and only the optional dot as a child.
-Its path supports point queries, edits, reversal and partial extraction. `get_value` is the
-construction-time angle, and `get_lines` returns the defining lines. Full Manim
-Community compatibility remains unfinished.
-
-
-### Endpoint arcs
-
-Try **Bend arcs between moving endpoints** (`examples/endpoint_arc_scene.py`).
-`ArcBetweenPoints(start, end, angle=PI/2, radius=None)` creates a circular XY
-path between coordinates. Signed angles select direction, including sweeps larger
-than a semicircle. A signed radius overrides the angle and selects the shorter
-arc; its magnitude must be at least half the endpoint distance. Angle zero makes
-a straight path and coincident endpoints collapse to a point. Use `always_redraw`
-for changing endpoints or bend. Full turns and unresolvable extreme floating-point
-geometry are rejected; arbitrary 3D arcs and general Arc/Circle tip attachment remain open.
-
-
-### Polygons with curved edges
-
-Try **Morph polygons with curved edges** (`examples/arc_polygon_scene.py`).
-`ArcPolygon(*vertices, angle=PI/4, radius=None, arc_config=None)` closes a path
-with endpoint arcs; `arc_config` accepts one shared dictionary or one dictionary
-per edge. `ArcPolygonFromArcs(*arcs)` copies a closed outline from existing arcs,
-joining gaps and the last endpoint with straight segments. Both retain defining
-arcs as children, available through `.arcs`, with independent colors and strokes.
-The renderer now paints geometry-bearing families' own paths and child geometry,
-including global depth ordering and creation. Parent transforms use the existing
-local-child coordinate convention. Outline and child morphs are aligned
-independently; automatic matching of unrelated edges remains unfinished.
-
-
-Try **Follow and restore an editable angle path**
-(`examples/angle_path_scene.py`) for movement along the angle, morphing into a
-corner, and restoration of the original path and dot. Glyph-level family geometry remains unfinished.
-
-
-### Children on ordinary shapes
-
-Try **Attach and restore children on shapes** (`examples/shape_family_scene.py`).
-Mobject and ordinary shapes now support `add`, `add_to_back`, `remove` and
-`submobjects` assignment, with duplicate removal and cycle checks. A shape's
-`split`, iteration, indexing and slices include the shape itself before its
-children when it has an extractable path. `family_members_with_points` filters
-recursive families by actual supported geometry. Shapes still render their own
-outline while hosting children; empty base Mobject containers render descendants.
-Children use local-to-parent coordinates. Bounds now combine own outlines and externally placed children. Glyph-level
-families and general scene restructuring remain unfinished.
-
-
-### Bounds and camera framing for families
-
-Try **Frame shapes and distant children** (`examples/family_bounds_scene.py`).
-Size and edge queries now include both the parent's outline and nested children.
-`get_width`, `get_height`, `get_left/right/top/bottom`, `get_corner` and
-`get_edge_center` expose the XY boundary used by positioning and camera fitting.
-Adding/removing/replacing children on an already transformed ordinary shape
-preserves its existing geometry's world position. Bounds are conservative for
-rotated families and cubic controls; browser text metrics remain incomplete.
-Direct child motion on ordinary shapes also preserves the parent and siblings.
-Try **Move children inside transformed shapes** (`examples/child_motion_scene.py`)
-for a tracked dot inside a rotated/scaled rectangle. Group/VGroup now share this compensation. Native world-space child coordinates
-remain incomplete.
-
-Try **Move children inside nested groups** (`examples/group_motion_scene.py`).
-Moving and adding/removing distant children preserves stationary siblings in
-rotated/scaled nested Group and VGroup families, including coordinate helpers.
-
-
-### Layout after rotation and scaling
-
-Try **Arrange rotated and scaled groups** (`examples/transformed_layout_scene.py`).
-Group/VGroup `arrange` now supports rotated, positively or negatively scaled
-families, screen-space gaps and aligned edges, centering, and `.animate` chains.
-Stationary first children stay fixed with `center=False`; child references and
-shape orientations survive rearrangement and restoration. Collapsed zero-scale
-groups remain unsupported. Bounds retain the conservative curve/text limits
-described above.
-
-
-### Animated grid layout
-
-Try **Reflow a transformed grid** (`examples/grid_layout_scene.py`).
-`Group.arrange_in_grid` and `VGroup.arrange_in_grid` support explicit or inferred
-rows/columns, scalar gaps or `(horizontal, vertical)` gaps, `cell_alignment`,
-`row_alignments` (`u/c/d`), `col_alignments` (`l/c/r`), optional `row_heights` and
-`col_widths` with `None` for automatic measurement, and all eight `flow_order`
-values (`rd`, `dr`, `ld`, `dl`, `ru`, `ur`, `lu`, `ul`). Layout preserves the
-starting group center, shape orientations, and live child references, including
-`.animate` and checkpoint restoration. Incomplete final rows/columns are allowed.
-
-Grid cells use screen-space bounds and have a 1000-cell limit. Zero-scale groups
-cannot be arranged; text/curve bounds retain the limits above. Layout now also applies to children on ordinary geometry-bearing parents.
-
-
-### Layout of children on shapes
-
-Try **Arrange children on a shape** (`examples/shape_layout_scene.py`).
-Mobject and ordinary shapes now inherit `arrange`, its `arrange_submobjects`
-alias, and `arrange_in_grid`. These methods lay out direct children, excluding
-the parent's own outline. Row arrangement with `center=False` keeps the first
-child and own outline fixed; centering moves the whole family. Grid arrangement
-preserves the family center. Supported rotation/nonzero signed scale, animation,
-child references, and checkpoint restoration use the same behavior as groups.
-Zero-scale families, glyph bounds, and native world-space child coordinates
-remain unfinished.
-
-
-### Editable arrow-tip geometry
-
-Try **Edit arrow tip outlines** (`examples/tip_geometry_scene.py`).
-`ArrowTriangleTip`, `ArrowTriangleFilledTip`, and `StealthTip` now provide closed
-editable VMobject outlines, styles, path queries, layout, transforms, morphing,
-copying, and restoration. The abstract `ArrowTip` base supplies `tip_point`,
-`base`, `vector`, `tip_angle`, and `length` properties. Dimensions are nonnegative
-and finite; triangle `width` and `start_angle` control its outline. Triangle
-bounds are centered locally. Stealth tips use the concave outline and an
-enclosing-triangle length; their start_angle is metadata, as in the referenced
-constructor.
-
-Try **Manage arrow tips and shafts** (`examples/arrow_tips_scene.py`). Arrow now
-attaches real editable tip children. Line/Arrow support `add_tip`, `pop_tips`,
-`has_tip`, `has_start_tip`, `get_tip`, `get_tips`, `tip`, and `start_tip`.
-Shaft endpoints track tip bases, including during endpoint animations and
-restoration. Arrow defaults to a .25 endpoint buffer, a filled triangular tip,
-and length-based caps for tip size and stroke width. `buff=0` touches the given
-endpoints; coordinate-plane vectors retain this behavior automatically.
-Arrow.scale keeps world tip size by default; `scale_tips=True` scales the whole
-family. Scene code reads and edits tips in world coordinates.
-Full native tip-family behavior and straight Arrow partial-path/morph support
-remain unfinished.
-
-
-Try **Render circular and square arrow tips** (`examples/round_square_tips_scene.py`).
-`ArrowCircleTip`, `ArrowCircleFilledTip`, `ArrowSquareTip`, and
-`ArrowSquareFilledTip` supply editable closed paths and attach to either end of
-Line/Arrow. Outline tips default to no fill and a 3-unit stroke; filled tips have
-full fill and no stroke. `length` sets the circle diameter or square side.
-Circle `start_angle` selects its first anchor; square `start_angle` is metadata,
-as in the native constructor. Square tip length queries measure the corner-to-
-opposite-corner diagonal. These classes support the existing path editing,
-transforms, partial curves, tip queries, copying and restoration.
-
-
-Try **Animate two-ended arrows** (`examples/double_arrow_scene.py`). `DoubleArrow`
-extends Arrow and adds a real filled triangular start tip by default. Configure
-each end independently with `tip_shape_start` and `tip_shape_end`; the latter
-replaces `tip_shape` for the end tip when both are supplied. It inherits Arrow's
-endpoint buffer, sizing caps, fixed-size tip scaling, endpoint editing, tip
-management, copying and checkpoint animation. Scene code sees tips in world
-coordinates; see curved-arrow support below.
-
-
-Try **Animate tangent-aligned curved arrows** (`examples/curved_arrow_scene.py`).
-`CurvedArrow(start_point, end_point, **style)` and `CurvedDoubleArrow` extend the
-XY endpoint-arc implementation with real tangent-aligned tips. Configure `angle`
-or signed `radius`, `tip_length`, and `tip_shape`; curved double arrows also accept
-`tip_shape_start`/`tip_shape_end`. They support tip management, endpoint queries,
-arc-center positioning, ordinary family scaling/rotation, direct or animated
-`put_start_and_end_on`, copying and restoration. Scaling includes tip geometry.
-The shaft fits to actual tip bases on each sampled frame. Endpoint fitting
-preserves curve shape with a uniform rotation/scale; it cannot expand collapsed
-curves. General Arc/Circle tip attachment, native world-coordinate children,
-3D paths and full tip-bearing partial-path behavior remain unfinished.
-
-
-Try **Style and build arrow tips** (`examples/tip_style_scene.py`). Line and the
-straight/curved arrow classes accept `tip_style` dictionaries. Tip fill/stroke
-colors, opacities and stroke widths can differ from the shaft. `get_unpositioned_tip`
-creates a standalone tip; `create_tip` positions a detached tip, and `position_tip`
-positions a supplied tip. Attach with `add_tip` after configuring it.
-
-`add_tip`, `create_tip`, and `get_unpositioned_tip` accept `tip_width`. Following
-Manim's factory rule, this controls the built-in filled triangular shape; its
-default width follows the connector's default tip length. Other tip shapes retain
-their own constructor dimensions. `tip_style` overrides generated defaults,
-including a triangular `width`. Factory dimensions are finite and nonnegative;
-unsupported style options fail explicitly. Scene code sees positioned tips in
-world coordinates. `get_tip()` returns the end tip or, if only a
-start tip exists, that start tip.
-
-
-Try **Attach tips to arcs and circles** (`examples/generic_tips_scene.py`).
-TipableVMobject now shares the XY tip factories and management API across Line,
-Arc, Circle and their subclasses. Open paths fit their cubic shaft endpoints to
-actual tip bases; closed circles retain their complete outline and place tips at
-the shared start/end anchor. Attachment preserves the path's existing pose.
-Logical endpoint queries use tip points, while own-point queries use the fitted
-shaft. Ordinary family transforms, endpoint fitting, copying and restoration
-include attached tips. TipableVMobject can also hold explicitly constructed cubic
-or corner paths. Empty paths reject positioned tips. normal_vector must be finite
-and perpendicular to the XY plane. Native world-coordinate children, general
-mutable-tip path semantics and arbitrary 3D remain unfinished.
-
-
-Try **Construct circles through three points** (`examples/circle_construction_scene.py`).
-`Circle.from_three_points(p1, p2, p3, **style)` constructs an XY circumcircle;
-points must be finite, distinct and noncollinear. Normalizing the chord calculation
-supports both very small and very large finite geometry. Nonfinite results and
-3D point sets fail explicitly. `Circle.point_at_angle(angle)` wraps any finite
-angle into a path proportion, so its result follows rotation, signed scaling,
-translation and edited outline geometry; the angle refers to path traversal,
-not an absolute screen direction. Circle now inherits Arc and accepts arc_center,
-with get_arc_center/move_arc_center_to available to Circle and Ellipse. Radius
-None selects the existing unit default; invalid radii now fail at construction.
-The gallery retains the three original points while a boundary marker follows
-the moving circle, then restores the circle and removes the scene.
-
-
-Try **Surround moving shapes** (`examples/surround_scene.py`). Mobject now provides
-`length_over_dim`, `rescale_to_fit`, `scale_to_fit_width`, `scale_to_fit_height`
-and `replace` for uniform XY fitting. The chosen dimension uses current family
-bounds, including rotation and children; uniform fitting preserves aspect ratio,
-style and child identities. `replace` fits the chosen dimension and centers the
-existing object on its target without changing that target. These operations also
-work in animate chains. Fitting an already zero-size dimension is a no-op, following
-Manim's rescale behavior. Lengths must be finite and nonnegative.
-
-`Circle.surround(target, buffer_factor=1.2)` centers the existing circle on the
-target and sets its width to the target's bounding-box diagonal times the factor.
-This handles both horizontal and vertical lines without collapsing the circle
-before the final fit. A factor below one makes a smaller outline. An updater can
-repeat surround as the target moves, rotates or scales. Bounds remain conservative
-for rotated families and cubic handles. Nonuniform stretch=True and dimensions
-outside XY remain explicitly unsupported; full stretching is still implementation
-work. Empty targets and invalid values fail before mutation.
-
-
-Try **Stretch nested vector shapes** (`examples/stretch_scene.py`). `stretch(factor,
-dim, about_point=..., about_edge=...)` now deforms editable XY geometry along the
-chosen screen axis, including rotated/scaled nested families, own outlines and
-real arrow-tip children. Negative factors reflect geometry; zero collapses the
-chosen axis. Original objects, ordered child identities, styles and updaters are
-retained. The operation validates a copied family before replacing live state.
-
-`stretch_to_fit_width`/`stretch_to_fit_height`, `rescale_to_fit(..., stretch=True)`,
-`replace(..., stretch=True)` and `Circle.surround(..., stretch=True)` use this path.
-Stretching a circle can produce an oval; stretched surrounding follows the target's
-aspect ratio, then fits its width to the target diagonal times buffer_factor,
-matching the implementation of Manim's Circle helper. Own analytical shapes
-materialize into editable cubics. Bounds therefore use conservative cubic control
-boxes. Straight connectors retain endpoint APIs; curved shafts bake their displayed
-geometry before tip deformation, so similarity fitting cannot undo the stretch.
-Subsequent tip replacement/removal still lacks full native path-reset semantics.
-
-Stretch-aware transforms use materialized geometry at both ends so animated
-stretching interpolates world coordinates and restoration retains the saved
-shape type. XY coordinate axes continue to map/invert points after stretching.
-Text/MathTex glyph stretching, camera-frame stretching, shared descendants under
-multiple parents and 3D remain explicit gaps; unsupported families fail without
-changing live objects. Zero-size fitting dimensions retain the existing no-op.
-
-
-Try **Shear and warp vector shapes** (`examples/point_map_scene.py`). `apply_matrix`
-now applies finite matrix blocks of one to three rows/columns, embedded in a 3D
-identity matrix as in Manim. The result must preserve the XY plane. A 3 × 3 input
-is a spatial matrix, not a homogeneous translation matrix. `apply_function`
-maps each XY anchor/control point, while `apply_complex_function` maps x + iy and
-returns its real/imaginary coordinates. These APIs default to the screen origin;
-explicit about_point/about_edge select another pivot. Stretch retains its center
-default and shares the same family traversal.
-
-Mappings compose existing parent transforms, preserve object/child identities,
-styles, pending anchors and disconnected contours, and validate a copied family
-before replacing live state. Nonlinear maps convert polygon edges and straight
-connectors to cubic paths so their control points can bend. Matrix maps keep
-straight endpoints. Animated maps interpolate mapped world geometry, and Restore
-returns the saved types. Nonlinear mapping transforms control points; it is not
-adaptive resampling of the entire continuous curve. User callbacks receive actual
-path coordinates, not synthetic container origins.
-
-Glyph/camera/shared-family mapping, arbitrary 3D, native NumPy arrays, adaptive
-nonlinear preparation, post-warp connector/tip mutations and analytical arc-center
-queries after nonlinear deformation remain unfinished. Coordinate helper inversion
-does not become a general nonlinear inverse merely because its outline is warped.
-
-
-Try **Align to edges and color gradients** (`examples/positioning_scene.py`).
-Everyday positioning helpers now follow Manim Community: `to_edge`, `to_corner`,
-`align_on_border`, `center`, `align_to`, `get_x/get_y/get_coord`,
-`set_x/set_y/set_coord`, `match_x/match_y`, `match_width/match_height` and
-`move_to(..., aligned_edge=..., coor_mask=...)`. Edge placement uses the current
-preview `config` frame. `scale` and `rotate` accept `about_edge`; `rotate` accepts
-an `axis` (OUT/IN, or a half turn about an in-plane axis, which is an XY reflection),
-and `flip()` mirrors about the object's center. `Rotate` accepts `about_edge`.
-
-The full Community color palette (`BLUE_A`…`BLUE_E`, `TEAL`, `GOLD`, `MAROON`,
-`GRAY_A`…`GRAY_E`, `PURE_RED`, `LOGO_*` and GRAY/GREY aliases) and buffer constants
-(`SMALL_BUFF`, `MED_SMALL_BUFF`, `MED_LARGE_BUFF`, `LARGE_BUFF`) are available.
-`YELLOW`, `ORANGE` and `PINK` now use Community's values. Color helpers
-`interpolate_color`, `color_gradient`, `average_color`, `invert_color`,
-`color_to_rgb` and `rgb_to_color` work on six-digit hex strings; `ManimColor`
-objects and named-color strings are not implemented. Mobjects gain style getters,
-`match_color`, `match_style`, `set_color_by_gradient`,
-`set_colors_by_radial_gradient`, `fade`, `fade_to`, `sort` and `invert`; these
-work in `.animate` chains. Z coordinates other than zero, general 3D rotation axes
-and text flipping (glyph mapping) remain unsupported and fail explicitly.
-
-
-Try **Polygrams, stars and shape matchers** (`examples/polygram_scene.py`).
-`Polygram`, `RegularPolygram`, `RegularPolygon`, `Star` and `round_corners` follow
-Community's vertex order, start angles, density handling and default inner star
-radius. `Polygon`, `Triangle`, `Rectangle` and `Square` are now `Polygram`
-subclasses with Community defaults: polygons are BLUE, rectangles WHITE, vector
-strokes 4 wide, and `Triangle` is a unit-radius `RegularPolygon` (larger than the
-previous preview triangle). `get_vertices`/`get_vertex_groups` return world points.
-
-`SurroundingRectangle` (PURE_YELLOW, `buff` number or x/y pair, optional
-`corner_radius`), `BackgroundRectangle`, `Cross`, `Underline` and
-`add_background_rectangle` are available. Shifting and scaling a `Group`/`VGroup`
-now moves its children in world space, as in Manim, so `group[0].get_center()`,
-matchers and arrows between members of a moved group land where expected.
-Scene code sees children of rotated groups in world coordinates. Text has no measured bounds yet, so matchers around text
-are not sized to the glyphs.
-
-
-Try **Measured text and formula layout** (`examples/text_layout_scene.py`).
-`Text`, `DecimalNumber`/`Integer` and `MathTex` now have ink bounds, so `next_to`,
-`to_edge`, `arrange`, `SurroundingRectangle`, `Underline` and camera framing use
-their real size. Sizes follow Manim Community: a `Text` em is `font_size/72` scene
-units, a TeX em (`MathTex`, numbers) is `font_size/96`, and multi-line `Text`
-lines are `1.3 · font_size/96` apart (`line_spacing` adjusts this). Text and
-formulas therefore render about half as large as in earlier previews, matching
-Manim. `Text` is drawn in Liberation Sans/Arial with each line's width pinned to
-the Python layout; `font`, `slant` and `weight` are passed to the browser.
-Numbers use Community's TeX digit layout in a serif face. Formulas are typeset
-and measured by MathJax: the first render estimates unmeasured formulas, then the
-page re-renders once with the measured sizes (cached for later renders).
-Per-character text APIs (`t2c`, indexing glyphs), MarkupText, Paragraph and exact
-system-font metrics are not implemented.
-
-
-Try **Entrances, emphasis, swaps and exits** (`examples/animation_tour_scene.py`).
-All Community rate functions are available (`rate_functions.ease_out_bounce`,
-`there_and_back_with_pause`, `running_start`, `squish_rate_func`, …; `smooth` is
-now Community's sigmoid curve rather than smoothstep). Animations accept
-`lag_ratio`, `remover` and `reverse_rate_function`; `Create` draws group members
-in sequence by default (`lag_ratio=1`), and `Write`/`Unwrite`/`DrawBorderThenFill`
-follow Community's outline-then-fill phases and length-based defaults (text shows
-a stroked outline, then its fill). `FadeIn`/`FadeOut` accept several mobjects,
-`shift`, `target_position` and `scale`. New animations: `GrowArrow`,
-`GrowFromEdge`, `SpinInFromNothing`, `Circumscribe`, `Flash`, `Wiggle`,
-`FocusOn`, `FadeTransform`, `ClockwiseTransform`, `CounterclockwiseTransform`,
-`Swap`/`CyclicReplace`, `MoveToTarget` with `generate_target()`, `ApplyMethod`,
-`ScaleInPlace`, `FadeToColor`, `UpdateFromFunc`, `UpdateFromAlphaFunc`,
-`ShowIncreasingSubsets`, `ShowSubmobjectsOneByOne`, `AddTextLetterByLetter`,
-`RemoveTextLetterByLetter` and `Wait`. `Transform` accepts `path_arc`.
-
-Scene membership now follows Community: re-adding a mobject brings it to the
-front, adding a group absorbs members that were added on their own, removing a
-member splits its group, and members of on-screen groups can be animated in
-place (e.g. `Indicate(equation[0])`). Members of rotated or transformed groups
-must still be animated through the whole group. `play(rate_func=...)` overrides
-each animation's rate function, and a transform whose rate function ends at 0
-(such as `there_and_back`) finishes at its starting state. Glyph-level
-`TransformMatchingShapes`/`TransformMatchingTex`, `ApplyWave` and `Homotopy`
-are not implemented.
-
-
-**NumPy.** `from manim import *` provides `np` when NumPy is available. The worker
-loads Pyodide's NumPy package (about 12 MB, cached for offline use after the first
-download) only when a script mentions `np` or `numpy`. Preview APIs accept NumPy
-arrays and scalars (including `np.int64`) and return plain tuples/floats; frames
-are converted to plain JSON numbers. Mobject points are not stored as NumPy arrays,
-so code that mutates `mobject.points` in place is not supported.
-
-
-Try **Titles, braces, bullets and variables** (`examples/annotation_scene.py`).
-`Brace` uses Community's SVG brace outline and construction (sharpness, buff,
-any XY direction, tip/direction queries, `put_at_tip`, `get_tex`, `get_text`);
-`BraceLabel`, `BraceText` and `BraceBetweenPoints` are available. `Tex` typesets
-LaTeX text mode with `$math$` through MathJax `\text{}` runs (plus `\textbf`,
-`\textit`, `\emph`, `\texttt`, `\textrm`, `\textsf`; other text macros fail
-explicitly). `Title`, `BulletedList`, `Vector`, `LabeledDot`, `Variable`, `always`,
-`f_always`, `always_shift` and `always_rotate` follow Community. `.animate` now
-accepts any mobject method (not updater/checkpoint bookkeeping).
-
-The default frame is now Community's 14.22 × 8 units (it was 16 × 9), so
-`to_edge`, `Title` and other frame-relative placement match Manim, and strokes
-are drawn like Manim: `stroke_width × 0.01` frame units, unchanged by object
-scale and, as in Cairo, thickened on screen when a moving camera zooms in. Strokes
-therefore look thinner than before and scale with the player size. Bounds follow Community's
-rules: edges, centers and `next_to` use path anchors, while `width`/`height`
-include Bézier handles; rotated straight-edged shapes report the bounds of their
-rotated points.
-
-
-Try **Formula parts and matching transforms** (`examples/formula_parts_scene.py`).
-`MathTex` with several strings, `substrings_to_isolate` or `tex_to_color_map`
-now has Community-style parts: `eq[i]`, `get_part_by_tex`, `get_parts_by_tex`,
-`index_of_part_by_tex`, `set_color_by_tex`, `set_color_by_tex_to_color_map` and
-`set_opacity_by_tex`, and parts can be animated individually (`Indicate(eq[2])`).
-`TransformMatchingTex` slides parts with equal tex strings into place and fades
-the rest (with `key_map`, `transform_mismatches`); `TransformMatchingShapes`
-matches drawable members by normalized outline. Parts are typeset together with
-MathJax `\class`, so TeX spacing is unchanged; each part's position comes from
-the browser's measurement on the second render pass. Glyph-level indexing inside
-a part (`eq[0][1]`) is not implemented.
-
-
-Functional animations now follow Community: `ApplyPointwiseFunction`,
-`ApplyPointwiseFunctionToCenter`, `ApplyMatrix`, `ApplyComplexFunction` (with its
-arc path), `ApplyFunction`, `Homotopy`, `SmoothedVectorizedHomotopy`,
-`ComplexHomotopy`, `ApplyWave`, `PhaseFlow`, `ChangingDecimal` and
-`ChangeDecimalToValue`. `Label`, `LabeledLine`, `LabeledArrow` and
-`AnnotationDot` are available. Nonlinear maps bend cubic control points, so a
-waved or flowed outline becomes an editable cubic path.
-
-
-Try **Matrices, determinants and tables** (`examples/matrix_table_scene.py`).
-`Matrix`, `DecimalMatrix`, `IntegerMatrix`, `MobjectMatrix`, `get_det_text`,
-`matrix_to_tex_string` and `matrix_to_mobject` follow Community, including
-stretched TeX brackets, row/column access and coloring. `Table`, `MathTable`,
-`MobjectTable`, `IntegerTable` and `DecimalTable` support labels, inner/outer
-lines, cells, highlighted cells, `create()` and scaling; `Paragraph` lays out
-lines on Community's baseline pitch with left/center/right alignment. Text and
-formulas can now be stretched along their own axes (`stretch_to_fit_height`),
-which brackets and parentheses rely on; stretching rotated glyphs (a shear) is
-still unsupported.
-
-
-Try **Letter colors, markup and gradients** (`examples/text_effects_scene.py`).
-`Text` behaves like Community's group of glyphs: indexing, slicing, iteration and
-`len()` split it into single-glyph `Text` children placed by the same layout
-(glyph centers agree with Manim to about 0.001 units for Liberation Sans).
-`t2c`, `t2w`, `t2s`, `t2f`, `t2g` (substring or `"[start:stop]"` keys) and
-`gradient` color or style individual glyphs, and `Write` then staggers glyphs.
-`MarkupText` supports `<b>`, `<i>`, `<span>` foreground/weight/style/font and
-HTML entities. Unindexed text stays a single element, so long text remains cheap
-to animate. `DecimalNumber` digits are not split into glyphs.
-
-The **Bar charts and polar planes** example covers `BarChart` (gradient bar
-colors, `get_bar_labels`, animated `change_bar_values`) and `PolarPlane` (rings,
-spokes, radian/degree azimuth labels, `pr2pt`/`pt2pr`). Both reproduce Community
-geometry to text-metric differences. `Mobject.set_style` routes fill/stroke
-options, and hex colors truncate channels as Community does (`#7F7F7F` for mid-grey).
-
-The **Vector fields and stream lines** example covers `ArrowVectorField`
-(Community's sigmoid length, magnitude color scheme and grid), RK4 nudging of
-particles (`nudge`, `get_nudge_updater`, `start_submobject_movement`) and
-`StreamLines` with `create()`, `start_animation()` and `end_animation()`. Stream
-start points use a port of NumPy's `default_rng(0)`, so lines match Community.
-Community colors 2D stream lines from a raster of field colors; the preview
-approximates this with a gradient along each line's chord. Dense stream fields
-are costly: a few hundred lines can take tens of seconds to render. Repeated
-objects and unchanged geometry are pooled when frames leave the worker.
-
-The **Hulls, cutouts and attention effects** example covers `ConvexHull`,
-`Cutout`, `TangentialArc`, `ArcBrace`, `VDict`, `LaggedStartMap`, `Broadcast`,
-`Blink`, `SpiralIn` and `AddTextWordByWord`. Also available: `ScreenRectangle`,
-`FullScreenRectangle`, `VectorizedPoint`, `ComplexValueTracker`, `UnitInterval`,
-`CurvesAsSubmobjects`, `MaintainPositionRelativeTo`, `Mobject.set(...)`,
-`get_center_of_mass`, `get_direction`/`force_direction`, `line_intersection` and
-`angle_between_vectors`. Nonlinear `apply_function`/`apply_complex_function` maps
-now move handles like Community (along the map's local derivative).
-
-The **Graph layouts and directed trees** example covers `Graph` and `DiGraph`:
-labels, vertex/edge configs, attached edges while vertices move, `change_layout`,
-and animated `add_vertices`, `add_edges` and `remove_vertices`. Layouts follow
-networkx exactly for `circular`, `shell`, `spiral`, `partite`, `tree`, and seeded
-`spring`/`random` (a port of NumPy's RandomState); unseeded spring/random use seed
-0 so previews are reproducible. `kamada_kawai`, `planar` and `spectral` need SciPy
-solvers and are not available; custom layout functions receive the browser graph
-structure instead of a networkx graph.
-
-The **Boolean shape operations** example covers `Union`, `Intersection`,
-`Difference` and `Exclusion`. Results keep cubic curves (circles stay smooth) and
-separate contours for holes; areas and bounds match Community's skia-pathops results,
-though the starting point and curve count of each contour differ.
-
-The **Syntax-highlighted code** example covers `Code` with Pygments styles, line
-numbers and `rectangle`/`window` backgrounds. The worker loads Pyodide's Pygments
-package for sources that call `Code(...)`; listings use DejaVu Sans Mono metrics
-(Community's usual "Monospace" match) and `code_string` (there is no file system for
-`code_file`). Text with a monospace `font` now uses those metrics everywhere.
-
-The **Inline SVG and pixel images** example covers `SVGMobject`, `VMobjectFromSVGPath`
-and `ImageMobject`. `SVGMobject` takes SVG markup (a string starting with `<svg`) and
-`ImageMobject` takes a pixel array (lists or NumPy, gray/RGB/RGBA) or a base64
-PNG/JPEG/GIF data URI; both also read files that scene code wrote to Pyodide's file
-system. PNG images decode to pixel arrays (for `get_pixel_array` and `invert`). Shapes, styles, transforms,
-`use`, viewBox, sizing and centering follow Community; `<text>` is skipped as there.
-`Circle`/`Ellipse` now default to RED like Community (Dot stays WHITE).
-Sources that import `PIL` get Pyodide's Pillow package, so a scene can draw or save an
-image file and then show it with `ImageMobject`.
-
-The **Typing, boundaries and implicit curves** example covers `TypeWithCursor`,
-`UntypeWithCursor`, `AnimatedBoundary`, `ChangeSpeed` (Community's speed curves,
-including `ChangeSpeed.add_updater`), `ImplicitFunction`, `LabeledPolygram` (Community's
-polylabel) and `ShowPassingFlashWithThinningStrokeWidth`; `FadeTransformPieces` is
-also available.
-
-The **Logarithmic axes and colors** example covers `LogBase`/`LinearBase` axis
-scaling (coordinates, ticks, `10^k` labels and plots match Community), `ManimColor`
-(colors are now `ManimColor` strings with `interpolate`, `lighter`, `darker`, `invert`,
-`to_rgb`, `from_hsv`, ...; names like `"red"` parse to Manim's palette as in
-Community), seeded `RandomColorGenerator`, and DecimalNumber units, which are now
-typeset as a TeX part after the digits like Community.
-
-The **Point clouds and scene sections** example covers `PMobject`, `Mobject1D`,
-`Mobject2D`, `PGroup`, `PointCloudDot` and `Point` (point counts match Community;
-points draw as fixed pixel-size squares), `Add` inside a `Succession`, and Scene
-APIs: `next_section(skip_animations=True)` (state applies, frames are dropped),
-scene-level `add_updater`, `wait_until`, `pause`, `replace`, and recorded-only
-`add_sound`/`add_subcaption`. `TexTemplate`, `TexTemplateLibrary` and
-`TexFontTemplates` are accepted, but MathJax ignores LaTeX preambles and fonts.
-
-The **Zoomed inset camera** example ports Community's `ZoomedSceneExample`.
-`ZoomedScene` provides `zoomed_camera.frame` (a visible `ScreenRectangle`) and
-`zoomed_display` (an `ImageMobjectFromCamera` with `display_frame`), with
-`activate_zooming(animate=...)`, `get_zoom_in_animation`,
-`get_zoomed_display_pop_out_animation` and `get_zoom_factor`. The display is drawn as
-vector content (the scene seen through the frame, stretched to the display over the
-camera background), not pixels; as in Community, each frame gives the zoomed frame
-the display's whole-pixel aspect ratio. Also new: per-axis `scale([sx, sy, 0])`, and
-assigning `mob.width`/`mob.height` rescales uniformly like Community.
-
-The **Linear transformations of the plane** example covers `LinearTransformationScene`
-(`apply_matrix`, `apply_inverse`, `apply_transposed_matrix`, `apply_nonlinear_transformation`,
-ghost vectors, unit square, transformable labels, titles, coordinates) and the
-`VectorScene` helpers (`add_plane`, `add_vector`, `get_vector_label`, `label_vector`,
-`coords_to_vector`, `vector_to_coords`, `lock_in_faded_grid`, `show_ghost_movement`).
-Vectors and grid points now follow Community's per-point `path_arc` arcs, and
-`play(..., path_arc=..., lag_ratio=...)` sets those options on every animation.
-
-The **Logo banner, sample spaces and utilities** example covers `ManimBanner` (Community's
-logo outlines, `create()` and `expand()`), `SampleSpace` divisions with braces and labels,
-`TransformAnimations`, and Community's utility functions: space operations (`rotate_vector`,
-`normalize`, `rotation_matrix`, `regular_vertices`, `get_unit_normal`, spherical
-coordinates, ...), Bézier helpers (`bezier`, `partial_bezier_points`, `split_bezier`,
-`bezier_remap`, ...), path functions (`straight_path`, `path_along_arc`,
-`clockwise_path`, `counterclockwise_path`, usable as `Transform(path_func=...)`),
-iterable/math helpers, color conversions, `tempconfig`, `override_animate`,
-`override_animation`, `turn_animation_into_updater` and `cycle_animation`. Utilities return
-lite vectors (tuples with arithmetic) and lists rather than NumPy arrays. Members added to a
-moved, rotated or scaled shape now keep their world placement (Community semantics), and
-`restore()` keeps member identities like Community's `become(saved_state)`.
-
-The **3D axes, surfaces and solids** example covers `ThreeDScene` (`set_camera_orientation`,
-`move_camera`, ambient rotation, fixed-in-frame titles), `ThreeDAxes` with `plot_surface`
-colorscales and 3D `plot_parametric_curve`, and the solids `Sphere`, `Cube`, `Torus`,
-`Cylinder`, `Cone`, `Line3D` and `Arrow3D`. `Rotate` accepts any axis. Frames carry
-world-space geometry and the renderer applies Community's projection, two-corner shading
-and depth sorting, so camera moves are cheap; text is a planar object turned and foreshortened by the camera, as in Community (fixed-in-frame and fixed-orientation text face the camera).
-
-`MathTex` and `Tex` now follow Manim 0.22's part rules: parts are the string
-arguments and `{{ }}` groups; `substrings_to_isolate` and `tex_to_color_map` tag
-glyph groups for `get_part_by_tex`/`set_color_by_tex` (exact matches) without
-splitting parts. `Tex` text runs use Computer Modern kerning, ligature widths and
-TeX word spacing, `\\` line breaks and `&` alignment use LaTeX's row spacing, and
-`\LaTeX`/`\TeX` use LaTeX's logo construction.
-
-`Typst` and `MathTypst` (Manim 0.22) are compiled in the browser by typst.ts
-0.7.0, a WebAssembly build of the Typst compiler loaded from jsDelivr on first use
-(about 30 MB, so the first Typst render needs internet access and takes a few
-seconds). As in Community, the SVG is imported like `SVGMobject`, scaled by
-`font_size`, recolored, and `select()` finds `<label>` content and `{{ body : label }}`
-groups. Custom font paths are not available in the browser.
-
-
-The **Sample a vector-field color map** gallery example uses
-`VectorField.get_colored_background_image(sampling_rate=5)` to produce a Pillow
-RGB image of the configured screen frame. Samples include both frame boundaries,
-with rows running top to bottom; each pixel uses the existing field/color scheme.
-ImageMobject now accepts Pillow images directly, alongside arrays and image files.
-The worker loads Pillow automatically for this factory, even without a PIL import;
-the existing optional offline Pillow wheel remains available.
-
-Sampling rate must be positive and finite. Empty grids and images above four
-million pixels fail before field callbacks run. Single-color fields reject this
-API, following Community. The gallery displays the resulting color map behind
-arrows and an advected marker, then removes all three. This adds field-image
-generation; raster coloring inside vector shapes and per-pixel StreamLines painting
-remain unfinished. It does not implement Mobject.get_image or pixel cameras.
-
-
-Try **Color paths from a screen image** (`examples/raster_paint_scene.py`).
-`color_using_background_image(image)` and `match_background_image(other)` now
-paint vector fills and strokes from a raster stretched over the current camera
-frame, following Community's background-colored path display. Inputs may be
-Pillow images, local image files or inert image data URIs; frames contain a PNG
-URI rather than the native image object. The API retains the original image for
-get_background_image/get_style, and None clears the paint. Invalid images fail
-before family style changes.
-
-The SVG renderer multiplies each complete posed path layer by the screen image
-in sRGB, retaining colors, fill/stroke alpha, creation progress and ancestor poses.
-The image stays aligned to the screen as a path moves or the camera pans/zooms.
-Inset camera views use their own source frame. SVG/PNG/video snapshots retain
-inert local filter definitions; one filter/image is shared per raster and view.
-Frame pooling also stores each raster string once across changing stream paths.
-
-Flat colored StreamLines now use Community's sampled background image instead
-of the previous gradient along each line's chord. Spatial streams sample every path anchor and use the standard sheen-direction
-gradient, matching Community’s Cairo color construction. Pillow loads automatically for StreamLines, raster
-paint methods, factory references and explicit imports. Pixel-camera APIs, exact
-Cairo antialiasing/transparent-raster arithmetic and complete spatial-stream color
-parity remain unfinished; this does not implement Mobject.get_image.
-
-
-`VectorField.get_vectorized_rgba_gradient_function` returns a NumPy array with
-one RGBA row per input, including an empty `(0, 4)` result. Inputs are clipped to
-the gradient bounds, descending ranges work, and opacity occupies the fourth
-column. NumPy loads automatically for calls or references to this method. Inputs
-must be finite one-dimensional sequences, limited to 100000 samples.
-
-
-The **Gradients through a moving 3D camera** example shows depth-directed color
-and shaded-path corner gradients. ThreeDScene captures world-space endpoints and
-the SVG renderer projects them through the sampled camera, including fixed-frame
-and fixed-orientation handling. Endpoints stay independent of pooled `rigid3d`
-geometry, so animation cannot apply the same pose twice. Sheen direction setters
-accept finite XYZ vectors and rotation supports any nonzero finite axis. Gradient
-bounds include vector-family anchors; text-child bounds remain approximate.
-
-
-Shaded 3D paths now receive separate start/end lighting colors, using Community's
-corner normals and two-row RGBA rule. A single color produces two shaded stops;
-longer gradients retain their first two normalized rows. Fill, stroke and
-background-stroke opacity remain independent. Cube face shading is checked against
-the Python camera's independent lighting calculation. Exact Cairo antialiasing
-and byte-level raster arithmetic remain open.
-
-
-The **Rotated and family color gradients** example shows current axis-aligned
-bounds controlling a rotated shape's gradient, descendant bounds extending a
-parent's gradient, and independent background-stroke color/opacity stops. RGBA
-background rows and style round trips preserve every stop. FadeIn/FadeOut multiply
-scalar opacity once, retaining relative stop alpha so exported colors do not
-fade twice. Exact animated gradient bounds remain parity work; this is not complete Cairo rendering.
-
-
-Nested 2D gradients now measure the family through its verified ancestor pose
-and invert that composed frame for local paint. Rotating, translating or negatively
-scaling a parent does not silently rotate a child's world sheen direction. The
-gallery includes a child panel inside a rotated square, and browser export pixel
-checks distinguish its upper/lower colors from the former incorrect direction.
-Shared members with ambiguous parent placement and exact sampled animation bounds
-remain parity work.
-
-
-The **Copy styles across different shapes** example copies fill/stroke/background
-color and opacity stops, widths, sheen and raster paint without replacing target
-geometry. `match_style` repeats identities when family sizes differ and uses a
-leaf source's style for receiver children; it does not add/remove children.
-Full `get_style`/`set_style` round trips retain all supported opacity stops.
-Explicit RGBA gradients do not gain duplicated sheen stops during copying.
-Pillow loads automatically for `background_image` style arguments. This extends
-the Lite style representation; exact stored-RGBA regeneration and every Community
-sheen-reset edge case remain parity work.
-
-
-Vector-path style animations now align color/opacity rows before interpolation,
-including solid-to-gradient changes and differing stop counts. Background widths
-start at zero when first introduced. Relative alpha is interpolated once in the
-canonical frame representation; unchanged styles keep their existing form. Scene
-opacity getters read the first RGBA row while internal scalar channels remain
-independent of stops. Browser pixel checks cover the halfway solid-to-gradient
-color transition. Glyph style morphs, exact float-to-hex quantization and sampled
-gradient-bound parity remain open.
-
-
-Manual VMobject `interpolate_color` now blends every fill, stroke and background
-stroke RGBA row, both stroke widths and sheen metadata. `align_rgbas` stretches
-the shorter channel by repeating rows, preserving geometry and child identities.
-Interpolation reads endpoint channels before mutation, so the receiver can also
-be an endpoint; unequal rows align without mutating the sources. This is a Lite
-extension to Community's prealigned-array requirement. Serialized RGB stops still use
-hex colors, and native stored-RGBA/sheen reset parity remains open. The browser
-smoke suite samples an updater-driven manual color interpolation halfway through.
-
-
-Generated sheen stops now clamp their new RGBA row, including alpha, as in
-Community; the original row retains finite out-of-range opacity. Snapshot alpha
-stops preserve that distinction during FadeOut rather than collapsing both rows
-into one scalar. Explicit gradients remain unchanged. Stored-RGBA regeneration
-and sheen-reset parity are still open.
-
-
-Text, formula and numeric glyph construction now preserves all fill/stroke/background
-color and alpha stops, widths, sheen and raster references through indexing and
-creation animations. Glyph paints have independent lists. Style morphs interpolate
-these glyph channels with the same RGBA-row alignment used for vector paths. The
-`glyphstyle` gallery demonstrates styled writing, paint changes and final removal.
-The browser smoke includes a real MathJax rule and text changing from solid to
-gradient paint, with a halfway SVG-to-canvas pixel check. Glyph gradient endpoints
-(direction, measured family bounds and coordinate conversion) remain open, as do
-stored-RGBA/sheens and Cairo pixel parity.
-
-
-2D text, formula and numeric glyphs now serialize sheen/gradient endpoints from
-the current family bounds. SVG painting inverts the glyph's local transforms,
-including Text's Y flip, MathJax font scaling/ink centering, nested SVG transforms
-and general glyph matrices. Each formula primitive receives paint in its own
-coordinate system, and background strokes reuse the same conversion. Singular
-glyph maps fall back to object-bounding-box paint; collapsed geometry stays
-collapsed. The glyph-style gallery now uses vertical gradients, and the browser
-smoke checks a vertical MathJax rule with top/bottom exported pixels. Bounds still
-use rectangular glyph boxes, and sampled animation bounds, 3D glyph gradients,
-stored-RGBA/sheens and exact Cairo pixel parity remain open.
-
-
-MathJax's clipped delimiter pieces now include their nested SVG viewport offsets
-and numeric viewBox mapping in paint conversion. Default meet alignment, slice
-alignment and explicit nonuniform fitting preserve their SVG geometry; supported
-`preserveAspectRatio` values are retained when copying inert assets. Unit tests
-cover default and nonuniform viewport fitting. Browser smoke compares foreground
-and background gradient endpoints with native SVG coordinate transforms on tall
-delimiters, independently of the renderer's matrix arithmetic. Percentage viewport
-lengths, exact glyph outlines/bounds and 3D glyph paint remain open.
-
-## Canonical HashBin address
-
-The production app is [https://manim.hashbin.page/](https://manim.hashbin.page/). The GitHub Pages copy is kept for moving old drafts through **Move saved work** or **Download backup**. Transfers copy only this app's documents and public settings, keep the old copy, and never copy HashBin credentials or Python filesystem permissions. Deployment is managed by [HashBin's first-party deployment tool](https://github.com/curtcox/hashbin.org/blob/main/scripts/deploy-owned-apps.mjs).
-
-### URLs and saved work
-
-Program URLs always open the linked document, regardless of browser history or local drafts. The homepage opens the default example. Use **Resume saved work** in the editor controls to recover local drafts. Viewing or running a link keeps saved work; editing it retains the previous draft for recovery.
-
-## Shared application tools
-
-The buildless editor vendors immutable Fragment Kit v0.3.3 for URL/document/CID handling, HashBin Publish, QR generation and loading, drafts, shortening, offline application caching, shell/mobile tabs and gallery filtering. Node 22.12+ and npm ci are tooling requirements only; no production bundler is used. The original Manim-lite API, renderers, opaque worker isolation and preview media producer remain app-owned.
-
-Run npm test, npm run test:python, npm run check and npm run test:contracts. Browser contracts and native suites run Chromium, Firefox and WebKit in Linux CI. For local native browser checks, run node scripts/fetch-runtime.mjs, PORT=8000 node tests/browser/server.cjs, then BROWSER=chromium npm run test:browser. The test server mirrors verified immutable CDN bytes; production retains the original pinned URLs. Local macOS Firefox may fail to launch; report only browsers that actually run.
-
-The app-owned adapter reads v1 as well as deployed raw/compressed/source, example, CID, three-language envelope and Publish return forms. Writers retain the deployed format until the entire fleet has shipped v1 readers. Source identity includes renderer mode, scene, Graphviz engine/output and fractional modl positions. Unknown versions and malformed links fail visibly. Explicit links never overwrite drafts; Resume saved work is separate.
-
-Python and MathJax remain deferred and use a separate verified runtime cache. Gallery videos are lazy and optional package wheels stay outside readiness. Diagrams ready offline describes the saved application; Available offline requires all pinned required runtime bytes too. Updates wait for explicit activation and preserve the complete source/settings before reload. See docs/index.html, docs/sharing.html and docs/offline.html.
-
-The public client ID and canonical/recovery origins are unchanged. Publish retains no credentials here; its confirmation click calls the initialized SDK synchronously. New session transaction writes use manimonline:, while legacy reads are restricted to this app client. CI checks the pin against the published release, and deployment runs the complete gates before publishing. Generated domain notices still come from hashbin.org.
-
-## Compact interface
-
-This app uses released Fragment Kit v0.3.5 for compact controls, readable dialogs,
-and individual-pane or split workspace views. On phones, primary feedback stays
-visible while status details are available in More.
-Current deployment evidence is recorded in the [shared rollout status](https://github.com/curtcox/Tools-for-pages-with-state-in-URL-fragments/blob/main/todo/rollout-status.md).
-
-Optional AI: Ask/review/undo, gallery suggestions and model comparison use the published Fragment Kit 0.4.3 entry point. See [AI guidance](docs/ai.md). Budgets start at zero; accepted source waits for explicit Run, Render or Check. The bundled synthetic [suite](ai-suite.json) and [75-result report](ai-comparison.json) measure source assertions and document invariants, not runtime quality or a model winner.

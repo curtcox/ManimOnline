@@ -1,4 +1,4 @@
-# modl deep-zoom prototype
+# modl deep zoom
 
 The existing SVG group camera can support **0.001×–1000×**, a 1,000,000:1 range
 (six orders of magnitude), for ordinary modl layouts. Extending the two constants
@@ -35,7 +35,8 @@ It is not an infinite canvas or an arbitrary-coordinate renderer.
   current 800 × 450 viewport, with offscreen geometry retained in the document.
 - Camera state remains separate from `pos`. Fractional positions survive existing
   URL/HashBin formats; moving the camera does not change source or saved layout.
-  Re-rendering edited source resets the camera. Offline cache version is v372.
+  Re-rendering edited source resets the camera. On touch screens, one finger pans
+  and two fingers pinch-zoom (`tests/browser/touch.cjs`).
 
 `Modl.create` also exposes `viewport()` (a copy), `zoom(factor, x=400, y=225)` and
 `resetView()`. The optional `onFrame(svg, viewport)` callback receives a camera
@@ -146,34 +147,24 @@ still serializes as SVG. ManimOnline's Download control is tested separately.
 
 ## Verification and remaining limits
 
+Serve the checkout (see the README), then run:
+
 ```sh
-python3 -m unittest discover -s tests -v
-node --test tests/*.test.js
-python3 -m http.server 8000
-node tests/browser/modl-zoom.cjs http://localhost:8000/ chromium firefox webkit
-node tests/browser/modl-zoom.cjs http://localhost:8000/ chromium --benchmark
-node tests/browser/languages.cjs http://localhost:8000/ chromium webkit
-MODL_STANDALONE_HTML=/path/to/patched/modl/index.html node tests/browser/modl-zoom.cjs http://localhost:8000/ chromium webkit
+node tests/browser/modl-zoom.cjs http://127.0.0.1:8000/ chromium firefox webkit
+node tests/browser/modl-zoom.cjs http://127.0.0.1:8000/ chromium --benchmark
+MODL_STANDALONE_HTML=/path/to/patched/modl/index.html node tests/browser/modl-zoom.cjs http://127.0.0.1:8000/ chromium webkit
 ```
 
-Local verification: **147 JavaScript tests passed**; bundled Python ran **749
-tests successfully, with one Pygments skip**. System `python3` also ran all 749,
-but lacked NumPy/Pillow and had six dependency errors and eleven skips; the bundled
-environment supplied those dependencies. Chromium and WebKit passed deep-zoom,
-fractional drag/persistence, background/middle pan, pointer cancellation, wheel
-modes, CSS sizing, asynchronous image loads and rasterized SVG export checks.
-Their three-language suites passed real DOT, modl and Pyodide/Manim rendering and
-mocked HashBin round trips, including the new controls and current-camera download.
-Firefox was attempted but could not launch locally ("Could not find profile
-folder"); both repositories include three-browser CI workflows for that coverage.
-Published test and deployment results are available in each repository's commit
-checks.
+The suite covers deep zoom, fractional dragging and persistence, background and
+middle panning, pointer cancellation, wheel modes, CSS sizing, asynchronous image
+loads and rasterized SVG export. `--benchmark` prints the timings above as
+diagnostics, not assertions. CI runs the suite in Chromium, Firefox and WebKit.
 
 Tiny nodes become subpixel and impractical to select at 0.001×. An additional
 native-mouse probe could drag a precisely targeted normal node in Chromium, but
 WebKit hit the background and panned instead, despite a programmatic hit test
 finding the node. Minimum-scale dragging therefore has no cross-browser targeting
-guarantee; use zoom-in or reset to edit these nodes. There is no pinch gesture, fit-to-content, spatial index,
+guarantee; use zoom-in or reset to edit these nodes. There is no fit-to-content, spatial index,
 semantic hierarchy or new node-size syntax. Browser/device performance varies;
 remote images remain external SVG references with the existing network/CORS
 limitations. Large coordinate origins, huge images and dense documents remain
