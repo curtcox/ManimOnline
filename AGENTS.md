@@ -62,8 +62,7 @@ running full Manim Community. Never claim full Community compatibility.
   (`scripts/gallery-catalog.mjs`), `gallery/covers/` (`npm run gallery`) and
   `src/domain-migration.js`. Do not hand-edit them.
 - `ace/`, `viz-global.js` and `svg-pan-zoom.min.js` are vendored dependencies.
-  `src/render-scheduler.js` remains for its legacy unit test and upgrade fixture;
-  `vendor/fragment-kit-v0.3.5/` and `vendor/fragment-kit-v0.4.3/` are no longer referenced.
+  `src/render-scheduler.js` remains for its legacy unit test and upgrade fixture.
 - `examples/*.py` are the gallery scenes; each exercises a feature, and the notes below name
   the invariants they cover. The Markdown files under `examples/` describe the broader
   Manim API and do not imply browser support.
